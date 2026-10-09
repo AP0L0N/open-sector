@@ -16,10 +16,14 @@ import {
   TILE_SUBDIV,
   TILE_TREE,
   TILE_WATER,
+  featureAngle,
   isMountainCliff,
   validateCustomMap,
+  type MapFeature,
 } from "@gridlock/shared";
+import { lineShapes } from "../render/line-bend.js";
 import {
+  brickEndAt,
   defenceCount,
   diskTouches,
   emptyDirty,
@@ -360,14 +364,36 @@ describe("builder select and defences", () => {
     assert.ok(more.every((f) => f.turn !== first[0]!.turn), "the corner leg runs the other way");
     assert.deepEqual(laySections(s, more), { laid: more.length, refused: 0 }, "nothing overlaps the standing end");
     assert.equal(sectionEndAt(s, "wall", tip.x, tip.y), null, "that end is joined now");
-    // A line drawn from open ground to the west end, at an angle that does not snap onto it,
-    // is laid back from that end: flush there, the slack at the free start.
-    const west = tileWorld(70, 60);
-    const open = sectionEndAt(s, "wall", west.x, west.y);
-    assert.ok(open);
-    const joining = sectionLine("wall", [{ x: open.x, y: open.y }, tileWorld(40, 77)], open.turn, open.lead);
-    assert.deepEqual(laySections(s, joining), { laid: joining.length, refused: 0 });
-    assert.equal(sectionEndAt(s, "wall", west.x, west.y), null, "joined flush");
+    // Drawn like one line: the corner the two make bends on the same fillet a line drawn in one go gets.
+    const asPiece = (f: MapFeature) => ({ x: (f.x + 0.5) * TILE_SIZE, y: (f.y + 0.5) * TILE_SIZE, facing: featureAngle(f), length: 24, thick: 8 });
+    const oneGo = sectionLine("wall", [tileWorld(70, 60), tileWorld(82, 60), { x: end.x, y: end.y + 10 * TILE_SIZE }], QUARTER_TURN);
+    const joint = (fs: MapFeature[], i: number) => {
+      const shape = lineShapes(fs.map(asPiece))[i]!;
+      return shape.pos?.piece === i + 1 ? shape.bendPos : shape.neg?.piece === i + 1 ? shape.bendNeg : undefined;
+    };
+    const bent = joint([...first, ...more], first.length - 1);
+    assert.ok(bent, "the old end bends into the new leg");
+    assert.deepEqual(bent, joint(oneGo, first.length - 1), "the same bend as one line");
+  });
+
+  it("carries a bridge on from the open end of a placed one, at its deck level", () => {
+    const s = fresh();
+    for (let y = 40; y < 100; y++) for (let x = 60; x < 120; x++) s.tiles[y * s.width + x] = TILE_WATER;
+    for (let y = 0; y < s.height; y++) for (let x = 0; x < 60; x++) s.heights[y * s.width + x] = 3;
+    const half = bridgeLine("bridge", [tileWorld(55, 70), tileWorld(80, 70)], 0, deckAt(s, tileWorld(55, 70)));
+    assert.deepEqual(laySections(s, half), { laid: half.length, refused: 0 });
+    const tip = half[half.length - 1]!;
+    const near = tileWorld(Math.round(tip.x) + 2, 70);
+    const end = brickEndAt(s, "bridge", near.x, near.y);
+    assert.ok(end, "the end out over the water is open");
+    assert.equal(end.deck, 3, "it keeps the bank's level");
+    assert.equal(brickEndAt(s, "bigbridge", near.x, near.y), null, "a stone bridge does not carry on a wooden one");
+    // Round a corner to the south, from that end, at the old deck's level.
+    const more = bridgeLine("bridge", [{ x: end.x, y: end.y }, { x: end.x, y: end.y + 16 * TILE_SIZE }], end.turn, end.deck, end.lead);
+    assert.ok(more.length >= 2);
+    assert.ok(more.every((b) => b.deck === 3));
+    assert.deepEqual(laySections(s, more), { laid: more.length, refused: 0 }, "nothing overlaps the old end");
+    assert.equal(brickEndAt(s, "bridge", near.x, near.y)?.x === end.x && brickEndAt(s, "bridge", near.x, near.y)?.y === end.y, false, "that end is joined now");
   });
 
   it("lays a bridge brick by brick like a wall, across any width of water, and saves it", () => {

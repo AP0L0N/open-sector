@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { TICK_DT, bridgeBrickLength, bridgeBuildSeconds, bridgeCost, bridgeWidth, catalog, secondsToTicks } from "../catalog.js";
-import { bridgeBrickProblem, bridgePath, bridgeTiles, bricksConflict, planBridgeLine, type BridgeGround, type BridgeSpan } from "../bridge-plan.js";
+import { bridgeBrickProblem, bridgeEndAt, bridgePath, bridgeTiles, bricksConflict, planBridgeLine, type BridgeGround, type BridgeSpan } from "../bridge-plan.js";
 import { TILE_EMPTY, TILE_WATER, getMap, normalizeTerrain, registerMap, type MapFeature } from "../maps.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { applyCommand } from "./commands.js";
 import { hqOf, isWater, makeEntity, tileCenter, unitInWater, walkable } from "./geo.js";
 import { createMatch, step } from "./match.js";
-import { bridgeBrickProblemFor, bridgeRoundDamage, guardBridges, raiseBridge, settleBridges } from "./bridge.js";
+import { bridgeBrickProblemFor, bridgeRoundDamage, bridgeSpanOf, guardBridges, raiseBridge, settleBridges } from "./bridge.js";
 import { foldScenery, snapshotFor } from "./snapshot.js";
 import { previewBridge } from "./preview.js";
 import { laneLift } from "./bridge-lane.js";
@@ -567,5 +567,69 @@ describe("bridge deck level", () => {
     const features: MapFeature[] = [{ type: "bigbridge", x: 19.5, y: 20, facing: 0, turn: 0, deck: 2 }];
     normalizeTerrain(tiles, heights, side, side, [], features);
     assert.equal(tiles[20 * side + 20], TILE_WATER, "water stays under the bridge");
+  });
+});
+
+describe("carrying a bridge on", () => {
+  it("carries on from the open end of a standing bridge, as if drawn in one go", () => {
+    const L = bridgeBrickLength("bridge");
+    const whole = bridgePath("bridge", [{ x: 0, y: 0 }, { x: L * 3, y: 0 }, { x: L * 3, y: L * 3 }]);
+    const leg = bridgePath("bridge", [{ x: 0, y: 0 }, { x: L * 3, y: 0 }]);
+    const standing = leg.map((span) => ({ type: "bridge", span }));
+    const end = bridgeEndAt("bridge", standing, L * 2.6, 3);
+    assert.ok(end, "the far end is open");
+    assert.ok(Math.abs(end.x - L * 3) < 1e-6 && Math.abs(end.y) < 1e-6);
+    assert.ok(Math.abs(end.lead.x - 1) < 1e-6);
+    assert.ok(bridgeEndAt("bridge", standing, L * 3 + L * 0.6, 4), "just past the end still finds it");
+    const long = bridgePath("bridge", [{ x: 0, y: 0 }, { x: L * 8, y: 0 }]).map((span) => ({ type: "bridge", span }));
+    assert.equal(bridgeEndAt("bridge", long, L * 4, 0), null, "the middle of a bridge is joined at both ends");
+    assert.equal(bridgeEndAt("bigbridge", standing, L * 2.6, 0), null, "only a like bridge carries on");
+    const more = bridgePath("bridge", [{ x: end.x, y: end.y }, { x: L * 3, y: L * 3 }], 0, undefined, end.lead);
+    assert.equal(more.length, 3);
+    more.forEach((b, i) => {
+      assert.ok(Math.hypot(b.x - whole[i + 3]!.x, b.y - whole[i + 3]!.y) < 1e-6, "the corner leg lies where one drawn line puts it");
+      assert.ok(Math.abs(b.facing - whole[i + 3]!.facing) < 1e-6);
+    });
+    for (const b of more) for (const s of leg) assert.equal(bricksConflict(b, bridgeWidth("bridge"), s, bridgeWidth("bridge")), false);
+    const one = bridgePath("bridge", [{ x: end.x, y: end.y }], 0, undefined, end.lead);
+    assert.equal(one.length, 1, "a lone click lays one more brick straight on");
+    assert.ok(Math.abs(one[0]!.x - L * 3.5) < 1e-6 && Math.abs(one[0]!.facing) < 1e-6);
+  });
+
+  it("an engineer carries a half-built bridge on at its own deck level", () => {
+    const { state, a } = twoPlayerMatch();
+    deploy(state, a);
+    river(state);
+    for (let y = Y0; y <= Y1; y++) for (let x = X0; x < RIVER_X; x++) state.heights[y * state.width + x] = 3;
+    // Half a bridge from the raised west bank out over the water, at the bank's level.
+    const half = bridgePath("bridge", [
+      { x: w(RIVER_X - 3, state), y: w(ROW, state) },
+      { x: w(RIVER_X + 4, state), y: w(ROW, state) },
+    ]);
+    for (const span of half) raiseBridge(state, "bridge", span, 3);
+    const bricks = [...state.entities.values()].filter((e) => e.type === "bridge").map((e) => ({ type: e.type, span: bridgeSpanOf(e) }));
+    const tip = half[half.length - 1]!;
+    const end = bridgeEndAt("bridge", bricks, tip.x + 4, tip.y);
+    assert.ok(end, "the end over the water is open");
+    const eng = makeEntity(state, "engineer", a, w(RIVER_X + RIVER_W + 6, state), w(ROW, state));
+    state.players.get(a)!.scrap = 99999;
+    const cmd = applyCommand(state, a, {
+      type: "cmd.bridge",
+      ids: [eng.id],
+      bridge: "bridge",
+      x: end.x,
+      y: end.y,
+      path: [
+        { x: end.x, y: end.y },
+        { x: w(RIVER_X + RIVER_W + 3, state), y: w(ROW, state) },
+      ],
+      lead: end.lead,
+    });
+    assert.equal(cmd.ok, true, cmd.ok ? "" : cmd.message);
+    assert.equal(eng.order?.deck, 3, "the deck runs on at the bridge's level, not the water's");
+    const first = { x: end.x + (end.lead.x * bridgeBrickLength("bridge")) / 2, y: end.y + (end.lead.y * bridgeBrickLength("bridge")) / 2 };
+    const all = [eng.order!, ...(eng.fieldQueue ?? [])];
+    const nearest = Math.min(...all.map((o) => Math.hypot((o.x ?? 0) - first.x, (o.y ?? 0) - first.y)));
+    assert.ok(nearest < 1e-6, "the first new brick starts on the old one's end");
   });
 });

@@ -236,6 +236,8 @@ export interface BridgeLineOpts {
   y2?: number;
   facing?: number;
   path?: readonly { x: number; y: number }[];
+  /** With `path`: the line carries on from a standing bridge ending at its first corner, whose deck runs in along this. */
+  lead?: { x: number; y: number };
 }
 
 /**
@@ -262,14 +264,25 @@ export function orderBridge(
     ? opts.path.filter((q) => Number.isFinite(q.x) && Number.isFinite(q.y))
     : [{ x, y }, ...(opts.x2 != null && opts.y2 != null ? [{ x: opts.x2, y: opts.y2 }] : [])];
   if (points.length === 0 || !points.every((q) => Number.isFinite(q.x) && Number.isFinite(q.y))) return "Cannot place there.";
-  // The whole line keeps the level of the ground it was started from.
-  const deck = deckLevelAt(state, points[0]!.x, points[0]!.y);
+  // The whole line keeps the level of the ground it was started from, or of the bridge it carries on.
+  const start = points[0]!;
+  let deck = deckLevelAt(state, start.x, start.y);
+  const lead = opts.lead && Number.isFinite(opts.lead.x) && Number.isFinite(opts.lead.y) && Math.hypot(opts.lead.x, opts.lead.y) > 1e-6 ? opts.lead : undefined;
+  if (lead) {
+    for (const e of state.entities.values()) {
+      if (e.type !== type || e.hp <= 0 || e.ruined) continue;
+      const { ax, ay, bx, by } = bridgeEnds(bridgeSpanOf(e));
+      if (Math.min(Math.hypot(ax - start.x, ay - start.y), Math.hypot(bx - start.x, by - start.y)) > 1.5) continue;
+      deck = deckLevelOf(state, e);
+      break;
+    }
+  }
   const facing = opts.facing != null && Number.isFinite(opts.facing) ? opts.facing : 0;
   const ground = bridgeGround(state);
   const laid: BridgeBrick[] = [];
   let reason: string | null = null;
   const bricks: BridgeSpan[] = [];
-  for (const span of bridgePath(type, points, facing)) {
+  for (const span of bridgePath(type, points, facing, undefined, lead)) {
     const problem = bridgeBrickProblem(ground, type, span, laid);
     if (problem) {
       reason ??= problem;

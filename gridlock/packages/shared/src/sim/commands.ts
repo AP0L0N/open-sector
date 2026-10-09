@@ -292,6 +292,7 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
           y2: msg.y2,
           facing: msg.facing,
           path: Array.isArray(msg.path) ? msg.path.slice(0, 64) : undefined,
+          lead: fieldLeadOf(msg.lead),
         }),
         "invalid_place",
       );

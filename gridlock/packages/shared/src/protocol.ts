@@ -930,6 +930,11 @@ export type ClientMessage =
       y2?: number;
       /** Corners of the line, start first. When set it replaces (x, y) and the drag end. */
       path?: { x: number; y: number }[];
+      /**
+       * With `path`: the line carries on from a standing bridge of the same type ending at its
+       * first corner, whose deck runs into it along this direction. The deck keeps that bridge's level.
+       */
+      lead?: { x: number; y: number };
     }
   | { type: "cmd.repair"; ids: number[]; targetId: number; queue?: boolean }
   | { type: "cmd.board"; ids: number[]; truckId: number; queue?: boolean }

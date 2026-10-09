@@ -7,4 +7,5 @@ export * from "./catalog.js";
 export * from "./iso.js";
 export * from "./building-rect.js";
 export * from "./bridge-plan.js";
+export * from "./line-end.js";
 export * from "./sim/index.js";

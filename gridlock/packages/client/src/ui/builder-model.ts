@@ -52,6 +52,7 @@ import {
   fieldTurn,
   bridgeBrickProblem,
   bridgePath,
+  bridgeEndAt,
   isMapBridge,
   isMapLine,
   isMountainCliff,
@@ -986,13 +987,39 @@ export function sectionEndAt(s: Sheet, type: MapSectionType, wx: number, wy: num
 }
 
 /**
+ * The open end of a placed `type` bridge near world point (wx, wy), for a new bridge line to
+ * carry on from, with that brick's deck level so the new deck runs on flush. Any brick across
+ * an end closes it.
+ */
+export function brickEndAt(s: Sheet, type: MapBridgeType, wx: number, wy: number): (FieldEnd & { turn: number; deck: number }) | null {
+  const bricks = s.features
+    .filter((f) => isMapBridge(f.type))
+    .map((f) => ({
+      type: f.type,
+      f,
+      span: { x: (f.x + 0.5) * TILE_SIZE, y: (f.y + 0.5) * TILE_SIZE, facing: featureAngle(f), length: bridgeBrickLength(f.type as MapBridgeType) },
+    }));
+  const end = bridgeEndAt(type, bricks, wx, wy);
+  if (!end) return null;
+  const facing = end.brick.span.facing;
+  return { x: end.x, y: end.y, lead: end.lead, facing, turn: wrapTurn(Math.round(facing / BUILDING_TURN_STEP)), deck: brickDeck(s, end.brick.f) };
+}
+
+/**
  * The bridge bricks a line through these world points lays, as map features: end to end
  * like a wall's sections, every leg turned to the nearest 15°. A lone point is one brick
- * along `turn`. A brick's turn runs along its deck.
+ * along `turn`. A brick's turn runs along its deck. With `lead` the line carries on from a
+ * placed bridge ending at the first point (see `bridgePath`).
  */
-export function bridgeLine(type: MapBridgeType, points: readonly { x: number; y: number }[], turn: number, deck: number): MapFeature[] {
+export function bridgeLine(
+  type: MapBridgeType,
+  points: readonly { x: number; y: number }[],
+  turn: number,
+  deck: number,
+  lead?: { x: number; y: number } | null,
+): MapFeature[] {
   const at = (v: number): number => Math.round((v / TILE_SIZE - 0.5) * TILE_SIZE) / TILE_SIZE;
-  return bridgePath(type, points, wrapTurn(turn) * BUILDING_TURN_STEP, BUILDING_TURN_STEP).map((b) => {
+  return bridgePath(type, points, wrapTurn(turn) * BUILDING_TURN_STEP, BUILDING_TURN_STEP, lead).map((b) => {
     const t = wrapTurn(b.facing / BUILDING_TURN_STEP);
     return { type, x: at(b.x), y: at(b.y), facing: turnQuarter(t), turn: t, deck };
   });

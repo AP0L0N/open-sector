@@ -30,6 +30,7 @@ import {
 } from "../catalog.js";
 import { ISO_ELEVATION, isoScale } from "../iso.js";
 import { groveConceal } from "../maps.js";
+import { openEndAt, type LinePieceBox } from "../line-end.js";
 import {
   allies,
   clearOrder,
@@ -406,10 +407,11 @@ export function fieldPieceEnds(type: FieldStructureType, x: number, y: number, f
 }
 
 /**
- * The open end of the `type` piece under world point (px, py) a new line can carry on from, or null.
- * An end is open when no other piece in `pieces` (any field type) touches it; a piece with both
- * ends open gives the one nearer the point. The middle of a line, joined at both ends, gives null.
- * `mine` limits which pieces a line may carry on from; every piece still closes the ends it touches.
+ * The open end of a `type` piece near world point (px, py) that a new line can carry on from,
+ * or null. The pick is generous (see `openEndAt`): the end piece, the one behind it, or open
+ * ground just past the end. An end is open when no other piece in `pieces` (any field type)
+ * touches it. `mine` limits which pieces a line may carry on from; every piece still closes
+ * the ends it touches.
  */
 export function fieldEndAt<P extends { type: string; x: number; y: number; facing: number }>(
   type: FieldStructureType,
@@ -418,58 +420,19 @@ export function fieldEndAt<P extends { type: string; x: number; y: number; facin
   py: number,
   mine?: (p: P) => boolean,
 ): FieldEnd | null {
-  const span = fieldSpan(type);
-  if (!span || type === "gate") return null;
-  const all: { type: FieldStructureType; x: number; y: number; facing: number; mine: boolean }[] = [];
+  if (!fieldSpan(type) || type === "gate") return null;
+  const facings: number[] = [];
+  const boxes: LinePieceBox[] = [];
   for (const p of pieces) {
     const t = p.type as EntityType;
-    if (isFieldStructure(t) && fieldSpan(t)) all.push({ type: t, x: p.x, y: p.y, facing: p.facing, mine: !mine || mine(p) });
+    const span = isFieldStructure(t) ? fieldSpan(t) : null;
+    if (!span) continue;
+    const { tx, ty } = wallAxes(p.facing);
+    boxes.push({ x: p.x, y: p.y, ux: tx, uy: ty, length: span.length, width: span.thick, kin: t === type && (!mine || mine(p)) });
+    facings.push(p.facing);
   }
-  let hit: (typeof all)[number] | null = null;
-  let best = Infinity;
-  for (const p of all) {
-    if (p.type !== type || !p.mine) continue;
-    const { fx, fy, tx, ty } = wallAxes(p.facing);
-    const dx = px - p.x;
-    const dy = py - p.y;
-    const along = Math.abs(dx * tx + dy * ty);
-    const across = Math.abs(dx * fx + dy * fy);
-    if (along > span.length / 2 + 2 || across > span.thick / 2 + 6) continue;
-    const d = Math.hypot(dx, dy);
-    if (d < best) {
-      best = d;
-      hit = p;
-    }
-  }
-  if (!hit) return null;
-  const ends = fieldPieceEnds(type, hit.x, hit.y, hit.facing)!;
-  // Something touches an end when that end lies on its centreline run, within its half-thickness.
-  const touched = (e: { x: number; y: number }): boolean =>
-    all.some((o) => {
-      if (o === hit) return false;
-      const os = fieldSpan(o.type)!;
-      const { fx, fy, tx, ty } = wallAxes(o.facing);
-      const dx = e.x - o.x;
-      const dy = e.y - o.y;
-      const along = Math.max(0, Math.abs(dx * tx + dy * ty) - os.length / 2);
-      const across = Math.max(0, Math.abs(dx * fx + dy * fy) - os.thick / 2);
-      return Math.hypot(along, across) <= Math.max(span.thick, os.thick) * 0.6 + 1.5;
-    });
-  let pick: { x: number; y: number } | null = null;
-  let pickD = Infinity;
-  for (const e of ends) {
-    if (touched(e)) continue;
-    const d = Math.hypot(px - e.x, py - e.y);
-    if (d < pickD) {
-      pickD = d;
-      pick = e;
-    }
-  }
-  if (!pick) return null;
-  const lx = pick.x - hit.x;
-  const ly = pick.y - hit.y;
-  const len = Math.hypot(lx, ly) || 1;
-  return { x: pick.x, y: pick.y, lead: { x: lx / len, y: ly / len }, facing: hit.facing };
+  const end = openEndAt(boxes, px, py);
+  return end ? { x: end.x, y: end.y, lead: end.lead, facing: facings[end.piece]! } : null;
 }
 
 /** The pieces an order describes: a polyline, a drag, or one piece. */

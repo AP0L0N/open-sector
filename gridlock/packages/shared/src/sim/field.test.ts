@@ -1359,7 +1359,11 @@ describe("field lines round corners", () => {
     assert.ok(Math.abs(end.lead.x - 1) < 1e-6 && Math.abs(end.lead.y) < 1e-6, "the line runs out east");
     const start = fieldEndAt("wall", standing, L * 0.2, -2);
     assert.ok(start && Math.abs(start.x) < 1e-6 && Math.abs(start.lead.x + 1) < 1e-6, "the first section's open end runs out west");
-    assert.equal(fieldEndAt("wall", standing, L * 1.5, 0), null, "the middle section is joined at both ends");
+    const long = fieldPath("wall", [{ x: 0, y: 0 }, { x: L * 6, y: 0 }], Math.PI / 2).map((p) => ({ type: "wall", ...p }));
+    assert.equal(fieldEndAt("wall", long, L * 3, 0), null, "the middle of a line is joined at both ends");
+    // A click a little off still carries the line on rather than starting a new one beside it.
+    assert.equal(fieldEndAt("wall", standing, L * 3 + L * 0.6, 3)?.x, L * 3, "open ground just past the end");
+    assert.equal(fieldEndAt("wall", standing, L * 1.9, 0)?.x, L * 3, "the section behind the end");
     assert.equal(fieldEndAt("sandbags", standing, L * 2.7, 0), null, "only a like line carries on");
     assert.equal(fieldEndAt("wall", standing, L * 2.7, 0, () => false), null, "only your own");
     const more = fieldPath("wall", [{ x: end.x, y: end.y }, { x: L * 3, y: L * 3 }], end.facing, end.lead);

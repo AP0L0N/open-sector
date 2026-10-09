@@ -109,6 +109,7 @@ import {
   previewField,
   previewPlace,
   previewYardField,
+  bridgeEndAt,
   fieldEndAt,
   fieldPath,
   type FieldEnd,
@@ -1115,7 +1116,7 @@ export class MapView {
   private fieldShownAt = 0;
   private fieldDrag: { x: number; y: number } | null = null;
   /** The own standing line the drawn one carries on from, taken by the press that started it. */
-  private fieldFrom: { lead: { x: number; y: number }; facing: number } | null = null;
+  private fieldFrom: { lead: { x: number; y: number }; facing: number; deck?: number } | null = null;
   private guardAnchor: { x: number; y: number } | null = null;
   private guardFacing = 0;
   private guardDragging = false;
@@ -2633,24 +2634,21 @@ export class MapView {
           this.commitConstruct(mx, my);
           return;
         }
-        if (this.bridgePlace) {
-          const w = this.screenToWorld(mx, my);
-          this.fieldDrag = { x: w.x, y: w.y };
-          if (this.fieldPath.length === 0) this.fieldFrom = null;
-          return;
-        }
-        if (!this.fieldPlace && this.readyYardField() === "gate") {
+        if (!this.bridgePlace && !this.fieldPlace && this.readyYardField() === "gate") {
           this.commitGate(mx, my);
           return;
         }
-        if (this.fieldPlace || this.readyYardField()) {
+        if (this.bridgePlace || this.fieldPlace || this.readyYardField()) {
           const w = this.screenToWorld(mx, my);
-          this.fieldDrag = { x: w.x, y: w.y };
           if (this.fieldPath.length === 0) {
-            // Pressed on the open end of your own like line: the new one carries on from it.
-            const end = this.fieldEndHere();
-            this.fieldFrom = end ? { lead: end.lead, facing: end.facing } : null;
-            if (end) this.fieldDrag = { x: end.x, y: end.y };
+            // Pressed near the open end of a like line: the new one carries on from it. Read
+            // before the press is held, while the pointer still decides.
+            this.fieldDrag = null;
+            const end = this.lineEndHere();
+            this.fieldFrom = end ? { lead: end.lead, facing: end.facing, ...(end.deck != null ? { deck: end.deck } : {}) } : null;
+            this.fieldDrag = end ? { x: end.x, y: end.y } : { x: w.x, y: w.y };
+          } else {
+            this.fieldDrag = { x: w.x, y: w.y };
           }
           return;
         }
@@ -2732,17 +2730,9 @@ export class MapView {
     if (e.button === 0 && this.fieldDrag && (this.fieldPlace || this.readyYardField() || this.bridgePlace)) {
       const type = this.fieldPlace ?? this.readyYardField();
       const piece = this.bridgePlace ? bridgeBrickLength(this.bridgePlace) : (type && fieldSpan(type)?.length) || 24;
-      const join = this.bridgePlace ? null : this.fieldJoin();
-      const w = this.bridgePlace ? this.screenToWorld(this.mouseX, this.mouseY) : this.fieldCursor();
+      const w = this.screenToWorld(this.mouseX, this.mouseY);
       this.fieldPath = pinFieldPoint(this.fieldPath, this.fieldDrag, w, piece * 0.5);
       this.fieldDrag = null;
-      // Released on the open end of your own like line: the two are joined, and the line is ordered.
-      if (join && this.fieldPath.length >= 2) {
-        this.confirmField(join);
-        // Refused (no engineer left selected): the drawing stays up, and the HUD's Confirm with it.
-        if (this.fieldPath.length > 0) this.onPlaceMode();
-        return;
-      }
       this.onPlaceMode();
       return;
     }
@@ -3421,7 +3411,7 @@ export class MapView {
   }
 
   /** Lay the drawn line: one order for the selected engineers, or one yard job. Clears the drawing. `join`: it finishes on that open end. */
-  confirmField(join: FieldEnd | null = null): void {
+  confirmField(): void {
     if (this.bridgePlace) {
       this.confirmBridge();
       return;
@@ -3437,13 +3427,12 @@ export class MapView {
       : [];
     if (this.fieldPlace && ids.length === 0) return;
     const first = path[0]!;
-    const order = this.fieldOrder(path, this.fieldFrom, join);
-    const facing = order.facing;
-    if (order.lead) {
-      // Carrying on from or joining a standing line: always a path, so the sim turns off its end the way the ghost did.
-      const lead = { x: order.lead.x, y: order.lead.y };
-      const start = order.path[0]!;
-      this.command({ type: "cmd.field", ids, structure, x: start.x, y: start.y, facing, path: order.path.map((p) => ({ x: p.x, y: p.y })), lead });
+    const from = this.fieldFrom;
+    const facing = from?.facing ?? this.fieldFacing;
+    if (from) {
+      // Carrying on from a standing line: always a path, so the sim turns off its end the way the ghost did.
+      const lead = { x: from.lead.x, y: from.lead.y };
+      this.command({ type: "cmd.field", ids, structure, x: first.x, y: first.y, facing, path: path.map((p) => ({ x: p.x, y: p.y })), lead });
     } else if (path.length === 1) {
       this.command({ type: "cmd.field", ids, structure, x: first.x, y: first.y, facing });
     } else {
@@ -3497,7 +3486,10 @@ export class MapView {
     if (ids.length === 0) return;
     const first = path[0]!;
     const facing = this.fieldFacing;
-    if (path.length === 1) this.command({ type: "cmd.bridge", ids, bridge, x: first.x, y: first.y, facing });
+    const from = this.fieldFrom;
+    // Carrying on from a standing bridge: always a path, so the sim turns off its end the way the ghost did.
+    if (from) this.command({ type: "cmd.bridge", ids, bridge, x: first.x, y: first.y, facing, path: path.map((p) => ({ x: p.x, y: p.y })), lead: { x: from.lead.x, y: from.lead.y } });
+    else if (path.length === 1) this.command({ type: "cmd.bridge", ids, bridge, x: first.x, y: first.y, facing });
     else this.command({ type: "cmd.bridge", ids, bridge, x: first.x, y: first.y, facing, path: path.map((p) => ({ x: p.x, y: p.y })) });
     this.fieldPath = [];
     this.fieldDrag = null;
@@ -9358,16 +9350,17 @@ export class MapView {
     let d = this.fieldFacing - this.fieldShown;
     d = Math.atan2(Math.sin(d), Math.cos(d));
     this.fieldShown += d * Math.min(1, dt * 16);
-    const w = this.screenToWorld(this.mouseX, this.mouseY);
-    const pts = fieldPointsWithCursor(this.fieldPath, this.fieldDrag, w);
-    const plan = previewBridge(this.curr, type, pts, this.fieldShown);
+    const from = this.fieldFromNow();
+    const pts = this.fieldPoints();
+    const plan = previewBridge(this.curr, type, pts, this.fieldShown, from?.lead);
     if (plan.length === 0) return;
-    // The line keeps the level of the ground it starts on.
+    // The line keeps the level of the ground it starts on, or of the bridge it carries on.
     const looks = this.ghostLooks(
       type,
       plan.map((b) => b.span),
-      this.groundAt(pts[0]!.x, pts[0]!.y),
+      from?.deck ?? this.groundAt(pts[0]!.x, pts[0]!.y),
     );
+    if (from && this.fieldPath.length === 0 && !this.fieldDrag) this.drawCarryOn(from.at, "Click to carry on this bridge");
     const order = looks.map((_, i) => i).sort((a, b) => isoDepth(looks[a]!.span.x, looks[a]!.span.y) - isoDepth(looks[b]!.span.x, looks[b]!.span.y));
     for (const i of order) this.paintBridge(looks[i]!, { ghost: true, bad: plan[i]!.problem !== null, alpha: 0.85, seed: i + 1 });
     const good = plan.filter((b) => b.problem === null).length;
@@ -9382,6 +9375,24 @@ export class MapView {
     } else {
       this.ghostLabel(at.x, at.y + 18, plan[0]!.problem ?? "Cannot place there.", "#ff5a4a");
     }
+  }
+
+  /** The open end a click carries the line on from: a diamond on it and what the click does. */
+  private drawCarryOn(at: { x: number; y: number }, text: string): void {
+    const ctx = this.ctx;
+    const p = this.toScreen(at.x, at.y);
+    ctx.save();
+    ctx.strokeStyle = "#e8b84a";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y - 6);
+    ctx.lineTo(p.x + 9, p.y);
+    ctx.lineTo(p.x, p.y + 6);
+    ctx.lineTo(p.x - 9, p.y);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+    this.ghostLabel(p.x, p.y + 18, text, "#e8dcc4");
   }
 
   private ghostLabel(x: number, y: number, text: string, color: string): void {
@@ -10035,65 +10046,59 @@ export class MapView {
     this.fieldFacing += notches * (Math.PI / 12);
   }
 
-  /** The open end of one of your own pieces of the armed line's type under the pointer. Bridges and gates have none. */
-  private fieldEndHere(): FieldEnd | null {
-    if (this.bridgePlace) return null;
+  /**
+   * The open end near the pointer that the armed line can carry on from: one of your own wall or
+   * sandbag pieces of its type, or a standing bridge of the armed type (its `deck` comes too).
+   * Only before the line is started; gates have none.
+   */
+  private lineEndHere(): (FieldEnd & { deck?: number }) | null {
+    if (this.fieldPath.length > 0 || this.fieldDrag) return null;
+    const w = this.screenToWorld(this.mouseX, this.mouseY);
+    if (this.bridgePlace) {
+      const bricks: (BrickIn & { span: BridgeSpan })[] = [];
+      for (const e of this.curr.entities) {
+        if (e.type !== this.bridgePlace || e.hp <= 0 || e.ruined) continue;
+        const b = this.brickIn(e);
+        if (b) bricks.push(b);
+      }
+      const end = bridgeEndAt(this.bridgePlace, bricks, w.x, w.y);
+      return end ? { x: end.x, y: end.y, lead: end.lead, facing: end.brick.span.facing, deck: end.brick.deck } : null;
+    }
     const type = this.fieldPlace ?? this.readyYardField();
     if (!type || type === "gate") return null;
-    const w = this.screenToWorld(this.mouseX, this.mouseY);
     const you = this.curr.youPlayerId;
     const standing = this.curr.entities.filter((e) => e.hp > 0 && !e.ruined && !e.wreck && isFieldStructure(e.type));
     return fieldEndAt(type, standing, w.x, w.y, (e) => e.ownerId === you);
   }
 
-  /** The standing line the drawing carries on from: the one its first press took, or before a press the one under the pointer. */
-  private fieldFromNow(): { at: { x: number; y: number }; lead: { x: number; y: number }; facing: number } | null {
+  /** The standing line the drawing carries on from: the one its first press took, or before a press the one near the pointer. */
+  private fieldFromNow(): { at: { x: number; y: number }; lead: { x: number; y: number }; facing: number; deck?: number } | null {
     const start = this.fieldPath[0] ?? this.fieldDrag;
     if (start) return this.fieldFrom ? { at: start, ...this.fieldFrom } : null;
-    const end = this.fieldEndHere();
-    return end ? { at: { x: end.x, y: end.y }, lead: end.lead, facing: end.facing } : null;
+    const end = this.lineEndHere();
+    return end ? { at: { x: end.x, y: end.y }, lead: end.lead, facing: end.facing, ...(end.deck != null ? { deck: end.deck } : {}) } : null;
   }
 
-  /** The open end of a like piece the live leg finishes on, or null. Never the end the line set off from. */
-  private fieldJoin(): FieldEnd | null {
-    const start = this.fieldPath[0] ?? this.fieldDrag;
-    if (!start) return null;
-    const end = this.fieldEndHere();
-    return end && Math.hypot(end.x - start.x, end.y - start.y) >= 1 ? end : null;
-  }
-
-  /** Where the live leg ends: the pointer, or the open end of a like piece it joins onto. */
-  private fieldCursor(): { x: number; y: number } {
-    const end = this.fieldPath[0] ?? this.fieldDrag ? this.fieldJoin() : this.fieldEndHere();
-    return end ? { x: end.x, y: end.y } : this.screenToWorld(this.mouseX, this.mouseY);
-  }
-
-  /**
-   * How a line through `pts` goes to the sim: carried on from a standing line it runs from that end;
-   * finishing on one (`join`) and not started from one, it runs back from the end it joins, so the
-   * join is flush and any slack falls at the free start.
-   */
-  private fieldOrder(
-    pts: readonly { x: number; y: number }[],
-    from: { lead: { x: number; y: number }; facing: number } | null,
-    join: FieldEnd | null,
-  ): { path: { x: number; y: number }[]; facing: number; lead: { x: number; y: number } | null } {
-    if (join && !from && pts.length >= 2) return { path: [...pts].reverse(), facing: join.facing, lead: join.lead };
-    return { path: [...pts], facing: from?.facing ?? this.fieldFacing, lead: from?.lead ?? null };
+  /** The drawn corners plus the live leg's end. Before a press near an open end, the line starts on that end. */
+  private fieldPoints(): { x: number; y: number }[] {
+    const from = this.fieldFromNow();
+    const w = this.screenToWorld(this.mouseX, this.mouseY);
+    const cursor = this.fieldPath.length === 0 && !this.fieldDrag && from ? from.at : w;
+    return fieldPointsWithCursor(this.fieldPath, this.fieldDrag, cursor);
   }
 
   /** Every piece the drawing describes: the pinned legs plus the live one to the cursor. */
   private fieldPieces(type: FieldStructureType, shown: boolean): { x: number; y: number; facing: number }[] {
     const from = this.fieldFromNow();
-    const order = this.fieldOrder(fieldPointsWithCursor(this.fieldPath, this.fieldDrag, this.fieldCursor()), from, this.fieldJoin());
-    const pieces = fieldPath(type, order.path, order.facing, order.lead);
-    if (shown && !order.lead && order.path.length === 1 && pieces[0]) pieces[0].facing = this.fieldShown;
+    const pts = this.fieldPoints();
+    const pieces = fieldPath(type, pts, from?.facing ?? this.fieldFacing, from?.lead);
+    if (shown && !from && pts.length === 1 && pieces[0]) pieces[0].facing = this.fieldShown;
     return pieces;
   }
 
-  /** How many of those pieces are already pinned. The rest follow the cursor. A line laid back from a join has none. */
+  /** How many of those pieces are already pinned. The rest follow the cursor. */
   private fieldPinnedCount(type: FieldStructureType): number {
-    if (this.fieldPath.length < 2 || (!this.fieldFrom && this.fieldJoin())) return 0;
+    if (this.fieldPath.length < 2) return 0;
     return fieldPath(type, this.fieldPath, this.fieldFrom?.facing ?? this.fieldFacing, this.fieldFrom?.lead).length;
   }
 
@@ -10161,27 +10166,8 @@ export class MapView {
       ctx.stroke();
       ctx.restore();
     }
-    const startAt = this.fieldPath[0] ?? this.fieldDrag;
-    const end = this.fieldEndHere();
-    const from = !startAt && end ? { x: end.x, y: end.y } : null;
-    const join = startAt && end && Math.hypot(end.x - startAt.x, end.y - startAt.y) >= 1 ? { x: end.x, y: end.y } : null;
-    for (const at of [from, join]) {
-      if (!at) continue;
-      // The open end a click carries the line on from, or joins it onto.
-      const p = this.toScreen(at.x, at.y);
-      ctx.save();
-      ctx.strokeStyle = "#e8b84a";
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(p.x, p.y - 6);
-      ctx.lineTo(p.x + 9, p.y);
-      ctx.lineTo(p.x, p.y + 6);
-      ctx.lineTo(p.x - 9, p.y);
-      ctx.closePath();
-      ctx.stroke();
-      ctx.restore();
-      this.ghostLabel(p.x, p.y + 18, at === from ? "Click to carry on this line" : "Click joins it to this line and places it", "#e8dcc4");
-    }
+    const from = this.fieldPath.length === 0 && !this.fieldDrag ? this.fieldFromNow() : null;
+    if (from) this.drawCarryOn(from.at, "Click to carry on this line");
     if (pieces.length < 2 && this.fieldPath.length === 0) return;
     const last = pieces[pieces.length - 1]!;
     const s = this.toScreen(last.x, last.y);
