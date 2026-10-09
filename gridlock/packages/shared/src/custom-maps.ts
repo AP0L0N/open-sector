@@ -87,6 +87,8 @@ export interface CustomMapSpec {
   units?: MapUnit[];
   /** Complete fog of war. Left out when off. */
   shroud?: true;
+  /** Always night time. Left out when off. */
+  night?: true;
   updatedAt: number;
 }
 
@@ -594,6 +596,7 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
       ...(clutter.length > 0 ? { clutter } : {}),
       ...(units.length > 0 ? { units } : {}),
       ...(m.shroud === true ? { shroud: true as const } : {}),
+      ...(m.night === true ? { night: true as const } : {}),
       updatedAt,
     },
   };
@@ -623,6 +626,7 @@ export function buildCustomMap(spec: CustomMapSpec): MapDef {
     ...(spec.clutter?.length ? { clutter: spec.clutter.map((c) => ({ ...c })) } : {}),
     ...(spec.units?.length ? { units: spec.units.map(copyMapUnit) } : {}),
     ...(spec.shroud ? { shroud: true } : {}),
+    ...(spec.night ? { night: true } : {}),
     custom: { author: spec.author, updatedAt: spec.updatedAt },
   };
 }
@@ -662,6 +666,7 @@ export function specFromMap(id: string, copy: { id: string; name: string; author
     ...(map.clutter?.length ? { clutter: map.clutter.map((c) => ({ ...c })) } : {}),
     ...(map.units?.length ? { units: map.units.map(copyMapUnit) } : {}),
     ...(map.shroud ? { shroud: true as const } : {}),
+    ...(map.night ? { night: true as const } : {}),
     updatedAt: 0,
   };
 }

@@ -43,12 +43,16 @@ import {
   featureContains,
   featureOnPad,
   featuresOverlap,
+  featureAngle,
   fieldCornerStart,
+  fieldEndAt,
   fieldPath,
   fieldSpan,
+  type FieldEnd,
   fieldTurn,
   bridgeBrickProblem,
   bridgePath,
+  bridgeEndAt,
   isMapBridge,
   isMapLine,
   isMountainCliff,
@@ -103,6 +107,8 @@ export interface Sheet {
   units: MapUnit[];
   /** Complete fog of war: ground nobody has seen yet plays black. */
   shroud: boolean;
+  /** Always night time: the match never leaves the dark. */
+  night: boolean;
 }
 
 /** Ground a start pad clears. Roads may run through it. */
@@ -135,6 +141,7 @@ export function newSheet(opts: {
     clutter: [],
     units: [],
     shroud: false,
+    night: false,
   };
   settle(sheet);
   return sheet;
@@ -158,6 +165,7 @@ export function sheetFromSpec(spec: CustomMapSpec): Sheet {
     clutter: (spec.clutter ?? []).map((c) => ({ ...c })),
     units: (spec.units ?? []).map(copyMapUnit),
     shroud: spec.shroud === true,
+    night: spec.night === true,
   };
   settle(sheet);
   return sheet;
@@ -180,6 +188,7 @@ export function sheetToSpec(s: Sheet): CustomMapSpec {
     ...(s.clutter.length > 0 ? { clutter: liveClutter(s) } : {}),
     ...(s.units.length > 0 ? { units: liveUnits(s) } : {}),
     ...(s.shroud ? { shroud: true as const } : {}),
+    ...(s.night ? { night: true as const } : {}),
     updatedAt: 0,
   };
 }
@@ -202,6 +211,7 @@ export function sheetToMap(s: Sheet, id = "__builder__"): MapDef {
     clutter: liveClutter(s),
     units: liveUnits(s),
     ...(s.shroud ? { shroud: true } : {}),
+    ...(s.night ? { night: true } : {}),
   };
 }
 
@@ -710,9 +720,9 @@ export function diskTouches(s: Sheet, cx: number, cy: number, r: number): boolea
 /** Paint ground in a disk. Houses keep their lots; start pads only take roads. Returns changed cells. */
 export function paintDisk(s: Sheet, cx: number, cy: number, r: number, tile: number, dirty?: Dirty): number {
   const ri = Math.ceil(r);
-  // Only lots and pads near the brush can refuse a tile.
+  // Only lots and pads near the brush can refuse a tile. A Smelter's lot takes scrap: it pours what is under it.
   const lots = s.features
-    .filter((f) => !isMapBridge(f.type))
+    .filter((f) => !isMapBridge(f.type) && !(f.type === "smelter" && isScrapTile(tile)))
     .map((f) => featureBox(f))
     .filter((b) => b.x1 > cx - ri && b.x0 <= cx + ri && b.y1 > cy - ri && b.y0 <= cy + ri);
   const pads = PAD_CLEARS(tile) ? s.spawns.filter((sp) => Math.hypot(sp.x - cx, sp.y - cy) <= SPAWN_PAD_R + ri + 1) : [];
@@ -896,17 +906,22 @@ export function tileWorld(tx: number, ty: number): { x: number; y: number } {
 /**
  * The corners of a line with every leg turned to the nearest 15°. Each leg is
  * measured from where the last one really ends, the way `fieldPath` lays it,
- * so every section of the line stands on a whole turn step.
+ * so every section of the line stands on a whole turn step. With `lead` the line carries on
+ * from a standing one, so the first leg turns off it in a mitre like any other corner.
  */
-export function snapLegs(type: MapSectionType, points: readonly { x: number; y: number }[]): { x: number; y: number }[] {
+export function snapLegs(
+  type: MapSectionType,
+  points: readonly { x: number; y: number }[],
+  lead?: { x: number; y: number } | null,
+): { x: number; y: number }[] {
   const span = fieldSpan(type);
   const first = points[0];
   if (!span || !first) return [];
   const out = [{ ...first }];
   let sx = first.x;
   let sy = first.y;
-  let ux: number | null = null;
-  let uy = 0;
+  let ux: number | null = lead ? lead.x : null;
+  let uy = lead ? lead.y : 0;
   for (let i = 1; i < points.length; i++) {
     const p = points[i]!;
     const dist = Math.hypot(p.x - sx, p.y - sy);
@@ -943,23 +958,68 @@ export function snapLegs(type: MapSectionType, points: readonly { x: number; y: 
 /**
  * The sections a line through these world points lays, as map features. `turn` faces a
  * lone section and picks which flank of a longer line is its front, like the wheel in a match.
+ * With `lead` the line carries on from a standing section ending at the first point (see
+ * `fieldPath`); `turn` is then that section's, so the front holds round the join.
  */
-export function sectionLine(type: MapSectionType, points: readonly { x: number; y: number }[], turn: number): MapFeature[] {
+export function sectionLine(
+  type: MapSectionType,
+  points: readonly { x: number; y: number }[],
+  turn: number,
+  lead?: { x: number; y: number } | null,
+): MapFeature[] {
   const at = (v: number): number => Math.round((v / TILE_SIZE - 0.5) * TILE_SIZE) / TILE_SIZE;
-  return fieldPath(type, snapLegs(type, points), wrapTurn(turn) * BUILDING_TURN_STEP).map((p) => {
+  return fieldPath(type, snapLegs(type, points, lead), wrapTurn(turn) * BUILDING_TURN_STEP, lead).map((p) => {
     const t = wrapTurn(p.facing / BUILDING_TURN_STEP);
     return { type, x: at(p.x), y: at(p.y), facing: turnQuarter(t), turn: t };
   });
 }
 
 /**
+ * The open end of a placed `type` section under world point (wx, wy), for a new line to carry
+ * on from or join onto. Any section touching an end closes it. `turn` is the section's own.
+ */
+export function sectionEndAt(s: Sheet, type: MapSectionType, wx: number, wy: number): (FieldEnd & { turn: number }) | null {
+  const pieces = s.features
+    .filter((f) => isMapSection(f.type))
+    .map((f) => ({ type: f.type, x: (f.x + 0.5) * TILE_SIZE, y: (f.y + 0.5) * TILE_SIZE, facing: featureAngle(f) }));
+  const end = fieldEndAt(type, pieces, wx, wy);
+  return end ? { ...end, turn: wrapTurn(Math.round(end.facing / BUILDING_TURN_STEP)) } : null;
+}
+
+/**
+ * The open end of a placed `type` bridge near world point (wx, wy), for a new bridge line to
+ * carry on from, with that brick's deck level so the new deck runs on flush. Any brick across
+ * an end closes it.
+ */
+export function brickEndAt(s: Sheet, type: MapBridgeType, wx: number, wy: number): (FieldEnd & { turn: number; deck: number }) | null {
+  const bricks = s.features
+    .filter((f) => isMapBridge(f.type))
+    .map((f) => ({
+      type: f.type,
+      f,
+      span: { x: (f.x + 0.5) * TILE_SIZE, y: (f.y + 0.5) * TILE_SIZE, facing: featureAngle(f), length: bridgeBrickLength(f.type as MapBridgeType) },
+    }));
+  const end = bridgeEndAt(type, bricks, wx, wy);
+  if (!end) return null;
+  const facing = end.brick.span.facing;
+  return { x: end.x, y: end.y, lead: end.lead, facing, turn: wrapTurn(Math.round(facing / BUILDING_TURN_STEP)), deck: brickDeck(s, end.brick.f) };
+}
+
+/**
  * The bridge bricks a line through these world points lays, as map features: end to end
  * like a wall's sections, every leg turned to the nearest 15°. A lone point is one brick
- * along `turn`. A brick's turn runs along its deck.
+ * along `turn`. A brick's turn runs along its deck. With `lead` the line carries on from a
+ * placed bridge ending at the first point (see `bridgePath`).
  */
-export function bridgeLine(type: MapBridgeType, points: readonly { x: number; y: number }[], turn: number, deck: number): MapFeature[] {
+export function bridgeLine(
+  type: MapBridgeType,
+  points: readonly { x: number; y: number }[],
+  turn: number,
+  deck: number,
+  lead?: { x: number; y: number } | null,
+): MapFeature[] {
   const at = (v: number): number => Math.round((v / TILE_SIZE - 0.5) * TILE_SIZE) / TILE_SIZE;
-  return bridgePath(type, points, wrapTurn(turn) * BUILDING_TURN_STEP, BUILDING_TURN_STEP).map((b) => {
+  return bridgePath(type, points, wrapTurn(turn) * BUILDING_TURN_STEP, BUILDING_TURN_STEP, lead).map((b) => {
     const t = wrapTurn(b.facing / BUILDING_TURN_STEP);
     return { type, x: at(b.x), y: at(b.y), facing: turnQuarter(t), turn: t, deck };
   });
@@ -1287,17 +1347,26 @@ export function scrapCells(s: Sheet): number {
   return n;
 }
 
-/** Cells from a start within which a scrap field is in the yard's build range once the Rig unpacks. */
-const HOME_SCRAP_CELLS = BUILD_RADIUS / TILE_SUBDIV + 2;
-
-/** Start numbers with no scrap cell near enough for the yard to place a Smelter. */
+/**
+ * Start numbers with no scrap tile near enough for the yard to place a Smelter. The Core
+ * unpacks centred on the start; a Smelter goes up within BUILD_RADIUS of it (Chebyshev,
+ * footprint to footprint) and needs scrap under any one of its tiles.
+ */
 export function startsFarFromScrap(s: Sheet): number[] {
+  const core = catalog("core");
+  const smelter = catalog("smelter");
+  const reachX = BUILD_RADIUS + smelter.tileW - 1;
+  const reachY = BUILD_RADIUS + smelter.tileH - 1;
   const out: number[] = [];
   for (const sp of s.spawns) {
+    const cx0 = sp.x - Math.floor(core.tileW / 2);
+    const cy0 = sp.y - Math.floor(core.tileH / 2);
+    const cx1 = cx0 + core.tileW - 1;
+    const cy1 = cy0 + core.tileH - 1;
     let near = false;
-    for (let y = Math.max(0, sp.y - HOME_SCRAP_CELLS); y <= Math.min(s.height - 1, sp.y + HOME_SCRAP_CELLS) && !near; y++) {
-      for (let x = Math.max(0, sp.x - HOME_SCRAP_CELLS); x <= Math.min(s.width - 1, sp.x + HOME_SCRAP_CELLS); x++) {
-        if (isScrapTile(s.tiles[y * s.width + x]) && Math.hypot(x - sp.x, y - sp.y) <= HOME_SCRAP_CELLS) {
+    for (let y = Math.max(0, cy0 - reachY); y <= Math.min(s.height - 1, cy1 + reachY) && !near; y++) {
+      for (let x = Math.max(0, cx0 - reachX); x <= Math.min(s.width - 1, cx1 + reachX); x++) {
+        if (isScrapTile(s.tiles[y * s.width + x])) {
           near = true;
           break;
         }
@@ -1320,6 +1389,7 @@ export interface SheetMark {
   units: MapUnit[];
   maxPlayers: number;
   shroud: boolean;
+  night: boolean;
 }
 
 export function markSheet(s: Sheet): SheetMark {
@@ -1334,6 +1404,7 @@ export function markSheet(s: Sheet): SheetMark {
     units: s.units.map(copyMapUnit),
     maxPlayers: s.maxPlayers,
     shroud: s.shroud,
+    night: s.night,
   };
 }
 
@@ -1348,4 +1419,5 @@ export function restoreSheet(s: Sheet, m: SheetMark): void {
   s.units = m.units.map(copyMapUnit);
   s.maxPlayers = m.maxPlayers;
   s.shroud = m.shroud;
+  s.night = m.night;
 }

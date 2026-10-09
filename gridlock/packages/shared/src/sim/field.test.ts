@@ -31,6 +31,7 @@ import {
   crushWireUnder,
   FIELD_TURN_MAX,
   fieldCornerStart,
+  fieldEndAt,
   fieldLine,
   fieldPath,
   fieldSiteClear,
@@ -1346,6 +1347,73 @@ describe("field lines round corners", () => {
     for (let i = 0; i < 1500 && built().length < 6; i++) step(state, TICK_DT);
     assert.equal(built().length, 6, "both legs stand, the corner included");
     assert.equal(eng.state, "idle");
+  });
+
+  it("carries a line on from a standing one: the open end, the mitre, and the same front", () => {
+    const leg = fieldPath("wall", [{ x: 0, y: 0 }, { x: L * 3, y: 0 }], Math.PI / 2);
+    const whole = fieldPath("wall", [{ x: 0, y: 0 }, { x: L * 3, y: 0 }, { x: L * 3, y: L * 3 }], Math.PI / 2);
+    const standing = leg.map((p) => ({ type: "wall", ...p }));
+    const end = fieldEndAt("wall", standing, L * 2.7, 2);
+    assert.ok(end, "the last section's far end is open");
+    assert.ok(Math.abs(end.x - L * 3) < 1e-6 && Math.abs(end.y) < 1e-6);
+    assert.ok(Math.abs(end.lead.x - 1) < 1e-6 && Math.abs(end.lead.y) < 1e-6, "the line runs out east");
+    const start = fieldEndAt("wall", standing, L * 0.2, -2);
+    assert.ok(start && Math.abs(start.x) < 1e-6 && Math.abs(start.lead.x + 1) < 1e-6, "the first section's open end runs out west");
+    const long = fieldPath("wall", [{ x: 0, y: 0 }, { x: L * 6, y: 0 }], Math.PI / 2).map((p) => ({ type: "wall", ...p }));
+    assert.equal(fieldEndAt("wall", long, L * 3, 0), null, "the middle of a line is joined at both ends");
+    // A click a little off still carries the line on rather than starting a new one beside it.
+    assert.equal(fieldEndAt("wall", standing, L * 3 + L * 0.6, 3)?.x, L * 3, "open ground just past the end");
+    assert.equal(fieldEndAt("wall", standing, L * 1.9, 0)?.x, L * 3, "the section behind the end");
+    assert.equal(fieldEndAt("sandbags", standing, L * 2.7, 0), null, "only a like line carries on");
+    assert.equal(fieldEndAt("wall", standing, L * 2.7, 0, () => false), null, "only your own");
+    const more = fieldPath("wall", [{ x: end.x, y: end.y }, { x: L * 3, y: L * 3 }], end.facing, end.lead);
+    assert.equal(more.length, 3);
+    for (let i = 0; i < 3; i++) {
+      assert.ok(Math.abs(more[i]!.x - whole[i + 3]!.x) < 1e-6 && Math.abs(more[i]!.y - whole[i + 3]!.y) < 1e-6, "as if drawn in one go");
+      assert.ok(Math.abs(more[i]!.facing - whole[i + 3]!.facing) < 1e-6, "the front holds round the join");
+    }
+    const asEntity = (p: { x: number; y: number; facing: number }) => ({ type: "wall" as const, x: p.x, y: p.y, facing: p.facing, hp: 1 });
+    for (const p of more) assert.equal(overlapsFieldIn(leg.map(asEntity), "wall", p.x, p.y, p.facing), false);
+    const backward = fieldPath("wall", [{ x: 0, y: 0 }, { x: -L * 2, y: 0 }], start!.facing, start!.lead);
+    assert.ok(backward.every((p) => Math.abs(Math.sin(p.facing) - 1) < 1e-6), "carried on west, it still faces +y");
+    const one = fieldPath("wall", [{ x: end.x, y: end.y }], end.facing, end.lead);
+    assert.equal(one.length, 1, "a lone click lays one more section straight on");
+    assert.ok(Math.abs(one[0]!.x - L * 3.5) < 1e-6 && Math.abs(one[0]!.y) < 1e-6);
+    const closed = fieldEndAt("wall", [...standing, ...more.map((p) => ({ type: "wall", ...p }))], L * 2.7, 0);
+    assert.equal(closed, null, "once the corner is on, that end is shut");
+  });
+
+  it("an engineer's line ordered with a lead carries on round the corner of a standing wall", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 20, 22, 44, 24);
+    const ts = state.tileSize;
+    const x = tileCenter(26, ts);
+    const y = tileCenter(36, ts);
+    for (const p of fieldPath("wall", [{ x, y }, { x: x + L * 3, y }], -Math.PI / 2)) {
+      const w = makeEntity(state, "wall", "A", p.x, p.y);
+      w.facing = p.facing;
+    }
+    const end = fieldEndAt("wall", state.entities.values(), x + L * 2.7, y);
+    assert.ok(end);
+    const eng = makeEntity(state, "engineer", "A", x + 20, y - 40);
+    const res = applyCommand(state, "A", {
+      type: "cmd.field",
+      ids: [eng.id],
+      structure: "wall",
+      x: end.x,
+      y: end.y,
+      facing: end.facing,
+      path: [
+        { x: end.x, y: end.y },
+        { x: end.x, y: y - L * 3 },
+      ],
+      lead: { x: end.lead.x * 5, y: end.lead.y * 5 },
+    });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    assert.equal(eng.fieldQueue?.length, 2, "three sections, none dropped for the standing corner");
+    const built = () => [...state.entities.values()].filter((e) => e.type === "wall");
+    for (let i = 0; i < 1500 && built().length < 6; i++) step(state, TICK_DT);
+    assert.equal(built().length, 6);
   });
 
   it("builds a cornered sandbag line bag by bag without the corner fouling", () => {

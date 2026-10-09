@@ -306,7 +306,7 @@ const collapsed = loadCollapsed();
  * A sandbag, wall, or road line being drawn, as in a match: the press sets its start, each
  * click pins a corner, Enter lays it. World points on fine-tile centres.
  */
-const line: { points: Pt[]; press: Pt | null } = { points: [], press: null };
+const line: { points: Pt[]; press: Pt | null; from: { lead: Pt; turn: number; deck?: number } | null } = { points: [], press: null, from: null };
 /** Trackpad wheel travel toward the next 15° notch. */
 let wheelCarry = 0;
 const view = { zoom: 0, px: 0, py: 0 };
@@ -316,7 +316,7 @@ let gameView = store()?.getItem(GAME_VIEW_STORE) === "1";
 let nightView = store()?.getItem(NIGHT_VIEW_STORE) === "1";
 /** Every patrol stays on the sheet. Off, only the selected unit or tower shows its route. */
 let patrolAlways = store()?.getItem(PATROL_ALWAYS_STORE) === "1";
-/** The Night time checkbox, hidden while the plan view is up. */
+/** The Show night time checkbox, hidden while the plan view is up. */
 let nightToggle: HTMLElement | null = null;
 const isoCam: IsoCam = { zoom: 0, camX: 0, camY: 0 };
 let hover: { x: number; y: number; inside: boolean } = { x: 0, y: 0, inside: false };
@@ -397,6 +397,7 @@ function say(text: string, tone: "" | "bad" | "good" = ""): void {
   msg = { text, tone };
   if (stage) {
     stage.msg.textContent = text;
+    stage.msg.title = text;
     stage.msg.className = `bld-msg ${tone}`;
     stage.msg.hidden = !text;
   }
@@ -723,6 +724,33 @@ function linePending(): boolean {
 function dropLine(): void {
   line.points = [];
   line.press = null;
+  line.from = null;
+}
+
+/**
+ * The open end of a placed section or bridge of the armed type near the cursor: a line can
+ * carry on from there. `deck` is the bridge's level, so a carried-on deck runs on flush.
+ */
+function lineEndHere(): { x: number; y: number; lead: Pt; turn: number; deck?: number } | null {
+  const s = sheet;
+  if (!s || !hover.inside || line.points.length > 0 || line.press) return null;
+  const w = M.tileWorld(hover.x, hover.y);
+  if (tool.id === "bridge") return M.brickEndAt(s, tool.bridge, w.x, w.y);
+  if (tool.id === "defence" && isMapSection(tool.defence)) return M.sectionEndAt(s, tool.defence, w.x, w.y);
+  return null;
+}
+
+/** The standing line the drawn one carries on from: the one its press took, or before a press the one near the cursor. */
+function lineFrom(): { at: Pt; lead: Pt; turn: number; deck?: number } | null {
+  const start = line.points[0] ?? line.press;
+  if (start) return line.from ? { at: start, ...line.from } : null;
+  const end = lineEndHere();
+  return end ? { at: { x: end.x, y: end.y }, lead: end.lead, turn: end.turn, ...(end.deck != null ? { deck: end.deck } : {}) } : null;
+}
+
+/** Where the line starts, or would start on a click. */
+function lineStartPoint(): Pt | null {
+  return line.points[0] ?? line.press ?? lineFrom()?.at ?? null;
 }
 
 /** Degrees a 15° turn reads as: 0 east, 90 south. */
@@ -736,14 +764,25 @@ function houseGhost(): MapFeature | null {
   return M.houseAt(type, hover.x, hover.y, tool.facing, tool.turn);
 }
 
+/**
+ * The sections or bridge bricks a line through `points` lays. Carried on from a standing line
+ * it starts at that line's end, turns off it like a corner, and keeps its front or its deck.
+ */
+function linePieces(points: readonly Pt[], from: { lead: Pt; turn: number; deck?: number } | null): MapFeature[] {
+  if (tool.id === "bridge") return M.bridgeLine(tool.bridge, points, from?.turn ?? tool.turn, from?.deck ?? M.deckAt(sheet!, points[0]!), from?.lead);
+  if (tool.id !== "defence" || !isMapSection(tool.defence)) return [];
+  return M.sectionLine(tool.defence, points, from?.turn ?? tool.turn, from?.lead);
+}
+
 /** The sections or bridge bricks the drawn line would lay, its live leg running to the cursor. */
 function lineGhost(): MapFeature[] {
   const bridge = tool.id === "bridge";
   if (!bridge && (tool.id !== "defence" || !isMapSection(tool.defence))) return [];
   if (!hover.inside && line.points.length === 0 && !line.press) return [];
-  const pts = fieldPointsWithCursor(line.points, line.press, M.tileWorld(hover.x, hover.y));
-  if (bridge) return M.bridgeLine(tool.bridge, pts, tool.turn, M.deckAt(sheet!, pts[0]!));
-  return M.sectionLine(tool.defence as MapSectionType, pts, tool.turn);
+  const from = lineFrom();
+  // Before a press near an open end, the line starts on that end.
+  const cursor = !line.points.length && !line.press && from ? from.at : M.tileWorld(hover.x, hover.y);
+  return linePieces(fieldPointsWithCursor(line.points, line.press, cursor), from);
 }
 
 /** The centreline the drawn road would lay, its live leg running to the cursor. */
@@ -1010,7 +1049,7 @@ function drawPlanView(c: CanvasRenderingContext2D, s: M.Sheet, w: number, h: num
       drawHouse(f, bad ? "rgba(255,90,74,0.45)" : "rgba(125,255,106,0.45)", bad ? "#ff5a4a" : "#7dff6a");
     }
     // The start of the line, as the match marks it.
-    const start = line.points[0] ?? line.press;
+    const start = lineStartPoint();
     if (start) {
       const x = sx(start.x / TILE_SIZE);
       const y = sy(start.y / TILE_SIZE);
@@ -1182,8 +1221,11 @@ function drawTurnHint(c: CanvasRenderingContext2D, ax: number, ay: number, secti
     else lines.push("Click to start a road · Enter lays one stub");
   } else if (tool.id === "bridge") {
     if (line.points.length > 0) lines.push(`${sections} brick${sections === 1 ? "" : "s"} · Enter lays the bridge · click adds a leg · right-click takes one back`);
+    else if (lineFrom()) lines.push("Click to carry on this bridge");
     else lines.push("Click on one shore to start · Enter lays one brick");
-  } else if (line.points.length > 0) lines.push(`${sections} section${sections === 1 ? "" : "s"} · Enter places · click adds a leg · right-click takes one back`);
+  } else if (line.points.length > 0) {
+    lines.push(`${sections} section${sections === 1 ? "" : "s"} · Enter places · click adds a leg · right-click takes one back`);
+  } else if (lineTool() && lineFrom()) lines.push("Click to carry on this line");
   else if (lineTool()) lines.push("Click to start a line · Enter places one section");
   c.font = "11px 'Share Tech Mono', monospace";
   c.textAlign = "left";
@@ -1231,7 +1273,7 @@ function drawGameView(c: CanvasRenderingContext2D, s: M.Sheet, w: number, h: num
             : -1,
     selectedSpawn: selected?.kind === "spawn" ? selected.id : 0,
     ghosts,
-    lineStart: pieces.length > 0 || road.length > 0 ? (line.points[0] ?? line.press) : null,
+    lineStart: pieces.length > 0 || road.length > 0 ? lineStartPoint() : null,
     road: M.roadQuads(road, tool.roadWidth),
     spawnGhost,
     brush: pointerOver && isBrush(tool.id) && brushReaches(hover.x, hover.y) ? { x: hover.x, y: hover.y, r: tool.brush } : null,
@@ -1305,7 +1347,7 @@ function spotBeams(): SpotBeam[] {
   return out;
 }
 
-/** The stage's view checkboxes: Always visible patrol, Night time (while the In-game view is up), and In-game view. */
+/** The stage's view checkboxes: Always visible patrol, Show night time (while the In-game view is up), and In-game view. */
 function viewToggles(): HTMLElement {
   const row = el("div", { class: "bld-view-toggles" });
   const night = el("label", {
@@ -1315,7 +1357,7 @@ function viewToggles(): HTMLElement {
   const box = el("input", { attrs: { type: "checkbox" } });
   box.checked = nightView;
   box.addEventListener("change", () => setNightView(box.checked));
-  night.append(box, el("span", { text: "Night time" }));
+  night.append(box, el("span", { text: "Show night time" }));
   night.hidden = !gameView;
   nightToggle = night;
   row.append(patrolAlwaysToggle(), night, gameViewToggle());
@@ -1784,7 +1826,7 @@ function commitRoad(): void {
 function commitBridge(): void {
   const s = sheet;
   if (!s || line.points.length === 0) return;
-  const pieces = M.bridgeLine(tool.bridge, line.points, tool.turn, M.deckAt(s, line.points[0]!));
+  const pieces = linePieces(line.points, line.from);
   dropLine();
   pushUndo();
   const { laid, refused } = M.laySections(s, pieces);
@@ -1805,7 +1847,7 @@ function commitLine(): void {
   if (tool.id === "road") return commitRoad();
   if (tool.id === "bridge") return commitBridge();
   if (!s || !lineTool() || !isMapSection(tool.defence) || line.points.length === 0) return;
-  const pieces = M.sectionLine(tool.defence, line.points, tool.turn);
+  const pieces = linePieces(line.points, line.from);
   dropLine();
   pushUndo();
   const { laid, refused } = M.laySections(s, pieces);
@@ -1824,6 +1866,7 @@ function commitLine(): void {
 function undoLinePoint(): void {
   line.points = undoFieldPoint(line.points);
   line.press = null;
+  if (line.points.length === 0) line.from = null;
   say(line.points.length > 0 ? "" : "Line cleared.");
   queueDraw();
 }
@@ -1919,7 +1962,16 @@ function onDown(e: PointerEvent): void {
   }
   if (lineTool()) {
     // As in a match: the press sets the start, each release pins a corner, Enter lays the line.
-    line.press = M.tileWorld(t.x, t.y);
+    if (line.points.length === 0) {
+      // Pressed near the open end of a like line: the new one carries on from it. Read before
+      // the press is set, while the cursor still decides.
+      line.press = null;
+      const from = lineFrom();
+      line.from = from ? { lead: from.lead, turn: from.turn, ...(from.deck != null ? { deck: from.deck } : {}) } : null;
+      line.press = from ? from.at : M.tileWorld(t.x, t.y);
+    } else {
+      line.press = M.tileWorld(t.x, t.y);
+    }
     drag = { kind: "line" };
     queueDraw();
     return;
@@ -3403,16 +3455,59 @@ function sidePanel(ctx: Ctx): HTMLElement {
   mini.addEventListener("pointerup", release);
   mini.addEventListener("pointercancel", release);
   mini.addEventListener("lostpointercapture", release);
-  const checks = el("ul", { class: "bld-checks" });
-  panel.append(section("Map", mini, el("p", { class: "bld-hint", text: "Click or drag to look there." })), section("Checks", checks));
-  const maps = el("div", { class: "bld-maps" });
-  panel.append(section("Maps", maps));
-  if (stage) {
-    stage.mini = mini;
-    stage.checks = checks;
-    stage.maps = maps;
+  const s = sheet;
+  if (s && !newOpen) {
+    const checks = el("ul", { class: "bld-checks" });
+    panel.append(
+      section("Map", mini, el("p", { class: "bld-hint", text: "Click or drag to look there." })),
+      section("Checks", checks),
+      section("Map settings", ...mapSettings(ctx, s)),
+    );
+    if (stage) {
+      stage.mini = mini;
+      stage.checks = checks;
+    }
+  } else {
+    // The start page: open, copy, or delete a map.
+    const maps = el("div", { class: "bld-maps" });
+    panel.append(section("Maps", maps));
+    if (stage) stage.maps = maps;
   }
   return panel;
+}
+
+/** The sheet's match rules, saved with the map: Complete fog of war and Always night time. */
+function mapSettings(ctx: Ctx, s: M.Sheet): HTMLElement[] {
+  const flag = (text: string, title: string, on: boolean, set: (on: boolean) => void, said: (on: boolean) => string): HTMLElement => {
+    const box = el("input", { attrs: { type: "checkbox" } });
+    box.checked = on;
+    box.addEventListener("change", () => {
+      pushUndo();
+      set(box.checked);
+      finishStroke();
+      say(said(box.checked));
+      mountOrRefresh(ctx);
+    });
+    const label = el("label", { class: "check bld-setting", text, attrs: { title } });
+    label.prepend(box);
+    return label;
+  };
+  return [
+    flag(
+      "Complete fog of war",
+      "Players see nothing of the map until their units have explored it",
+      s.shroud,
+      (on) => (s.shroud = on),
+      (on) => (on ? "Complete fog of war: unexplored ground starts black." : "Complete fog of war off: the map is known from the start."),
+    ),
+    flag(
+      "Always night time",
+      "The day never comes: sight stays short and the lamps burn all match",
+      s.night,
+      (on) => (s.night = on),
+      (on) => (on ? "Always night time: the match is fought in the dark." : "Always night time off: the match runs day and night."),
+    ),
+  ];
 }
 
 function paintMapList(ctx: Ctx): void {
@@ -3495,7 +3590,7 @@ function newForm(ctx: Ctx): HTMLElement {
   });
   row.append(create);
   if (sheet) {
-    const cancel = el("button", { class: "btn btn-ghost", text: "Cancel", attrs: { type: "button" } });
+    const cancel = el("button", { class: "btn btn-ghost", text: `Resume ${sheet.name || "map"}`, attrs: { type: "button" } });
     cancel.addEventListener("click", () => {
       newOpen = false;
       mountOrRefresh(ctx);
@@ -3560,26 +3655,11 @@ function header(ctx: Ctx): HTMLElement {
       mountOrRefresh(ctx);
     });
     playersField.append(el("label", { text: "Max players" }), players);
-    const shroud = el("input", { attrs: { type: "checkbox" } });
-    shroud.checked = s.shroud;
-    shroud.addEventListener("change", () => {
-      pushUndo();
-      s.shroud = shroud.checked;
-      finishStroke();
-      say(s.shroud ? "Complete fog of war: unexplored ground starts black." : "Complete fog of war off: the map is known from the start.");
-      mountOrRefresh(ctx);
-    });
-    const shroudLabel = el("label", {
-      class: "check bld-auto",
-      text: "Complete fog of war",
-      attrs: { title: "Players see nothing of the map until their units have explored it" },
-    });
-    shroudLabel.prepend(shroud);
     const cells = s.width / TILE_SUBDIV;
     const label = CUSTOM_MAP_SIZES.find((z) => z.cells === cells)?.label ?? "";
-    head.append(nameField, playersField, shroudLabel, el("div", { class: "bld-size", text: `${label} · ${cells}×${cells} cells` }));
+    head.append(nameField, playersField, el("div", { class: "bld-size", text: `${label} · ${cells}×${cells} cells` }));
   }
-  const note = el("div", { class: `bld-msg ${msg.tone}`, text: msg.text });
+  const note = el("div", { class: `bld-msg ${msg.tone}`, text: msg.text, attrs: { title: msg.text } });
   note.hidden = !msg.text;
   head.append(note, el("div", { class: "spacer" }));
   const btn = (text: string, cls: string, onClick: () => void, disabled = false): void => {
@@ -3589,12 +3669,6 @@ function header(ctx: Ctx): HTMLElement {
     head.append(b);
   };
   const editing = Boolean(s) && !newOpen;
-  btn("New", "btn-ghost", () => {
-    if (dirty && sheet && !confirm("Discard unsaved changes to this map?")) return;
-    newOpen = true;
-    mountOrRefresh(ctx);
-  }, newOpen);
-  btn("Undo", "btn-ghost", () => step(undo, redo), !editing || undo.length === 0);
   const auto = el("input", { attrs: { type: "checkbox" } });
   auto.checked = autoSave;
   auto.addEventListener("change", () => setAutoSave(auto.checked));
@@ -3605,7 +3679,13 @@ function header(ctx: Ctx): HTMLElement {
   btn("Save copy", "", () => save(ctx, { copy: true }), !editing);
   if (editing) head.append(testSpawnPick());
   btn("Play test", "", () => playtest(ctx), !editing);
+  // From the sheet, Back steps out to the start page: New map and the map list. The sheet waits there to be resumed.
   btn("Back", "btn-ghost", () => {
+    if (editing) {
+      newOpen = true;
+      mountOrRefresh(ctx);
+      return;
+    }
     if (dirty && sheet && !confirm("Leave with unsaved changes? They stay here until you open another map.")) return;
     ctx.goto("menu");
   });

@@ -144,6 +144,7 @@ export type { DayPhase, HullLamp, MatchClock } from "./night.js";
 export {
   FIELD_TURN_MAX,
   fieldCornerStart,
+  fieldEndAt,
   fieldLine,
   fieldPath,
   fieldSiteClear,
@@ -156,4 +157,4 @@ export {
   wallRunTops,
 } from "./field.js";
 export { bridgeBrickProblemFor, bridgeSpanOf, bridgeTilesOf, restampBridges } from "./bridge.js";
-export type { GateSite, WallTopSample } from "./field.js";
+export type { FieldEnd, GateSite, WallTopSample } from "./field.js";

@@ -358,6 +358,7 @@ export function placeBaseField(
   x2?: number,
   y2?: number,
   path?: readonly { x: number; y: number }[],
+  lead?: { x: number; y: number },
 ): string | null {
   const p = state.players.get(playerId);
   if (!p || !p.alive) return "You are out of the fight.";
@@ -380,7 +381,7 @@ export function placeBaseField(
     };
     return null;
   }
-  const pieces = fieldPiecesFor(structure, x, y, facing, x2, y2, path);
+  const pieces = fieldPiecesFor(structure, x, y, facing, x2, y2, path, lead);
   if (pieces.length === 0) return "Cannot place there.";
   const accepted: FieldPiece[] = [];
   let stop: string | null = null;

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { copyMapUnit, mapAirfieldAt } from "@gridlock/shared";
-import { clearOrders, gridDiff, markDiff, markSheet, ownersWithoutStart, planesOn, setFeatureOwner, setGuard, setMaxPlayers, setUnitOwner, unionDirty } from "./builder-model.js";
+import { TILE_DIAMOND_SCRAP, TILE_SCRAP, copyMapUnit, mapAirfieldAt } from "@gridlock/shared";
+import { clearOrders, gridDiff, markDiff, markSheet, ownersWithoutStart, planesOn, setFeatureOwner, setGuard, setMaxPlayers, setUnitOwner, settle, smeltersOffScrap, startsFarFromScrap, unionDirty } from "./builder-model.js";
 import {
   GROUND_GRASS,
   GROUND_SAND,
@@ -16,10 +16,14 @@ import {
   TILE_SUBDIV,
   TILE_TREE,
   TILE_WATER,
+  featureAngle,
   isMountainCliff,
   validateCustomMap,
+  type MapFeature,
 } from "@gridlock/shared";
+import { lineShapes } from "../render/line-bend.js";
 import {
+  brickEndAt,
   defenceCount,
   diskTouches,
   emptyDirty,
@@ -30,6 +34,7 @@ import {
   deckAt,
   moveFeature,
   QUARTER_TURN,
+  sectionEndAt,
   sectionLine,
   paintRoad,
   roadLegs,
@@ -342,6 +347,55 @@ describe("builder select and defences", () => {
     assert.deepEqual(laySections(s, pieces), { laid: 0, refused: pieces.length });
   });
 
+  it("carries a new line on from the open end of a placed one of the same kind", () => {
+    const s = fresh();
+    const first = sectionLine("wall", [tileWorld(70, 60), tileWorld(82, 60)], QUARTER_TURN);
+    assert.deepEqual(laySections(s, first), { laid: first.length, refused: 0 });
+    const tip = tileWorld(81, 60);
+    const end = sectionEndAt(s, "wall", tip.x, tip.y);
+    assert.ok(end, "the east end is open");
+    assert.equal(end.turn, first[first.length - 1]!.turn);
+    assert.equal(sectionEndAt(s, "sandbags", tip.x, tip.y), null, "a sandbag line does not carry on a wall");
+    const mid = tileWorld(76, 60);
+    assert.equal(sectionEndAt(s, "wall", mid.x, mid.y), null, "the middle is joined at both ends");
+    // Round a corner to the south, from the open end.
+    const more = sectionLine("wall", [{ x: end.x, y: end.y }, { x: end.x, y: end.y + 10 * TILE_SIZE }], end.turn, end.lead);
+    assert.ok(more.length >= 3);
+    assert.ok(more.every((f) => f.turn !== first[0]!.turn), "the corner leg runs the other way");
+    assert.deepEqual(laySections(s, more), { laid: more.length, refused: 0 }, "nothing overlaps the standing end");
+    assert.equal(sectionEndAt(s, "wall", tip.x, tip.y), null, "that end is joined now");
+    // Drawn like one line: the corner the two make bends on the same fillet a line drawn in one go gets.
+    const asPiece = (f: MapFeature) => ({ x: (f.x + 0.5) * TILE_SIZE, y: (f.y + 0.5) * TILE_SIZE, facing: featureAngle(f), length: 24, thick: 8 });
+    const oneGo = sectionLine("wall", [tileWorld(70, 60), tileWorld(82, 60), { x: end.x, y: end.y + 10 * TILE_SIZE }], QUARTER_TURN);
+    const joint = (fs: MapFeature[], i: number) => {
+      const shape = lineShapes(fs.map(asPiece))[i]!;
+      return shape.pos?.piece === i + 1 ? shape.bendPos : shape.neg?.piece === i + 1 ? shape.bendNeg : undefined;
+    };
+    const bent = joint([...first, ...more], first.length - 1);
+    assert.ok(bent, "the old end bends into the new leg");
+    assert.deepEqual(bent, joint(oneGo, first.length - 1), "the same bend as one line");
+  });
+
+  it("carries a bridge on from the open end of a placed one, at its deck level", () => {
+    const s = fresh();
+    for (let y = 40; y < 100; y++) for (let x = 60; x < 120; x++) s.tiles[y * s.width + x] = TILE_WATER;
+    for (let y = 0; y < s.height; y++) for (let x = 0; x < 60; x++) s.heights[y * s.width + x] = 3;
+    const half = bridgeLine("bridge", [tileWorld(55, 70), tileWorld(80, 70)], 0, deckAt(s, tileWorld(55, 70)));
+    assert.deepEqual(laySections(s, half), { laid: half.length, refused: 0 });
+    const tip = half[half.length - 1]!;
+    const near = tileWorld(Math.round(tip.x) + 2, 70);
+    const end = brickEndAt(s, "bridge", near.x, near.y);
+    assert.ok(end, "the end out over the water is open");
+    assert.equal(end.deck, 3, "it keeps the bank's level");
+    assert.equal(brickEndAt(s, "bigbridge", near.x, near.y), null, "a stone bridge does not carry on a wooden one");
+    // Round a corner to the south, from that end, at the old deck's level.
+    const more = bridgeLine("bridge", [{ x: end.x, y: end.y }, { x: end.x, y: end.y + 16 * TILE_SIZE }], end.turn, end.deck, end.lead);
+    assert.ok(more.length >= 2);
+    assert.ok(more.every((b) => b.deck === 3));
+    assert.deepEqual(laySections(s, more), { laid: more.length, refused: 0 }, "nothing overlaps the old end");
+    assert.equal(brickEndAt(s, "bridge", near.x, near.y)?.x === end.x && brickEndAt(s, "bridge", near.x, near.y)?.y === end.y, false, "that end is joined now");
+  });
+
   it("lays a bridge brick by brick like a wall, across any width of water, and saves it", () => {
     const s = fresh();
     s.spawns.push({ id: 1, x: 30, y: 30 }, { id: 2, x: 160, y: 160 });
@@ -611,6 +665,22 @@ describe("builder complete fog of war", () => {
   });
 });
 
+describe("builder always night time", () => {
+  it("starts off and carries the flag through save, reopen, play test, and undo", () => {
+    const s = fresh();
+    assert.equal(s.night, false);
+    assert.equal("night" in sheetToSpec(s), false);
+    const before = markSheet(s);
+    s.night = true;
+    assert.equal(sheetToSpec(s).night, true);
+    assert.equal(sheetFromSpec(sheetToSpec(s)).night, true);
+    assert.equal(playtestSpec(s, "p-check").night, true);
+    assert.equal(sheetToMap(s).night, true);
+    restoreSheet(s, before);
+    assert.equal(s.night, false);
+  });
+});
+
 describe("builder dirty boxes", () => {
   /** Every index where two grids differ lies inside `box`. */
   const covered = (width: number, a: readonly number[], b: readonly number[], box: { x0: number; y0: number; x1: number; y1: number }): boolean =>
@@ -719,5 +789,54 @@ describe("builder sides, planes, and guard", () => {
     assert.equal(s.units[0]!.owner, undefined);
     assert.equal(s.units[1]!.owner, 2);
     assert.deepEqual(ownersWithoutStart(s), [2]);
+  });
+});
+
+describe("map builder scrap checks", () => {
+  it("counts scrap in yard range from the Core's edge, not a circle round the start", () => {
+    const s = fresh();
+    s.spawns.push({ id: 1, x: 40, y: 40 }, { id: 2, x: 150, y: 150 });
+    // Start 1's Core spans 34..45; a Smelter within BUILD_RADIUS (32) of it covers scrap out to x = 88.
+    paintDisk(s, 86, 40, 2, TILE_DIAMOND_SCRAP);
+    settle(s);
+    assert.deepEqual(startsFarFromScrap(s), [2]);
+    paintDisk(s, 150, 100, 2, TILE_SCRAP);
+    settle(s);
+    assert.deepEqual(startsFarFromScrap(s), []);
+  });
+
+  it("flags a start whose nearest scrap is past the yard's reach", () => {
+    const s = fresh();
+    s.spawns.push({ id: 1, x: 40, y: 40 });
+    paintDisk(s, 93, 40, 2, TILE_DIAMOND_SCRAP);
+    settle(s);
+    assert.deepEqual(startsFarFromScrap(s), [1]);
+  });
+
+  it("paints scrap under a Smelter that stands on bare ground", () => {
+    const s = fresh();
+    s.features.push(houseAt("smelter", 96, 96, 0));
+    settle(s);
+    assert.equal(smeltersOffScrap(s), 1);
+    paintDisk(s, 100, 100, 3, TILE_DIAMOND_SCRAP);
+    settle(s);
+    assert.equal(smeltersOffScrap(s), 0);
+    // Other ground still keeps off the lot.
+    paintDisk(s, 100, 100, 3, TILE_ROAD);
+    assert.equal(s.tiles[100 * s.width + 100], TILE_DIAMOND_SCRAP);
+  });
+
+  it("keeps plain and diamond scrap under a placed Smelter", () => {
+    for (const tile of [TILE_SCRAP, TILE_DIAMOND_SCRAP]) {
+      const s = fresh();
+      paintDisk(s, 100, 100, 8, tile);
+      paintDisk(s, 140, 140, 8, tile);
+      s.features.push(houseAt("smelter", 96, 96, 0), houseAt("cottage", 136, 136, 0));
+      settle(s);
+      assert.equal(smeltersOffScrap(s), 0);
+      assert.equal(s.tiles[98 * s.width + 98], tile);
+      // Any other lot is still cleared to ground.
+      assert.notEqual(s.tiles[138 * s.width + 138], tile);
+    }
   });
 });

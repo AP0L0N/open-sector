@@ -223,6 +223,14 @@
   margin-top: 16px;
 }
 
+/* Map settings: one rule per row, in plain case like the stage toggles. */
+.bld-side .bld-setting {
+  margin: 0 0 6px;
+  font-size: 0.85rem;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
 /* A folding section: the title is the switch. */
 .bld-sec-head {
   display: flex;
@@ -429,10 +437,11 @@
   white-space: nowrap;
 }
 
+/* Grows from nothing up to its text: a long note ellipsises instead of pushing the buttons onto a second row. */
 .bld-msg {
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 40%;
+  flex: 1000 1 0;
+  min-width: 120px;
+  max-width: max-content;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

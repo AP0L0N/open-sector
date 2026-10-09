@@ -7,7 +7,8 @@
  * A brick stands on water or on open land; how long the crossing is does not matter.
  */
 
-import { bridgeBrickLength, bridgeWidth, type BridgeType } from "./catalog.js";
+import { bridgeBrickLength, bridgeWidth, isBridge, type BridgeType } from "./catalog.js";
+import { openEndAt, type LinePieceBox, type OpenEnd } from "./line-end.js";
 
 /** How far two bricks may cut into each other before they count as overlapping, world px. */
 const BRICK_SLACK = 3;
@@ -189,6 +190,7 @@ export function bridgePath(
   points: readonly { x: number; y: number }[],
   facing = 0,
   snap?: number,
+  lead?: { x: number; y: number } | null,
 ): BridgeSpan[] {
   const first = points[0];
   if (!first) return [];
@@ -199,6 +201,12 @@ export function bridgePath(
   let sy = first.y;
   let ux: number | null = null;
   let uy = 0;
+  // Carrying on from a standing bridge whose end is the first point: its deck runs in along `lead`.
+  const leadLen = lead ? Math.hypot(lead.x, lead.y) : 0;
+  if (lead && leadLen > 1e-6) {
+    ux = lead.x / leadLen;
+    uy = lead.y / leadLen;
+  }
   for (let i = 1; i < points.length && out.length < BRIDGE_BRICKS_MAX; i++) {
     let target = points[i]!;
     let dist = Math.hypot(target.x - sx, target.y - sy);
@@ -233,8 +241,36 @@ export function bridgePath(
     ux = vx;
     uy = vy;
   }
+  if (out.length === 0 && ux != null) {
+    // Carried on with nowhere drawn yet: one more brick straight on.
+    return [{ x: first.x + ux * (length / 2), y: first.y + uy * (length / 2), facing: Math.atan2(uy, ux), length }];
+  }
   if (out.length === 0) return [{ x: first.x, y: first.y, facing, length }];
   return out;
+}
+
+/**
+ * The open end of a `type` brick near world point (px, py) that a new bridge line can carry on
+ * from, with the brick it belongs to, or null. Picked as `openEndAt` picks a wall's: generously,
+ * and only where no other brick (any type) meets the end. `mine` limits which bricks qualify.
+ */
+export function bridgeEndAt<B extends { type: string; span: BridgeSpan }>(
+  type: BridgeType,
+  bricks: readonly B[],
+  px: number,
+  py: number,
+  mine?: (b: B) => boolean,
+): (OpenEnd & { brick: B }) | null {
+  const boxes: LinePieceBox[] = [];
+  const of: B[] = [];
+  for (const b of bricks) {
+    if (!isBridge(b.type)) continue;
+    const { ux, uy } = bridgeAxes(b.span.facing);
+    boxes.push({ x: b.span.x, y: b.span.y, ux, uy, length: b.span.length, width: bridgeWidth(b.type), kin: b.type === type && (!mine || mine(b)) });
+    of.push(b);
+  }
+  const end = openEndAt(boxes, px, py);
+  return end ? { ...end, brick: of[end.piece]! } : null;
 }
 
 /**
@@ -276,9 +312,10 @@ export function planBridgeLine(
   type: BridgeType,
   points: readonly { x: number; y: number }[],
   facing = 0,
+  lead?: { x: number; y: number } | null,
 ): { span: BridgeSpan; problem: string | null }[] {
   const laid: BridgeBrick[] = [];
-  return bridgePath(type, points, facing).map((span) => {
+  return bridgePath(type, points, facing, undefined, lead).map((span) => {
     const problem = bridgeBrickProblem(ground, type, span, laid);
     if (!problem) laid.push({ type, span });
     return { span, problem };

@@ -128,6 +128,7 @@ export function previewBridge(
   type: BridgeType,
   points: readonly { x: number; y: number }[],
   facing = 0,
+  lead?: { x: number; y: number } | null,
 ): { span: BridgeSpan; problem: string | null }[] {
   const map = getMap(snap.mapId);
   if (!map) return [];
@@ -163,5 +164,5 @@ export function previewBridge(
     },
     bricks,
   };
-  return planBridgeLine(ground, type, points, facing);
+  return planBridgeLine(ground, type, points, facing, lead);
 }

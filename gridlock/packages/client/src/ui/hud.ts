@@ -650,7 +650,7 @@ export function paintBattleHud(ctx: Ctx): void {
   }
   const top = document.getElementById("topbar");
   top?.classList.toggle("low-power", m.you.lowPower);
-  paintMatchClock(m.tick);
+  paintMatchClock(m.tick, getMap(m.mapId)?.night);
 
   const coreUp = m.entities.some((e) => e.ownerId === m.youPlayerId && isHqBuilding(e.type));
   const armed = readyCancelArmed ? laneQueue(m, readyCancelArmed) : null;
@@ -765,14 +765,14 @@ export function paintBattleHud(ctx: Ctx): void {
 }
 
 /** Digital match clock beside Radar. The face is the sim day; the line under it names when night, dawn, or morning starts. */
-function paintMatchClock(tick: number): void {
+function paintMatchClock(tick: number, alwaysNight = false): void {
   const node = document.getElementById("match-clock");
   if (!node) return;
-  const clock = matchClock(tick);
+  const clock = matchClock(tick, alwaysNight);
   const time = node.querySelector(".match-clock-time");
   const next = node.querySelector(".match-clock-next");
   if (time && time.textContent !== clock.text) time.textContent = clock.text;
-  const mark = clockMarkLine(clock.phase).toUpperCase();
+  const mark = clockMarkLine(clock.phase, alwaysNight).toUpperCase();
   if (next && next.textContent !== mark) next.textContent = mark;
   if (node.dataset.phase !== clock.phase) node.dataset.phase = clock.phase;
   const label = `${clock.text}, ${clock.phase}. ${mark}.`;

@@ -58,6 +58,8 @@ export interface MapDef {
    * Drawing only: sight and the sim are the same either way.
    */
   shroud?: boolean;
+  /** Always night time: the day never comes, so sight stays cut and the lamps burn all match. */
+  night?: boolean;
   /** Set on maps made in the Map Builder. Built-in maps leave it out and cannot be edited. */
   custom?: { author: string; updatedAt: number };
 }
@@ -2458,9 +2460,14 @@ export function normalizeTerrain(
     // A bridge spans what is under it: the water stays water, for the boats and for when it falls.
     // A Marine Base floats: its berth has to stay water.
     if (isMapBridge(f.type) || onWaterBuilding(f.type)) continue;
+    // A Smelter pours what is under it: its scrap, plain or diamond, stays.
+    const smelts = f.type === "smelter";
     const b = featureBox(f);
     for (let y = Math.max(0, b.y0); y < Math.min(height, b.y1); y++) {
-      for (let x = Math.max(0, b.x0); x < Math.min(width, b.x1); x++) tiles[idx(width, x, y)] = TILE_EMPTY;
+      for (let x = Math.max(0, b.x0); x < Math.min(width, b.x1); x++) {
+        const i = idx(width, x, y);
+        if (!(smelts && isScrapTile(tiles[i]))) tiles[i] = TILE_EMPTY;
+      }
     }
   }
   const r = SPAWN_PAD_R;

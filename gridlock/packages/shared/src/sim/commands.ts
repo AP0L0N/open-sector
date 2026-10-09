@@ -91,6 +91,15 @@ function fieldPathOf(path: unknown): { x: number; y: number }[] | undefined {
   return out;
 }
 
+/** The way a standing line runs into a `cmd.field` line's start, as a unit vector, or undefined. */
+function fieldLeadOf(lead: unknown): { x: number; y: number } | undefined {
+  if (!lead || typeof lead !== "object") return undefined;
+  const { x, y } = lead as { x?: unknown; y?: unknown };
+  if (typeof x !== "number" || typeof y !== "number" || !Number.isFinite(x) || !Number.isFinite(y)) return undefined;
+  const len = Math.hypot(x, y);
+  return len > 1e-6 ? { x: x / len, y: y / len } : undefined;
+}
+
 export type CmdResult = { ok: true } | { ok: false; code: ErrorCode; message: string };
 
 const ok = (): CmdResult => ({ ok: true });
@@ -247,7 +256,7 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
         if (!isYardField(msg.structure)) return wrap("That structure is not ready.", "invalid_place");
         if (!inFaction(msg.structure, state.players.get(playerId)?.faction ?? "eu")) return wrap(NOT_YOUR_FACTION, "invalid_place");
         return wrap(
-          placeBaseField(state, playerId, msg.structure, msg.x, msg.y, msg.facing, msg.x2, msg.y2, fieldPathOf(msg.path)),
+          placeBaseField(state, playerId, msg.structure, msg.x, msg.y, msg.facing, msg.x2, msg.y2, fieldPathOf(msg.path), fieldLeadOf(msg.lead)),
           "invalid_place",
         );
       }
@@ -263,6 +272,7 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
           msg.x2,
           msg.y2,
           fieldPathOf(msg.path),
+          fieldLeadOf(msg.lead),
         ),
         "invalid_place",
       );
@@ -282,6 +292,7 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
           y2: msg.y2,
           facing: msg.facing,
           path: Array.isArray(msg.path) ? msg.path.slice(0, 64) : undefined,
+          lead: fieldLeadOf(msg.lead),
         }),
         "invalid_place",
       );

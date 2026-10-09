@@ -531,3 +531,20 @@ describe("Titan lamp", () => {
     assert.equal(titan.spotHeld, true);
   });
 });
+
+describe("always-night map", () => {
+  it("keeps full dark, short sight, and lit lamps at every hour", () => {
+    for (const tick of [0, 1, NIGHT_TICK, Math.round(DAY_CYCLE_SECONDS / TICK_DT) + 7]) {
+      assert.equal(daylightAt(tick, true), 0);
+      assert.equal(nightSightMul(tick, true), nightSightMul(NIGHT_TICK));
+      assert.equal(spotlightsOn(tick, true), true);
+      assert.equal(matchClock(tick, true).phase, "night");
+    }
+    assert.equal(daylightAt(0), 1, "an ordinary map still opens at morning");
+  });
+
+  it("opens the clock at nightfall and never names a dawn", () => {
+    assert.equal(matchClock(0, true).text, phaseStartText("night"));
+    assert.equal(clockMarkLine("night", true), "night all match");
+  });
+});

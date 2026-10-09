@@ -29,8 +29,12 @@ import type { Entity, MatchState } from "./types.js";
 /** One full day: day, dusk, night, dawn. Dawn is as long as dusk. */
 export const DAY_CYCLE_SECONDS = DAY_SECONDS + DUSK_SECONDS + NIGHT_SECONDS + DUSK_SECONDS;
 
-/** 1 in full day, 0 in full night, sliding through dusk and dawn. The match opens at morning. */
-export function daylightAt(tick: number): number {
+/**
+ * 1 in full day, 0 in full night, sliding through dusk and dawn. The match opens at morning.
+ * On an always-night map (`MapDef.night`) it is 0 all match.
+ */
+export function daylightAt(tick: number, alwaysNight = false): number {
+  if (alwaysNight) return 0;
   const s = (tick * TICK_DT) % DAY_CYCLE_SECONDS;
   if (s < DAY_SECONDS) return 1;
   if (s < DAY_SECONDS + DUSK_SECONDS) return 1 - (s - DAY_SECONDS) / DUSK_SECONDS;
@@ -92,9 +96,13 @@ function clockFace(seconds: number): { hour: number; minute: number; text: strin
   return { hour, minute, text: `${pad2(hour)}:${pad2(minute)}` };
 }
 
-/** Where the clock stands at this tick. Same cycle as daylightAt. */
-export function matchClock(tick: number): MatchClock {
+/**
+ * Where the clock stands at this tick. Same cycle as daylightAt. On an
+ * always-night map the face opens at nightfall and the phase stays night.
+ */
+export function matchClock(tick: number, alwaysNight = false): MatchClock {
   const s = cycleSeconds(tick);
+  if (alwaysNight) return { ...clockFace(s + phaseStartSeconds("night")), phase: "night" };
   return { ...clockFace(s), phase: phaseAtSeconds(s) };
 }
 
@@ -107,14 +115,15 @@ export function phaseStartText(phase: DayPhase): string {
  * The line under the clock. Day and dusk both name when night starts;
  * night names the dawn; dawn names the morning.
  */
-export function clockMarkLine(phase: DayPhase): string {
+export function clockMarkLine(phase: DayPhase, alwaysNight = false): string {
+  if (alwaysNight) return "night all match";
   const mark: DayPhase = phase === "night" ? "dawn" : phase === "dawn" ? "day" : "night";
   return `${mark} at ${phaseStartText(mark)}`;
 }
 
 /** Share of daylight sight left at this tick. */
-export function nightSightMul(tick: number): number {
-  return NIGHT_SIGHT_MUL + (1 - NIGHT_SIGHT_MUL) * daylightAt(tick);
+export function nightSightMul(tick: number, alwaysNight = false): number {
+  return NIGHT_SIGHT_MUL + (1 - NIGHT_SIGHT_MUL) * daylightAt(tick, alwaysNight);
 }
 
 /** A sight in tiles, cut for the dark. Never below one tile while it had any. */
@@ -124,8 +133,8 @@ export function nightTiles(tiles: number, mul: number): number {
 }
 
 /** Lamps are lit: spotlights paint the ground. */
-export function spotlightsOn(tick: number): boolean {
-  return daylightAt(tick) < SPOTLIGHT_ON_DAYLIGHT;
+export function spotlightsOn(tick: number, alwaysNight = false): boolean {
+  return daylightAt(tick, alwaysNight) < SPOTLIGHT_ON_DAYLIGHT;
 }
 
 /** The Watch Tower's cab lamp, the Fire-Control Tower's roof lamp, the Spotlight post's pole lamp, the Battle Ship's searchlight on the bridge, and the Titan's torso lamp. */
