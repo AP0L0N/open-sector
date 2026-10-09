@@ -514,21 +514,25 @@ export function scrapTilesUnder(state: MatchState, tx: number, ty: number, w: nu
   return n;
 }
 
-/** A footprint within `radius` of one of the owner's base buildings. Defences and lines are not anchors. */
+/**
+ * A footprint within `radius` of a base building the owner or a teammate stands. Defences and lines are not anchors.
+ * An ally's base extends your build range too, so a team builds on each other's ground.
+ */
 export function inBuildRadius(state: MatchState, ownerId: string, tx: number, ty: number, w: number, h: number, radius: number): boolean {
   for (const e of state.entities.values()) {
-    if (e.kind !== "building" || e.ownerId !== ownerId || e.hp <= 0) continue;
+    if (e.kind !== "building" || e.hp <= 0) continue;
     if (!anchorsBuildRange(e.type)) continue;
+    if (!allies(state, ownerId, e.ownerId)) continue;
     if (footprintGap(tx, ty, w, h, e.tileX, e.tileY, e.tileW, e.tileH) <= radius) return true;
   }
   return false;
 }
 
 /**
- * A 1×1 tile within LINE_BUILD_RADIUS of the owner's own base buildings: where a Defences-tab line may go.
+ * A 1×1 tile within LINE_BUILD_RADIUS of a base building that `isAlly` admits: where a Defences-tab line may go.
  * Field structures and guns are not anchors, so a wall or a tower in the field cannot extend the yard.
  */
-export function tileNearOwnBuildings(
+export function tileNearAlliedBuildings(
   buildings: Iterable<{
     kind: string;
     ownerId: string;
@@ -539,13 +543,14 @@ export function tileNearOwnBuildings(
     tileW: number;
     tileH: number;
   }>,
-  ownerId: string,
+  isAlly: (ownerId: string) => boolean,
   tx: number,
   ty: number,
 ): boolean {
   for (const e of buildings) {
-    if (e.kind !== "building" || e.ownerId !== ownerId || e.hp <= 0) continue;
+    if (e.kind !== "building" || e.hp <= 0) continue;
     if (!anchorsBuildRange(e.type)) continue;
+    if (!isAlly(e.ownerId)) continue;
     if (footprintGap(tx, ty, 1, 1, e.tileX, e.tileY, e.tileW, e.tileH) <= LINE_BUILD_RADIUS) return true;
   }
   return false;
@@ -608,8 +613,11 @@ export function unitContains(e: Entity, wx: number, wy: number, pad = 4): boolea
 
 export function allies(state: MatchState, aOwner: string, bOwner: string): boolean {
   if (aOwner === bOwner) return true;
-  const a = state.players.get(aOwner);
-  const b = state.players.get(bOwner);
+  return sameTeam(state.players.get(aOwner), state.players.get(bOwner));
+}
+
+/** Two roster entries share a team. Team 0 is free-for-all and fights alone. */
+export function sameTeam(a: { team: number } | undefined, b: { team: number } | undefined): boolean {
   if (!a || !b) return false;
   if (a.team === 0 || b.team === 0) return false;
   return a.team === b.team;

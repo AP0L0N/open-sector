@@ -4,7 +4,7 @@ import type { MatchSnapshot } from "../protocol.js";
 import { planBridgeLine, type BridgeBrick, type BridgeGround, type BridgeSpan } from "../bridge-plan.js";
 import { fieldTilesOn, overlapsFieldIn, overlapsSitedLine, sitedLineTiles } from "./field.js";
 import { buildingSite, buildingTilesOf, turnedBox } from "../building-rect.js";
-import { footprintGap, tileNearOwnBuildings } from "./geo.js";
+import { footprintGap, sameTeam, tileNearAlliedBuildings } from "./geo.js";
 import { smelterCrowded } from "./smelter.js";
 
 /** Tiles under the snapshot's standing buildings, turned ones on their real ground. */
@@ -44,13 +44,20 @@ export function previewField(
   return !overlapsFieldIn(snap.entities, type, x, y, facing);
 }
 
-/** Snapshot twin of a Defences-tab sandbag or wall piece: clear ground, and next to your own buildings. */
+/** Whether an owner is you or on your team, read from the snapshot roster the way the sim reads its own. */
+function alliedToYou(snap: MatchSnapshot): (ownerId: string) => boolean {
+  const you = snap.players.find((p) => p.playerId === snap.youPlayerId);
+  return (ownerId) => ownerId === snap.youPlayerId || sameTeam(you, snap.players.find((p) => p.playerId === ownerId));
+}
+
+/** Snapshot twin of a Defences-tab sandbag or wall piece: clear ground, and next to your base or an ally's. */
 export function previewYardField(snap: MatchSnapshot, type: YardFieldType, x: number, y: number, facing: number): boolean {
   if (!isYardField(type) || !previewField(snap, type, x, y, facing)) return false;
   const map = getMap(snap.mapId);
   if (!map) return false;
   const tiles = fieldTilesOn(map, type, x, y, facing, 0);
-  return tiles.some((t) => tileNearOwnBuildings(snap.entities, snap.youPlayerId, t.x, t.y));
+  const isAlly = alliedToYou(snap);
+  return tiles.some((t) => tileNearAlliedBuildings(snap.entities, isAlly, t.x, t.y));
 }
 
 /**
@@ -96,15 +103,16 @@ export function previewConstruct(snap: MatchSnapshot, type: BuildingType, tx: nu
   return isEngineerBuilding(type) && previewSite(snap, type, tx, ty, facing);
 }
 
-/** A yard-built structure: the site rule, and within its build range of your own base buildings. */
+/** A yard-built structure: the site rule, and within its build range of your base or an ally's. */
 export function previewPlace(snap: MatchSnapshot, type: BuildingType, tx: number, ty: number, facing = 0): boolean {
   if (!previewSite(snap, type, tx, ty, facing)) return false;
   const box = turnedBox(type, facing);
   const radius = buildRadiusOf(type);
-  const you = snap.youPlayerId;
+  const isAlly = alliedToYou(snap);
   for (const e of snap.entities) {
-    if (e.kind !== "building" || e.ownerId !== you || e.hp <= 0) continue;
+    if (e.kind !== "building" || e.hp <= 0) continue;
     if (!anchorsBuildRange(e.type)) continue;
+    if (!isAlly(e.ownerId)) continue;
     if (footprintGap(tx, ty, box.w, box.h, e.tileX, e.tileY, e.tileW, e.tileH) <= radius) return true;
   }
   return false;
