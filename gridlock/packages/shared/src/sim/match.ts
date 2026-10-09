@@ -12,10 +12,11 @@ import {
   leavesWreck,
   nukesOnDeath,
   NEUTRAL_OWNER,
+  PLAYTEST_START_SCRAP,
   START_SCRAP,
   TICK_DT,
 } from "../catalog.js";
-import { featureAngle, featureLotSite, getMap, isMapBridge, isMapSection, type MapDef } from "../maps.js";
+import { featureAngle, featureLotSite, getMap, isMapBridge, isMapSection, isPlaytestMapId, type MapDef } from "../maps.js";
 import { mapAirfieldAt, mapUnitHostAt } from "../custom-maps.js";
 import { commanders } from "../lobby.js";
 import { tickAi } from "./ai.js";
@@ -224,7 +225,7 @@ export function createMatch(
       colorId: slot.colorId,
       team: slot.team,
       alive: true,
-      scrap: START_SCRAP,
+      scrap: isPlaytestMapId(room.mapId) ? PLAYTEST_START_SCRAP : START_SCRAP,
       scrapCarry: 0,
       structure: null,
       defence: null,
@@ -401,7 +402,7 @@ function stepHeld(state: MatchState, dt: number): void {
   state.phaseRev++;
 }
 
-/** One wall-clock tick: `gameSpeed` sim steps (max 5×). A paused skirmish stays put. */
+/** One wall-clock tick: `gameSpeed` sim steps (max 8×). A paused skirmish stays put. */
 export function stepMatch(state: MatchState, dt = TICK_DT): void {
   if (state.paused) return;
   const n = clampGameSpeed(state.gameSpeed);

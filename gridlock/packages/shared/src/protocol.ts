@@ -690,7 +690,7 @@ export interface CrateView {
 
 export interface MatchSnapshot {
   tick: number;
-  /** Sim multiplier. 1–5. */
+  /** Sim multiplier. 1–8. */
   gameSpeed: number;
   /** Skirmish is held. Omitted while the match is running. */
   paused?: boolean;

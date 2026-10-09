@@ -4,9 +4,11 @@ export const TICK_HZ = 10;
 export const TICK_DT = 1 / TICK_HZ;
 export const TICK_MS = 100;
 export const GAME_SPEED_MIN = 1;
-export const GAME_SPEED_MAX = 5;
+export const GAME_SPEED_MAX = 8;
 export const GAME_SPEED_DEFAULT = GAME_SPEED_MIN;
 export const START_SCRAP = 2200;
+/** Map Builder play tests start rich, so the tester can try anything at once. */
+export const PLAYTEST_START_SCRAP = 50000;
 /**
  * Gameplay tiles per original 32px cell. RA2 / Sudden Strike 2 maps feel
  * dense because the cell is small relative to a hill or a building; 4× turns
@@ -6795,7 +6797,7 @@ export function clampGameSpeed(n: number): number {
   return Math.max(GAME_SPEED_MIN, Math.min(GAME_SPEED_MAX, Math.round(n)));
 }
 
-/** + / − nudge. Integer steps, clamped to 1–5×. */
+/** + / − nudge. Integer steps, clamped to 1–8×. */
 export function nudgeGameSpeed(current: number, delta: number): number {
   const dir = delta > 0 ? 1 : delta < 0 ? -1 : 0;
   return clampGameSpeed(clampGameSpeed(current) + dir);

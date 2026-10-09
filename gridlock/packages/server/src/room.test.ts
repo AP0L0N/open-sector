@@ -119,7 +119,7 @@ describe("hub rooms", () => {
     }
   });
 
-  it("host + / − clamps game speed to 1–5×, starting at 1×", () => {
+  it("host + / − clamps game speed to 1–8×, starting at 1×", () => {
     const hub = new Hub();
     try {
       const a = client(hub, "A");
@@ -132,16 +132,16 @@ describe("hub rooms", () => {
       assert.equal(match.gameSpeed, 1);
       hub.handle("A", { type: "cmd.speed", delta: -1 });
       assert.equal(match.gameSpeed, 1);
-      for (let n = 2; n <= 5; n++) {
+      for (let n = 2; n <= 8; n++) {
         hub.handle("A", { type: "cmd.speed", delta: 1 });
         assert.equal(match.gameSpeed, n);
       }
       hub.handle("A", { type: "cmd.speed", delta: 1 });
-      assert.equal(match.gameSpeed, 5);
+      assert.equal(match.gameSpeed, 8);
       hub.handle("A", { type: "cmd.speed", delta: -1 });
-      assert.equal(match.gameSpeed, 4);
+      assert.equal(match.gameSpeed, 7);
       const snap = a.of("match.snapshot").at(-1);
-      assert.equal(snap?.match.gameSpeed, 4);
+      assert.equal(snap?.match.gameSpeed, 7);
     } finally {
       hub.shutdown();
     }
@@ -328,6 +328,7 @@ describe("hub map builder play test", () => {
       const start = a.of("match.start")[0];
       assert.ok(start, "the match starts without a lobby step");
       assert.equal(start.match.mapId, id);
+      assert.equal(start.match.you.scrap, 50000, "a play test starts rich");
       const rigs = start.match.entities.filter((e) => e.type === "rig");
       assert.equal(rigs.length, 1);
       assert.equal(rigs[0]?.ownerId, "A");
