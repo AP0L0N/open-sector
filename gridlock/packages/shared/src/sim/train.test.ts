@@ -477,31 +477,45 @@ describe("research gate", () => {
     makeEntity(state, "armory", "A", tileCenter(20, ts), tileCenter(4, ts), { tileX: 20, tileY: 4 });
     seedMuster(state, 20, 10);
     const gated = Object.keys(TECH_REQUIRES) as TrainType[];
-    assert.deepEqual([...gated].sort(), ["apocalypse", "battleship", "bv222", "cyborg", "cyborgcommander", "destroyer", "droneop", "he111", "jagdtiger", "jumpjet", "mammoth", "nebelwerfer", "stuka", "submarine", "titan", "warden"]);
+    assert.deepEqual([...gated].sort(), ["apocalypse", "battleship", "bv222", "cyborg", "cyborgcommander", "destroyer", "droneop", "he111", "horten", "jagdtiger", "jumpjet", "mammoth", "nebelwerfer", "stuka", "submarine", "titan", "warden"]);
+    const cyborgs = new Set<TrainType>(["cyborg", "cyborgcommander"]);
     // Ships ask for the Marine Base first, bombers for the Airfield; their gates are checked on their own.
     for (const unit of gated.filter((u) => producerType(u) !== "dock" && producerType(u) !== "airfield")) {
       const r = applyCommand(state, "A", { type: "cmd.train", unit });
       assert.equal(r.ok, false, unit);
-      if (!r.ok) assert.equal(r.message, "Need a Research Facility.");
+      if (!r.ok) assert.equal(r.message, unit === "cyborg" ? "Need a Cyborg Central." : "Need a Research Facility.", unit);
     }
     assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "ss3" }).ok, true);
+    // The Feuerwirbel needs only the Machine Shop.
+    assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "feuerwirbel" }).ok, true);
     assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "rifleman" }).ok, true);
 
     const lab = makeEntity(state, "research", "A", tileCenter(10, ts), tileCenter(14, ts), { tileX: 10, tileY: 14 });
     assert.equal(techMissing(state, "A", "warden"), null);
     assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "warden" }).ok, true);
     assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "droneop" }).ok, true);
+    // The Cyborg and his Commander also want a Cyborg Central; the lab alone is not enough.
+    for (const unit of cyborgs) assert.equal(techMissing(state, "A", unit), "cyborgcentral", unit);
+
+    makeEntity(state, "cyborgcentral", "A", tileCenter(30, ts), tileCenter(14, ts), { tileX: 30, tileY: 14 });
+    for (const unit of cyborgs) assert.equal(techMissing(state, "A", unit), null, unit);
 
     lab.hp = 0;
     assert.equal(techMissing(state, "A", "titan"), "research");
     assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "titan" }).ok, false);
+    // Without the lab the Commander is locked again; the plain Cyborg needs only the Central.
+    assert.equal(techMissing(state, "A", "cyborgcommander"), "research");
+    assert.equal(techMissing(state, "A", "cyborg"), null);
   });
 
   it("does not count another player's Research Facility", () => {
     const { state } = twoPlayerMatch();
     const ts = state.tileSize;
     makeEntity(state, "research", "B", tileCenter(10, ts), tileCenter(14, ts), { tileX: 10, tileY: 14 });
-    assert.equal(techMissing(state, "A", "cyborg"), "research");
+    makeEntity(state, "cyborgcentral", "B", tileCenter(20, ts), tileCenter(14, ts), { tileX: 20, tileY: 14 });
+    assert.equal(techMissing(state, "A", "cyborgcommander"), "research");
+    assert.equal(techMissing(state, "B", "cyborgcommander"), null);
+    assert.equal(techMissing(state, "A", "cyborg"), "cyborgcentral");
     assert.equal(techMissing(state, "B", "cyborg"), null);
   });
 });
@@ -586,6 +600,7 @@ describe("one at a time", () => {
       makeEntity(state, "armory", "A", tileCenter(30, ts), tileCenter(4, ts), { tileX: 30, tileY: 4 }),
     ];
     makeEntity(state, "research", "A", tileCenter(10, ts), tileCenter(14, ts), { tileX: 10, tileY: 14 });
+    makeEntity(state, "cyborgcentral", "A", tileCenter(40, ts), tileCenter(14, ts), { tileX: 40, tileY: 14 });
     return { state, shops };
   }
 

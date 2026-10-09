@@ -1,13 +1,9 @@
 import {
-  JET_ALT,
-  JET_CLIMB_PER_SEC,
-  JET_FLY_TILES_PER_SEC,
-  JET_FUEL_SECONDS,
-  JET_LAND_RESERVE,
-  JET_REFUEL_DELAY,
-  JET_REFUEL_PER_SEC,
-  JET_TAKEOFF_MIN_SECONDS,
+  JUMPJET_FLIGHT,
+  TITAN_FALL_ACCEL,
   hasCrit,
+  jetFlightOf,
+  type JetFlightDef,
   infantryGunFor,
   radarLaidOf,
   antiAirGunOf,
@@ -20,6 +16,36 @@ import { setPath } from "./path.js";
 import type { Entity, MatchState } from "./types.js";
 
 export { jetAloft };
+
+/** This unit's flight numbers. */
+function flightOf(e: Entity): JetFlightDef {
+  return jetFlightOf(e.type) ?? JUMPJET_FLIGHT;
+}
+
+/** Shot down in the air and still falling. Nothing more can hurt it until it hits. */
+export function jetCrashing(e: { jet?: { crash?: boolean } }): boolean {
+  return !!e.jet?.crash;
+}
+
+/**
+ * Killed in the air: a unit whose flight `crashes` (the Titan) does not die
+ * where it hangs. It drops straight down, held at 1 HP and out of the fight,
+ * and dies when it hits the ground. True when the fall began.
+ */
+export function beginJetCrash(e: Entity): boolean {
+  const jet = e.jet;
+  if (!jet || jet.crash || jet.alt <= 0.5 || !flightOf(e).crashes) return false;
+  jet.crash = true;
+  jet.up = false;
+  jet.fall = 0;
+  e.hp = 1;
+  e.order = null;
+  e.waypoints = [];
+  e.attackTarget = null;
+  e.rocketTarget = null;
+  e.rocketSalvo = 0;
+  return true;
+}
 
 /**
  * Who can lay a weapon on a Jump Jet in the air: the anti-air guns (MG42,
@@ -35,11 +61,12 @@ export function reachesJet(shooter: Entity): boolean {
 /** Why this soldier cannot take off now, or null. */
 export function takeoffBlocked(state: MatchState, e: Entity): string | null {
   const jet = e.jet;
-  if (!jet || e.hp <= 0) return "Select a Jump Jet.";
+  if (!jet || e.hp <= 0 || jet.crash) return "Select a Jump Jet or a Titan.";
   if (jet.up) return "Already up.";
   if (e.garrisonedIn != null) return "Leave cover first.";
+  if (e.braced || e.state === "deploy" || e.state === "undeploy") return "Pack up the outriggers first.";
   if (hasCrit(e, "leg")) return "Cannot take off on a broken leg.";
-  if (jet.fuel < JET_TAKEOFF_MIN_SECONDS) return "Jet pack refuelling.";
+  if (jet.fuel < flightOf(e).takeoffMinSeconds) return e.type === "titan" ? "Leg jets cooling." : "Jet pack refuelling.";
   if (jet.alt <= 0 && unitInWater(state, e)) return "Cannot take off from the water.";
   return null;
 }
@@ -96,7 +123,7 @@ function landingTile(state: MatchState, e: Entity): { x: number; y: number } | n
 export function flyStep(state: MatchState, e: Entity, dt: number): void {
   const goal = e.waypoints[e.waypoints.length - 1];
   if (!goal) return;
-  const step = JET_FLY_TILES_PER_SEC * state.tileSize * dt;
+  const step = flightOf(e).flyTilesPerSec * state.tileSize * dt;
   const dx = goal.x - e.x;
   const dy = goal.y - e.y;
   const d = Math.hypot(dx, dy);
@@ -121,19 +148,26 @@ export function tickJets(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
     const jet = e.jet;
     if (!jet) continue;
+    if (jet.crash) {
+      fall(e, dt);
+      continue;
+    }
+    // A Titan killed in the air starts its fall here.
+    if (e.hp <= 0 && beginJetCrash(e)) continue;
     if (e.hp <= 0 || e.garrisonedIn != null) {
       // Shot out of the air, he falls where he is.
       jet.up = false;
       jet.alt = 0;
       continue;
     }
+    const f = flightOf(e);
     if (jet.up || jet.alt > 0) {
       jet.fuel = Math.max(0, jet.fuel - dt);
-      jet.refuel = JET_REFUEL_DELAY;
-      if (jet.up && (jet.fuel <= JET_LAND_RESERVE || hasCrit(e, "leg"))) jet.up = false;
+      jet.refuel = f.refuelDelay;
+      if (jet.up && (jet.fuel <= f.landReserve || hasCrit(e, "leg"))) jet.up = false;
     }
     if (jet.up) {
-      jet.alt = Math.min(JET_ALT, jet.alt + JET_CLIMB_PER_SEC * dt);
+      jet.alt = Math.min(f.alt, jet.alt + f.climbPerSec * dt);
       continue;
     }
     if (jet.alt > 0) {
@@ -144,8 +178,21 @@ export function tickJets(state: MatchState, dt: number): void {
       jet.refuel = Math.max(0, jet.refuel - dt);
       continue;
     }
-    jet.fuel = Math.min(JET_FUEL_SECONDS, jet.fuel + JET_REFUEL_PER_SEC * dt);
+    jet.fuel = Math.min(f.fuelSeconds, jet.fuel + f.refuelPerSec * dt);
   }
+}
+
+/** Straight down, faster every tick. On the ground the fall is over and so is the unit. */
+function fall(e: Entity, dt: number): void {
+  const jet = e.jet!;
+  jet.fall = (jet.fall ?? 0) + TITAN_FALL_ACCEL * dt;
+  jet.alt = Math.max(0, jet.alt - jet.fall * dt);
+  if (jet.alt > 0) {
+    e.hp = 1;
+    return;
+  }
+  jet.alt = 0;
+  e.hp = 0;
 }
 
 /** Over open ground he sinks; over water, a roof, or a wall he first drifts to the nearest open tile. */
@@ -164,7 +211,7 @@ function descend(state: MatchState, e: Entity, dt: number): void {
       return;
     }
   }
-  jet.alt = Math.max(0, jet.alt - JET_CLIMB_PER_SEC * dt);
+  jet.alt = Math.max(0, jet.alt - flightOf(e).climbPerSec * dt);
   if (jet.alt > 0) return;
   // Down. Whatever is left of the trip he walks, round the obstacles.
   const resume = landingResume.get(e) ?? e.waypoints[e.waypoints.length - 1];

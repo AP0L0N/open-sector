@@ -22,6 +22,8 @@ import {
   FLAMER_TRAIL_SPACING,
   HE_FIRE_PATCHES,
   HE_FIRE_RADIUS,
+  HULL_FLAMER_BURST_PAUSE,
+  HULL_FLAMER_FUEL,
   isArmoredType,
   isCyborg,
   isFieldStructure,
@@ -44,10 +46,58 @@ import { isAirborne } from "./air.js";
 import type { Entity, GroundFire, MatchState, Projectile } from "./types.js";
 
 /**
+ * Where a jet's fuel sits and how its trigger is paced. The Pyro's is his clip
+ * and his gun clock; the Feuerwirbel's bow projector keeps its fuel in the
+ * coaxial slot (mgAmmo), runs on that clock, and throws from the nose.
+ */
+export interface FlameHose {
+  fuel: () => number;
+  setFuel: (n: number) => void;
+  /** Fuel in a full load, to count the bursts from. */
+  full: number;
+  /** Seconds until the next glob. */
+  pace: (seconds: number) => void;
+  burstPause: number;
+  /** Where the jet leaves, when not from the body or a window. */
+  nozzle?: { x: number; y: number };
+}
+
+export function pyroHose(e: Entity): FlameHose {
+  return {
+    fuel: () => e.clip,
+    setFuel: (n) => {
+      e.clip = n;
+    },
+    full: FLAMER.clip,
+    pace: (s) => {
+      e.cooldown = s;
+    },
+    burstPause: FLAMER_BURST_PAUSE,
+  };
+}
+
+/** The bow projector: fuel in mgAmmo, its own clock in mgCooldown, the jet out of the nose. */
+export function hullHose(e: Entity): FlameHose {
+  return {
+    fuel: () => e.mgAmmo,
+    setFuel: (n) => {
+      e.mgAmmo = n;
+    },
+    full: HULL_FLAMER_FUEL,
+    pace: (s) => {
+      e.mgCooldown = s;
+    },
+    burstPause: HULL_FLAMER_BURST_PAUSE,
+    nozzle: { x: e.x + Math.cos(e.facing) * e.radius, y: e.y + Math.sin(e.facing) * e.radius },
+  };
+}
+
+/**
  * One glob of the Pyro's jet. It leaves the lance along his aim, arcs a
  * little, and comes down scattered around the aim point, never past his reach.
  * The burst is paced here: a glob a tick, then a pause once FLAMER_BURST are out.
  * The jet burns the path as it leaves the lance. True when that glob ended a burst.
+ * A bow projector passes its own hose.
  */
 export function throwFlame(
   state: MatchState,
@@ -56,6 +106,7 @@ export function throwFlame(
   aimY: number,
   range: number,
   forced: boolean,
+  hose: FlameHose = pyroHose(e),
 ): boolean {
   const dx = aimX - e.x;
   const dy = aimY - e.y;
@@ -71,9 +122,9 @@ export function throwFlame(
   const landY = Math.min(maxY, Math.max(0, e.y + uy * reach + ux * across));
   const flight = FLAMER_GLOB_SECONDS * (0.55 + 0.45 * Math.min(1, reach / Math.max(1, range)));
   // From inside, the jet leaves the opening facing the target, not the middle of the room.
-  const slit = garrisonMuzzleToward(state, e, aimX, aimY);
-  const fromX = slit?.x ?? e.x;
-  const fromY = slit?.y ?? e.y;
+  const slit = hose.nozzle ? null : garrisonMuzzleToward(state, e, aimX, aimY);
+  const fromX = slit?.x ?? hose.nozzle?.x ?? e.x;
+  const fromY = slit?.y ?? hose.nozzle?.y ?? e.y;
   // The path is the aim, not the scatter: soldiers and trees on it burn, and the
   // ground from a little past him out to the target catches. A building or a
   // concrete line stops the jet. The glob still flies on to splash where it lands.
@@ -84,9 +135,11 @@ export function throwFlame(
   const jy = odist > 1e-6 ? ody / odist : uy;
   // Once a burst, not every glob: each extra pass feeds the same patches and
   // would walk the flames back onto him. The globs still splash where they land.
-  const opening = (FLAMER.clip - e.clip) % FLAMER_BURST === 0;
+  const opening = (hose.full - hose.fuel()) % FLAMER_BURST === 0;
   if (opening) {
-    scorchJet(state, e, fromX, fromY, jx, jy, jetReach(state, e, fromX, fromY, jx, jy, Math.min(range, odist)), slit ? 0 : e.radius);
+    // The trail starts its gap past the body: from the lance, or from the nozzle already at the nose.
+    const nose = slit || hose.nozzle ? 0 : e.radius;
+    scorchJet(state, e, fromX, fromY, jx, jy, jetReach(state, e, fromX, fromY, jx, jy, Math.min(range, odist)), nose);
   }
   const p: Projectile = {
     id: state.nextId++,
@@ -114,19 +167,19 @@ export function throwFlame(
     ...(forced ? { aimX, aimY } : {}),
   };
   state.projectiles.push(p);
-  e.clip = Math.max(0, e.clip - 1);
+  hose.setFuel(Math.max(0, hose.fuel() - 1));
   // The last glob of a burst: he lets go of the trigger for a moment.
   // The tanks hold a half-burst past the last full one, so the pause is counted
   // from a full load, and running dry ends the squeeze too.
-  const ended = flamerBurstEnded(e.clip);
-  e.cooldown = ended ? FLAMER_BURST_PAUSE : FLAMER_GLOB_INTERVAL;
+  const ended = flamerBurstEnded(hose.fuel(), hose.full);
+  hose.pace(ended ? hose.burstPause : FLAMER_GLOB_INTERVAL);
   return ended;
 }
 
 /** True when this glob finished a burst, or the tanks just ran dry. */
-export function flamerBurstEnded(clipAfter: number): boolean {
+export function flamerBurstEnded(clipAfter: number, full: number = FLAMER.clip): boolean {
   if (clipAfter <= 0) return true;
-  const spent = FLAMER.clip - clipAfter;
+  const spent = full - clipAfter;
   return spent > 0 && spent % FLAMER_BURST === 0;
 }
 
@@ -380,7 +433,7 @@ export function tickFires(state: MatchState, dt: number): void {
     const before = e.hp;
     coverStrike(e, FIRE_BURN_DPS * share * heat * dt, state.tick, false);
     markFireKill(e, before);
-    if (e.hp > 0 && isInfantryType(e.type) && e.type !== "pyro") stepOutOfFire(state, e);
+    if (e.hp > 0 && isInfantryType(e.type) && !isCyborg(e.type) && e.type !== "pyro") stepOutOfFire(state, e);
   }
 }
 

@@ -18,7 +18,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 115;
+export const PROTOCOL_VERSION = 122;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -131,6 +131,10 @@ export interface EntityView {
   shielded?: boolean;
   /** Cyborg Commander's force field: points left and the full charge. Everyone who sees him sees it. */
   field?: { hp: number; max: number };
+  /** Cyborg shut down for want of a link: still his side's, but still and silent. Everyone who sees him sees it. */
+  shutdown?: true;
+  /** Shut-down Cyborg a Cyborg Commander (`by`) is taking over; `u` is the share done, 0–1. */
+  takeover?: { by: number; u: number };
   /**
    * Cyborg Commander's laser now cutting. A sweep runs from a0 to a1 (world radians);
    * `u` is the share already cut and `dur` the whole sweep in seconds. `lens` is the
@@ -158,12 +162,19 @@ export interface EntityView {
    * turned it off. Omitted for everyone else.
    */
   selfDestruct?: boolean;
+  /** Own Cyborg Commander with the laser's power in his force field. Omitted otherwise. */
+  fieldDivert?: true;
   /** Walker is charging to detonate. Anyone who can see him sees it. */
   charging?: true;
   /** Walker arms that fired during the last step. `off` is the second arm's bearing when it took another target. */
   gatling?: { arms: 1 | 2; off?: number };
   /** Apocalypse roof mount: its world facing, and `fire` when it shot during the last step. */
   ciws?: { facing: number; fire?: true };
+  /**
+   * Feuerwirbel CIWS mounts, fore then aft: facing, and whether it fired in the last batch of
+   * ticks. Heat (0–1) and an overheat lock for the owner's side only.
+   */
+  mounts?: { facing: number; fire?: true; heat?: number; hot?: true }[];
   /**
    * Battle Ship: each main turret's world facing and, for its own side, the shells left in each
    * barrel; each CIWS mount's facing, `fire` when it shot during the last step, and its belt.
@@ -341,10 +352,11 @@ export interface EntityView {
    */
   droneLink?: { mode: DroneMode; droneId?: number; charge: number; chargeMax: number; rebuild?: number; launchMin: number };
   /**
-   * Jump Jet's pack. Everyone sees the height (`alt`, elevation units over
-   * the ground). Fuel, whether he is lit, and the refill are friendly-only.
+   * Jump Jet's pack, or the Titan's leg jets. Everyone sees the height (`alt`,
+   * elevation units over the ground) and a Titan falling dead out of the air
+   * (`crash`). Fuel, whether he is lit, and the refill are friendly-only.
    */
-  jet?: { alt: number; up?: boolean; fuel?: number; fuelMax?: number; takeoffMin?: number; refuel?: number };
+  jet?: { alt: number; up?: boolean; fuel?: number; fuelMax?: number; takeoffMin?: number; refuel?: number; crash?: boolean };
   /**
    * Destroyer's deck. Friendly-only. `heli`: on deck and loaded, loading (`rearm` seconds left),
    * in the air, or lost (`replace` seconds until a new one). `mines` on the rail out of `minesMax`.
@@ -386,6 +398,11 @@ export interface YouState {
   /** A Radar Station stands on your side. False leaves the command bar's radar panel dark. */
   radar: boolean;
   /**
+   * Seconds until your Cyborgs shut down: no powered Cyborg Central and no living Cyborg
+   * Commander. Omitted while they are linked, or when you have none on the field.
+   */
+  cyborgShutdownIn?: number;
+  /**
    * Units you keep training. Each producer of that unit holds one job until a
    * right-click turns it off. Omitted when none.
    */
@@ -412,6 +429,18 @@ export interface SonarContactView {
   x: number;
   y: number;
   down?: boolean;
+}
+
+/**
+ * An enemy your Cyborgs pick up but nobody sees: a soldier's heat in a Cyborg's
+ * thermal cone or round a Cyborg Commander, or an armored hull on the
+ * Commander's APS radar (`armored`). Off the fog mask only. World pixels.
+ */
+export interface ThermalContactView {
+  id: number;
+  x: number;
+  y: number;
+  armored?: true;
 }
 
 export interface ScrapCell {
@@ -501,6 +530,8 @@ export interface ImpactView {
   intercept?: boolean;
   /** A killed Pyro's fuel tanks went up. A big rolling fireball, then burning ground around him. */
   cookoff?: boolean;
+  /** A Titan's reactor went up here: a small nuclear blast on the ground. */
+  nuke?: boolean;
   /** A tank's HE shell burst here: a hull-sized fireball, and the ground around it is set burning. */
   heBurst?: boolean;
   /** A submarine's torpedo went off here. On a hull: the hull-sized fireball inside the water column. Otherwise the column alone. */
@@ -685,6 +716,8 @@ export interface MatchSnapshot {
   radar?: RadarContactView[];
   /** Sonar contacts for `youPlayerId`. Omitted while none of your Destroyers hears a submarine. */
   sonar?: SonarContactView[];
+  /** Thermal and APS contacts your Cyborgs pick up off the fog mask. Omitted while there are none. */
+  thermal?: ThermalContactView[];
   winner?: { playerId: string; team: number };
 }
 
@@ -748,6 +781,8 @@ export type ClientMessage =
   | { type: "cmd.guns"; ids: number[]; guns: 1 | 2 }
   /** Walker self-destroy. On by default. `on: false` is Hold together. */
   | { type: "cmd.selfdestruct"; ids: number[]; on: boolean }
+  /** Cyborg Commander: `on` puts the laser's power into the force field. He cannot attack while it is. */
+  | { type: "cmd.fielddivert"; ids: number[]; on: boolean }
   | { type: "cmd.rockets"; ids: number[]; on: boolean }
   | { type: "cmd.reach"; ids: number[]; max: boolean }
   | { type: "cmd.build"; building: BuildingType | YardFieldType }
@@ -784,6 +819,8 @@ export type ClientMessage =
   /** Rally point for owned producers in `ids`. A point on a building's own footprint clears its rally. */
   | { type: "cmd.rally"; ids: number[]; x: number; y: number }
   | { type: "cmd.sell"; id: number }
+  /** Scrap own units and structures for no refund (Delete key). The Core and the Rig are refused. */
+  | { type: "cmd.delete"; ids: number[] }
   | { type: "cmd.deploy"; id: number }
   /** Lock and unlock own gates. A gate is built from the Defences tab. */
   | { type: "cmd.gate"; ids: number[]; action: "lock" | "unlock" }

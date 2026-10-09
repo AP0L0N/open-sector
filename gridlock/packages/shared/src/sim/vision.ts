@@ -11,6 +11,8 @@ import {
   SPOTLIGHT_REACH_TILES,
   TOWER_EYE_HEIGHT,
   SPOTLIGHT_POLE_HEIGHT,
+  TITAN_LAMP_POOL_AHEAD_TILES,
+  TITAN_LAMP_POOL_RADIUS_TILES,
   TICK_DT,
   catalog,
   entityIsScouting,
@@ -49,6 +51,7 @@ import {
   headlightLit,
   hullLamps,
   lampHeading,
+  lampPools,
   nightSightMul,
   nightTiles,
   spotFacingOf,
@@ -77,6 +80,8 @@ export type SightSource = {
   scoutHp?: number;
   /** Aircraft height. A plane in the air looks down over hills. */
   air?: { alt: number };
+  /** Leg jets or a jet pack. A Titan aloft turns its lamp into a pool on the ground. */
+  jet?: { alt: number };
   /** Read for a watch tower's lamp. */
   facing?: number;
   spotFacing?: number;
@@ -327,6 +332,9 @@ type SightParams = {
   seye: number;
   /** Mammoth flank lamps, same reach and width as the nose light. Absent on every other eye. */
   flanks?: readonly { dx: number; dy: number }[];
+  /** A Titan aloft: the lamp lights one round pool this wide, `spa` tiles out along the heading, instead of a cone. */
+  spr?: number;
+  spa?: number;
 };
 
 type SpotPaint = {
@@ -336,6 +344,8 @@ type SpotPaint = {
   scos: number;
   seye: number;
   flanks?: readonly { dx: number; dy: number }[];
+  spr?: number;
+  spa?: number;
 };
 
 const NO_SPOT: SpotPaint = { sr: 0, sdx: 0, sdy: 0, scos: 1, seye: 0 };
@@ -360,8 +370,14 @@ function spotOf(e: SightSource, light: SightLight, daySight: number, eye: number
       return NO_SPOT;
     }
     const a = lampHeading(spotFacingOf({ facing: e.facing ?? 0, spotFacing: e.spotFacing }));
-    // The pole lamp shines from its own height, under the tower cab's.
-    const seye = e.type === "spotlight" ? SPOTLIGHT_POLE_HEIGHT : TOWER_EYE_HEIGHT;
+    // Up on its jets the Titan's lamp tips down onto one pool ahead, lit from its height.
+    if (lampPools(e)) {
+      const spa = TITAN_LAMP_POOL_AHEAD_TILES;
+      const spr = TITAN_LAMP_POOL_RADIUS_TILES;
+      return { sr: Math.ceil(spa + spr), sdx: Math.cos(a), sdy: Math.sin(a), scos: 1, seye: eye, spr, spa };
+    }
+    // The pole lamp shines from its own height, under the tower cab's. The Titan's rides its torso.
+    const seye = e.type === "spotlight" ? SPOTLIGHT_POLE_HEIGHT : e.kind === "unit" && e.type === "titan" ? eye : TOWER_EYE_HEIGHT;
     return { sr: SPOTLIGHT_REACH_TILES, sdx: Math.cos(a), sdy: Math.sin(a), scos: SPOT_COS, seye };
   }
   if (!headlightLit(e) || daySight <= 0) return NO_SPOT;
@@ -459,6 +475,8 @@ function sameSightParams(a: SightParams, b: SightParams): boolean {
     a.sdy === b.sdy &&
     a.scos === b.scos &&
     a.seye === b.seye &&
+    a.spr === b.spr &&
+    a.spa === b.spa &&
     sameFlanks(a.flanks, b.flanks)
   );
 }
@@ -485,6 +503,9 @@ function sightBoxRadius(p: SightParams, elev: boolean): number {
 /** One lamp's beam reaches this tile, before line of sight and smoke. */
 function inSpotCone(p: SightParams, sdx: number, sdy: number, x: number, y: number): boolean {
   if (p.sr <= 0) return false;
+  if (p.spr != null && p.spa != null) {
+    return Math.hypot(x - (p.ox + sdx * p.spa), y - (p.oy + sdy * p.spa)) <= p.spr;
+  }
   const d = sightDist(x, y, p.ox, p.oy);
   if (d < 1 || d > p.sr) return false;
   const dx = x - p.ox;
@@ -986,6 +1007,7 @@ function visionKeyNow(state: MatchState, playerId: string): number {
       h = mix(h, e.crits.includes("lamp") ? 0 : 1);
       h = mix(h, e.garrison.length);
       h = mix(h, Math.round(lampHeading(spotFacingOf(e)) * 4096));
+      h = mix(h, lampPools(e) ? 1 : 0);
     }
     if (light.spots && headlightLit(e)) {
       const facing = e.facing ?? 0;
@@ -1087,6 +1109,48 @@ export const HULL_STALE_TICKS = 5;
 
 const sightMemos = new WeakMap<MatchState, Map<number, SightMemo>>();
 
+/**
+ * Sweeps by place: the tile an eye stood on and how it saw, whoever it was.
+ * A patrol walking its loop again, or a file of soldiers following a leader,
+ * finds the ground already swept and takes it under the same checks a
+ * memo gets. Entries older than PLACE_MEMO_TICKS are dropped now and then.
+ */
+const placeMemos = new WeakMap<MatchState, Map<number, SightMemo>>();
+const PLACE_MEMO_TICKS = 600;
+const PLACE_MEMO_PRUNE_EVERY = 200;
+
+function placeMemoOf(state: MatchState): Map<number, SightMemo> {
+  let memo = placeMemos.get(state);
+  if (!memo) {
+    memo = new Map();
+    placeMemos.set(state, memo);
+  }
+  return memo;
+}
+
+/** How an eye sees, apart from where it stands: reach, height, uphill bonus, lamp, footprint. */
+function sightReachKey(p: SightParams): number {
+  let h = mix(2166136261, p.radius);
+  h = mix(h, Math.round(p.eye * 64));
+  h = mix(h, Math.round(p.uphill * 64));
+  h = mix(h, p.fw);
+  h = mix(h, p.fh);
+  h = mix(h, p.sr);
+  h = mix(h, Math.round(p.sdx * 4096));
+  h = mix(h, Math.round(p.sdy * 4096));
+  h = mix(h, Math.round(p.scos * 4096));
+  h = mix(h, Math.round(p.seye * 64));
+  h = mix(h, Math.round((p.spr ?? 0) * 64));
+  h = mix(h, Math.round((p.spa ?? 0) * 64));
+  const flanks = p.flanks;
+  if (flanks) for (let i = 0; i < flanks.length; i++) h = mix(mix(h, Math.round(flanks[i]!.dx * 4096)), Math.round(flanks[i]!.dy * 4096));
+  return h;
+}
+
+function placeKey(p: SightParams, width: number): number {
+  return mix(mix(sightReachKey(p), p.oy * width + p.ox), p.fw > 0 ? p.fy * width + p.fx : -1);
+}
+
 function sightMemoOf(state: MatchState): Map<number, SightMemo> {
   let memo = sightMemos.get(state);
   if (!memo) {
@@ -1178,7 +1242,7 @@ function coverKeyNear(env: SightEnv, boxes: TileBox[], grid: ArrayLike<number>, 
 }
 
 /** Why memos were rebuilt, for benchmarks. */
-export const memoStats = { hit: 0, fresh: 0, smoke: 0, params: 0, hulls: 0, cover: 0, drift: 0, deferred: 0, shared: 0, coverRebuilt: 0, coverRefreshed: 0, paints: 0 };
+export const memoStats = { hit: 0, fresh: 0, smoke: 0, params: 0, hulls: 0, cover: 0, drift: 0, deferred: 0, shared: 0, placed: 0, coverRebuilt: 0, coverRefreshed: 0, paints: 0 };
 
 /** Same eye, same reach: only its tile may differ. */
 function sameSightParamsButPlace(a: SightParams, b: SightParams): boolean {
@@ -1503,6 +1567,25 @@ function stampInside(mask: Uint8Array, tiles: Int32Array, width: number, b: Tile
   }
 }
 
+/** The box around a lit list, or null when it is empty. */
+function tileListBounds(tiles: Int32Array, width: number): TileBounds | null {
+  if (tiles.length === 0) return null;
+  let x0 = width;
+  let x1 = -1;
+  let y0 = Infinity;
+  let y1 = -1;
+  for (let k = 0; k < tiles.length; k++) {
+    const i = tiles[k]!;
+    const x = i % width;
+    const y = (i - x) / width;
+    if (x < x0) x0 = x;
+    if (x > x1) x1 = x;
+    if (y < y0) y0 = y;
+    if (y > y1) y1 = y;
+  }
+  return { x0, y0, x1, y1 };
+}
+
 function boxesTouch(a: TileBounds, b: TileBounds): boolean {
   return a.x0 <= b.x1 && b.x0 <= a.x1 && a.y0 <= b.y1 && b.y0 <= a.y1;
 }
@@ -1612,6 +1695,10 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
   }
   const mask = pair[0] === prev ? pair[1]! : pair[0]!;
   memoStats.paints++;
+  const places = placeMemoOf(state);
+  if (tick % PLACE_MEMO_PRUNE_EVERY === 0) {
+    for (const [k, m] of places) if (tick - m.sweptTick > PLACE_MEMO_TICKS) places.delete(k);
+  }
   if (sweepScratchMask.length !== n) sweepScratchMask = new Uint8Array(n);
   const squad: SquadSource[] = [];
   armLosFastPath(state.heights, cover.losFlags!, width, height, coverRevOf(state));
@@ -1620,7 +1707,6 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
     // Sweep, or copy a squad mate's tiles, into the memo first; the mask is painted below.
     for (const s of work) {
       if (s.m?.box) soil(s.m.box);
-      soil(s.box);
       let tiles: Int32Array | null = null;
       for (const q of squad) {
         if (
@@ -1634,13 +1720,35 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
       }
       if (tiles) memoStats.shared++;
       else {
+        // Someone swept from this very tile, seeing the same way, and nothing in reach changed since.
+        const pm = places.get(placeKey(s.p, width));
+        if (
+          pm &&
+          pm.tiles &&
+          pm.p.ox === s.p.ox &&
+          pm.p.oy === s.p.oy &&
+          sameSightReach(pm.p, s.p) &&
+          pm.smoke === s.smoke &&
+          (pm.hulls === s.hulls || tick - pm.sweptTick < HULL_STALE_TICKS) &&
+          coverStillGood(pm, s.p, sightBoxRadius(s.p, true), history, width)
+        ) {
+          tiles = pm.tiles;
+          memoStats.placed++;
+        }
+      }
+      if (!tiles) {
         sweepKeep.n = 0;
         paintSightParams(sweepScratchMask, width, height, s.p, state.heights, cover, sweepKeep);
         tiles = sweepKeep.tiles.slice(0, sweepKeep.n);
         for (let k = 0; k < tiles.length; k++) sweepScratchMask[tiles[k]!] = 0;
         squad.push({ p: s.p, tiles });
       }
-      memo.set(s.id, { p: s.p, box: s.box, hulls: s.hulls, smoke: s.smoke, sweptTick: tick, coverRev: history.rev, tiles });
+      // The ground actually lit is usually well inside the reach box: keep that, so later repaints stay small.
+      const litBox = tileListBounds(tiles, width) ?? s.box;
+      soil(litBox);
+      const entry: SightMemo = { p: s.p, box: litBox, hulls: s.hulls, smoke: s.smoke, sweptTick: tick, coverRev: history.rev, tiles };
+      memo.set(s.id, entry);
+      places.set(placeKey(s.p, width), entry);
     }
     if (prev) {
       mask.set(prev);

@@ -45,6 +45,7 @@ import bunkerUrl from "../assets/buildings/bunker.png";
 import towerUrl from "../assets/buildings/tower.png";
 import ciwsTurretUrl from "../assets/buildings/ciws-turret.png";
 import researchUrl from "../assets/buildings/research.png";
+import cyborgCentralUrl from "../assets/buildings/cyborgcentral.png";
 import radarUrl from "../assets/buildings/radar.png";
 import dockUrl from "../assets/buildings/dock.png";
 import ramUrl from "../assets/buildings/ram.png";
@@ -266,6 +267,7 @@ import wardenWreckUrl from "../assets/units/wrecks/warden.png";
 import apocalypseWreckUrl from "../assets/units/wrecks/apocalypse.png";
 import ss3WreckUrl from "../assets/units/wrecks/ss3.png";
 import jagdtigerWreckUrl from "../assets/units/wrecks/jagdtiger.png";
+import feuerwirbelWreckUrl from "../assets/units/wrecks/feuerwirbel.png";
 import supplyWreckUrl from "../assets/units/wrecks/supply.png";
 import nebelwerferWreckUrl from "../assets/units/wrecks/nebelwerfer.png";
 import haulerWreckUrl from "../assets/units/wrecks/hauler.png";
@@ -277,6 +279,7 @@ import stukaWreckUrl from "../assets/units/wrecks/stuka.png";
 import fw190WreckUrl from "../assets/units/wrecks/fw190.png";
 import bv222WreckUrl from "../assets/units/wrecks/bv222.png";
 import he111WreckUrl from "../assets/units/wrecks/he111.png";
+import hortenWreckUrl from "../assets/units/wrecks/horten.png";
 import gunboatWreckUrl from "../assets/units/wrecks/gunboat.png";
 import destroyerWreckUrl from "../assets/units/wrecks/destroyer.png";
 import lstWreckUrl from "../assets/units/wrecks/lst.png";
@@ -300,11 +303,13 @@ import {
   bindAircraftSheets,
   bindCasemateSheets,
   bindJagdtigerSheets,
+  bindFeuerwirbelSheets,
   bindDroneSheets,
   bindAswHeliSheets,
   bindFighterSheets,
   bindTransportSheets,
   bindTorpedoBomberSheets,
+  bindReconSheets,
   bindSupplySheets,
   bindNavalSheets,
   bindBattleshipSheets,
@@ -1176,7 +1181,7 @@ function tankLayer(): TurretSpriteDef {
 }
 /**
  * Apocalypse: the Tiger's layers plus the roof CIWS, which aims on its own facing.
- * Drawn well up from the Tiger, as its hull is: a size up, then 30% on top.
+ * Drawn well up from the Tiger, as its hull is: a size up, then 30% and 15% on top.
  */
 export const APOCALYPSE_SPRITE: UnitSpriteDef = {
   image: new Image(),
@@ -1184,7 +1189,7 @@ export const APOCALYPSE_SPRITE: UnitSpriteDef = {
   frames: 1,
   frameSize: 128,
   fps: 8,
-  drawSize: Math.round(54 * 1.3 * UNIT_VISUAL_SCALE),
+  drawSize: Math.round(54 * 1.3 * 1.15 * UNIT_VISUAL_SCALE),
   contactY: 0.92,
   turret: tankLayer(),
   gun: tankLayer(),
@@ -1234,6 +1239,26 @@ export const JAGDTIGER_SPRITE: UnitSpriteDef = {
   facingSpace: "world",
 };
 bindJagdtigerSheets(JAGDTIGER_SPRITE.image, JAGDTIGER_SPRITE.gun!.image);
+
+/**
+ * Feuerwirbel: the hull (with the fixed bow flame projector and two empty mount rings).
+ * No long barrel sets the fit, so the cell is filled by the hull itself and it draws
+ * smaller than the Tiger at the same meters per pixel. The two CIWS mounts are drawn
+ * by the map view from FEUERWIRBEL_CIWS_SHEET, each on its own ring and facing.
+ */
+export const FEUERWIRBEL_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(34 * UNIT_VISUAL_SCALE),
+  contactY: 0.92,
+  facingSpace: "world",
+};
+/** One CIWS mount, pivot on the model origin, on the hull's composed fit. */
+export const FEUERWIRBEL_CIWS_SHEET: TurretSpriteDef = tankLayer();
+bindFeuerwirbelSheets(FEUERWIRBEL_SPRITE.image, FEUERWIRBEL_CIWS_SHEET.image);
 
 export const SUPPLY_SPRITE: UnitSpriteDef = {
   image: new Image(),
@@ -1464,6 +1489,22 @@ export const HE111_SPRITE: UnitSpriteDef = {
 bindTorpedoBomberSheets(HE111_SPRITE.image);
 
 /**
+ * Horten VII flying wing. Same camera and cell as the Stuka; its 20 m span fills the cell,
+ * so it is drawn a little under the He 111's size, as its span is.
+ */
+export const HORTEN_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(66 * UNIT_VISUAL_SCALE),
+  contactY: 0.8,
+  facingSpace: "world",
+};
+bindReconSheets(HORTEN_SPRITE.image);
+
+/**
  * Drone Op's quadcopter. Same camera and 128 cell as the Stuka; its rotor span reads about
  * twice a rifleman's width. The map lifts it by altitude over its own ground shadow.
  */
@@ -1518,7 +1559,8 @@ export const WALKER_SPRITE: UnitSpriteDef = {
  * (tools/sprites/render_titan.py), so the torso sits on the hips at any aim.
  */
 const TITAN_CELL = 192;
-const TITAN_DRAW = Math.round(60 * UNIT_VISUAL_SCALE);
+/** 15% over its first 60: the Titan towers over a Tiger. */
+const TITAN_DRAW = Math.round(60 * 1.15 * UNIT_VISUAL_SCALE);
 const TITAN_CONTACT_Y = 0.84;
 
 function titanOverlay(src: string): TurretSpriteDef {
@@ -1627,6 +1669,7 @@ const WRECK_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   apocalypse: wreckSheet(apocalypseWreckUrl, APOCALYPSE_SPRITE),
   ss3: wreckSheet(ss3WreckUrl, SS3_SPRITE),
   jagdtiger: wreckSheet(jagdtigerWreckUrl, JAGDTIGER_SPRITE),
+  feuerwirbel: wreckSheet(feuerwirbelWreckUrl, FEUERWIRBEL_SPRITE),
   supply: wreckSheet(supplyWreckUrl, SUPPLY_SPRITE),
   nebelwerfer: wreckSheet(nebelwerferWreckUrl, NEBELWERFER_SPRITE),
   hauler: wreckSheet(haulerWreckUrl, HAULER_SPRITE),
@@ -1637,6 +1680,7 @@ const WRECK_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   fw190: wreckSheet(fw190WreckUrl, FW190_SPRITE),
   bv222: wreckSheet(bv222WreckUrl, BV222_SPRITE),
   he111: wreckSheet(he111WreckUrl, HE111_SPRITE),
+  horten: wreckSheet(hortenWreckUrl, HORTEN_SPRITE),
   // Ships settle on the bottom: the superstructure and turrets are baked into the hulk.
   gunboat: wreckSheet(gunboatWreckUrl, GUNBOAT_SPRITE),
   destroyer: wreckSheet(destroyerWreckUrl, DESTROYER_SPRITE),
@@ -1663,6 +1707,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   apocalypse: APOCALYPSE_SPRITE,
   ss3: SS3_SPRITE,
   jagdtiger: JAGDTIGER_SPRITE,
+  feuerwirbel: FEUERWIRBEL_SPRITE,
   supply: SUPPLY_SPRITE,
   gunboat: GUNBOAT_SPRITE,
   supplyboat: SUPPLYBOAT_SPRITE,
@@ -1677,6 +1722,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   fw190: FW190_SPRITE,
   bv222: BV222_SPRITE,
   he111: HE111_SPRITE,
+  horten: HORTEN_SPRITE,
   drone: DRONE_SPRITE,
   aswheli: ASWHELI_SPRITE,
   rig: RIG_SPRITE,
@@ -1817,6 +1863,8 @@ const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   ciws: building(ciwsUrl, 192, 126, 186, 126, 82.8),
   // Lab, dome, mast, coil annex. Metrics from tools/sprites/render_research.py (research.json).
   research: building(researchUrl, 384, 210, 324, 150, 70),
+  // Assembly hall, uplink mast, reactor annex. Metrics from tools/sprites/render_cyborgcentral.py (cyborgcentral.json).
+  cyborgcentral: building(cyborgCentralUrl, 384, 210, 348, 204, 60),
   // Ops hut, lattice mast, dish. Metrics from tools/sprites/render_radar.py (radar.json); the stack hangs over the dish.
   radar: building(radarUrl, 384, 210, 354, 216, 58),
   // The pier stands in its pond: a hard edge, no blend onto ground that is not there.

@@ -285,7 +285,8 @@ export const HEIGHT_RANGE_BONUS = 2;
  * A rifle carries well past a pistol, and the scope is the longest direct-fire
  * reach on the field: it sits just inside the sniper's scoped sight.
  *
- * Cells: handgun 3, flamethrower 3.5, walker 8, cyborg 8, rifle 9, MG42 11, StuG 12, PTRD 13,
+ * Cells: handgun 3, flamethrower 3.5, Feuerwirbel flame 4.5, walker 8, cyborg 8, rifle 9,
+ * Feuerwirbel gatlings 10, MG42 11, StuG 12, PTRD 13,
  * Rocketer 12, Tiger and Titan 14, scoped rifle 15, Jagdtiger 16, mortar 23 (it will not drop inside 3),
  * Nebelwerfer 24 (it will not fire inside 4).
  */
@@ -302,6 +303,10 @@ export const PTRD_RANGE_TILES = t(13);
 export const LAUNCHER_RANGE_TILES = t(12);
 /** Pyro's flamethrower. A jet of burning fuel carries only a few strides past a pistol. */
 export const FLAMER_RANGE_TILES = t(3.5);
+/** Feuerwirbel's bow projector. A pressurized hull tank throws the jet a stride or so past a Pyro. */
+export const HULL_FLAMER_RANGE_TILES = t(4.5);
+/** Feuerwirbel's twin gatlings. Past a rifle, short of the MG42 on its bipod. */
+export const FEUERWIRBEL_RANGE_TILES = t(10);
 export const STUG_RANGE_TILES = t(12);
 export const TIGER_RANGE_TILES = t(14);
 /** Jagdtiger's 128mm. The longest tank gun: past the scope, well past its own eyes, short of the mortar. */
@@ -312,6 +317,11 @@ export const TITAN_RANGE_TILES = TIGER_RANGE_TILES;
 export const TITAN_WADE_SPEED = 0.6;
 /** Seconds to plant the outriggers, and again to pull them up. */
 export const TITAN_BRACE_SECONDS = 2.5;
+/**
+ * Titan's frame soaks heavy shells: it takes half a big gun's damage, and no
+ * shell kills it outright. A Jagdtiger needs four or five hits, not one.
+ */
+export const TITAN_SHELL_RESIST = 0.5;
 /** Hit-point multiplier while braced. HP keeps its share of max across the change. */
 export const TITAN_BRACED_HP_MUL = 1.75;
 /**
@@ -350,6 +360,8 @@ export const TITAN_ROCKET_SPLASH_TILES = t(1.3);
 export const TITAN_ROCKET_SPEED = t(16.64) * TILE_SIZE;
 /** Elevation units above the Titan's eye where the pods sit. */
 export const TITAN_ROCKET_POD_LIFT = 6;
+/** The pods sit fixed on the torso: they fire only on a bearing this close to where the torso, and its gun, faces. */
+export const TITAN_POD_ARC_DEG = 12;
 export const TITAN_ROCKET = {
   /** Infantry and soft targets at the blast center. */
   damage: 42,
@@ -531,6 +543,7 @@ export type EntityType =
   | "apocalypse"
   | "ss3"
   | "jagdtiger"
+  | "feuerwirbel"
   | "walker"
   | "cyborg"
   | "cyborgcommander"
@@ -567,10 +580,12 @@ export type EntityType =
   | "flak"
   | "research"
   | "radar"
+  | "cyborgcentral"
   | "stuka"
   | "fw190"
   | "bv222"
   | "he111"
+  | "horten"
   | "droneop"
   | "drone"
   | "aswheli"
@@ -621,7 +636,8 @@ export type BuildingType =
   | "pak43"
   | "flak"
   | "research"
-  | "radar";
+  | "radar"
+  | "cyborgcentral";
 /**
  * Placed by an engineer. Sandbags and walls can also be queued from the Defences tab. The gate comes
  * only from there. Barbwire is laid by maps for now: the Map Builder stands it like sandbags.
@@ -744,7 +760,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "shed",
   "boiler",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "walker" | "cyborg" | "cyborgcommander" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "droneop" | "jumpjet";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "horten" | "droneop" | "jumpjet";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -789,6 +805,7 @@ export const BUILDING_TYPES: readonly BuildingType[] = [
   "flak",
   "research",
   "radar",
+  "cyborgcentral",
 ];
 /**
  * Emplaced guns: the building is the gun, and its garrison is the crew. It fires only while
@@ -844,7 +861,7 @@ export const BUILDING_FACINGS = 24;
 export function isRotatableBuilding(type: string): type is BuildingType {
   return (ROTATABLE_BUILDINGS as readonly string[]).includes(type);
 }
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "walker", "cyborg", "cyborgcommander", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "droneop", "jumpjet"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "horten", "droneop", "jumpjet"];
 
 /**
  * A player fields only one of each of these at a time. While it lives, another
@@ -869,8 +886,8 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly Bu
   warden: "research",
   apocalypse: "research",
   jagdtiger: "research",
-  cyborg: "research",
-  cyborgcommander: "research",
+  cyborg: "cyborgcentral",
+  cyborgcommander: ["research", "cyborgcentral"],
   titan: "research",
   mammoth: "research",
   nebelwerfer: "research",
@@ -881,6 +898,7 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly Bu
   battleship: ["research", "radar"],
   stuka: "research",
   he111: "research",
+  horten: ["research", "radar"],
   bv222: ["research", "radar"],
 };
 
@@ -900,6 +918,19 @@ export const BUILD_REQUIRES: Partial<Record<BuildingType, readonly BuildingType[
   ciws: ["research", "radar"],
   ram: ["research", "radar"],
 };
+
+/**
+ * Cyborg link. A Cyborg runs on the uplink from a standing, powered Cyborg Central,
+ * or on a living Cyborg Commander of his own side. With neither, CYBORG_SHUTDOWN_SECONDS
+ * after the link drops every Cyborg of that player on the field shuts down: still his,
+ * but he stops where he stands, answers no orders, and fires at nothing. When that
+ * player's link is back his dark Cyborgs wake up, unless an enemy Commander took them first.
+ */
+export const CYBORG_SHUTDOWN_SECONDS = 4;
+/** A living Cyborg Commander takes over a shut-down Cyborg this close, friend's or foe's. */
+export const CYBORG_TAKEOVER_RANGE_TILES = t(8);
+/** Seconds of uplink a Commander needs to take one shut-down Cyborg. He takes them one at a time. */
+export const CYBORG_TAKEOVER_SECONDS = 3;
 
 export interface CatalogEntry {
   type: EntityType;
@@ -1022,6 +1053,11 @@ export interface CatalogEntry {
   wadeSpeed?: number;
   /** Deploy braces the unit in place: stationary, hull locked, max HP × this. */
   bracedHpMul?: number;
+  /**
+   * Share of a big gun's damage (a tank, field, or ship gun) this hull takes.
+   * Such a shell never kills it outright either: it lands as a heavy hit.
+   */
+  shellResist?: number;
   /** Shoulder rocket pods (TITAN_ROCKET). They fire from water, where the main gun cannot. */
   rockets?: boolean;
   /** Rockets in a full rack. Only a supply truck refills it. */
@@ -1045,7 +1081,7 @@ export interface CatalogEntry {
   roofCiws?: boolean;
   /**
    * An emplaced gun worked by its garrison (CREWED_GUNS). It fires only with a living crew
-   * inside; short-handed, each shot and belt change takes garrisonCap / crew times as long.
+   * inside; short-handed, each shot, belt change, and swing of the gun takes garrisonCap / crew times as long.
    * Raised with garrisonCap riflemen already at it.
    */
   crewGun?: boolean;
@@ -1071,6 +1107,19 @@ export interface CatalogEntry {
   armorFirst?: boolean;
   /** Main-gun barrels. A twin mount fires them one after another. Default 1. */
   twinGuns?: boolean;
+  /**
+   * Two CIWS mounts on the deck instead of a gun (the Feuerwirbel). Each traverses, picks,
+   * heats, and fires on its own (tickTwinCiws), and with more than one enemy in reach they
+   * never share a target. Both feed from `belt`. Like every gatling they never bring a building
+   * down and hold off tank plate they cannot mark unless the player names the target.
+   */
+  twinCiws?: boolean;
+  /**
+   * A flame projector fixed in the bow (the Feuerwirbel). It fires on its own clock, only
+   * inside HULL_FLAMER_ARC_DEG of the nose, at what fire can hurt. Its fuel rides in the
+   * coaxial MG's place (mgAmmo), so only a supply truck refills it.
+   */
+  hullFlamer?: boolean;
   /** Quadcopter flown by a Drone Op. Hovers, ignores ground collision and paths. */
   drone?: boolean;
   /**
@@ -1098,6 +1147,12 @@ export interface CatalogEntry {
    * only over water, and the torpedo always runs its full length.
    */
   airTorpedo?: boolean;
+  /**
+   * Unarmed reconnaissance plane (the Horten VII). No bomb, no guns, no bay: it flies over and
+   * looks. Flies at HORTEN_CRUISE_ALT, carries HORTEN_FUEL_SECONDS, and sees
+   * HORTEN_FLYING_SIGHT_BONUS farther in the air.
+   */
+  recon?: boolean;
   /**
    * Hull sonar (the Destroyer): it hears every enemy submarine within SONAR_RANGE_TILES, down or up,
    * and carries an ASW helicopter that goes out after what it hears, and lays water mines.
@@ -1353,6 +1408,18 @@ export const GATLING = {
 } as const satisfies InfantryGun;
 
 /**
+ * Cyborg sensors in place of a headlight. A Cyborg's thermal scanner picks up
+ * enemy soldiers in a cone off his facing, THERMAL_HALF_DEG either side, out to
+ * THERMAL_RANGE_TILES. The Commander's thermal and APS radar read all round him
+ * out to COMMANDER_SCAN_RANGE_TILES, soldiers and armored hulls alike. Neither
+ * needs a line of sight, and neither lets anyone shoot: a contact is a mark on
+ * the map, not a target. A shut-down Cyborg's scanner is dark.
+ */
+export const THERMAL_RANGE_TILES = t(10);
+export const THERMAL_HALF_DEG = 35;
+export const COMMANDER_SCAN_RANGE_TILES = t(13);
+
+/**
  * Cyborg Commander. An officer-grade cyborg: the Cyborg's frame and crawl rule,
  * a force field that takes every hit before the plating does, and a cutting
  * laser in place of the gatling.
@@ -1366,6 +1433,32 @@ export const FORCE_FIELD_DELAY = 7;
 export const FORCE_FIELD_DOWN_DELAY = 12;
 /** Field points a second while it recharges. Empty to full in five seconds. */
 export const FORCE_FIELD_REGEN_PER_SEC = 40;
+/**
+ * Weapons power to the field: the laser goes dark, and the field holds this many
+ * times its points and recharges this many times as fast. Back to the laser, the
+ * surplus bleeds off at once.
+ */
+export const FORCE_FIELD_DIVERT_MUL = 5;
+/** The Commander's plating mends itself, very slowly: HP a second while he lives. */
+export const COMMANDER_HP_REGEN_PER_SEC = 0.5;
+
+export const COMMANDER_FIELD_MODES = [
+  {
+    id: "laser" as const,
+    name: "Laser",
+    blurb: "Power to the cutting laser. The field holds its normal points.",
+  },
+  {
+    id: "field" as const,
+    name: "Shield",
+    blurb: `Weapons power to the force field: it holds ${FORCE_FIELD_DIVERT_MUL}× the points and recharges ${FORCE_FIELD_DIVERT_MUL}× as fast. The laser is dark and he cannot attack.`,
+  },
+] as const;
+
+/** Most force-field points a Commander can hold right now. */
+export function forceFieldMax(e: { fieldDivert?: true }): number {
+  return e.fieldDivert ? FORCE_FIELD_HP * FORCE_FIELD_DIVERT_MUL : FORCE_FIELD_HP;
+}
 /**
  * The laser on a soldier: it always cuts out to full reach and sweeps across
  * the target from one side to the other, LASER_SWEEP_HALF_DEG either side of
@@ -1383,11 +1476,14 @@ export const LASER_BEAM_HALF_WIDTH = 2;
 /**
  * The laser on anything else (a hull, a building, a wreck): one straight beam
  * onto the target for LASER_LINE_SECONDS. It cuts through any plate from any
- * face, for a moderate LASER_LINE_DAMAGE. A small fire is left where it lands,
+ * face, for a moderate LASER_LINE_DAMAGE; an armored unit (a hull or a wreck)
+ * takes LASER_ARMOR_DAMAGE instead. A small fire is left where it lands,
  * and the trees and soldiers (his own too) between him and the target burn.
  */
 export const LASER_LINE_SECONDS = 0.35;
 export const LASER_LINE_DAMAGE = 30;
+/** The line on an armored unit: half again the line's damage. */
+export const LASER_ARMOR_DAMAGE = LASER_LINE_DAMAGE * 1.5;
 /** Seconds the emitter recharges between shots. */
 export const LASER_RECHARGE = 4;
 /** The beam's fires: smaller and shorter-lived than a flamethrower's patch. */
@@ -1398,7 +1494,7 @@ export const LASER_FIRE_SPACING = LASER_FIRE_RADIUS * 1.25;
 export const LASER = {
   id: "laser" as const,
   name: "Cutting laser",
-  blurb: "Always cuts out to full reach. On soldiers it sweeps across them and burns down every soldier the beam passes, his own too, leaving a line of fire on the ground. Trees in its path burn down. On a hull or a building it is one straight beam that cuts any plate for moderate damage. Recharges between shots; never needs a truck.",
+  blurb: "Always cuts out to full reach. On soldiers it sweeps across them and burns down every soldier the beam passes, his own too, leaving a line of fire on the ground. Trees in its path burn down. On a hull or a building it is one straight beam that cuts any plate: heavy damage to a hull, moderate to a building. Recharges between shots; never needs a truck.",
   damage: LASER_LINE_DAMAGE,
   penetration: 999,
   caliber: 20,
@@ -1761,6 +1857,35 @@ export const FLAMER = {
 } as const satisfies InfantryGun;
 
 /**
+ * Feuerwirbel. A flame tank: two CIWS mounts on the deck, fore and aft, for
+ * soldiers and anything in the air, and a flame projector fixed in the bow.
+ *
+ * Each mount is one gatling, the Walker's gun on a heavier round that sometimes
+ * bites a Walker or a truck, with its own traverse, target, and heat. They feed
+ * from one belt.
+ */
+export const FEUERWIRBEL_MOUNT_SHOTS_PER_TICK = WALKER_ONE_BURST;
+/** Both mounts' belt. Like the Walker's backpack it never reloads; only a supply truck refills it. */
+export const FEUERWIRBEL_BELT = 1600;
+/** Each mount is light and power-traversed: faster than any turret on the field, past the Tiger's and the Walker's torso. */
+export const FEUERWIRBEL_MOUNT_TURN = 300;
+/** Mount pivots along the keel, meters from the hull's centre: fore, then aft (render_feuerwirbel.py MOUNT_X). */
+export const FEUERWIRBEL_MOUNT_AT = [0.9, -1.0] as const;
+/** The model's half length in meters, which the sim radius stands for. */
+export const FEUERWIRBEL_HALF_LENGTH_M = 3.35;
+/**
+ * The bow projector throws the Pyro's globs, a burst at a time, from a hull tank
+ * that holds HULL_FLAMER_BURSTS bursts. It never traverses: the jet leaves within this many
+ * degrees either side of the nose, and the driver turns the hull onto a target inside its reach.
+ */
+export const HULL_FLAMER_ARC_DEG = 12;
+/** Bursts in a full hull tank: a big tank of fuel, enough to keep burning through a long fight. */
+export const HULL_FLAMER_BURSTS = 50;
+export const HULL_FLAMER_FUEL = FLAMER_BURST * HULL_FLAMER_BURSTS;
+/** The pause between bursts. A pump, not a man's grip: a little shorter than the Pyro's. */
+export const HULL_FLAMER_BURST_PAUSE = 1.2;
+
+/**
  * Burning ground. Each glob that lands on dry ground leaves a patch of fire,
  * or feeds a patch already burning next to it. A patch burns for FIRE_SECONDS,
  * dying down over its last FIRE_DIE_SHARE, and burns every soldier standing in
@@ -2111,6 +2236,27 @@ export const HE111_RUN_IN_TILES = t(20);
 export const HE111_DROP_ARC_DEG = 8;
 /** Per second: the share of that throw still left. */
 export const PARA_DRAG = 0.35;
+
+/**
+ * Horten H.VII flying wing, flown for reconnaissance. No guns, no bomb, no bay:
+ * it flies over and looks. Two pusher engines and no tail drag: it cruises far
+ * above every other plane, out of reach of everything but anti-air guns, and
+ * it is the fastest thing in the air. It carries a
+ * little more fuel than the others and sees farther than any of them. Sent
+ * at a unit or a point, it overflies it and circles there.
+ */
+/** Cruise height. Above AIR_HIGH_ALT. */
+export const HORTEN_CRUISE_ALT = 40;
+/**
+ * A plane at or above this height is out of reach for everything but anti-air
+ * guns (the MG42, the gatlings, the CIWS, the Flak) and a fighter that climbs
+ * after it, as a high drone is. The others cruise at AIR_CRUISE_ALT, well under it.
+ */
+export const AIR_HIGH_ALT = 32;
+/** Seconds of flight in its tank, over AIR_FUEL_SECONDS for the others. */
+export const HORTEN_FUEL_SECONDS = 130;
+/** Sight it gains in the air, in place of AIRCRAFT_FLYING_SIGHT_BONUS. */
+export const HORTEN_FLYING_SIGHT_BONUS = t(18);
 /** Bomblets scattered by one canister. Each lies where it falls as a mine. */
 export const CLUSTER_MINES = 14;
 export const CLUSTER_RADIUS_TILES = t(2.5);
@@ -2308,12 +2454,19 @@ export const FLAK_RANGE_TILES = t(14);
 export const FLAK_WOUND_MUL = 0.5;
 /** Flak shells in the ready racks. A supply truck refills them. */
 export const FLAK_RACK = 64;
-/** World px from the burst at which a flying body still takes something. Full damage inside a third of it. */
-export const FLAK_BURST_RADIUS = 26;
-/** Elevation units above or below the burst that still count. Planes cruise at AIR_CRUISE_ALT. */
-export const FLAK_BURST_DEPTH = 9;
-/** Damage at the heart of a burst. A Stuka takes about five close ones; most bursts land off its heart. */
-export const FLAK_BURST_DAMAGE = 26;
+/**
+ * World px from the burst at which a flying body still takes something: about four tiles, as wide
+ * as the black cloud is drawn, so a plane seen inside the smoke is hurt and one shell catches a
+ * whole formation. Full damage inside a third of it.
+ */
+export const FLAK_BURST_RADIUS = 128;
+/**
+ * Elevation units above or below the burst that still count: wide enough that a plane diving to
+ * its release or strafing height while the shell climbs is still caught. Planes cruise at AIR_CRUISE_ALT.
+ */
+export const FLAK_BURST_DEPTH = 24;
+/** Damage at the heart of a burst: small, since nearly every burst finds something. A Stuka takes about a dozen. */
+export const FLAK_BURST_DAMAGE = 10;
 /**
  * Scatter of the burst off the predicted point, world px, at point blank and at full reach.
  * Thirty percent wider than the first lay (12 and 34).
@@ -2381,6 +2534,13 @@ export const SPOTLIGHT_ON_DAYLIGHT = 0.5;
 export const SPOTLIGHT_REACH_TILES = INFANTRY_SIGHT_TILES + TOWER_SIGHT_BONUS;
 /** Half the beam's width. */
 export const SPOTLIGHT_HALF_DEG = 14;
+/**
+ * The Titan carries the tower's lamp on its torso. Up on its leg jets the lamp
+ * tips down: instead of a beam it lights one round pool of ground ahead of the
+ * Titan, this far out along the lamp's heading, this wide.
+ */
+export const TITAN_LAMP_POOL_AHEAD_TILES = t(7);
+export const TITAN_LAMP_POOL_RADIUS_TILES = t(4.5);
 /** How fast the cab lamp turns, for Rotate and for a patrol sweep. */
 export const SPOTLIGHT_TURN_DEG_PER_SEC = 18;
 /**
@@ -2397,7 +2557,7 @@ export const SPOTLIGHT_POST_HP_MUL = 1.5;
 /** Share of each hit on the post that reaches the man at it: a few sandbags at its foot. */
 export const SPOTLIGHT_POST_WOUND_MUL = 0.75;
 /**
- * Armored ground hulls and the Cyborg run a headlight in the dark. Down the
+ * Armored ground hulls run a headlight in the dark. Down the
  * hull's nose it gives back the unit's own daylight sight; everywhere else
  * the night ring stands. The Mammoth adds two more, one to each side, and
  * those two drift through a small arc. One smashed fitting darkens every
@@ -2498,8 +2658,16 @@ export const WALKER_HEAT: GatlingHeat = { perRound: 1 / 42.2, coolPerSec: 0.1, o
 export const CYBORG_HEAT: GatlingHeat = { perRound: 1 / 28.8, coolPerSec: 0.1, overheatSeconds: 4.5 };
 /** Apocalypse roof mount. 20 a second. Half again the heat per round: a little over a second on the trigger. */
 export const APOCALYPSE_CIWS_HEAT: GatlingHeat = { perRound: 1.5 / 32.4, coolPerSec: 0.12, overheatSeconds: 4 };
+/**
+ * One Feuerwirbel mount. 20 a second on a tank's water jacket: a little under three
+ * seconds on the trigger, then three to cool. Each mount heats on its own.
+ */
+export const FEUERWIRBEL_MOUNT_HEAT: GatlingHeat = { perRound: 1 / 40, coolPerSec: 0.14, overheatSeconds: 3 };
 
-/** The gatling's heat, or null for a unit without one. The Apocalypse's is its roof mount. */
+/**
+ * The gatling's heat, or null for a unit without one. The Apocalypse's is its roof mount.
+ * The Feuerwirbel's two mounts keep their own (FEUERWIRBEL_MOUNT_HEAT), not the hull's.
+ */
 export function gatlingHeatOf(type: EntityType): GatlingHeat | null {
   if (type === "ciws") return CIWS_HEAT;
   if (type === "walker") return WALKER_HEAT;
@@ -2520,6 +2688,8 @@ export const GATLING_SPRAY: Partial<Record<EntityType, number>> = {
   ciws: 1,
   walker: 1.6 / 1.3,
   cyborg: 1.8 / 1.3,
+  /** A turret cradle holds the pair steadier than the Walker's arms. */
+  feuerwirbel: 1.4 / 1.3,
   apocalypse: 1.5,
   battleship: 1.5,
 };
@@ -2711,6 +2881,76 @@ export const JET_ALT = 7;
 export const JET_CLIMB_PER_SEC = 9;
 /** Air speed. Faster than he runs. Same UNIT_PACE cut as the walk. */
 export const JET_FLY_TILES_PER_SEC = paced(4);
+
+/** One type's jet flight: how long, how high, how fast, and how the pack refills. */
+export interface JetFlightDef {
+  fuelSeconds: number;
+  takeoffMinSeconds: number;
+  landReserve: number;
+  refuelDelay: number;
+  refuelPerSec: number;
+  alt: number;
+  climbPerSec: number;
+  flyTilesPerSec: number;
+  /** Shot down in the air, it falls straight to the ground before it dies (the Titan). */
+  crashes?: boolean;
+}
+
+export const JUMPJET_FLIGHT: JetFlightDef = {
+  fuelSeconds: JET_FUEL_SECONDS,
+  takeoffMinSeconds: JET_TAKEOFF_MIN_SECONDS,
+  landReserve: JET_LAND_RESERVE,
+  refuelDelay: JET_REFUEL_DELAY,
+  refuelPerSec: JET_REFUEL_PER_SEC,
+  alt: JET_ALT,
+  climbPerSec: JET_CLIMB_PER_SEC,
+  flyTilesPerSec: JET_FLY_TILES_PER_SEC,
+};
+
+/**
+ * Titan's leg jets. A short hop, not a flight: a few seconds over a river, a
+ * wall, or a line of men, then a long wait for the burners to cool. Aloft the
+ * main gun is stowed and only the shoulder pods fire, and only anti-air
+ * weapons reach it. Shot down, it drops straight down and goes up on the ground.
+ */
+export const TITAN_JET_FUEL_SECONDS = 12;
+export const TITAN_JET_FLIGHT: JetFlightDef = {
+  fuelSeconds: TITAN_JET_FUEL_SECONDS,
+  takeoffMinSeconds: 3,
+  landReserve: 1,
+  refuelDelay: 8,
+  /** An empty burner is ready again 30 s after the delay. */
+  refuelPerSec: TITAN_JET_FUEL_SECONDS / 30,
+  alt: 10,
+  climbPerSec: 7,
+  flyTilesPerSec: paced(2.6),
+  crashes: true,
+};
+/** Elevation units per second² a dead Titan falls with, from rest. */
+export const TITAN_FALL_ACCEL = 20;
+
+/**
+ * Titan's reactor. Whenever a Titan is destroyed, on the ground or after it
+ * falls out of the air, it goes up in a small nuclear blast: everything in the
+ * inner ring is gone, and the damage falls off to the edge. Friend and foe alike.
+ * Armor does not help: hulls lose a share of their max HP.
+ */
+export const TITAN_NUKE = {
+  /** Outer edge of the blast. */
+  radiusTiles: t(4.5),
+  /** Inside this, everything takes the full blow. */
+  coreTiles: t(1.5),
+  /** Soldiers, the drone, soft targets: HP at full. */
+  damage: 400,
+  /** Hulls and walkers: share of max HP at full. */
+  armorShare: 1.1,
+  /** Structures: HP at full. */
+  buildingDamage: 1800,
+  /** Share of the full blow left at the outer edge. */
+  edgeShare: 0.12,
+  /** Fires the blast leaves burning around ground zero. */
+  fires: 10,
+} as const;
 
 /**
  * Transport LST deck mount: a heavy machine gun in a shielded tub. Nobody carries it.
@@ -3168,6 +3408,7 @@ export const LST_BAY_LOAD: Partial<Record<EntityType, number>> = {
   supply: 4,
   hauler: 5,
   ss3: 6,
+  feuerwirbel: 6,
   nebelwerfer: 6,
   warden: 8,
   jagdtiger: 10,
@@ -3435,7 +3676,29 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Tiger, Apocalypse, Jagdtiger, Cyborg, Cyborg Commander, Titan, Nebelwerfer, Drone Op, Submarine, and Destroyer, and with a Radar Station the Battle Ship.",
+    blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Tiger, Apocalypse, Jagdtiger, Titan, Nebelwerfer, Drone Op, Submarine, and Destroyer, with a Radar Station the Battle Ship, and with a Cyborg Central the Cyborg Commander.",
+  },
+  cyborgcentral: {
+    type: "cyborgcentral",
+    kind: "building",
+    name: "Cyborg Central",
+    letter: "Y",
+    cost: 2000,
+    buildSeconds: 20,
+    hp: 900,
+    power: -60,
+    tileW: t(2),
+    tileH: t(2),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: `Assembly hall and uplink mast that run your cyborgs. Unlocks the Cyborg, and with a Research Facility the Cyborg Commander. Your Cyborgs live on its uplink: if it falls or your power runs short while no Cyborg Commander of yours lives, ${CYBORG_SHUTDOWN_SECONDS} seconds later every Cyborg of yours on the field shuts down: still yours, but dead still and silent. Get the link back (a new Central, or the power) and they wake up, unless an enemy Cyborg Commander took them first. A living Cyborg Commander keeps yours running without it, and takes over any enemy's shut-down Cyborg near him.`,
   },
   radar: {
     type: "radar",
@@ -3918,7 +4181,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     garrisonSightBonus: 0,
     garrisonTypes: BUNKER_TYPES,
     capturable: false,
-    blurb: `A 37mm anti-aircraft gun in a sandbagged ring, worked by two men, who come with it. It lays only on what is in the air: planes, Jump Jets, drones, and men under canopies. Its time-fused shells burst at the target's height in a black cloud, and everything flying inside the burst is hurt, so one shell can catch two planes at once. It leads a plane on its heading, but the fuse scatters: moderately accurate. Force attack on the ground puts a barrage up over that point. ${FLAK_RACK} shells in the racks; a supply truck brings more. Turns all the way round. With one man left it fires at half pace; with none it is silent until soldiers take their places. Rifle fire on it finds the crew. Cannot move.`,
+    blurb: `A 37mm anti-aircraft gun in a sandbagged ring, worked by two men, who come with it. It lays only on what is in the air: planes, Jump Jets, drones, and men under canopies. Its time-fused shells burst at the target's height in a wide black cloud, and everything flying inside it takes a little damage, so planes that fly close together are all hit at once. It leads a plane on its heading, but the fuse scatters: moderately accurate. Force attack on the ground puts a barrage up over that point. ${FLAK_RACK} shells in the racks; a supply truck brings more. Turns all the way round. With one man left it fires at half pace; with none it is silent until soldiers take their places. Rifle fire on it finds the crew. Cannot move.`,
   },
   sandbags: {
     type: "sandbags",
@@ -4443,8 +4706,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     power: 0,
     tileW: 1,
     tileH: 1,
-    radius: 19.5,
-    moveTilesPerSec: paced(1.1),
+    radius: 22.4,
+    moveTilesPerSec: paced(0.935),
     turnDegPerSec: 60,
     rangeTiles: TIGER_RANGE_TILES,
     sightTiles: t(8),
@@ -4468,7 +4731,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     mgAmmo: APOCALYPSE_CIWS_BELT,
     leavesWreck: true,
     wreckHp: 55,
-    blurb: `Super-heavy tank. Two 105mm guns on one turret fire one after the other, a short gap and then a long reload, through a Tiger's front plate. Thick plate on every face, a slow hull and a slow turret. It rolls flat an enemy StuG, Walker, supply truck, Nebelwerfer, or field gun in its path, and leaves no wreck; it runs down a Cyborg, but the Cyborg Commander is too big to go under. A small radar-laid 20mm CIWS on the turret roof lays itself, apart from the main guns: incoming missiles first, and it bursts some of them, then planes, infantry, and sometimes a Walker or a truck. A secondary mount, it sprays wider than a pad CIWS and overheats after a little over a second on the trigger. The ${APOCALYPSE_CIWS_BELT}-round belt refills only from a supply truck.`,
+    blurb: `Super-heavy tank. Two 105mm guns on one turret fire one after the other, a short gap and then a long reload, through a Tiger's front plate. Thick plate on every face, a slow hull and a slow turret. It rolls flat an enemy StuG, Walker, supply truck, Nebelwerfer, or field gun in its path, and leaves no wreck. It drives straight through woods, felling every tree it brushes; it runs down a Cyborg, but the Cyborg Commander is too big to go under. A small radar-laid 20mm CIWS on the turret roof lays itself, apart from the main guns: incoming missiles first, and it bursts some of them, then planes, infantry, and sometimes a Walker or a truck. A secondary mount, it sprays wider than a pad CIWS and overheats after a little over a second on the trigger. The ${APOCALYPSE_CIWS_BELT}-round belt refills only from a supply truck.`,
   },
   /** Spec: gridlock/packages/client/src/assets/units/ss3/stug-iii-ausf-g-late-saukopf.md */
   ss3: {
@@ -4546,6 +4809,47 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     hasScout: true,
     blurb: "Heavy tank destroyer. No turret: the 128mm sits in a fixed casemate and swings only a little either side of the nose, so the slow hull must turn to aim. The thickest front plate on the field, heavy sides, a thin rear. Its armor-piercing shell goes through any front plate and usually kills a Tiger in one hit, from the longest reach of any tank gun. A long reload between shots, and no HEAT or smoke on the rack.",
   },
+  /** Flame tank: two CIWS mounts on the deck, a flame projector fixed in the bow. */
+  feuerwirbel: {
+    type: "feuerwirbel",
+    kind: "unit",
+    name: "Feuerwirbel",
+    letter: "F",
+    cost: 450,
+    buildSeconds: 12,
+    hp: 110,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 11,
+    moveTilesPerSec: paced(1.5),
+    turnDegPerSec: 80,
+    rangeTiles: FEUERWIRBEL_RANGE_TILES,
+    sightTiles: t(9),
+    cooldown: TICK_DT,
+    damage: 8,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    turnInPlace: true,
+    tracked: true,
+    // The mounts' traverse. No turret on the hull: this keeps the aim off the hull, which never turns to shoot.
+    turretTurnDegPerSec: FEUERWIRBEL_MOUNT_TURN,
+    armorFront: 60,
+    armorSide: 28,
+    armorRear: 14,
+    penetration: 12,
+    caliber: 13,
+    spreadDeg: 4,
+    belt: FEUERWIRBEL_BELT,
+    twinCiws: true,
+    antiAir: true,
+    airFirst: true,
+    hullFlamer: true,
+    mgAmmo: HULL_FLAMER_FUEL,
+    leavesWreck: true,
+    wreckHp: 30,
+    hasScout: true,
+    blurb: `Flame tank. Two CIWS mounts on the deck, fore and aft, each a gatling of ${FEUERWIRBEL_MOUNT_SHOTS_PER_TICK * 10} rounds a second on the fastest traverse on the field. Each picks its own target: with two or more enemies in reach they never share one. They look for anything in the air first, then cut down soldiers, and sometimes bite a Walker or a truck. Tank plate turns them, and they do not bring a building down. Each overheats after a little under three seconds on the trigger. A flame projector fixed in the bow fires on its own at soldiers and soft vehicles inside a short reach, but only where the nose points; the driver turns the hull onto a target close enough to burn. The jet burns every soldier in its path, friends too, so it holds while one stands in the line. The ${FEUERWIRBEL_BELT}-round belt and ${HULL_FLAMER_BURSTS} bursts of fuel refill only from a supply truck. Lighter plate than a Tiger.`,
+  },
   walker: {
     type: "walker",
     kind: "unit",
@@ -4604,7 +4908,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: GATLING.penetration,
     caliber: GATLING.caliber,
     spreadDeg: GATLING.spreadDeg,
-    blurb: "Half soldier, half machine. A gatling arm fed from a 600-round drum that only a supply truck refills. It fires with tracers and overheats after under two seconds on the trigger. A round sometimes bites a Walker or a truck. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him, and either brings the legs back.",
+    blurb: "Half soldier, half machine. A gatling arm fed from a 600-round drum that only a supply truck refills. It fires with tracers and overheats after under two seconds on the trigger. He carries no lamp: a thermal scanner marks enemy soldiers in a cone ahead of him, through fog, cover and dark. A round sometimes bites a Walker or a truck. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him, and either brings the legs back. He runs on the uplink from your Cyborg Central or a living Cyborg Commander of yours: without either he shuts down a few seconds later: still yours, but still and silent. He wakes up once your link is back, unless an enemy Cyborg Commander takes him over first.",
   },
   cyborgcommander: {
     type: "cyborgcommander",
@@ -4629,20 +4933,20 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: LASER.penetration,
     caliber: LASER.caliber,
     spreadDeg: LASER.spreadDeg,
-    blurb: "An officer of machines. A force field takes every hit before his plating does, and comes back on after a while out of the fire. His cutting laser always reaches full range: on soldiers it sweeps across them in a short arc and burns down every soldier the red beam passes, friend or foe, and every tree in its path, leaving a line of fire on the ground. On a hull or a building it is one straight beam that cuts any plate for moderate damage. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
+    blurb: "An officer of machines. A force field takes every hit before his plating does, and comes back on after a while out of the fire. He can put the laser's power into it: the field then holds five times the points and recharges five times as fast, but he cannot attack. His plating mends itself, very slowly. His cutting laser always reaches full range: on soldiers it sweeps across them in a short arc and burns down every soldier the red beam passes, friend or foe, and every tree in its path, leaving a line of fire on the ground. On a hull or a building it is one straight beam that cuts any plate: heavy damage to a hull, moderate to a building. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him. His thermal scanner and APS radar read all round him: enemy soldiers glow as heat and armored hulls show under a scan grid, through fog, cover and dark. While he lives your Cyborgs keep running without a Cyborg Central, and any enemy shut-down Cyborg near him is taken over by his uplink in a few seconds, one at a time. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
   },
   titan: {
     type: "titan",
     kind: "unit",
     name: "Titan",
     letter: "X",
-    cost: 5000,
+    cost: 8000,
     buildSeconds: 18,
-    hp: 200,
+    hp: 400,
     power: 0,
     tileW: 1,
     tileH: 1,
-    radius: 13,
+    radius: 15,
     moveTilesPerSec: paced(1.15),
     turnDegPerSec: 70,
     rangeTiles: TITAN_RANGE_TILES,
@@ -4669,7 +4973,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rockets: true,
     rocketAmmo: TITAN_ROCKET_AMMO,
     bracedHpMul: TITAN_BRACED_HP_MUL,
-    blurb: "Heavy assault walker. The Tiger's gun on a traversing torso, loaded with armor-piercing shot only, and a four-rocket pod on the shoulders that picks its own target, apart from the gun, and ripples its salvo one rocket after another. Sixteen rockets in the rack; a supply truck refills them. Rockets scatter wide at full reach and draw in as the target closes. They shred infantry, dent tanks, usually break a track from the side or rear, and can burst beside a plane in the air. Switch the pods off to save them. Wades through water with only its torso showing: the main gun stays silent there, the rockets still fire. Deploy plants the outriggers: it cannot move, and its hit points grow by three-quarters until it packs up. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
+    shellResist: TITAN_SHELL_RESIST,
+    blurb: "Heavy assault walker, built to take a beating: tank shells do it half harm, and no single shell kills it outright. The Tiger's gun on a traversing torso, loaded with armor-piercing shot only, and a four-rocket pod on the shoulders that ripples its salvo one rocket after another. The pods are fixed to the torso: they fire only the way the torso faces, so the Titan turns to bring them to bear as it turns for its gun, and they take any target on that bearing. Sixteen rockets in the rack; a supply truck refills them. Rockets scatter wide at full reach and draw in as the target closes. They shred infantry, dent tanks, usually break a track from the side or rear, and can burst beside a plane in the air. Switch the pods off to save them. Wades through water with only its torso showing: the main gun stays silent there, the rockets still fire. Deploy plants the outriggers: it cannot move, and its hit points grow by three-quarters until it packs up. It strides straight through woods, felling every tree it brushes. A big lamp on the torso lights the ground far ahead at night; Rotate light swings only the lamp. Leg jets lift it for a short hop over anything, and the lamp tips down to light one wide pool of ground ahead of it: aloft the gun is stowed and only the pods fire, and only anti-air weapons reach it; the burners take a long while to recover. Its reactor makes it a bomb: destroyed, it goes up in a small nuclear blast that wrecks everything close by, friend or foe. Shot down in the air, it drops straight down and goes up on the ground. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
   },
   mammoth: {
     type: "mammoth",
@@ -4830,7 +5135,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     turnInPlace: true,
     turretTurnDegPerSec: 240,
     rangeTiles: GUNBOAT_RANGE_TILES,
-    sightTiles: t(9),
+    sightTiles: t(18),
     cooldown: 0.45,
     damage: 12,
     projectileSpeed: SMALL_ARMS_SPEED,
@@ -4863,7 +5168,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     noReverse: true,
     turnInPlace: true,
     rangeTiles: 0,
-    sightTiles: t(6),
+    sightTiles: t(12),
     cooldown: 0,
     damage: 0,
     projectileSpeed: 0,
@@ -4895,7 +5200,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     turnInPlace: true,
     gunArcDeg: 20,
     rangeTiles: TORPEDO_RANGE_TILES,
-    sightTiles: t(8),
+    sightTiles: t(16),
     cooldown: 7,
     damage: TORPEDO.damage,
     projectileSpeed: TORPEDO_SPEED,
@@ -4957,7 +5262,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     turnInPlace: true,
     turretTurnDegPerSec: BATTLESHIP_TURRET_TURN_DEG_PER_SEC,
     rangeTiles: BATTLESHIP_RANGE_TILES,
-    sightTiles: t(10),
+    sightTiles: t(20),
     cooldown: BATTLESHIP_BARREL_RELOAD,
     damage: BATTLESHIP_SHELL.damage,
     projectileSpeed: 0,
@@ -4991,7 +5296,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     turnInPlace: true,
     turretTurnDegPerSec: 200,
     rangeTiles: DESTROYER_RANGE_TILES,
-    sightTiles: t(10),
+    sightTiles: t(20),
     cooldown: 0.28,
     damage: 15,
     projectileSpeed: SMALL_ARMS_SPEED,
@@ -5025,7 +5330,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     noReverse: true,
     turnInPlace: true,
     rangeTiles: 0,
-    sightTiles: t(9),
+    sightTiles: t(18),
     cooldown: 0,
     damage: 0,
     projectileSpeed: 0,
@@ -5158,6 +5463,32 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     airTorpedo: true,
     wreckHp: 36,
     blurb: `Twin-engined torpedo bomber. No guns and no bomb: one torpedo under the belly, the same one a submarine fires. It attacks only what is in the water — a boat, a submarine surfaced or down, a swimmer, a Marine Base — and only with water under it. It comes down low over the water on the way in and lets the torpedo go when the target is ${TORPEDO_RANGE_TILES / TILE_SUBDIV} tiles off the nose, the submarine's own reach. The torpedo always runs its full length, even on a force attack, and strikes the first thing in the water across its path, friend or foe, surfaced or submerged. It runs slow and in plain sight; any gun can shoot it apart before it arrives. One torpedo a sortie: then it flies home to land, refuel, and load another. Low on the run in, rifles and anti-aircraft guns reach it easily. It has no tracks to lose. A hit that wrecks the engine brings it down at once: it falls trailing smoke and crashes as a wreck.`,
+  },
+  /** Horten H.VII reconnaissance flying wing. Lives on an Airfield pad. */
+  horten: {
+    type: "horten",
+    kind: "unit",
+    name: "Horten VII",
+    letter: "y",
+    cost: 2200,
+    buildSeconds: 24,
+    hp: 90,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 14,
+    moveTilesPerSec: paced(9),
+    turnDegPerSec: 70,
+    rangeTiles: 0,
+    sightTiles: t(12),
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    aircraft: true,
+    recon: true,
+    wreckHp: 22,
+    blurb: `Twin-engined flying wing on reconnaissance. No guns and no bomb: it only looks. It flies higher and faster than any other plane and reveals the widest circle of ground in the air, ${(t(12) + HORTEN_FLYING_SIGHT_BONUS) / TILE_SUBDIV} tiles around it. Up there only anti-air guns — the MG42, gatlings, the CIWS, the Flak — and a fighter that climbs after it can reach it; rifles and rockets cannot. Its tank holds ${HORTEN_FUEL_SECONDS} seconds of flight, more than the others. Send it at a point or a unit and it flies over and circles there; on guard or patrol it keeps watching the area. It comes home to land and refuel when the tank runs low. It has no tracks to lose. A hit that wrecks the engine brings it down at once: it falls trailing smoke and crashes as a wreck.`,
   },
   droneop: {
     type: "droneop",
@@ -5608,7 +5939,19 @@ export function isJumpJetType(type: EntityType): boolean {
   return type === "jumpjet";
 }
 
-/** Flies: the Stuka, the Fw 190, the BV 222, and the He 111. */
+/** The jet flight a type carries: the Jump Jet's pack, the Titan's leg jets, or none. */
+export function jetFlightOf(type: EntityType): JetFlightDef | null {
+  if (type === "jumpjet") return JUMPJET_FLIGHT;
+  if (type === "titan") return TITAN_JET_FLIGHT;
+  return null;
+}
+
+/** Goes up in a small nuclear blast when destroyed: the Titan. */
+export function nukesOnDeath(type: EntityType): boolean {
+  return type === "titan";
+}
+
+/** Flies: the Stuka, the Fw 190, the BV 222, the He 111, and the Horten VII. */
 export function isAircraftType(type: EntityType): boolean {
   return catalog(type).aircraft === true;
 }
@@ -5620,12 +5963,29 @@ export function airLoadoutOf(type: EntityType): { bombs: number; rounds: number 
   if (type === "bv222") return { bombs: 1, rounds: 0 };
   // The He 111's torpedo rides in the bomb slot: hung on the pad, spent on the run.
   if (dropsTorpedo(type)) return { bombs: HE111_TORPEDOES, rounds: 0 };
+  // The Horten VII carries cameras only.
+  if (isReconType(type)) return { bombs: 0, rounds: 0 };
   return { bombs: STUKA_BOMBS, rounds: STUKA_MG_ROUNDS };
 }
 
 /** Torpedo bomber: drops the submarine's torpedo over water instead of a bomb. */
 export function dropsTorpedo(type: EntityType): boolean {
   return catalog(type).airTorpedo === true;
+}
+
+/** Reconnaissance plane: no weapons, flies over and looks. */
+export function isReconType(type: EntityType): boolean {
+  return catalog(type).recon === true;
+}
+
+/** Height a plane cruises at between runs. */
+export function airCruiseAltOf(type: EntityType): number {
+  return isReconType(type) ? HORTEN_CRUISE_ALT : AIR_CRUISE_ALT;
+}
+
+/** Seconds of flight in a full tank. */
+export function airFuelOf(type: EntityType): number {
+  return isReconType(type) ? HORTEN_FUEL_SECONDS : AIR_FUEL_SECONDS;
 }
 
 /** Transport: drops a load (AirDrop) instead of attacking. */
@@ -5671,6 +6031,11 @@ export function crushes(mover: EntityType, victim: EntityType): boolean {
   if (victim === "cyborgcommander") return false;
   if (isInfantryType(victim)) return true;
   return mover === "apocalypse" && APOCALYPSE_CRUSHES.includes(victim);
+}
+
+/** A hull heavy enough to go straight through woods, not only over a lone tree: the Apocalypse, and the Titan on its legs. */
+export function rollsThroughWoods(type: EntityType): boolean {
+  return type === "apocalypse" || type === "titan";
 }
 
 /**
@@ -6214,6 +6579,16 @@ export function radarLaidOf(type: EntityType): boolean {
 /** Radar-laid 20mm on the turret roof. See CatalogEntry.roofCiws. */
 export function roofCiwsOf(type: EntityType): boolean {
   return catalog(type).roofCiws === true;
+}
+
+/** Two CIWS mounts on the deck instead of a gun. See CatalogEntry.twinCiws. */
+export function twinCiwsOf(type: EntityType): boolean {
+  return catalog(type).twinCiws === true;
+}
+
+/** A flame projector fixed in the bow. See CatalogEntry.hullFlamer. */
+export function hullFlamerOf(type: EntityType): boolean {
+  return catalog(type).hullFlamer === true;
 }
 
 /** The Battle Ship: two triple turrets and two CIWS mounts, each on its own clock (sim/battleship.ts). */

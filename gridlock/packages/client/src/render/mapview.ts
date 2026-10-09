@@ -9,6 +9,9 @@ import {
   rectWorld,
   turnedBox,
   catalog,
+  SELL_REFUND,
+  hullFlamerOf,
+  twinCiwsMountPoint,
   isCyborg,
   FW190_WING_GUN_OFFSET,
   clampIsoCamera,
@@ -18,6 +21,9 @@ import {
   radarLaidOf,
   aimsOwnGun,
   hasSpotlight,
+  lampPools,
+  TITAN_LAMP_POOL_AHEAD_TILES,
+  TITAN_LAMP_POOL_RADIUS_TILES,
   headlightLit,
   hullLamps,
   HEADLIGHT_HALF_DEG,
@@ -129,7 +135,10 @@ import {
   type ShellHoleView,
   wallRiseLimit,
   wallRunTops,
+  TITAN_NUKE,
 } from "@gridlock/shared";
+import { drawNuke, drawNukeFlash, drawNukeScorch, NUKE_FX_MS, NUKE_SCORCH_MS } from "./nuke-fx.js";
+import { drawTitanThrust } from "./titan-jet-fx.js";
 import {
   FX_BOOM,
   FX_SMOKE,
@@ -211,6 +220,8 @@ import {
   spriteReady,
   BATTLESHIP_LAYERS,
   BATTLESHIP_SPRITE,
+  FEUERWIRBEL_CIWS_SHEET,
+  FEUERWIRBEL_SPRITE,
   unitSpritePaintRect,
   wreckSpriteFor,
   GUNNER_DIE_SPRITE,
@@ -276,6 +287,7 @@ import { drawSearchlightAt, drawTowerSearchlight, type SearchlightPose } from ".
 import { drawTorpedoBody } from "./torpedo-draw.js";
 import { drawRadarContact, drawRadarOffline, radarContactLit } from "./radar-panel.js";
 import { drawSonarContact, drawWaterMine } from "./sonar-fx.js";
+import { drawHeatContact, drawScanContact } from "./thermal-fx.js";
 import {
   drawTrackKick,
   spawnTrackKickPuffs,
@@ -336,9 +348,17 @@ import {
   type MuzzleSmokePuff,
 } from "./muzzle-smoke.js";
 import { spatialMix } from "../ui/spatial-sfx.js";
+import { closeConfirm, confirmOpen, showConfirm } from "../ui/confirm.js";
 import { playSoundEvents, updateAmbient, warmBattle } from "../ui/game-audio.js";
 import { SoundTracker } from "./sound-events.js";
 import { drawGatlingFlash, gatlingMuzzles } from "./gatling-flash.js";
+import {
+  FEUERWIRBEL_BORE_LIFT,
+  feuerwirbelMountLayers,
+  feuerwirbelMountMuzzle,
+  feuerwirbelMuzzleReachWorld,
+  feuerwirbelNozzle,
+} from "./feuerwirbel-mounts.js";
 import { roofCiwsMuzzle } from "./roof-ciws.js";
 import { CIWS_INTERCEPT_LIFT, CIWS_MUZZLE_REACH, CIWS_SOURCE_ZOOM, ciwsMuzzleLift, ciwsTurretCell, ciwsTurretRow } from "./ciws.js";
 import { ciwsBurstTracers, ciwsTracers } from "./ciws-tracer.js";
@@ -355,7 +375,7 @@ import { drawCyborgDeathSparks } from "./cyborg-sparks.js";
 import { drawGroundShadow, unitCastsShadow, unitShadowFootprint } from "./unit-shadow.js";
 import { buildingShadowFootprint, convexHull, drawCastShadows, shadowOffset, treeShadowFootprint } from "./cast-shadow.js";
 import { buildingGroundElev, drawYardWear, WALL_SHARE, wallFootprint, yardWearFootprint } from "./building-ground.js";
-import { footprintPeak, radarReachTiles } from "./radar-reach.js";
+import { footprintPeak, radarReachTiles, showsReachRing } from "./radar-reach.js";
 import {
   airBurstPuffs,
   flakCloudPuffs,
@@ -417,6 +437,7 @@ import {
 import { pyroNozzleScreen } from "./pyro-nozzle.js";
 import { cyborgCommanderLens } from "./cyborgcommander-muzzle.js";
 import { beamEnd, beamShare, drawForceField, drawLaserBeam } from "./laser-beam.js";
+import { drawShutdownMark, drawUplink, SHUTDOWN_UNIT_FILTER } from "./cyborg-link-fx.js";
 import { inScreenRect, unitGroundSink, unitPickRect, type ScreenRect } from "./unit-hit.js";
 import { engineRowFromProjectedFacing, engineRowFromScreen } from "./turntable.js";
 import { drawSelectFrame, fieldFrameCorners } from "./select-frame.js";
@@ -535,6 +556,8 @@ import { heightsChanged } from "./height-mesh.js";
 /** Special-action key. D pans with W and the arrow keys; A/S are orders. */
 export const SPECIAL_HOTKEY = "e";
 export const STOP_HOTKEY = "s";
+/** `KeyboardEvent.key`, lower-cased. */
+export const DELETE_HOTKEY = "delete";
 export const ATTACK_MOVE_HOTKEY = "a";
 export const PATROL_HOTKEY = "y";
 /** Click this close to a placed spot, in view pixels, to close the loop on it. */
@@ -576,6 +599,7 @@ const EXTRUDE: Record<EntityType, number> = {
   ciws: 26,
   research: 40,
   radar: 44,
+  cyborgcentral: 44,
   bunker: 18,
   tower: 66,
   ram: 26,
@@ -592,15 +616,17 @@ const EXTRUDE: Record<EntityType, number> = {
   fw190: 12,
   bv222: 22,
   he111: 17,
+  horten: 17,
   drone: 8,
   droneop: 26,
   jumpjet: 26,
   rig: 22,
   hauler: 16,
   warden: 28,
-  apocalypse: 42,
+  apocalypse: 48,
   ss3: 20,
   jagdtiger: 26,
+  feuerwirbel: 24,
   rifleman: 26,
   gunner: 26,
   sniper: 26,
@@ -622,7 +648,7 @@ const EXTRUDE: Record<EntityType, number> = {
   bridge: 4,
   bigbridge: 6,
   walker: 30,
-  titan: 40,
+  titan: 46,
   mammoth: 15,
   nebelwerfer: 22,
   artillery: 14,
@@ -666,6 +692,8 @@ const HP_FILL_HOSTILE_VIVID = "#ff5a4a";
 /** Sprite alpha when a building volume sits in front of a body. */
 const OCCLUDED_UNIT_ALPHA = 0.46;
 const FIELD_SITE_ALPHA = 0.8;
+/** Narrowest an engineer's build bar draws, in screen pixels: wide enough for "BUILD 100%". */
+const BUILD_BAR_MIN_W = 56;
 const UNIT_SIGHT_FADE_MS = 250;
 
 type DrawItem = DrawKey & { run: () => void };
@@ -799,6 +827,7 @@ export class MapView {
   /** The previous snapshot's projectiles, sonar contacts and crates by id, for the between-snapshot blend. */
   private prevProjById = new Map<number, ProjectileView>();
   private prevSonarById = new Map<number, NonNullable<MatchSnapshot["sonar"]>[number]>();
+  private prevThermalById = new Map<number, NonNullable<MatchSnapshot["thermal"]>[number]>();
   private prevCrateById = new Map<number, MatchSnapshot["crates"][number]>();
   /** Walker legs: ground walked so far and where the hull was last frame. */
   private walkerOdo = new Map<number, { x: number; y: number; d: number }>();
@@ -949,6 +978,10 @@ export class MapView {
   private flameParticles: FlameParticle[] = [];
   private flameFrameAt = 0;
   private cookOffsSeen = new Set<number>();
+  /** A Titan's reactor went up: ground zero and when it was first seen. Kept while its scorch lasts. */
+  private nukes: { id: number; x: number; y: number; at: number }[] = [];
+  /** Every ground zero this match. Bushes and signposts inside one stay gone for good. */
+  private nukeZones: { x: number; y: number }[] = [];
   /** Black smoke off burning fuel. Same drift as rocket smoke, sooty colour. `shade` 1 is black. */
   private fireSmoke: RocketPuff[] = [];
   /** Per Pyro: when his newest glob was first seen, where the burst is laid, and the host if he is inside. */
@@ -1007,7 +1040,7 @@ export class MapView {
   private patrolLoop = false;
   forceAttackMode = false;
   rotateMode = false;
-  /** Rotate light: the rotate click swings only the selected Battle Ships' searchlights. */
+  /** Rotate light: the rotate click swings only the selected Battle Ships' and Titans' lamps. */
   rotateLight = false;
   guardMode = false;
   /**
@@ -1277,6 +1310,7 @@ export class MapView {
     this.prevById = this.currById;
     this.prevProjById = new Map(this.prev.projectiles.map((p) => [p.id, p]));
     this.prevSonarById = new Map((this.prev.sonar ?? []).map((c) => [c.id, c]));
+    this.prevThermalById = new Map((this.prev.thermal ?? []).map((c) => [c.id, c]));
     this.prevCrateById = new Map((this.prev.crates ?? []).map((c) => [c.id, c]));
     this.curr = match;
     this.currById = new Map(match.entities.map((e) => [e.id, e]));
@@ -1348,6 +1382,14 @@ export class MapView {
       if (i.kind === "crush") continue;
       // A 20mm round that missed a plane climbed away into the sky: its tracer is all there is.
       if (i.airZ != null && i.kind === "miss") continue;
+      if (i.nuke) {
+        // A Titan's reactor: its own flash, shockwave, and mushroom cloud, not a shell burst.
+        if (!this.nukes.some((n) => n.id === i.id)) {
+          this.nukes.push({ id: i.id, x: i.x, y: i.y, at: now });
+          this.nukeZones.push({ x: i.x, y: i.y });
+        }
+        continue;
+      }
       if (i.cookoff) {
         // A fuel fireball, not a shell burst: it has its own particles and smoke.
         if (!this.cookOffsSeen.has(i.id)) {
@@ -1655,6 +1697,30 @@ export class MapView {
     const ground = (x: number, y: number) => this.elevAt(x, y);
     for (const e of match.entities) {
       if (e.wreck) continue;
+      if (e.mounts) {
+        // Each round leaves whichever firing mount faces it best, like the Battle Ship's.
+        const rounds = byGun.get(e.id);
+        const firing = e.mounts.flatMap((m, i) => (m.fire ? [{ m, i }] : []));
+        if (!rounds?.length || firing.length === 0) continue;
+        const p = this.lerpEnt(e);
+        const size = this.spriteOf(e)?.drawSize ?? 48;
+        const reach = feuerwirbelMuzzleReachWorld(catalog(e.type).radius);
+        const z = this.elevAt(p.x, p.y) + (FEUERWIRBEL_BORE_LIFT * size) / ISO_ELEVATION;
+        const off = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+        for (const { m, i } of firing) {
+          const at = twinCiwsMountPoint({ ...p, type: e.type }, i);
+          const mine = rounds.filter((r) => {
+            const a = Math.atan2(r.y - p.y, r.x - p.x);
+            return firing.reduce((best, f) => (off(a, f.m.facing) < off(a, best.m.facing) ? f : best)).i === i;
+          });
+          const muzzle = { x: at.x + Math.cos(m.facing) * reach, y: at.y + Math.sin(m.facing) * reach, z };
+          for (const tr of ciwsTracers(muzzle, mine, ground, now, ts)) {
+            this.tracers.push(tr);
+            this.barrageLandAt.set(tr.id, tracerLandsAt(tr));
+          }
+        }
+        continue;
+      }
       if (e.type === "walker" || e.type === "cyborg") {
         const rounds = byGun.get(e.id);
         if (!rounds?.length) continue;
@@ -2307,6 +2373,7 @@ export class MapView {
 
   destroy(): void {
     this.destroyed = true;
+    closeConfirm();
     cancelAnimationFrame(this.raf);
     window.removeEventListener("keydown", this.onKey, true);
     window.removeEventListener("keyup", this.onKeyUp, true);
@@ -2623,6 +2690,8 @@ export class MapView {
   private onKey = (e: KeyboardEvent): void => {
     const tag = (e.target as HTMLElement | null)?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    // The Delete / Sell warning owns the keyboard until it is answered.
+    if (confirmOpen()) return;
     const k = e.key.toLowerCase();
     if (k === "control") {
       this.ctrlHeld = true;
@@ -2682,6 +2751,11 @@ export class MapView {
     if (k === SPECIAL_HOTKEY) {
       e.preventDefault();
       this.specialSelected();
+      return;
+    }
+    if (k === DELETE_HOTKEY) {
+      e.preventDefault();
+      this.deleteSelected();
       return;
     }
     if (k === STOP_HOTKEY) {
@@ -2794,6 +2868,60 @@ export class MapView {
       if (!seen.has(id)) ids.push(id);
     }
     if (ids.length) this.command({ type: "cmd.stop", ids });
+  }
+
+  /** Own structures in the selection that can be sold: not the Core, not a captured civilian building. */
+  private ownSellable(): EntityView[] {
+    const out: EntityView[] = [];
+    for (const id of this.selected) {
+      const ent = this.currById.get(id);
+      if (!ent || ent.ownerId !== this.curr.youPlayerId || ent.kind !== "building" || ent.wreck || ent.hp <= 0) continue;
+      if (ent.type === "core" || isCivilianType(ent.type)) continue;
+      out.push(ent);
+    }
+    return out;
+  }
+
+  /** Own units and structures Delete may scrap: everything but the Core, the Rig, and captured civilian buildings. */
+  private ownDeletable(): EntityView[] {
+    const out: EntityView[] = [];
+    for (const id of this.selected) {
+      const ent = this.currById.get(id);
+      if (!ent || ent.ownerId !== this.curr.youPlayerId || ent.wreck || ent.hp <= 0) continue;
+      if (ent.type === "core" || ent.type === "rig") continue;
+      if (ent.kind === "building" && isCivilianType(ent.type)) continue;
+      out.push(ent);
+    }
+    return out;
+  }
+
+  /** Ask first, then scrap the selection for nothing. The ids are fixed when the warning opens. */
+  deleteSelected(): void {
+    const list = this.ownDeletable();
+    if (list.length === 0) return;
+    const ids = list.map((e) => e.id);
+    showConfirm({
+      title: list.length === 1 ? `Delete ${catalog(list[0]!.type).name}?` : `Delete ${list.length} selected?`,
+      body: "Destroyed on the spot, with no scrap back. This cannot be undone.",
+      yes: "Delete",
+      onYes: () => this.command({ type: "cmd.delete", ids }),
+    });
+  }
+
+  /** Ask first, then sell the selected structures for their refund. */
+  sellSelected(): void {
+    const list = this.ownSellable();
+    if (list.length === 0) return;
+    const refund = list.reduce((sum, e) => sum + (e.ruined ? 0 : Math.floor(catalog(e.type).cost * SELL_REFUND)), 0);
+    const ids = list.map((e) => e.id);
+    showConfirm({
+      title: list.length === 1 ? `Sell ${catalog(list[0]!.type).name}?` : `Sell ${list.length} structures?`,
+      body: `Returns ${refund} scrap. Anyone inside walks out.`,
+      yes: "Sell",
+      onYes: () => {
+        for (const id of ids) this.command({ type: "cmd.sell", id });
+      },
+    });
   }
 
   private aimingForceAttack(): boolean {
@@ -2938,7 +3066,7 @@ export class MapView {
     return out;
   }
 
-  /** Own Battle Ships in the selection whose searchlight burns: what Rotate light swings. */
+  /** Own Battle Ships and Titans in the selection whose lamp burns: what Rotate light swings. */
   private ownShipLampIds(): number[] {
     const out: number[] = [];
     for (const id of this.selected) {
@@ -3709,7 +3837,8 @@ export class MapView {
     if (!shift) this.selected.clear();
     for (const e of this.curr.entities) {
       if (e.kind !== "unit" || e.ownerId !== this.curr.youPlayerId || e.wreck || e.garrisonedIn) continue;
-      // A running torpedo is nobody's to command.
+      // A shut-down Cyborg takes no orders; a running torpedo is nobody's to command.
+      if (e.shutdown) continue;
       if (isTorpedoBody(e.type)) continue;
       const p = this.lerpEnt(e);
       const s = this.toScreen(p.x, p.y);
@@ -3742,7 +3871,7 @@ export class MapView {
       .map((id) => this.currById.get(id))
       .filter((e): e is EntityView => !!e && !e.wreck && e.hp > 0);
     const you = this.curr.youPlayerId;
-    const own = selected.filter((e) => e.ownerId === you);
+    const own = selected.filter((e) => e.ownerId === you && !e.shutdown);
     if (own.length === 0 && !selected.some((e) => e.garrison?.ownerId === you)) return;
     const producers = own.filter(isProducerView);
     if (producers.length > 0 && !own.some((e) => e.kind === "unit")) {
@@ -4125,6 +4254,7 @@ export class MapView {
     this.collectShipWakes(items);
     this.collectMuzzleSmoke(items);
     this.collectFires(items, w, h);
+    this.collectNukeScorch(items);
     this.collectAirdrops(items, w, h);
     for (const m of this.takeMoveClicks()) {
       items.push({
@@ -4138,6 +4268,7 @@ export class MapView {
     }
     items.sort(compareDrawOrder);
     for (const it of items) it.run();
+    this.flushWorkBars();
     // Over the ground and everything on it; shots and blasts after stay bright in the dark.
     this.drawNight();
 
@@ -4181,6 +4312,8 @@ export class MapView {
     this.drawBarrageTracers();
     // Complete fog of war goes over everything in the world; only the HUD draws above it.
     if (bake) this.drawShroud();
+    // A reactor's cloud towers over the fog: everyone sees it go up, wherever it is.
+    this.drawNukes();
 
     const toPlace = this.placeMode ? this.readyBuilding() : null;
     if (toPlace && this.mouseX >= 0) {
@@ -4219,6 +4352,22 @@ export class MapView {
     this.drawDroneLeash();
     this.drawRadarReach();
     this.drawSonarContacts();
+    this.drawThermalContacts();
+  }
+
+  /** What your Cyborgs read through the fog: a soldier's heat, or a hull under the APS scan grid. */
+  private drawThermalContacts(): void {
+    const contacts = this.curr.thermal;
+    if (!contacts?.length) return;
+    const now = performance.now();
+    const unit = this.ts() * 2;
+    const t = Math.min(1, (now - this.snapAt) / 100);
+    for (const c of contacts) {
+      const prev = this.prevThermalById.get(c.id);
+      const s = this.toScreen(prev ? prev.x + (c.x - prev.x) * t : c.x, prev ? prev.y + (c.y - prev.y) * t : c.y);
+      const draw = c.armored ? drawScanContact : drawHeatContact;
+      draw(this.ctx, s.x, s.y, { nowMs: now, id: c.id, unit });
+    }
   }
 
   /** Submarines your Destroyers hear: a ping on the water over the fog, seen or not. */
@@ -4277,7 +4426,17 @@ export class MapView {
     for (const { e, facing } of lamps) {
       const c = Math.cos(facing);
       const s = Math.sin(facing);
-      for (const b of towerBlobs) lay(e.x + c * b.d, e.y + s * b.d, b.r, b.a, "tower");
+      const at = e.kind === "unit" ? this.lerpEnt(e) : e;
+      // A Titan on its leg jets tips the lamp down onto one wide pool ahead of it.
+      if (lampPools(e)) {
+        const ahead = TITAN_LAMP_POOL_AHEAD_TILES * ts;
+        const r = TITAN_LAMP_POOL_RADIUS_TILES * ts;
+        // Two stacked pools: a flat bright disc with a soft rim, not a glow fading from the middle.
+        lay(at.x + c * ahead, at.y + s * ahead, r * 1.3, 0.9, "tower");
+        lay(at.x + c * ahead, at.y + s * ahead, r * 0.9, 0.7, "tower");
+        continue;
+      }
+      for (const b of towerBlobs) lay(at.x + c * b.d, at.y + s * b.d, b.r, b.a, "tower");
     }
     const headHalf = (HEADLIGHT_HALF_DEG * Math.PI) / 180;
     for (const e of this.curr.entities) {
@@ -4556,23 +4715,69 @@ export class MapView {
       ctx.globalCompositeOperation = "source-over";
     }
     if (glow <= 0) {
-      const reach = SPOTLIGHT_REACH_TILES * this.ts();
-      const half = (SPOTLIGHT_HALF_DEG * Math.PI) / 180;
-      ctx.setLineDash([5, 6]);
-      ctx.lineWidth = 1.25;
-      ctx.strokeStyle = "rgba(255, 226, 150, 0.55)";
+      // By day a selected lamp of yours (Watch Tower, Fire-Control Tower, Spotlight) shows where its beam would fall.
       for (const { e, facing } of lamps) {
-        if (e.type !== "tower" || !this.selected.has(e.id) || e.ownerId !== this.curr.youPlayerId) continue;
-        const pts = beamPolygon(e.x, e.y, facing, reach, half, 16).map((p) => this.toScreen(p.x, p.y));
-        ctx.beginPath();
-        pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
-        ctx.closePath();
-        ctx.stroke();
+        if (e.kind !== "building" || !this.selected.has(e.id) || e.ownerId !== this.curr.youPlayerId) continue;
+        this.drawBeamOutline(e.x, e.y, facing, false);
       }
-      ctx.setLineDash([]);
+    }
+    // A selected Titan of yours shows its lamp's reach day and night: the beam's cone, or aloft the pool's ring.
+    for (const { e, facing } of lamps) {
+      if (e.type !== "titan" || !this.selected.has(e.id) || e.ownerId !== this.curr.youPlayerId) continue;
+      const at = this.lerpEnt(e);
+      if (lampPools(e)) this.drawPoolOutline(at.x, at.y, facing);
+      else this.drawBeamOutline(at.x, at.y, facing, false);
     }
     ctx.restore();
     this.lensAt.clear();
+  }
+
+  /**
+   * A building lamp's beam on the ground, dashed: the cone a selected lamp lights, or the one a
+   * placement ghost will light. `fill` washes the cone faintly, for the ghost.
+   */
+  private drawBeamOutline(wx: number, wy: number, facing: number, fill: boolean): void {
+    const ctx = this.ctx;
+    const reach = SPOTLIGHT_REACH_TILES * this.ts();
+    const half = (SPOTLIGHT_HALF_DEG * Math.PI) / 180;
+    const pts = beamPolygon(wx, wy, facing, reach, half, 16).map((p) => this.toScreen(p.x, p.y));
+    ctx.save();
+    ctx.beginPath();
+    pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+    ctx.closePath();
+    if (fill) {
+      ctx.fillStyle = "rgba(255, 226, 150, 0.12)";
+      ctx.fill();
+    }
+    ctx.setLineDash([5, 6]);
+    ctx.lineWidth = 1.25;
+    ctx.strokeStyle = fill ? "rgba(255, 226, 150, 0.8)" : "rgba(255, 226, 150, 0.55)";
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** A Titan aloft: the dashed ring of the one pool its lamp lights, out ahead along `facing`. */
+  private drawPoolOutline(wx: number, wy: number, facing: number): void {
+    const ctx = this.ctx;
+    const ts = this.ts();
+    const ahead = TITAN_LAMP_POOL_AHEAD_TILES * ts;
+    const r = TITAN_LAMP_POOL_RADIUS_TILES * ts;
+    const cx = wx + Math.cos(facing) * ahead;
+    const cy = wy + Math.sin(facing) * ahead;
+    ctx.save();
+    ctx.beginPath();
+    for (let i = 0; i <= 32; i++) {
+      const a = (i / 32) * Math.PI * 2;
+      const p = this.toScreen(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.closePath();
+    ctx.setLineDash([5, 6]);
+    ctx.lineWidth = 1.25;
+    ctx.strokeStyle = "rgba(255, 226, 150, 0.55)";
+    ctx.stroke();
+    ctx.restore();
   }
 
   /**
@@ -4653,14 +4858,14 @@ export class MapView {
   }
 
   /**
-   * Faint blue dashed ring of a selected CIWS, RAM, or Flak's reach, the reach the sim
-   * fires to (radar-reach.ts): Max range when it is set. The CIWS reaches
+   * Faint blue dashed ring of a selected CIWS, RAM, Flak 37 or Pak 43's reach, the
+   * reach the sim fires to (radar-reach.ts): Max range when it is set. The CIWS reaches
    * farther for a plane, so it shows that ring and a fainter one inside for the ground.
    */
   private drawRadarReach(): void {
     const you = this.curr.youPlayerId;
     const mounts = this.curr.entities.filter(
-      (e) => this.selected.has(e.id) && e.ownerId === you && e.hp > 0 && !e.wreck && (radarLaidOf(e.type) || e.type === "flak"),
+      (e) => this.selected.has(e.id) && e.ownerId === you && e.hp > 0 && !e.wreck && showsReachRing(e.type),
     );
     if (mounts.length === 0) return;
     const ts = this.ts();
@@ -5914,10 +6119,13 @@ export class MapView {
     };
     for (const e of this.curr.entities) cover(e);
     for (const e of this.ghosts.values()) cover(e);
+    const blastR = TITAN_NUKE.radiusTiles * ts;
     for (const it of decorFor(map).standing) {
       if (built.has(it.ty * w + it.tx) || !this.known(it.tx, it.ty)) continue;
       const wx = (it.tx + it.ox) * ts;
       const wy = (it.ty + it.oy) * ts;
+      // A reactor blast levels every bush and signpost in reach; boulders stay.
+      if ((it.kind === "bush" || it.kind === "sign") && this.nukeZones.some((z) => Math.hypot(z.x - wx, z.y - wy) <= blastR)) continue;
       const p = this.toScreen(wx, wy);
       if (p.x < -64 || p.y < -16 || p.x > vw + 64 || p.y > vh + 64) continue;
       const faces = DECOR_FACES[it.kind];
@@ -6726,6 +6934,18 @@ export class MapView {
     if (!e.wreck) this.drawShipLamp(e, facing, ox, oy, size);
   }
 
+  /** The Feuerwirbel's two CIWS mounts, each on its ring and its own facing row, far one first. */
+  private drawTwinMounts(mounts: NonNullable<EntityView["mounts"]>, facing: number, ox: number, oy: number, size: number): void {
+    const sheet = FEUERWIRBEL_CIWS_SHEET;
+    if (!sheet.image.complete || sheet.image.naturalWidth === 0) return;
+    const cell = sheet.frameSize;
+    const left = ox - size / 2;
+    const top = oy - size * FEUERWIRBEL_SPRITE.contactY;
+    for (const l of feuerwirbelMountLayers(facing, mounts.map((m) => m.facing), size, this.ts())) {
+      this.ctx.drawImage(sheet.image, 0, l.row * cell, cell, cell, left + l.dx, top + l.dy, size, size);
+    }
+  }
+
   /** The Battle Ship's searchlight on top of the fire-control director, turned like its beam. */
   private drawShipLamp(e: EntityView, facing: number, ox: number, oy: number, size: number): void {
     const mount = shipLampMount(facing, size, this.ts());
@@ -6737,12 +6957,32 @@ export class MapView {
     this.lensAt.set(e.id, pose);
   }
 
+  /**
+   * The Titan's big lamp on the torso top, between the pods, turned like its beam.
+   * (ox, oy) is the contact on screen. The braced and wading torsos ride lower in
+   * their sheets (12 and 32 of 192 cell px), so the lamp drops with them.
+   */
+  private drawTitanLamp(e: EntityView, ox: number, oy: number, size: number, def: UnitSpriteDef): void {
+    const drop = def === TITAN_BRACED_SPRITE ? 12 / 192 : def === TITAN_WADE_SPRITE ? 32 / 192 : 0;
+    const broken = !!e.crits?.includes("lamp");
+    const burning = e.spotFacing != null && e.hp > 0 && !broken;
+    const lit = burning ? lampGlow(daylightAt(this.curr.tick)) : 0;
+    const heading = this.spotShown.get(e.id) ?? e.spotFacing ?? e.facing;
+    const pose = drawSearchlightAt(this.ctx, ox, oy - size * (0.5 - drop), size * 0.021, heading, { lit, broken });
+    this.lensAt.set(e.id, pose);
+  }
+
   private drawSpritedUnit(e: EntityView, def: UnitSpriteDef): void {
     const ctx = this.ctx;
     const p = this.lerpEnt(e);
     const size = def.drawSize;
     const s = this.toScreen(p.x, p.y);
-    s.y -= this.airLift(e);
+    const lift = this.airLift(e);
+    s.y -= lift;
+    // A Titan on its leg jets: burner flames under the feet, drawn before the body covers their roots.
+    if (e.type === "titan" && lift > 0.5 && !e.jet?.crash && !e.wreck) {
+      drawTitanThrust(this.ctx, s, { x: s.x, y: s.y + lift }, size, 1, performance.now(), e.id);
+    }
     const hex = this.ownerColor(e);
     const dir = facingToIso(p.facing, this.ts());
     const turretDir = facingToIso(p.turretFacing ?? p.facing, this.ts());
@@ -6810,6 +7050,8 @@ export class MapView {
       }
     }
     if (e.wreck && !corpse && sheet === def) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
+    // A shut-down Cyborg is dark: the machine is off.
+    else if (!e.wreck && e.shutdown) ctx.filter = SHUTDOWN_UNIT_FILTER;
     // A map's neutral unit is grey: no one's colours, everyone's enemy.
     else if (!e.wreck && !e.ownerId) ctx.filter = NEUTRAL_UNIT_FILTER;
     // The ship's mounts are placed on the sim's own spots: no ground sink under the hull.
@@ -6843,6 +7085,9 @@ export class MapView {
     }
     // A sunk hulk has its superstructure and turrets baked in; the grey stand-in still needs them.
     if (drawn && e.ship && (!e.wreck || sheet === def)) this.drawShipLayers(e, p.facing, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size);
+    // A wrecked Feuerwirbel's mounts are torn off; its hulk sheet shows the empty rings.
+    if (drawn && e.mounts && !e.wreck) this.drawTwinMounts(e.mounts, p.facing, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size);
+    if (drawn && e.type === "titan" && !e.wreck) this.drawTitanLamp(e, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size, def);
     ctx.restore();
     ctx.restore();
     if (drawn && e.ship && !e.wreck) {
@@ -6861,6 +7106,21 @@ export class MapView {
       const now = performance.now();
       const muzzles = gatlingMuzzles(s.x, s.y, size, p.turretFacing ?? p.facing, e.gatling.arms, e.gatling.off);
       muzzles.forEach((m, i) => drawGatlingFlash(ctx, m, size, now, e.id + i * 2));
+    }
+    if (drawn && e.mounts && !e.wreck) {
+      // Each CIWS mount flashes at its own barrels, on its own bearing.
+      const now = performance.now();
+      const cy = s.y + hullShiftY + unitGroundSink(size);
+      e.mounts.forEach((m, i) => {
+        if (!m.fire) return;
+        const muzzle = feuerwirbelMountMuzzle(s.x + hullShiftX, cy, i, p.facing, m.facing, size, this.ts());
+        drawGatlingFlash(ctx, muzzle, size * 0.45, now, e.id + i * 7);
+      });
+    }
+    if (drawn && hullFlamerOf(e.type) && !e.wreck && e.mgAmmo !== 0) {
+      // The igniter at the bow projector stays lit while there is fuel to light.
+      const m = feuerwirbelNozzle(s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), p.facing, size, this.ts());
+      drawPilotLight(ctx, m.x, m.y, performance.now(), e.id);
     }
     if (drawn && e.ciws?.fire && !e.wreck) {
       const m = roofCiwsMuzzle(s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size, e.ciws.facing);
@@ -6888,6 +7148,7 @@ export class MapView {
         e.id,
       );
     }
+    if (drawn && !e.wreck && e.shutdown) drawShutdownMark(ctx, s.x, s.y + unitGroundSink(size), size, performance.now(), e.id);
     if (drawn && !e.wreck && isInfantryType(e.type) && !e.swimming) {
       const heat = this.fireHeatAt(p.x, p.y);
       if (heat > 0) drawBodyFlames(ctx, s.x, s.y, size, heat, performance.now(), e.id);
@@ -6921,8 +7182,10 @@ export class MapView {
     if (!e.wreck) this.drawGarrisonBars(e, right + 4, head - 2);
     if (e.tend != null && !e.wreck) this.drawHealMark(e);
     this.drawScoutBar(e, s.x - size * 0.22, barBase - 6);
-    this.drawCrits(e, right + 2, head - 18);
+    // The force field stacks a second bar over the health bar: the icons clear both.
+    this.drawCrits(e, right + 2, e.field && !e.wreck ? Math.min(head - 18, barBase - 27) : head - 18);
     this.drawDeployProgress(e, s.x - size * 0.45, s.y + 6, size * 0.9);
+    this.drawBuildProgress(e, s.x - size * 0.45, s.y + 6, size * 0.9);
     if (e.type === "rig" && (e.state === "deploy" || e.state === "undeploy")) {
       const prog = e.deployProgress ?? 0;
       const footprint = this.ts() * (1 + 2 * prog);
@@ -7222,7 +7485,8 @@ export class MapView {
     const blend = Math.min(1, (now - this.snapAt) / 100);
     const live = new Set<number>();
     for (const e of this.curr.entities) {
-      if (e.air?.phase !== "crash") continue;
+      // A plane going down, or a Titan falling dead off its leg jets.
+      if (e.air?.phase !== "crash" && !e.jet?.crash) continue;
       live.add(e.id);
       const prev = this.prevById.get(e.id);
       const x = prev ? prev.x + (e.x - prev.x) * blend : e.x;
@@ -7564,6 +7828,27 @@ export class MapView {
       const from = { x: s.x + lens.x, y: s.y + unitGroundSink(size) + lens.y };
       drawLaserBeam(ctx, from, this.toScreen(end.x, end.y), now, e.id);
     }
+    this.drawUplinks(now);
+  }
+
+  /** A Cyborg Commander's uplink to the shut-down Cyborg he is taking over, with its progress ring. */
+  private drawUplinks(now: number): void {
+    const ctx = this.ctx;
+    for (const e of this.curr.entities) {
+      const link = e.takeover;
+      if (!link || e.wreck) continue;
+      const boss = this.curr.entities.find((o) => o.id === link.by);
+      if (!boss || boss.wreck) continue;
+      const bp = this.lerpEnt(boss);
+      const cp = this.lerpEnt(e);
+      const bossSize = spriteFor(boss.type, boss.stance)?.drawSize ?? 20;
+      const size = spriteFor(e.type, e.stance)?.drawSize ?? 20;
+      const bs = this.toScreen(bp.x, bp.y);
+      const cs = this.toScreen(cp.x, cp.y);
+      const from = { x: bs.x, y: bs.y + unitGroundSink(bossSize) - bossSize * 0.55 };
+      const to = { x: cs.x, y: cs.y + unitGroundSink(size) - size * 0.35 };
+      drawUplink(ctx, from, to, link.u, size * 0.45, now, e.id);
+    }
   }
 
   /** Hottest burning patch under a ground point, 0–1. */
@@ -7574,6 +7859,44 @@ export class MapView {
       heat = Math.max(heat, patchHeat(f.life, f.lifeMax));
     }
     return heat;
+  }
+
+  /** Ground zero on screen and the blast radius as screen half-axes (2:1 view). */
+  private nukeFrame(n: { x: number; y: number }): { g: IsoPt; rx: number; ry: number } {
+    const elev = this.elevAt(n.x, n.y);
+    const g = this.toScreen(n.x, n.y, elev);
+    const r = (TITAN_NUKE.radiusTiles * this.ts()) / Math.SQRT2;
+    const ex = this.toScreen(n.x + r, n.y - r, elev);
+    const ey = this.toScreen(n.x + r, n.y + r, elev);
+    return { g, rx: Math.abs(ex.x - g.x), ry: Math.abs(ey.y - g.y) };
+  }
+
+  /** Burned ground at every recent ground zero, under everything standing. */
+  private collectNukeScorch(items: DrawItem[]): void {
+    const now = performance.now();
+    this.nukes = this.nukes.filter((n) => now - n.at < NUKE_SCORCH_MS);
+    for (const n of this.nukes) {
+      items.push({
+        layer: GROUND_DECAL_DRAW_LAYER,
+        z: isoDepth(n.x, n.y),
+        run: () => {
+          const f = this.nukeFrame(n);
+          drawNukeScorch(this.ctx, f.g, f.rx, f.ry, now - n.at, n.id);
+        },
+      });
+    }
+  }
+
+  /** The blasts themselves: over everything in the world, the flash over the whole view. */
+  private drawNukes(): void {
+    const now = performance.now();
+    for (const n of this.nukes) {
+      const age = now - n.at;
+      if (age > NUKE_FX_MS) continue;
+      const f = this.nukeFrame(n);
+      drawNuke(this.ctx, f.g, f.rx, f.ry, age, n.id);
+    }
+    for (const n of this.nukes) drawNukeFlash(this.ctx, now - n.at);
   }
 
   /** The Pyro's tanks going up: a boiling fireball, fuel thrown clear, and a tall column of black smoke. */
@@ -8095,7 +8418,42 @@ export class MapView {
 
   private drawDeployProgress(e: EntityView, x: number, y: number, w: number): void {
     if (e.state !== "deploy" && e.state !== "undeploy") return;
-    const p = Math.max(0, Math.min(1, e.deployProgress ?? 0));
+    const label = e.state === "undeploy" ? "PACK" : "DEPLOY";
+    this.drawWorkBar(label, e.deployProgress ?? 0, x, y, w);
+  }
+
+  /** An engineer at work shows the job's progress under his feet, like a Rig unpacking. */
+  private drawBuildProgress(e: EntityView, x: number, y: number, w: number): void {
+    if (e.state !== "build" || e.wreck || e.garrisonedIn) return;
+    const p = e.buildSite?.progress ?? e.bridgeSite?.progress ?? e.fieldSites?.[0]?.progress;
+    if (p == null) return;
+    // A soldier is narrower than the label; widen the bar about his middle so it still reads.
+    const bw = Math.max(w, BUILD_BAR_MIN_W);
+    this.drawWorkBar("BUILD", p, x - (bw - w) / 2, y, bw);
+  }
+
+  /** Work bars queued this frame. They paint after the world so a tree or roof in front cannot hide them. */
+  private workBars: (() => void)[] = [];
+
+  /** The amber bar and percent shared by deploying, packing, and building. Queued; see `flushWorkBars`. */
+  private drawWorkBar(label: string, progress: number, x: number, y: number, w: number): void {
+    const alpha = this.ctx.globalAlpha;
+    this.workBars.push(() => {
+      this.ctx.globalAlpha = alpha;
+      this.paintWorkBar(label, progress, x, y, w);
+    });
+  }
+
+  private flushWorkBars(): void {
+    const ctx = this.ctx;
+    const prev = ctx.globalAlpha;
+    for (const bar of this.workBars) bar();
+    this.workBars.length = 0;
+    ctx.globalAlpha = prev;
+  }
+
+  private paintWorkBar(label: string, progress: number, x: number, y: number, w: number): void {
+    const p = Math.max(0, Math.min(1, progress));
     const ctx = this.ctx;
     ctx.fillStyle = "#111";
     ctx.fillRect(x, y + 2, w, 5);
@@ -8107,7 +8465,6 @@ export class MapView {
     ctx.font = "10px 'Share Tech Mono', monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = "#e8dcc4";
-    const label = e.state === "undeploy" ? "PACK" : "DEPLOY";
     ctx.fillText(`${label} ${Math.round(p * 100)}%`, x + w / 2, y + 16);
   }
 
@@ -8379,6 +8736,8 @@ export class MapView {
       const west = this.toScreen(x, y + bh, elev);
       const n = this.toScreen(x, y, elev);
       const ctx = this.ctx;
+      // A lamp building shows the cone its beam will light, turned with the ghost.
+      if (hasSpotlight(type)) this.drawBeamOutline(site.x, site.y, facing, true);
       ctx.save();
       ctx.globalAlpha = 0.28;
       ctx.fillStyle = top;
@@ -9453,6 +9812,11 @@ export class MapView {
       ctx.fillRect((c.x / ts) * scale - 4, (c.y / ts) * scale - 4, 8, 8);
       ctx.fillStyle = "#6ee6be";
       ctx.fillRect((c.x / ts) * scale - 2, (c.y / ts) * scale - 2, 4, 4);
+    }
+    // Cyborg contacts: orange for heat, cyan for a hull on the APS radar.
+    for (const c of this.curr.thermal ?? []) {
+      ctx.fillStyle = c.armored ? "#78e1ff" : "#e0781a";
+      ctx.fillRect((c.x / ts) * scale - 1.5, (c.y / ts) * scale - 1.5, 3, 3);
     }
   }
 }

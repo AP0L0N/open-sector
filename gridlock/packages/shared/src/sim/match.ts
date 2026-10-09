@@ -10,6 +10,7 @@ import {
   isTransportType,
   leavesRubble,
   leavesWreck,
+  nukesOnDeath,
   NEUTRAL_OWNER,
   START_SCRAP,
   TICK_DT,
@@ -23,7 +24,8 @@ import { buildingCenter, destroyEntity, initGrids, makeEntity, tileCenter } from
 import { aircraftDown, beginAircraftCrash, isAirborne, tickAir } from "./air.js";
 import { ejectParatroopers, loseRiders, syncPlaneRiders, tickChutes, tickCrates, tickMines, tickPlaneBoarding } from "./airdrop.js";
 import { tickDrones } from "./drone.js";
-import { tickJets } from "./jet.js";
+import { beginJetCrash, tickJets } from "./jet.js";
+import { detonateNuke } from "./nuke.js";
 import { tickCapture } from "./capture.js";
 import { detachGarrisoned, enterGarrison, killGarrison, manGun, spillGarrison, tickGarrison, tickGarrisonCare } from "./garrison.js";
 import { buildPatrolRoute } from "./patrol.js";
@@ -59,6 +61,7 @@ import { keepRubbleStanding, toRubble } from "./rubble.js";
 import { toWreck } from "./wreck.js";
 import { freshClutterHp } from "./clutter.js";
 import { tickPower } from "./power.js";
+import { tickCyborgLink } from "./cyborg-link.js";
 import { holdSightKeys } from "./vision.js";
 
 export function createMatch(
@@ -274,6 +277,7 @@ function stepHeld(state: MatchState, dt: number): void {
   // Only rounds aimed at a bridge hurt it; every other knock this step is undone below.
   const bridgeHp = guardBridges(state);
   tickPower(state);
+  tickCyborgLink(state);
   tickSmoke(state, dt);
   tickSpotlights(state, dt);
   tickStance(state);
@@ -366,6 +370,12 @@ function reapDead(state: MatchState): void {
       e.hp = 1;
       continue;
     }
+    // A Titan shot down in the air falls first; it goes up when it hits the ground.
+    if (e.jet?.crash && e.jet.alt > 0) {
+      e.hp = 1;
+      continue;
+    }
+    if (!e.wreck && beginJetCrash(e)) continue;
     // A heap of rubble is already as low as it goes.
     if (keepRubbleStanding(e)) continue;
     // A house comes down into rubble that still takes the ground. Whoever was inside spills out.
@@ -381,6 +391,12 @@ function reapDead(state: MatchState): void {
     }
     if (!e.wreck && e.garrison.length && garrisonDiesWithHostOf(e.type)) {
       for (const u of killGarrison(state, e)) dead.push(u.id);
+    }
+    // The Titan's reactor: a small nuclear blast where it lies, and nothing left of the walker.
+    if (!e.wreck && nukesOnDeath(e.type) && e.garrisonedIn == null) {
+      detonateNuke(state, e);
+      dead.push(e.id);
+      continue;
     }
     // A tank that goes down with its LST, or flat under an Apocalypse, leaves no hulk of its own.
     if (!e.wreck && leavesWreck(e.type) && e.type !== "core" && e.type !== "rig" && e.garrisonedIn == null && !wasFlattened(e)) {

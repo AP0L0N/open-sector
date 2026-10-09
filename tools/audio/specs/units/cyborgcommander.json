@@ -47,6 +47,11 @@
     ],
     "shield_up": [
       "Shield restored."
+    ],
+    "takeover": [
+      "You belong to me now.",
+      "Override. Obey.",
+      "Rewriting your loyalty."
     ]
   },
   "sfx": {
@@ -91,6 +96,12 @@
       "duration": 3.0,
       "variants": 1,
       "influence": 0.6
+    },
+    "uplink": {
+      "prompt": "Sci-fi command uplink beam locking onto a machine: a warbling electronic carrier tone, fast modem-like data chatter and digital chirps, a rising resonant hum, close, no music, no voice",
+      "duration": 2.5,
+      "variants": 2,
+      "influence": 0.7
     }
   }
 }

@@ -4,7 +4,7 @@ import type { BuildingSpriteDef } from "./sprites.js";
 /** Buildings that train units. Full-strength overlay only while a job is running. */
 const PRODUCERS = new Set<EntityType>(["muster", "smelter", "armory"]);
 /** Keep a quiet always-on overlay: blinks, the Smelter's chimneys, the lab's coil. */
-const IDLE_ALWAYS = new Set<EntityType>(["core", "dynamo", "smelter", "research", "radar"]);
+const IDLE_ALWAYS = new Set<EntityType>(["core", "dynamo", "smelter", "research", "radar", "cyborgcentral"]);
 /** Chimney smoke never fades below this, so an idle Smelter still reads as lit. */
 const IDLE_SMOKE_GAIN = 0.75;
 
@@ -124,6 +124,21 @@ const DEFS: Partial<Record<EntityType, BuildingAnimDef>> = {
       { x: 210, y: 42, r: 5, color: "#ff5a4a", period: 2000, phase: 0.0, mode: "blink" },
     ],
     arcs: [{ x: 325, y: 167 }],
+  },
+  // Spots from tools/sprites/render_cyborgcentral.py (cyborgcentral.json): red sensor band, reactor core, emitter rings climbing the mast, mast lamp.
+  cyborgcentral: {
+    lights: [
+      { x: 202, y: 241, r: 7, color: "#ff5a48", period: 2200, phase: 0.0, mode: "pulse" },
+      { x: 189, y: 248, r: 7, color: "#ff5a48", period: 2200, phase: 0.15, mode: "pulse" },
+      { x: 175, y: 254, r: 7, color: "#ff5a48", period: 2200, phase: 0.3, mode: "pulse" },
+      { x: 143, y: 257, r: 7, color: "#ff5a48", period: 2600, phase: 0.5, mode: "pulse" },
+      { x: 285, y: 232, r: 13, color: "#7fe3ff", period: 1800, phase: 0.0, mode: "pulse" },
+      { x: 204, y: 122, r: 9, color: "#7fe3ff", period: 1500, phase: 0.0, mode: "pulse" },
+      { x: 204, y: 104, r: 9, color: "#7fe3ff", period: 1500, phase: 0.33, mode: "pulse" },
+      { x: 204, y: 86, r: 9, color: "#7fe3ff", period: 1500, phase: 0.66, mode: "pulse" },
+      { x: 204, y: 67, r: 5, color: "#ff5a4a", period: 1400, phase: 0.0, mode: "blink" },
+    ],
+    arcs: [{ x: 285, y: 222 }],
   },
   // Spots from tools/sprites/render_radar.py (radar.json): the scope-green window band, the mast lamp, the whip lamp.
   radar: {

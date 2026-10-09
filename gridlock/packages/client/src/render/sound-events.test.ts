@@ -114,6 +114,21 @@ describe("SoundTracker", () => {
     ]);
   });
 
+  it("hears a bow flamer's jet apart from its turret gatlings, one burst per squeeze", () => {
+    const t = new SoundTracker();
+    const ents = [unit(1, "feuerwirbel")];
+    t.step(snap({ entities: ents }), 0);
+    const glob = (id: number) => ({ id, fromId: 1, x: 0, y: 0, vx: 1, vy: 0, caliber: 1, bounced: false, flame: true });
+    const round = { id: 9, kind: "miss", fromId: 1, caliber: 13, x: 0, y: 0, vx: 0, vy: 0, ownerId: ME };
+    const evs = t.step(snap({ entities: ents, projectiles: [glob(1), glob(2)] as never, impacts: [round] as never }), 100);
+    assert.deepEqual(
+      kinds(evs, "fire").map((e) => (e as { weapon: string }).weapon).sort(),
+      ["flame", "small"],
+    );
+    assert.equal(kinds(t.step(snap({ entities: ents, projectiles: [glob(3)] as never }), 600), "fire").length, 0, "same squeeze");
+    assert.equal(kinds(t.step(snap({ entities: ents, projectiles: [glob(4)] as never }), 1700), "fire").length, 1, "next burst");
+  });
+
   it("throttles a machine gun's hitscan rounds into bursts", () => {
     const t = new SoundTracker();
     const ents = [unit(1, "gunner")];
@@ -186,14 +201,14 @@ describe("SoundTracker", () => {
     assert.equal(kinds(bang, "fire").length, 0);
   });
 
-  it("one Bofors burst covers the shells that follow, then the gun is heard again", () => {
+  it("the Flak is heard once a shell, every 0.4 s it fires", () => {
     const t = new SoundTracker();
     const flak = building(4, "flak");
     t.step(snap({ entities: [flak] }), 0);
     const shot = (id: number) => ({ id, fromId: 4, x: 4, y: 4, vx: 1, vy: 0, caliber: 37, bounced: false, flak: true, z: 3 });
     assert.equal(kinds(t.step(snap({ entities: [flak], projectiles: [shot(1)] as never }), 100), "fire").length, 1);
-    assert.equal(kinds(t.step(snap({ entities: [flak], projectiles: [shot(2)] as never }), 500), "fire").length, 0);
-    assert.equal(kinds(t.step(snap({ entities: [flak], projectiles: [shot(3)] as never }), 1700), "fire").length, 1);
+    assert.equal(kinds(t.step(snap({ entities: [flak], projectiles: [shot(2)] as never }), 500), "fire").length, 1);
+    assert.equal(kinds(t.step(snap({ entities: [flak], projectiles: [shot(3)] as never }), 900), "fire").length, 1);
   });
 
   it("one of your new structures goes up with its own setting-up sound; an enemy's is quiet", () => {
@@ -293,5 +308,62 @@ describe("Transport LST sounds", () => {
     const landed = t.step(snap({ entities: [ship(), a, b] }), 200);
     assert.equal(kinds(landed, "unitsfx").length, 1, "the ramp clangs once");
     assert.equal(kinds(landed, "voice").filter((e) => (e as { event: string }).event === "special").length, 1);
+  });
+});
+
+describe("SoundTracker cyborg link", () => {
+  const sfx = (evs: SoundEvent[]) => kinds(evs, "unitsfx").map((e) => `${(e as { type: string }).type}:${(e as { cue: string }).cue}`);
+  const says = (evs: SoundEvent[]) => kinds(evs, "announce").map((e) => (e as { event: string }).event);
+  const voices = (evs: SoundEvent[]) => kinds(evs, "voice").map((e) => `${(e as { type: string }).type}:${(e as { event: string }).event}`);
+
+  it("warns once when the link drops and once more when it comes back", () => {
+    const t = new SoundTracker();
+    t.step(snap({ entities: [unit(1, "cyborg")] }), 0);
+    assert.deepEqual(says(t.step(snap({ entities: [unit(1, "cyborg")] }, { cyborgShutdownIn: 4 }), 100)), ["cyborglinklost"]);
+    assert.deepEqual(says(t.step(snap({ entities: [unit(1, "cyborg")] }, { cyborgShutdownIn: 3 }), 200)), []);
+    assert.deepEqual(says(t.step(snap({ entities: [unit(1, "cyborg")] }), 300)), ["cyborglinkrestored"]);
+  });
+
+  it("powers your squad down with one line, not one per Cyborg", () => {
+    const t = new SoundTracker();
+    t.step(snap({ entities: [unit(1, "cyborg"), unit(2, "cyborg")] }, { cyborgShutdownIn: 1 }), 0);
+    const dark = t.step(snap({ entities: [unit(1, "cyborg", ME, { shutdown: true }), unit(2, "cyborg", ME, { shutdown: true })] }), 100);
+    assert.deepEqual(sfx(dark), ["cyborg:shutdown", "cyborg:shutdown"]);
+    assert.deepEqual(voices(dark), ["cyborg:shutdown"]);
+    assert.deepEqual(says(dark), ["cyborgsoffline"], "and no 'link restored' as the countdown clears");
+  });
+
+  it("an enemy Cyborg going dark is only heard where he stands", () => {
+    const t = new SoundTracker();
+    t.step(snap({ entities: [unit(1, "cyborg", "p2")] }), 0);
+    const dark = t.step(snap({ entities: [unit(1, "cyborg", "p2", { shutdown: true })] }), 100);
+    assert.deepEqual(sfx(dark), ["cyborg:shutdown"]);
+    assert.deepEqual(voices(dark), []);
+    assert.deepEqual(says(dark), []);
+  });
+
+  it("your Commander opens an uplink, and the Cyborg wakes up yours", () => {
+    const t = new SoundTracker();
+    const boss = unit(5, "cyborgcommander");
+    t.step(snap({ entities: [boss, unit(1, "cyborg", "p2", { shutdown: true })] }), 0);
+    const link = t.step(snap({ entities: [boss, unit(1, "cyborg", "p2", { shutdown: true, takeover: { by: 5, u: 0.1 } })] }), 100);
+    assert.deepEqual(sfx(link), ["cyborgcommander:uplink"]);
+    assert.deepEqual(voices(link), ["cyborgcommander:takeover"]);
+    const still = t.step(snap({ entities: [boss, unit(1, "cyborg", "p2", { shutdown: true, takeover: { by: 5, u: 0.6 } })] }), 200);
+    assert.deepEqual(sfx(still), [], "the uplink is heard as it opens");
+    const woke = t.step(snap({ entities: [boss, unit(1, "cyborg")] }), 300);
+    assert.deepEqual(sfx(woke), ["cyborg:reboot"]);
+    assert.deepEqual(voices(woke), ["cyborg:online"]);
+    assert.deepEqual(says(woke), ["cyborgacquired"]);
+  });
+
+  it("your dark Cyborgs waking on their own link: one 'link restored', not 'acquired'", () => {
+    const t = new SoundTracker();
+    const dark = (id: number) => unit(id, "cyborg", ME, { shutdown: true });
+    t.step(snap({ entities: [dark(1), dark(2)] }), 0);
+    const woke = t.step(snap({ entities: [unit(1, "cyborg"), unit(2, "cyborg")] }), 100);
+    assert.deepEqual(sfx(woke), ["cyborg:reboot", "cyborg:reboot"]);
+    assert.deepEqual(voices(woke), ["cyborg:online"]);
+    assert.deepEqual(says(woke), ["cyborglinkrestored"]);
   });
 });

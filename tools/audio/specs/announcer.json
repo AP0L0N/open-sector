@@ -34,6 +34,10 @@
     "cannotdeploy": ["Cannot deploy here."],
     "reinforcements": ["Reinforcements have arrived."],
     "newconstruction": ["New construction options."],
-    "sonarcontact": ["Sonar contact. Submarine detected.", "Sonar contact."]
+    "sonarcontact": ["Sonar contact. Submarine detected.", "Sonar contact."],
+    "cyborglinklost": ["Warning: cyborg link lost."],
+    "cyborglinkrestored": ["Cyborg link restored."],
+    "cyborgsoffline": ["Cyborgs offline."],
+    "cyborgacquired": ["Cyborg acquired."]
   }
 }

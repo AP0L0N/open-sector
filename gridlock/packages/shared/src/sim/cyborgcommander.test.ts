@@ -1,14 +1,17 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  COMMANDER_HP_REGEN_PER_SEC,
   COMMANDER_RANGE_TILES,
   CYBORG_LEGS_LOST_HP,
   FORCE_FIELD_DELAY,
+  FORCE_FIELD_DIVERT_MUL,
   FORCE_FIELD_DOWN_DELAY,
   FORCE_FIELD_HP,
+  FORCE_FIELD_REGEN_PER_SEC,
   LASER,
   LASER_FIRE_RADIUS,
-  LASER_LINE_DAMAGE,
+  LASER_ARMOR_DAMAGE,
   LASER_SWEEP_CYBORG_DAMAGE,
   LASER_SWEEP_HALF_DEG,
   TECH_REQUIRES,
@@ -80,7 +83,7 @@ describe("cyborg commander", () => {
     assert.equal(def.cost, 5000);
     assert.ok(TRAIN_TYPES.includes("cyborgcommander"));
     assert.equal(producerType("cyborgcommander"), "armory");
-    assert.equal(TECH_REQUIRES.cyborgcommander, "research");
+    assert.deepEqual(TECH_REQUIRES.cyborgcommander, ["research", "cyborgcentral"]);
     assert.equal(isCyborg("cyborgcommander"), true);
     assert.equal(isRepairableUnit("cyborgcommander"), true);
     assert.equal(hasForceField("cyborgcommander"), true);
@@ -123,7 +126,7 @@ describe("cyborg commander", () => {
       tickForceFields(state, TICK_DT);
     }
     assert.equal(cmd.field, FORCE_FIELD_HP);
-    // The plating does not heal on its own.
+    // The plating mends itself, but only slowly.
     assert.ok(cmd.hp < hp0);
   });
 
@@ -213,7 +216,7 @@ describe("cyborg commander", () => {
     cmd.order = { kind: "attack", targetId: tank.id };
     tickCombat(state, TICK_DT);
     assert.ok(cmd.laser?.line, "a line, not a sweep");
-    assert.equal(tank.hp, tank.hpMax - LASER_LINE_DAMAGE);
+    assert.equal(tank.hp, tank.hpMax - LASER_ARMOR_DAMAGE);
     runBeam(state, cmd);
     assert.equal(bystander.hp, bystander.hpMax, "the line does not sweep");
   });
@@ -237,7 +240,7 @@ describe("cyborg commander", () => {
     assert.equal(ownBorg.hp, ownBorg.hpMax - LASER_SWEEP_CYBORG_DAMAGE, "his own Cyborg takes the heavy cut");
     assert.equal(aside.hp, aside.hpMax, "off the line");
     assert.equal(behind.hp, behind.hpMax, "past the target the beam has stopped");
-    assert.equal(tank.hp, tank.hpMax - LASER_LINE_DAMAGE);
+    assert.equal(tank.hp, tank.hpMax - LASER_ARMOR_DAMAGE);
   });
 
   it("is stopped by a building in the way", () => {
@@ -298,5 +301,94 @@ describe("cyborg commander", () => {
     tickCombat(state, TICK_DT);
     assert.ok(cmd.laser?.line, "a line on the hull");
     assert.equal(standing(between), false, "the tree on the line burned");
+  });
+
+  it("mends his plating very slowly, a whole point at a time, up to full", () => {
+    const { state, a } = match();
+    const cmd = makeEntity(state, "cyborgcommander", a, tileCenter(20, state.tileSize), tileCenter(20, state.tileSize));
+    cmd.hp = 200;
+    const seconds = 20;
+    for (let i = 0; i < secondsToTicks(seconds); i++) {
+      state.tick++;
+      tickForceFields(state, TICK_DT);
+    }
+    assert.equal(cmd.hp, 200 + seconds * COMMANDER_HP_REGEN_PER_SEC);
+    assert.equal(Number.isInteger(cmd.hp), true);
+    cmd.hp = cmd.hpMax - 1;
+    for (let i = 0; i < secondsToTicks(10); i++) {
+      state.tick++;
+      tickForceFields(state, TICK_DT);
+    }
+    assert.equal(cmd.hp, cmd.hpMax);
+  });
+
+  it("puts the laser's power into the field: five times the points, five times the recharge", () => {
+    const { state, a, b } = match();
+    const cmd = makeEntity(state, "cyborgcommander", a, tileCenter(20, state.tileSize), tileCenter(20, state.tileSize));
+    const big = FORCE_FIELD_HP * FORCE_FIELD_DIVERT_MUL;
+    assert.equal(applyCommand(state, a, { type: "cmd.fielddivert", ids: [cmd.id], on: true }).ok, true);
+    assert.equal(cmd.fieldDivert, true);
+    assert.equal(snapshotFor(state, a).entities.find((e) => e.id === cmd.id)?.fieldDivert, true);
+    assert.equal(snapshotFor(state, b).entities.find((e) => e.id === cmd.id)?.fieldDivert, undefined, "the enemy is not told");
+
+    // One quiet tick past full: it climbs at the boosted rate toward the boosted cap.
+    const f0 = cmd.field ?? 0;
+    state.tick++;
+    tickForceFields(state, TICK_DT);
+    assert.ok(Math.abs((cmd.field ?? 0) - (f0 + FORCE_FIELD_REGEN_PER_SEC * FORCE_FIELD_DIVERT_MUL * TICK_DT)) < 1e-9);
+    for (let i = 0; i < secondsToTicks(10); i++) {
+      state.tick++;
+      tickForceFields(state, TICK_DT);
+    }
+    assert.equal(cmd.field, big);
+    assert.equal(snapshotFor(state, a).entities.find((e) => e.id === cmd.id)?.field?.max, big);
+
+    // A hit the normal field could not hold stays off his HP.
+    const hp0 = cmd.hp;
+    assert.equal(takeDamage(cmd, FORCE_FIELD_HP * 3, state.tick), 0);
+    assert.equal(cmd.hp, hp0);
+
+    // Back to the laser: the surplus bleeds off at once, and the normal rate returns.
+    cmd.field = big;
+    assert.equal(applyCommand(state, a, { type: "cmd.fielddivert", ids: [cmd.id], on: false }).ok, true);
+    assert.equal(cmd.fieldDivert, undefined);
+    assert.equal(cmd.field, FORCE_FIELD_HP);
+  });
+
+  it("cannot attack while the field has the laser's power, and fires again once it is back", () => {
+    const { state, a, b } = match();
+    const ts = state.tileSize;
+    const x = tileCenter(20, ts);
+    const y = tileCenter(60, ts);
+    const cmd = makeEntity(state, "cyborgcommander", a, x, y);
+    cmd.facing = 0;
+    const tank = at(state, "ss3", b, x, y, 0, COMMANDER_RANGE_TILES * ts * 0.6);
+    cmd.order = { kind: "attack", targetId: tank.id };
+    assert.equal(applyCommand(state, a, { type: "cmd.fielddivert", ids: [cmd.id], on: true }).ok, true);
+    assert.equal(cmd.order?.kind, undefined, "the attack order is dropped");
+
+    // A new order to fire is not taken, and an enemy in reach, even one he was told to shoot, is not shot.
+    applyCommand(state, a, { type: "cmd.attack", ids: [cmd.id], targetId: tank.id });
+    assert.notEqual(cmd.order?.kind, "attack");
+    cmd.order = { kind: "attack", targetId: tank.id };
+    for (let i = 0; i < 3; i++) tickCombat(state, TICK_DT);
+    assert.equal(!!cmd.laser, false);
+    assert.equal(tank.hp, tank.hpMax);
+
+    assert.equal(applyCommand(state, a, { type: "cmd.fielddivert", ids: [cmd.id], on: false }).ok, true);
+    cmd.order = { kind: "attack", targetId: tank.id };
+    tickCombat(state, TICK_DT);
+    assert.ok(cmd.laser?.line, "the laser cuts again");
+    assert.equal(tank.hp, tank.hpMax - LASER_ARMOR_DAMAGE);
+  });
+
+  it("only a Cyborg Commander of yours takes the field order", () => {
+    const { state, a, b } = match();
+    const cmd = makeEntity(state, "cyborgcommander", a, tileCenter(20, state.tileSize), tileCenter(20, state.tileSize));
+    const cy = makeEntity(state, "cyborg", a, tileCenter(22, state.tileSize), tileCenter(20, state.tileSize));
+    assert.equal(applyCommand(state, b, { type: "cmd.fielddivert", ids: [cmd.id], on: true }).ok, false);
+    assert.equal(applyCommand(state, a, { type: "cmd.fielddivert", ids: [cy.id], on: true }).ok, false);
+    assert.equal(cmd.fieldDivert, undefined);
+    assert.equal(cy.fieldDivert, undefined);
   });
 });

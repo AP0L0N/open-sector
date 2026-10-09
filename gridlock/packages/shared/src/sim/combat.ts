@@ -59,6 +59,15 @@ import {
   FLAK_SCATTER_FAR,
   FLAK_SCATTER_NEAR,
   FLAK_SHELL_SPEED,
+  FLAMER_SCATTER_ACROSS,
+  FLAMER_SPLASH,
+  HULL_FLAMER_ARC_DEG,
+  HULL_FLAMER_RANGE_TILES,
+  FEUERWIRBEL_MOUNT_HEAT,
+  FEUERWIRBEL_MOUNT_SHOTS_PER_TICK,
+  FEUERWIRBEL_MOUNT_TURN,
+  twinCiwsOf,
+  hullFlamerOf,
   antiAirGunOf,
   armorFirstOf,
   crewGunOf,
@@ -119,6 +128,7 @@ import {
   isRubble,
   isGarrisonable,
   NEUTRAL_OWNER,
+  isCyborg,
   isInfantryType,
   isSmokeShell,
   stanceOf,
@@ -136,6 +146,7 @@ import {
   torpedoesOf,
   isTorpedoBody,
   isLowFieldWork,
+  TITAN_POD_ARC_DEG,
 } from "../catalog.js";
 import { aimableBridge, bridgeSweep, strikeBridge, tagBridgeRounds } from "./bridge.js";
 import type { ImpactKind, ImpactView } from "../protocol.js";
@@ -228,18 +239,19 @@ import { setPath } from "./path.js";
 import { nextRand } from "./rng.js";
 import { isSupplyBullet, noteSupplyHit, stowedInTransport, supplyRiderFights, syncSupplyRiders } from "./supply.js";
 import { spawnSmokeCloud } from "./smoke.js";
-import { heGroundFire, stepFlame, throwFlame } from "./flame.js";
+import { burnShare, heGroundFire, hullHose, stepFlame, throwFlame } from "./flame.js";
 import { fireLaser } from "./laser.js";
 import { distToRoute } from "./patrol.js";
 import { activateSpatial, anyHostileNear, clearSpatial, queryCapsules, queryCircle, querySegment, spatialGrid, type SpatialGrid } from "./spatial.js";
 import { canSeeEntity, visionMask } from "./vision.js";
 import { hideScout, woundScout } from "./scout.js";
+import { twinCiwsMountPoint } from "./twin-ciws.js";
 import { escorting, reversing, stepTurn, turnToward, turnTurretTo, turnTurretToward } from "./orders.js";
 import { allyInLine, holdForAlly, needsClearLine } from "./lineoffire.js";
-import { airTargetSpreadMul, isAirborne, isCrashing, reachesAircraft, stepBomb } from "./air.js";
+import { airTargetSpreadMul, isAirborne, isCrashing, planeIsHigh, reachesAircraft, stepBomb } from "./air.js";
 import { stepCluster } from "./airdrop.js";
-import { projectileMeetsDrone, reachesDrone } from "./drone.js";
-import { reachesJet } from "./jet.js";
+import { projectileMeetsDrone, reachesDrone, reachesHighFlyer } from "./drone.js";
+import { jetAloft, reachesJet } from "./jet.js";
 import { nightSightMul, nightTiles } from "./night.js";
 import { afloat, armTorpedo, diving, hiddenSubmarine, surface, surfaceToStrike, torpedoCannotReach } from "./naval.js";
 import { shipHullT, shipKeelDist, shipMountPoint, turretBearing } from "./battleship.js";
@@ -368,7 +380,7 @@ export function tickCombat(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
     if (!canFight(e) || !supplyRiderFights(state, e)) continue;
     tickWeaponClocks(e, dt);
-    if (waterSilences(state, e) || garrisonIsHiding(state, e) || powerSilences(e)) continue;
+    if (waterSilences(state, e) || flightStowsGun(e) || garrisonIsHiding(state, e) || powerSilences(e)) continue;
     resolveTarget(state, e);
   }
   tickStance(state);
@@ -376,16 +388,18 @@ export function tickCombat(state: MatchState, dt: number): void {
   // Missiles launched later in this tick (a Rocketer, a Titan pod) are born at or after this id.
   const bornAt = state.nextId;
   for (const e of state.entities.values()) {
-    if (!canFight(e) || !supplyRiderFights(state, e) || waterSilences(state, e) || garrisonIsHiding(state, e) || powerSilences(e)) continue;
+    if (!canFight(e) || !supplyRiderFights(state, e) || waterSilences(state, e) || flightStowsGun(e) || garrisonIsHiding(state, e) || powerSilences(e)) continue;
     if (roofCiwsOf(e.type)) tickRoofCiws(state, e, dt, downed);
     if (e.ship) tickShipCiws(state, e, dt, downed);
     if (interceptRockets(state, e, downed)) continue;
+    if (e.twinCiws) tickTwinCiws(state, e, dt);
     fireAtCurrent(state, e, dt);
+    if (hullFlamerOf(e.type)) tickHullFlamer(state, e, dt);
   }
   // Rocket racks: their own clock, whatever the main gun is doing. Titan pods also pick their own target.
   for (const e of state.entities.values()) {
     if (!rocketsOf(e.type) || !canFight(e) || powerSilences(e)) continue;
-    tickRocketPods(state, e);
+    tickRocketPods(state, e, dt);
   }
   // The roof mount's first look ran before those launches. Catch the new missiles before they fly.
   for (const e of state.entities.values()) {
@@ -612,6 +626,86 @@ function tickRoofCiws(state: MatchState, e: Entity, dt: number, downed: Set<numb
   e.mgCooldown = TICK_DT;
 }
 
+/** Bow projector reach: its own base, plus the height bonus every gun gets. */
+function hullFlamerRange(state: MatchState, e: Entity): number {
+  return rangeTilesOf(e.type, entityHeight(state, e), HULL_FLAMER_RANGE_TILES) * state.tileSize;
+}
+
+/** Fire hurts it: a soldier or a soft vehicle in the open, or a house with an enemy garrison showing. */
+function flameWorthIt(state: MatchState, e: Entity, o: Entity): boolean {
+  if (o.id === e.id || o.hp <= 0 || o.wreck || allies(state, e.ownerId, o.ownerId)) return false;
+  if (o.kind === "unit") return burnShare(o) > 0;
+  return isGarrisonable(o.type) && garrisonIsHostile(state, e.ownerId, o) && garrisonLooksOccupied(state, e.ownerId, o);
+}
+
+/** The point lies inside the projector's arc off the nose. */
+function inBowArc(e: Entity, x: number, y: number): boolean {
+  return Math.abs(angleOff(e.facing, Math.atan2(y - e.y, x - e.x))) <= (HULL_FLAMER_ARC_DEG * Math.PI) / 180 + 1e-6;
+}
+
+/** A soldier of this side stands where the jet or its splash would reach him. */
+function friendInJet(state: MatchState, e: Entity, from: { x: number; y: number }, x: number, y: number): boolean {
+  const len = Math.hypot(x - from.x, y - from.y);
+  if (len < 1e-6) return false;
+  const ux = (x - from.x) / len;
+  const uy = (y - from.y) / len;
+  const pad = FLAMER_SPLASH + FLAMER_SCATTER_ACROSS;
+  for (const o of poolCircle(state, from.x, from.y, len + pad)) {
+    if (o.id === e.id || o.kind !== "unit" || o.hp <= 0 || o.wreck || o.garrisonedIn != null) continue;
+    if (!isInfantryType(o.type) || !allies(state, e.ownerId, o.ownerId) || isAirborne(o)) continue;
+    const dx = o.x - from.x;
+    const dy = o.y - from.y;
+    const along = dx * ux + dy * uy;
+    if (along < -o.radius || along > len + pad) continue;
+    if (Math.abs(dx * uy - dy * ux) <= o.radius + pad) return true;
+  }
+  return false;
+}
+
+/** The nearest thing inside the bow arc and the jet's reach that fire can hurt, seen by the side. */
+function bowFlameTarget(state: MatchState, e: Entity, range: number): Entity | undefined {
+  let best: Entity | undefined;
+  let bestD = range * range;
+  for (const o of poolCircle(state, e.x, e.y, range)) {
+    const d = (o.x - e.x) ** 2 + (o.y - e.y) ** 2;
+    if (d > bestD || !inBowArc(e, o.x, o.y) || !flameWorthIt(state, e, o)) continue;
+    if (!canSeeEntity(state, e.ownerId, o)) continue;
+    bestD = d;
+    best = o;
+  }
+  return best;
+}
+
+/**
+ * The Feuerwirbel's bow projector. Its own clock (mgCooldown) and fuel (mgAmmo),
+ * whatever the gatlings are doing. It never traverses: it burns the main target
+ * when that sits inside the arc off the nose and inside its reach, else the
+ * nearest soldier, soft vehicle, or manned house there. A stopped hull turns
+ * onto a main target close enough to burn. A force-attack on the ground burns
+ * that point once the nose bears. The jet holds while a friend stands in it.
+ */
+function tickHullFlamer(state: MatchState, e: Entity, dt: number): void {
+  if (e.mgAmmo <= 0 || e.garrisonedIn != null) return;
+  const range = hullFlamerRange(state, e);
+  const main = currentTarget(state, e);
+  const forced = e.order?.kind === "forceattack";
+  const point =
+    !main && forced && e.order?.x != null && e.order?.y != null ? { x: e.order.x, y: e.order.y } : null;
+  const want = main && flameWorthIt(state, e, main) ? main : point;
+  const wantDist = want ? Math.hypot(want.x - e.x, want.y - e.y) : Infinity;
+  // The driver brings the nose round onto the fight when it is close enough to burn.
+  if (want && wantDist <= range && e.waypoints.length === 0 && !immobilized(e) && !inBowArc(e, want.x, want.y)) {
+    turnToward(e, want.x, want.y, catalog(e.type).turnDegPerSec * hullTurnMul(e), dt);
+  }
+  if (e.mgCooldown > 0) return;
+  const aim = want && wantDist <= range && inBowArc(e, want.x, want.y) ? want : bowFlameTarget(state, e, range);
+  if (!aim) return;
+  const hose = hullHose(e);
+  // A forced burn goes on whoever is in the way; the projector's own pick never burns a friend.
+  if (!forced && friendInJet(state, e, hose.nozzle!, aim.x, aim.y)) return;
+  throwFlame(state, e, aim.x, aim.y, range, forced, hose);
+}
+
 /** A Battle Ship CIWS mount's reach: the roof mount's rule on its own base. */
 function shipCiwsRange(state: MatchState, e: Entity): number {
   return rangeTilesOf(e.type, entityHeight(state, e), BATTLESHIP_CIWS_RANGE_TILES) * state.tileSize;
@@ -693,6 +787,112 @@ function tickShipCiws(state: MatchState, e: Entity, dt: number, downed: Set<numb
       });
       m.ammo -= 1;
       heatShipCiws(m, 1);
+    }
+    m.fireTick = state.tick;
+    m.cooldown = TICK_DT;
+  });
+}
+
+/**
+ * What a twin-mount hull's CIWS may lay on, best first: the target the player
+ * named, then anything in the air, then the nearest. Units only, like a CIWS,
+ * except the hull's own target when that is a house with an enemy garrison
+ * showing. Seen by the side, inside reach, and something the rounds can hurt.
+ */
+function twinCiwsTargets(state: MatchState, e: Entity, range: number, airRange: number): Entity[] {
+  const main = currentTarget(state, e);
+  const named = e.order && !e.order.auto && (e.order.kind === "attack" || e.order.kind === "forceattack") ? main : undefined;
+  const forced = e.order?.kind === "forceattack";
+  const found: { o: Entity; d: number; rank: number }[] = [];
+  for (const o of poolCircle(state, e.x, e.y, Math.max(range, airRange))) {
+    if (o.id === e.id || o.hp <= 0 || o.wreck || o.garrisonedIn != null || isCrashing(o)) continue;
+    if (o.kind !== "unit" && o.id !== main?.id) continue;
+    if (o.id !== named?.id && allies(state, e.ownerId, o.ownerId)) continue;
+    if (o.kind === "unit" && outOfReachAloft(state, e, o)) continue;
+    const air = isAirborne(o) || !!o.drone;
+    const d = Math.hypot(o.x - e.x, o.y - e.y);
+    if (d > (air ? airRange : range)) continue;
+    if (!canSeeEntity(state, e.ownerId, o)) continue;
+    if (o.id !== named?.id && !infantryRoundCanHarm(state, e, o)) continue;
+    if (!air && !canAimWeapon(state, e, o.x, o.y, o)) continue;
+    // A friend in the line: the mount looks elsewhere. Only a force-attack fires through him.
+    if (!forced && needsClearLine(e, o) && allyInLine(state, e, e.x, e.y, o)) continue;
+    found.push({ o, d, rank: o.id === named?.id ? 0 : air ? 1 : 2 });
+  }
+  found.sort((a, b) => a.rank - b.rank || a.d - b.d || a.o.id - b.o.id);
+  return found.map((f) => f.o);
+}
+
+/**
+ * The Feuerwirbel's two CIWS mounts, fore and aft. Each has its own traverse,
+ * heat, and clock, and both feed from the hull's belt (clip). With two or more
+ * targets in reach they never share one: the two best are dealt out so each
+ * mount takes the one nearer its own bearing. One target, both lay on it. A
+ * force-attack on the ground draws both. With nothing to shoot they rest over the bow.
+ */
+function tickTwinCiws(state: MatchState, e: Entity, dt: number): void {
+  const mounts = e.twinCiws;
+  if (!mounts || e.garrisonedIn != null) return;
+  const heat = FEUERWIRBEL_MOUNT_HEAT;
+  for (const m of mounts) {
+    if (m.cooldown > 0) m.cooldown = Math.max(0, m.cooldown - dt);
+    if (m.overheat > 0) {
+      m.overheat = Math.max(0, m.overheat - dt);
+      if (m.overheat <= 0) m.heat = 0;
+    } else {
+      m.heat = Math.max(0, m.heat - heat.coolPerSec * dt);
+    }
+  }
+  const range = weaponRangeWorld(state, e);
+  const airRange = range * airReachOf(e);
+  const picks = e.clip > 0 ? twinCiwsTargets(state, e, range, airRange) : [];
+  const order = e.order;
+  const point =
+    picks.length === 0 && order?.kind === "forceattack" && order.targetId == null && order.x != null && order.y != null
+      ? { x: order.x, y: order.y }
+      : null;
+  const at = mounts.map((_, i) => twinCiwsMountPoint(e, i));
+  const swing = (i: number, o: { x: number; y: number }) =>
+    Math.abs(angleOff(mounts[i]!.facing, Math.atan2(o.y - at[i]!.y, o.x - at[i]!.x)));
+  let aims: ({ x: number; y: number; target?: Entity } | null)[] = mounts.map(() => null);
+  if (picks.length >= 2) {
+    const [a, b] = [picks[0]!, picks[1]!];
+    const crossed = swing(0, b) + swing(1, a) < swing(0, a) + swing(1, b);
+    aims = crossed ? [{ x: b.x, y: b.y, target: b }, { x: a.x, y: a.y, target: a }] : [{ x: a.x, y: a.y, target: a }, { x: b.x, y: b.y, target: b }];
+  } else if (picks.length === 1) {
+    const a = picks[0]!;
+    aims = mounts.map(() => ({ x: a.x, y: a.y, target: a }));
+  } else if (point && Math.hypot(point.x - e.x, point.y - e.y) <= range) {
+    aims = mounts.map(() => point);
+  }
+  const gun = fireStats(e);
+  const stats = { ...gun, projectileSpeed: catalog(e.type).projectileSpeed };
+  mounts.forEach((m, i) => {
+    const aim = aims[i];
+    const from = at[i]!;
+    m.target = aim?.target?.id ?? null;
+    const want = aim ? Math.atan2(aim.y - from.y, aim.x - from.x) : e.facing;
+    const turn = stepTurn(m.facing, want, FEUERWIRBEL_MOUNT_TURN, dt);
+    m.facing = turn.angle;
+    if (!aim || m.cooldown > 0 || m.overheat > 0 || e.clip <= 0 || Math.abs(turn.remainingDeg) > FACE_FIRE_DEG) return;
+    const target = aim.target;
+    const reach = target && (isAirborne(target) || target.drone) ? airRange : range;
+    // The rounds leave the mount, not the middle of the hull.
+    const mount: Entity = { ...e, x: from.x, y: from.y, radius: 2 };
+    const dist = Math.hypot(aim.x - from.x, aim.y - from.y);
+    for (let k = 0; k < FEUERWIRBEL_MOUNT_SHOTS_PER_TICK && e.clip > 0; k++) {
+      fireRound(state, mount, aim.x, aim.y, stats, reach, dist, {
+        target,
+        bearing: m.facing,
+        fuse: !target,
+        accurateRange: accurateWeaponRange(state, e, range),
+      });
+      e.clip -= 1;
+      m.heat = Math.min(1, m.heat + heat.perRound);
+      if (m.heat >= 1 && m.overheat <= 0) {
+        m.overheat = heat.overheatSeconds;
+        break;
+      }
     }
     m.fireTick = state.tick;
     m.cooldown = TICK_DT;
@@ -904,6 +1104,11 @@ function waterSilences(state: MatchState, e: Entity): boolean {
   return unitInWater(state, e) && !rocketsOf(e.type);
 }
 
+/** A Titan on its leg jets: the main gun is stowed, and only the shoulder pods fire. */
+function flightStowsGun(e: Entity): boolean {
+  return rocketsOf(e.type) && jetAloft(e);
+}
+
 /** A CIWS or RAM runs on its radar. Short on power, it neither lays nor fires. */
 function powerSilences(e: Entity): boolean {
   return e.kind === "building" && !!e.unpowered && radarLaidOf(e.type);
@@ -913,8 +1118,14 @@ function canFight(e: Entity): boolean {
   // Aircraft fire their own guns and bombs in tickAir.
   // A paratrooper under his canopy keeps his rifle slung until he is down.
   if (e.type === "artillery" && gunCrewOf(e) === 0) return false;
+  // A shut-down Cyborg fires at nothing.
+  if (e.shutdown) return false;
+  // A Cyborg Commander with the laser's power in his field fires nothing.
+  if (e.fieldDivert) return false;
   // An emplaced gun with nobody at it is silent, and so is one whose crew lies low.
   if (crewGunOf(e.type) && (e.garrison.length === 0 || e.garrisonHide)) return false;
+  // A Titan falling dead out of the air fires nothing on the way down.
+  if (e.jet?.crash) return false;
   return fires(e.type) && e.hp > 0 && !e.wreck && !e.air && !e.chute && e.state !== "deploy" && e.state !== "undeploy";
 }
 
@@ -930,6 +1141,8 @@ function outOfReachAloft(state: MatchState, e: Entity, target: Entity): boolean 
   if (target.drone) return !reachesDrone(e, target);
   // A Jump Jet in the air: anti-air weapons only.
   if (target.jet) return isAirborne(target) && !reachesJet(e);
+  // A plane up at AIR_HIGH_ALT: anti-air guns only.
+  if (planeIsHigh(target)) return !reachesHighFlyer(e);
   return isAirborne(target) && !reachesAircraft(e);
 }
 
@@ -1355,7 +1568,7 @@ function dropsWreck(e: Entity, target: Entity): boolean {
  * A player attack or force-attack still fires.
  */
 function dropsUnharmedArmor(state: MatchState, e: Entity, target: Entity): boolean {
-  if (!isInfantryType(e.type) && !radarLaidOf(e.type)) return false;
+  if (!isInfantryType(e.type) && !radarLaidOf(e.type) && !twinCiwsOf(e.type)) return false;
   if (e.order?.kind === "forceattack") return false;
   if (e.order?.kind === "attack" && !e.order.auto) return false;
   return !infantryRoundCanHarm(state, e, target);
@@ -1399,7 +1612,9 @@ function infantryRoundCanHarm(state: MatchState, e: Entity, target: Entity): boo
   }
   const def = catalog(target.type);
   if (!isArmored(def)) return true;
-  if (radarLaidOf(e.type)) {
+  // A gatling turret's rounds sometimes bite a Walker or a truck, like the Cyborg's arm.
+  if (twinCiwsOf(e.type) && isLightHull(def)) return true;
+  if (radarLaidOf(e.type) || twinCiwsOf(e.type)) {
     if (entityIsScouting(target)) return true;
     return armorHarmPossible({
       gun: catalog(e.type),
@@ -1444,11 +1659,11 @@ function infantryRoundCanHarm(state: MatchState, e: Entity, target: Entity): boo
 }
 
 /**
- * Walker gatlings never bring a building down. They still fire while a hostile
- * garrison is the thing inside. Tanks keep an order on the walls.
+ * Walker gatlings never bring a building down, nor do a gatling turret's. They still
+ * fire while a hostile garrison is the thing inside. Tanks keep an order on the walls.
  */
 function walkerSparesBuilding(state: MatchState, e: Entity, target: Entity): boolean {
-  if (e.type !== "walker" || target.kind !== "building") return false;
+  if ((e.type !== "walker" && !twinCiwsOf(e.type)) || target.kind !== "building") return false;
   return !(
     garrisonIsHostile(state, e.ownerId, target) && garrisonLooksOccupied(state, e.ownerId, target)
   );
@@ -1515,7 +1730,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   const turreted = hasTurret(e.type);
   let remainingDeg = 180;
   if (turreted) {
-    remainingDeg = slewTurret(e, target, dt, ground);
+    remainingDeg = slewTurret(state, e, target, dt, ground);
   }
 
   const aimX = ground?.x ?? target?.x;
@@ -1581,6 +1796,8 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   if (e.waypoints.length > 0 && !travelFights(e) && !backingHop(e) && !holedUp) return;
 
   if (!holedUp) e.state = "attack";
+  // Twin CIWS mounts lay and fire on their own (tickTwinCiws); this target only steers the hull's fight.
+  if (twinCiwsOf(e.type)) return;
   // A hull gun under way keeps the course: the hull does not swing to the aim, it
   // fires when the aim sits in its arc of the way it is going.
   const driving = !turreted && !holedUp && e.waypoints.length > 0 && hullStaysOnCourse(e);
@@ -2000,7 +2217,7 @@ function launchMortar(
  * A laid launcher (the Nebelwerfer) has no other gun: it fires on the unit's
  * own target, only while halted, and only once the frame bears on it.
  */
-function tickRocketPods(state: MatchState, e: Entity): void {
+function tickRocketPods(state: MatchState, e: Entity, dt: number): void {
   if (stowedInTransport(state, e)) {
     e.rocketSalvo = 0;
     e.rocketTarget = null;
@@ -2020,6 +2237,14 @@ function tickRocketPods(state: MatchState, e: Entity): void {
   }
   e.rocketTarget = aim.target?.id ?? null;
   if (rack.laid && (e.waypoints.length > 0 || !launcherBears(e, aim.x, aim.y))) return;
+  // Titan pods ride the torso. Aloft the gun is stowed, so the pods' own target turns it; they fire once it bears.
+  if (!rack.laid) {
+    if (flightStowsGun(e)) {
+      const def = catalog(e.type);
+      turnTurretToward(e, aim.x, aim.y, def.turretTurnDegPerSec ?? def.turnDegPerSec, dt);
+    }
+    if (!podBears(e, aim.x, aim.y)) return;
+  }
   const range = weaponRangeWorld(state, e);
   const dist = Math.hypot(aim.x - e.x, aim.y - e.y);
   fireRockets(state, e, rack, aim.x, aim.y, range, dist, aim.target);
@@ -2055,6 +2280,19 @@ function launcherBears(e: Entity, x: number, y: number): boolean {
   return Math.abs(d) <= (gunArcDegOf(e.type) * Math.PI) / 180;
 }
 
+/** The torso, and the pods fixed on it, faces (x, y) within TITAN_POD_ARC_DEG. */
+function podBears(e: Entity, x: number, y: number): boolean {
+  return Math.abs(angleOff(e.turretFacing ?? e.facing, Math.atan2(y - e.y, x - e.x))) <= (TITAN_POD_ARC_DEG * Math.PI) / 180;
+}
+
+/** The main gun is laying the torso: it has a target, or a forced aim on the ground. */
+function gunSteersTorso(state: MatchState, e: Entity): boolean {
+  if (flightStowsGun(e)) return false;
+  if (currentTarget(state, e)) return true;
+  const o = e.order;
+  return o?.kind === "forceattack" && o.x != null && o.y != null;
+}
+
 /** The main gun's target, if it has one. */
 function mainTargetId(e: Entity): number | null {
   if (e.attackTarget != null) return e.attackTarget;
@@ -2077,6 +2315,7 @@ function podValue(state: MatchState, e: Entity, o: Entity): number {
       : 0;
   }
   if (o.drone && !reachesDrone(e, o)) return 0;
+  if (planeIsHigh(o)) return 0;
   if (isAirborne(o)) return rocketRackOf(e.type).antiAir ? 3 : 0;
   if (isInfantryType(o.type)) return 2;
   return isArmored(catalog(o.type)) ? 3 : 2;
@@ -2102,9 +2341,11 @@ function podCanReach(state: MatchState, e: Entity, o: Entity, range: number): bo
 /**
  * Where the pods fire next. A player's force-attack wins. A salvo under way
  * stays on its target while it lives. Otherwise the pods take the best target
- * in reach, and among targets as good as the main gun's they take a different
- * one, so a Titan facing two tanks works both. With nothing else in reach they
- * back up the main gun, even on a structure it was ordered to shell.
+ * in reach — only on the torso's bearing while the main gun lays it — and among
+ * targets as good as the main gun's they take a different one, so two tanks in
+ * line both get worked. With nothing else in reach they back up the main gun,
+ * even on a structure it was ordered to shell. They fire only once the torso
+ * bears (tickRocketPods).
  */
 function podAim(state: MatchState, e: Entity): { x: number; y: number; target?: Entity } | null {
   const range = weaponRangeWorld(state, e);
@@ -2122,9 +2363,13 @@ function podAim(state: MatchState, e: Entity): { x: number; y: number; target?: 
     }
   }
   const main = mainTargetId(e);
+  // While the main gun lays the torso, the pods take only what lies on its bearing.
+  // Otherwise their pick turns the torso (slewTurret, or tickRocketPods aloft).
+  const onBearing = gunSteersTorso(state, e);
   let best: Entity | undefined;
   let bestScore = -Infinity;
   for (const c of poolCircle(state, e.x, e.y, range)) {
+    if (onBearing && !podBears(e, c.x, c.y)) continue;
     const value = podValue(state, e, c);
     if (value <= 0 || !podCanReach(state, e, c, range)) continue;
     // Tier first, then nearest. The main gun's target drops half a tier, so an
@@ -2701,8 +2946,9 @@ function heatGatling(e: Entity, rounds: number): void {
 }
 
 function wantsMg(e: Entity, target: Entity): boolean {
-  // The roof mount spends that belt on its own (tickRoofCiws); there is no coaxial.
-  if (!hasMg(e.type) || e.mgAmmo <= 0 || roofCiwsOf(e.type)) return false;
+  // The roof mount spends that belt on its own (tickRoofCiws), and a bow flamer's fuel rides
+  // there (tickHullFlamer); neither has a coaxial.
+  if (!hasMg(e.type) || e.mgAmmo <= 0 || roofCiwsOf(e.type) || hullFlamerOf(e.type)) return false;
   if (isInfantryType(target.type) || target.drone) return true;
   return entityIsScouting(target);
 }
@@ -2729,17 +2975,22 @@ function mayFireSmoke(e: Entity): boolean {
 }
 
 function slewTurret(
+  state: MatchState,
   e: Entity,
   target: Entity | undefined,
   dt: number,
   ground?: { x: number; y: number } | null,
 ): number {
   const def = catalog(e.type);
-  const rate = def.turretTurnDegPerSec ?? def.turnDegPerSec;
+  // A short-handed crew swings the gun as slowly as it loads it.
+  const rate = (def.turretTurnDegPerSec ?? def.turnDegPerSec) / crewPace(e);
   const arc = mountArcDegOf(e.type);
   if (arc != null) return slewInArc(e, target, ground, arc, rate, dt);
   if (ground) return turnTurretToward(e, ground.x, ground.y, rate, dt);
   if (target && target.hp > 0) return turnTurretToward(e, target.x, target.y, rate, dt);
+  // The gun has nothing: a Titan's torso turns its pods onto their own target (a plane, say).
+  const pods = rocketsOf(e.type) && !rocketRackOf(e.type).laid && e.rocketTarget != null ? state.entities.get(e.rocketTarget) : undefined;
+  if (pods && pods.hp > 0) return turnTurretToward(e, pods.x, pods.y, rate, dt);
   if (e.order?.kind === "rotate" && e.order.x != null && e.order.y != null) {
     return turnTurretToward(e, e.order.x, e.order.y, rate, dt);
   }
@@ -2791,7 +3042,7 @@ function slewInArc(
   return (angleOff(e.turretFacing, bearing) * 180) / Math.PI;
 }
 
-/** Short-handed crew: each shot and belt change takes garrisonCap / crew times as long. */
+/** Short-handed crew: each shot, belt change, and swing of the gun takes garrisonCap / crew times as long. */
 function crewPace(e: Entity): number {
   if (!crewGunOf(e.type)) return 1;
   return garrisonCapOf(e.type) / Math.max(1, e.garrison.length);
@@ -2827,8 +3078,9 @@ function fireRound(
   },
 ): void {
   const target = opts?.target;
-  // Walker, Cyborg, pad CIWS, and the Apocalypse roof. Not the Gunner's MG42, not the main gun.
-  const gatling =!!opts?.radar || e.type === "walker" || e.type === "ciws" || e.type === "cyborg";
+  // Walker, Cyborg, pad CIWS, the Apocalypse roof, and a gatling turret. Not the Gunner's MG42, not a cannon.
+  const gatling =
+    !!opts?.radar || e.type === "walker" || e.type === "ciws" || e.type === "cyborg" || twinCiwsOf(e.type);
   // A gatling hoses its rounds; a cheap gun or a secondary mount hoses them wider.
   const spray = (gatling ? gatlingSprayOf(e.type) : 1) * (opts?.spreadMul ?? 1);
   const moving = !!target && (target.waypoints.length > 0 || target.state === "move");
@@ -3181,7 +3433,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     const occupied = wallsShieldGarrison(state, e);
     // A walker round stops on the wall. It does not chew the structure, even
     // when the house is empty or the target is a Core.
-    const walkerWall = e.kind === "building" && shooter?.type === "walker";
+    const walkerWall = e.kind === "building" && !!shooter && (shooter.type === "walker" || twinCiwsOf(shooter.type));
     const chipWalls = (!occupied || p.caliber >= GARRISON_STRUCTURAL_CALIBER) && !walkerWall;
     let dealt = res.damage;
     if (chipWalls) {
@@ -3441,6 +3693,8 @@ function nearestSweepHit(
     if (e.drone && !projectileMeetsDrone(p, e)) continue;
     // Only anti-air fire meets a Jump Jet in the air. A rifle round passes under him.
     if (e.jet && isAirborne(e) && !p.antiAir) continue;
+    // A plane up at AIR_HIGH_ALT: only anti-air fire climbs that far.
+    if (planeIsHigh(e) && !p.antiAir) continue;
     if (isAirborne(e)) {
       // Only a round near the plane's height meets it. Everything else passes under or over.
       if (Math.abs(shotZ - (entityHeight(state, e) + airAlt(e))) > AIR_HIT_BAND) continue;
@@ -3560,7 +3814,7 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     if (coneOnly && !inGuardCone(e, o)) continue;
     if (!canSeeEntity(state, e.ownerId, o)) continue;
     if (!canAimWeapon(state, e, o.x, o.y, o)) continue;
-    if (isInfantryType(e.type) && !infantryRoundCanHarm(state, e, o)) continue;
+    if ((isInfantryType(e.type) || twinCiwsOf(e.type)) && !infantryRoundCanHarm(state, e, o)) continue;
     near.push({ o, d, i: near.length });
   }
   if (bestAir) return bestAir;
@@ -3626,8 +3880,10 @@ function maybeHaulerSmokeScreen(state: MatchState, victim: Entity, p: Projectile
   return true;
 }
 
+/** Only flesh-and-blood soldiers fall back when hit. Cyborgs and hulls hold. */
 function maybeWithdraw(state: MatchState, victim: Entity, p: Projectile): void {
   if (victim.kind !== "unit" || victim.wreck || victim.garrisonedIn || victim.air) return;
+  if (!isInfantryType(victim.type) || isCyborg(victim.type)) return;
   if (catalog(victim.type).turnInPlace) return;
   if (victim.holdPosition || immobilized(victim)) return;
   if (victim.state === "deploy" || victim.state === "undeploy") return;

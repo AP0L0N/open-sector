@@ -143,6 +143,15 @@
     "clipped_dirs": []
   },
   {
+    "type": "horten",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/horten.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.8,
+    "clipped_dirs": []
+  },
+  {
     "type": "gunboat",
     "out": "gridlock/packages/client/src/assets/units/wrecks/gunboat.png",
     "cell": 128,

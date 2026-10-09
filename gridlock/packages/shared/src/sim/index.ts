@@ -6,6 +6,7 @@ export { tickCollision, moveWithCollision } from "./collision.js";
 export { toWreck } from "./wreck.js";
 export { toRubble } from "./rubble.js";
 export { shipMountPoint } from "./battleship.js";
+export { twinCiwsMountPoint } from "./twin-ciws.js";
 export { fireStats, hullTurnMul, immobilized, moveSpeedMul, rollCrits, rollLamp } from "./crits.js";
 export { commandedStance, effectiveStance, tickStance } from "./stance.js";
 export { applyCommand } from "./commands.js";
@@ -53,6 +54,7 @@ export {
 export { wantsCapture, captureDurationSec } from "./capture.js";
 export { powerOf, productionSpeed, tickPower } from "./power.js";
 export { radarContacts, radarOnline, radarStations } from "./radar.js";
+export { cyborgCentralOnline, cyborgCommanderAlive, cyborgLinked, cyborgShutdownIn, shutDownCyborg } from "./cyborg-link.js";
 export { producerType } from "./train.js";
 export {
   airfieldFrame,
@@ -126,6 +128,7 @@ export {
   nightTiles,
   spotlightsOn,
   hasSpotlight,
+  lampPools,
   hasHeadlight,
   headlightLit,
   hullLamps,

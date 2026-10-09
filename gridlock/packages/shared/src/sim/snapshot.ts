@@ -1,7 +1,7 @@
 import {
   bridgeBuildSeconds,
   isBridge,
-  AIR_FUEL_SECONDS,
+  airFuelOf,
   ARTILLERY_CREW,
   ARTILLERY_CREW_HP,
   ARTILLERY_SETUP_SECONDS,
@@ -11,6 +11,7 @@ import {
   DRONE_LAUNCH_MIN_SECONDS,
   JET_FUEL_SECONDS,
   JET_TAKEOFF_MIN_SECONDS,
+  jetFlightOf,
   AIRFIELD_PADS,
   beltOf,
   catalog,
@@ -22,6 +23,8 @@ import {
   garrisonCapOf,
   isCivilianType,
   NEUTRAL_OWNER,
+  CYBORG_TAKEOVER_SECONDS,
+  secondsToTicks,
   hasMg,
   gatlingHeatOf,
   roofCiwsOf,
@@ -37,7 +40,7 @@ import {
   SUB_DIVE_SECONDS,
   submergesOf,
   walkerGunsOf,
-  FORCE_FIELD_HP,
+  forceFieldMax,
   hasForceField,
   TICK_DT,
 } from "../catalog.js";
@@ -56,8 +59,10 @@ import { medicTendView } from "./heal.js";
 import { supplyHasDriver, supplyRiders } from "./supply.js";
 import { powerOf } from "./power.js";
 import { radarContacts, radarOnline } from "./radar.js";
+import { cyborgShutdownIn } from "./cyborg-link.js";
 import { aswDeckView, sonarContacts } from "./destroyer.js";
 import { scrapCap } from "./smelter.js";
+import { thermalContacts } from "./thermal.js";
 import { canSeeWorld, encodeVisionRuns, entityOnMask, maskRevOf, visionMask } from "./vision.js";
 import { spotFacingOf, spotlightManned } from "./night.js";
 import type { Entity, LaserBeam, MatchState, Order, QueueableCommand, StructureJob } from "./types.js";
@@ -105,6 +110,18 @@ function ciwsView(state: MatchState, e: Entity): EntityView["ciws"] {
   const at = e.ciwsFireTick;
   const fire = !e.wreck && at != null && state.tick - at < Math.max(1, clampGameSpeed(state.gameSpeed));
   return fire ? { facing: e.ciwsFacing ?? e.turretFacing, fire: true } : { facing: e.ciwsFacing ?? e.turretFacing };
+}
+
+/** Feuerwirbel mounts: facings and fire like ciwsView; heat only for the owner's side. */
+function twinCiwsView(state: MatchState, e: Entity, friendly: boolean): EntityView["mounts"] {
+  if (!e.twinCiws) return undefined;
+  const window = Math.max(1, clampGameSpeed(state.gameSpeed));
+  return e.twinCiws.map((m) => ({
+    facing: m.facing,
+    ...(!e.wreck && m.fireTick != null && state.tick - m.fireTick < window ? { fire: true as const } : {}),
+    ...(friendly ? { heat: m.heat } : {}),
+    ...(friendly && m.overheat > 0 ? { hot: true as const } : {}),
+  }));
 }
 
 /** Battle Ship turrets and CIWS mounts. Shells and belts only for the ship's own side. */
@@ -400,7 +417,9 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       specialCooldown: e.specialCooldown > 0 ? e.specialCooldown : undefined,
       wreck: e.wreck || undefined,
       shielded: e.hp > 0 && cyborgShielded(e, state.tick) ? true : undefined,
-      field: e.hp > 0 && hasForceField(e.type) ? { hp: Math.round(e.field ?? 0), max: FORCE_FIELD_HP } : undefined,
+      field: e.hp > 0 && hasForceField(e.type) ? { hp: Math.round(e.field ?? 0), max: forceFieldMax(e) } : undefined,
+      shutdown: e.shutdown,
+      takeover: e.takeover ? { by: e.takeover.by, u: Math.min(1, e.takeover.ticks / secondsToTicks(CYBORG_TAKEOVER_SECONDS)) } : undefined,
       laser: e.laser ? laserView(e.laser, state.tick) : undefined,
       crits: e.crits.length > 0 ? [...e.crits] : undefined,
       stance: isInfantryType(e.type) ? e.stance : undefined,
@@ -467,10 +486,12 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       weapon: friendly && isInfantryType(e.type) ? (e.weapon ?? undefined) : undefined,
       clip: friendly && (isInfantryType(e.type) || beltOf(e.type)) ? e.clip : undefined,
       guns: friendly && e.type === "walker" ? walkerGunsOf(e) : undefined,
+      fieldDivert: friendly && e.hp > 0 ? e.fieldDivert : undefined,
       selfDestruct: friendly && e.type === "walker" && !e.wreck ? !e.selfDestructOff : undefined,
       charging: e.type === "walker" && e.charging ? true : undefined,
       gatling: gatlingView(state, e),
       ciws: ciwsView(state, e),
+      mounts: twinCiwsView(state, e, friendly),
       ship: shipView(state, e, friendly),
       reload: friendly && (isInfantryType(e.type) || beltOf(e.type)) && e.reload > 0 ? e.reload : undefined,
       bipod: plantRemaining(e, friendly),
@@ -515,7 +536,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
             phase: e.air.phase,
             alt: e.air.alt,
             fuel: friendly ? e.air.fuel : undefined,
-            fuelMax: friendly ? AIR_FUEL_SECONDS : undefined,
+            fuelMax: friendly ? airFuelOf(e.type) : undefined,
             bombs: friendly ? e.air.bombs : undefined,
             rounds: friendly ? e.air.rounds : undefined,
             homeId: friendly && e.air.homeId != null ? e.air.homeId : undefined,
@@ -552,9 +573,10 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
             alt: e.jet.alt,
             up: friendly && e.jet.up ? true : undefined,
             fuel: friendly ? e.jet.fuel : undefined,
-            fuelMax: friendly ? JET_FUEL_SECONDS : undefined,
-            takeoffMin: friendly ? JET_TAKEOFF_MIN_SECONDS : undefined,
+            fuelMax: friendly ? (jetFlightOf(e.type)?.fuelSeconds ?? JET_FUEL_SECONDS) : undefined,
+            takeoffMin: friendly ? (jetFlightOf(e.type)?.takeoffMinSeconds ?? JET_TAKEOFF_MIN_SECONDS) : undefined,
             refuel: friendly && e.jet.refuel > 0 && e.jet.alt <= 0 ? e.jet.refuel : undefined,
+            crash: e.jet.crash ? true : undefined,
           }
         : undefined,
     });
@@ -562,6 +584,12 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
   const scrap = opts.scrap === false ? undefined : scrapCells(state);
   const hq = you ? state.entities.get(you.hqId) : undefined;
   const radar = you ? radarOnline(state, youPlayerId) : false;
+  // The countdown shows only while you still have a Cyborg on the field to lose.
+  const linkIn = you ? cyborgShutdownIn(state, youPlayerId) : null;
+  const cyborgShutdown =
+    linkIn != null && linkIn > 0 && [...state.entities.values()].some((e) => e.ownerId === youPlayerId && e.type === "cyborg" && e.hp > 0 && !e.wreck && !e.shutdown)
+      ? Math.round(linkIn * 10) / 10
+      : undefined;
   return {
     tick: state.tick,
     gameSpeed: clampGameSpeed(state.gameSpeed),
@@ -581,6 +609,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       alive: you?.alive ?? false,
       hqId: hq && hq.hp > 0 ? hq.id : (you?.hqId ?? null),
       radar,
+      ...(cyborgShutdown != null ? { cyborgShutdownIn: cyborgShutdown } : {}),
       ...(you?.continuous && you.continuous.length > 0 ? { continuous: [...you.continuous] } : {}),
     },
     players: [...state.players.values()].map((p) => ({
@@ -629,8 +658,9 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
             }
           : {}),
       })),
+    // A reactor going up is seen from everywhere: the cloud towers over the fog.
     impacts: state.impacts.filter(
-      (i) => allies(state, youPlayerId, i.ownerId) || canSeeWorld(state, vis, i.x, i.y),
+      (i) => i.nuke || allies(state, youPlayerId, i.ownerId) || canSeeWorld(state, vis, i.x, i.y),
     ),
     launches: state.launches.filter((l) => {
       const from = state.entities.get(l.fromId);
@@ -662,6 +692,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
     vision: you ? visionRuns(vis) : undefined,
     radar: radar ? radarContacts(state, youPlayerId, vis) : undefined,
     sonar: you ? nonEmpty(sonarContacts(state, youPlayerId)) : undefined,
+    thermal: you ? nonEmpty(thermalContacts(state, youPlayerId, vis)) : undefined,
     winner: state.winner,
   };
 }

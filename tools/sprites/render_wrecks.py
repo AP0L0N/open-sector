@@ -389,6 +389,7 @@ SPECS = [
     Spec("apocalypse", 128, 0.92, "turret", src="apocalypse", layers=["hull", "turret", "gun", "ciws"], turn=-2, keep=0.5, holes=4, debris=18),
     Spec("ss3", 128, 0.92, "casemate", src="ss3", layers=["hull", "gun"], keep=0.4),
     Spec("jagdtiger", 128, 0.92, "casemate", src="jagdtiger", layers=["hull", "gun"], keep=0.36, holes=4, debris=16),
+    Spec("feuerwirbel", 128, 0.92, "hull", src="feuerwirbel", layers=["hull", "ciws"], holes=4, soot=0.62, debris=18),
     Spec("supply", 128, 0.92, "soft", src="supply-truck", layers=["hull"], holes=4, bites=5, soot=0.68, debris=16),
     Spec("nebelwerfer", 128, 0.92, "launcher", src="nebelwerfer", layers=["hull", "launcher"], turn=2, holes=3, bites=4, soot=0.6),
     Spec("hauler", 128, 0.92, "soft", sheets={"hull": "hauler-hull.png"}, holes=3, bites=4, debris=16),
@@ -400,6 +401,7 @@ SPECS = [
     Spec("fw190", 128, 0.8, "plane", src="fw190", layers=["hull"], padding=2, holes=3, bites=2, debris=12),
     Spec("bv222", 128, 0.8, "plane", src="bv222", layers=["hull"], padding=2, holes=5, bites=3, debris=18),
     Spec("he111", 128, 0.8, "plane", src="he111", layers=["hull"], padding=2, holes=4, bites=3, debris=16),
+    Spec("horten", 128, 0.8, "plane", src="horten", layers=["hull"], padding=2, holes=4, bites=3, debris=14),
     Spec("gunboat", 128, 0.74, "sunk", src="gunboat", layers=["hull"], padding=2, holes=3, bites=3, soot=0.55, debris=8, sink=6, list_deg=7),
     Spec("submarine", 128, 0.74, "sunk", src="submarine", layers=["hull"], padding=2, holes=3, bites=2, soot=0.45, debris=6, sink=3.5, list_deg=-4),
     Spec("destroyer", 128, 0.74, "sunk", src="destroyer", layers=["hull"], padding=2, holes=4, bites=3, soot=0.55, debris=10, sink=5, list_deg=6),
@@ -506,6 +508,11 @@ def wreck_launcher(spec: Spec, L, r: int, rng) -> Image.Image:
     frame = bite(frame, rng, 4, 2.5 * K, 5 * K)
     frame = char(frame, rng, soot=0.65)
     return finish(spec, stack(size, [hull, frame]), rng)
+
+
+def wreck_hull(spec: Spec, L, r: int, rng) -> Image.Image:
+    # Armor that keeps its shape: what stood on it (the Feuerwirbel's CIWS mounts) is torn away.
+    return finish(spec, hull_damage(spec, L["hull"][r], rng), rng)
 
 
 def wreck_soft(spec: Spec, L, r: int, rng) -> Image.Image:
@@ -854,6 +861,7 @@ RECIPES = {
     "casemate": wreck_casemate,
     "launcher": wreck_launcher,
     "soft": wreck_soft,
+    "hull": wreck_hull,
     "legs": wreck_legs,
     "fold": wreck_fold,
 }

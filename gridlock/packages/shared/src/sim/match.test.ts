@@ -371,6 +371,32 @@ describe("construction", () => {
     assert.equal(state.players.get("A")!.scrap, scrap + 250);
   });
 
+  it("deletes own units and structures for nothing, never the Core or Rig", () => {
+    const { state } = twoPlayerMatch();
+    const rig = [...state.entities.values()].find((e) => e.ownerId === "A" && e.type === "rig")!;
+    assert.equal(applyCommand(state, "A", { type: "cmd.delete", ids: [rig.id] }).ok, false);
+    applyCommand(state, "A", { type: "cmd.deploy", id: rig.id });
+    ticks(state, 35);
+    applyCommand(state, "A", { type: "cmd.build", building: "dynamo" });
+    ticks(state, catalog("dynamo").buildSeconds * 10 + 2);
+    const core = [...state.entities.values()].find((e) => e.type === "core" && e.ownerId === "A")!;
+    applyCommand(state, "A", { type: "cmd.place", building: "dynamo", tx: core.tileX + core.tileW, ty: core.tileY });
+    const dyn = [...state.entities.values()].find((e) => e.type === "dynamo")!;
+    const man = makeEntity(state, "rifleman", "A", 24 * 32, 20 * 32);
+    const foe = makeEntity(state, "rifleman", "B", 60 * 32, 60 * 32);
+    const scrap = state.players.get("A")!.scrap;
+
+    const res = applyCommand(state, "A", { type: "cmd.delete", ids: [dyn.id, man.id, core.id, foe.id] });
+    assert.equal(res.ok, true);
+    ticks(state, 1);
+    assert.equal(state.entities.has(dyn.id), false);
+    assert.equal(state.entities.has(man.id), false);
+    assert.equal(state.entities.get(core.id)?.hp, core.hpMax);
+    assert.ok((state.entities.get(foe.id)?.hp ?? 0) > 0);
+    assert.equal(state.players.get("A")!.scrap <= scrap, true);
+    assert.equal(state.players.get("A")!.alive, true);
+  });
+
   it("builds an Armory and trains a Warden", () => {
     const { state } = twoPlayerMatch();
     const rig = [...state.entities.values()].find((e) => e.ownerId === "A" && e.type === "rig")!;

@@ -5,11 +5,12 @@ import {
   WATER_MINES,
   ARTILLERY_CREW_HP,
   LINE_BUILD_RADIUS,
-  AIR_FUEL_SECONDS,
+  airFuelOf,
   DRONE_BATTERY_SECONDS,
   FORCE_FIELD_HP,
   hasForceField,
   JET_FUEL_SECONDS,
+  jetFlightOf,
   airLoadoutOf,
   anchorsBuildRange,
   beltOf,
@@ -32,6 +33,7 @@ import {
   rocketAmmoOf,
   rocketsOf,
   isMotorVehicle,
+  rollsThroughWoods,
   MAX_BOAT_RADIUS,
   MAX_UNIT_RADIUS,
   rollReloadMul,
@@ -40,6 +42,7 @@ import {
   SCRAP_TILE_YIELD,
   DIAMOND_SCRAP_TILE_YIELD,
   UNIT_SPACE_PAD,
+  twinCiwsOf,
   type EntityType,
 } from "../catalog.js";
 import { buildingRect, buildingTilesOf, isTurnedBuilding, rectContains, segmentRectT } from "../building-rect.js";
@@ -48,7 +51,6 @@ import {
   TILE_DIAMOND_SCRAP,
   TILE_EMPTY,
   TILE_FENCE,
-  TILE_ROCK,
   TILE_SCRAP,
   TILE_WATER,
   isGroveTile,
@@ -57,6 +59,7 @@ import {
 } from "../maps.js";
 import { nextRand } from "./rng.js";
 import { newShipState } from "./battleship.js";
+import { newTwinCiws } from "./twin-ciws.js";
 import type { AirState, AswDeck, DroneLink, Entity, JetState, MatchState } from "./types.js";
 
 /** Fresh flight state: fuelled, armed, parked on `pad` of Airfield `homeId`. */
@@ -66,7 +69,7 @@ export function newAirState(homeId: number | null, pad: number, type: EntityType
     phase: "parked",
     alt: 0,
     speed: 0,
-    fuel: AIR_FUEL_SECONDS,
+    fuel: airFuelOf(type),
     bombs: load.bombs,
     rounds: load.rounds,
     homeId,
@@ -81,9 +84,9 @@ export function newAirState(homeId: number | null, pad: number, type: EntityType
   };
 }
 
-/** Jump Jet's pack: full, on the ground. */
-export function newJetState(): JetState {
-  return { alt: 0, up: false, fuel: JET_FUEL_SECONDS, refuel: 0 };
+/** A full pack (or the Titan's leg jets), on the ground. */
+export function newJetState(type: EntityType = "jumpjet"): JetState {
+  return { alt: 0, up: false, fuel: jetFlightOf(type)?.fuelSeconds ?? JET_FUEL_SECONDS, refuel: 0 };
 }
 
 /** A Jump Jet off the ground or lifting off. He flies over men, walls, and water. */
@@ -263,7 +266,7 @@ export function walkable(state: MatchState, x: number, y: number, type?: EntityT
   if (isTree(state, x, y)) {
     if (!type) return false;
     if (isInfantryType(type)) return true;
-    if (isMotorVehicle(type) && isSingleTree(state, x, y)) return true;
+    if (isMotorVehicle(type) && (isSingleTree(state, x, y) || rollsThroughWoods(type))) return true;
     return false;
   }
   return true;
@@ -330,7 +333,6 @@ export function initGrids(map: MapDef): {
       t === TILE_BLOCKED ||
       t === TILE_WATER ||
       t === TILE_FENCE ||
-      t === TILE_ROCK ||
       isMountainCliff(map.tiles, map.heights, map.width, map.height, x, y)
     ) {
       blocked[i] = 1;
@@ -744,9 +746,10 @@ export function makeEntity(
   if (def.aircraft) e.air = newAirState(null, 0, type);
   if (type === "artillery") e.gunCrew = Array.from({ length: ARTILLERY_CREW }, () => ARTILLERY_CREW_HP);
   if (type === "battleship") e.ship = newShipState(facing);
+  if (twinCiwsOf(type)) e.twinCiws = newTwinCiws(facing);
   if (type === "droneop") e.droneLink = newDroneLink();
   if (hasSonar(type)) e.asw = newAswDeck();
-  if (type === "jumpjet") e.jet = newJetState();
+  if (jetFlightOf(type)) e.jet = newJetState(type);
   state.entities.set(id, e);
   occupyEntity(state, e);
   return e;

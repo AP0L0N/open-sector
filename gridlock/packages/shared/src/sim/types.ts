@@ -6,6 +6,11 @@ export interface Vec {
   y: number;
 }
 
+export interface Waypoint extends Vec {
+  /** A point of a bridge lane (`laneOverBridges`): the walk to it stays out of the water. */
+  deck?: true;
+}
+
 export interface TrainJob {
   id: number;
   type: TrainType;
@@ -226,7 +231,7 @@ export interface SupplyCrate {
   turn: number;
 }
 
-/** Jump Jet only: his jet pack. */
+/** Jump Jet's pack, or the Titan's leg jets. */
 export interface JetState {
   /** Elevation units above the ground under him. 0 while he walks. */
   alt: number;
@@ -236,6 +241,10 @@ export interface JetState {
   fuel: number;
   /** Seconds on the ground before the pack starts to refill. */
   refuel: number;
+  /** Shot down in the air: falling straight down, already dead. Titan only. */
+  crash?: boolean;
+  /** Falling speed while crashing, elevation units per second. */
+  fall?: number;
 }
 
 /** Drone Op only: the one quadcopter he flies. */
@@ -339,7 +348,7 @@ export interface Entity {
   tileH: number;
   radius: number;
   order: Order | null;
-  waypoints: Vec[];
+  waypoints: Waypoint[];
   /** The goal tile the last path search could not reach, and when. Cleared by the next path found. */
   pathFail?: { tx: number; ty: number; tick: number };
   /** The spot the current path was asked for, so a steer can tell it already aims there. */
@@ -426,6 +435,8 @@ export interface Entity {
   surfacedTick?: number;
   /** Battle Ship: its turrets and CIWS mounts, each on its own clock. Missing on every other type. */
   ship?: ShipState;
+  /** Feuerwirbel: its two CIWS mounts, fore and aft, each with its own traverse, target, heat, and clock. */
+  twinCiws?: TwinCiwsMount[];
   /** Submarine: depth and air. Missing means surfaced with full air. */
   dive?: DiveState;
   /** CPU or neutral submarine: sim tick it may come up again after its last enemy contact. */
@@ -531,8 +542,18 @@ export interface Entity {
   selfHpSeen?: number;
   /** Cyborg only: sim tick until which nothing takes his HP. Set when the legs are torn off. */
   shieldUntilTick?: number;
+  /**
+   * Cyborg only: shut down for want of a link (sim/cyborg-link.ts). Still his side's, but he
+   * stands still, takes no orders, and fires at nothing until the link is back or an enemy
+   * Cyborg Commander takes him over.
+   */
+  shutdown?: true;
+  /** Shut-down Cyborg only: the Cyborg Commander taking him over, and ticks of uplink so far. */
+  takeover?: { by: number; ticks: number };
   /** Cyborg Commander only: force-field points left. Hits come off these before HP. */
   field?: number;
+  /** Cyborg Commander only: weapons power diverted to the field. The laser is dark; he does not fire. */
+  fieldDivert?: true;
   /** Cyborg Commander only: tick of the last hit on him, field or body. The recharge waits on it. */
   fieldHitTick?: number;
   /** Cyborg Commander only: the laser beam he is cutting with now. */
@@ -564,7 +585,7 @@ export interface Entity {
   heli?: HeliState;
   /** Paratrooper on the way down. No orders, no fire; small arms can reach him. */
   chute?: Chute;
-  /** Jump Jet only. */
+  /** Jump Jet, and the Titan's leg jets. */
   jet?: JetState;
 }
 
@@ -596,6 +617,17 @@ export interface ShipCiws {
   heat: number;
   overheat: number;
   /** Sim tick it last fired, on a unit or a rocket. */
+  fireTick?: number;
+}
+
+/** One CIWS mount on a twin-mount hull. The belt is the hull's (Entity.clip); heat is the mount's own. */
+export interface TwinCiwsMount {
+  facing: number;
+  target: number | null;
+  cooldown: number;
+  heat: number;
+  overheat: number;
+  /** Sim tick it last fired. */
   fireTick?: number;
 }
 
@@ -834,6 +866,8 @@ export interface SimPlayer {
   aiPlan?: AiPlan;
   /** Fraction of a scrap point the Smelters have earned but not yet paid. `scrap` stays whole. */
   scrapCarry: number;
+  /** Sim tick this side's Cyborgs lost their link (no powered Cyborg Central, no living Commander). Absent while linked. */
+  cyborgLinkLostTick?: number;
   /**
    * Units this commander keeps training. Each of his producers for that unit
    * holds one job until he turns it off. Absent when none.

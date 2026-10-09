@@ -70,6 +70,13 @@ function ticks(state: MatchState, n: number): void {
   for (let i = 0; i < n; i++) step(state, TICK_DT);
 }
 
+/** A powered Cyborg Central for this side, off in a corner, so its Cyborgs stay linked. */
+function uplink(state: MatchState, playerId: string): void {
+  const ts = state.tileSize;
+  makeEntity(state, "cyborgcentral", playerId, tileCenter(6, ts), tileCenter(6, ts), { tileX: 6, tileY: 6 });
+  makeEntity(state, "dynamo", playerId, tileCenter(6, ts), tileCenter(12, ts), { tileX: 6, tileY: 12 });
+}
+
 function setHpShare(e: Entity, share: number): void {
   e.hp = Math.round(e.hpMax * share);
 }
@@ -183,6 +190,7 @@ describe("cyborg", () => {
     const { state, a } = match();
     clearCover(state);
     const ts = state.tileSize;
+    uplink(state, a);
     const medic = makeEntity(state, "medic", a, tileCenter(80, ts), tileCenter(52, ts));
     const cy = makeEntity(state, "cyborg", a, tileCenter(86, ts), tileCenter(52, ts));
     setHpShare(cy, CYBORG_LEGS_LOST_HP - 0.05);

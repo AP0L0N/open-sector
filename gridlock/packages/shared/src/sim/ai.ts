@@ -193,6 +193,7 @@ export const EASY_ARMY: Readonly<Record<"muster" | "armory" | "airfield" | "dock
     { unit: "warden", want: 3 },
     { unit: "walker", want: 2 },
     { unit: "jagdtiger", want: 1 },
+    { unit: "feuerwirbel", want: 1 },
     { unit: "mammoth", want: 1 },
     { unit: "apocalypse", want: 1 },
     { unit: "supply", want: 1 },
@@ -219,7 +220,7 @@ export const EASY_ARMY: Readonly<Record<"muster" | "armory" | "airfield" | "dock
 /**
  * Base structures, one after another, each until the side owns `n`. Smelter second so its scrap
  * funds the Barracks and the first towers, and a second Smelter right behind the Barracks to pay
- * for the army. The Machine Shop waits for a tower; the Marine Base, Research, air, and the Radar
+ * for the army. The Machine Shop waits for a tower; the Marine Base, Research, Cyborg Central, air, and the Radar
  * Station wait until the base is fortified. With all of that standing, more Smelters up to EASY_WANT_SMELTERS.
  */
 const BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
@@ -231,6 +232,7 @@ const BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
   // Only with water in the yard that reaches the enemy or the middle (wantDock).
   { type: "dock", n: 1 },
   { type: "research", n: 1 },
+  { type: "cyborgcentral", n: 1 },
   { type: "airfield", n: 1 },
   { type: "radar", n: 1 },
 ];
@@ -239,7 +241,7 @@ const CORE_BUILDINGS: readonly BuildingType[] = ["dynamo", "smelter", "muster"];
 /** Troops train only once these stand, so scrap is held for them while they go up. */
 const FACTORIES: readonly BuildingType[] = [...CORE_BUILDINGS, "armory"];
 /** Extras that wait for a fortified base. */
-const AFTER_FORTIFY: readonly BuildingType[] = ["dock", "research", "airfield", "radar"];
+const AFTER_FORTIFY: readonly BuildingType[] = ["dock", "research", "cyborgcentral", "airfield", "radar"];
 
 /** Unarmed units that walk out with a wave beside a fighter. */
 const ESCORTS: ReadonlySet<string> = new Set(["medic", "supply", "droneop"]);

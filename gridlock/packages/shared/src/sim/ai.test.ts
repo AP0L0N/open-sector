@@ -65,6 +65,8 @@ function withBase(state: MatchState, aiId: string, types: Entity["type"][]): voi
     [0, -14],
     [16, 16],
     [-12, 16],
+    [-12, -14],
+    [-28, -14],
   ];
   types.forEach((type, i) => {
     const [dx, dy] = spots[i]!;
@@ -711,14 +713,30 @@ describe("easy CPU", () => {
     }
   });
 
-  it("builds the Airfield once the factories and Research stand", () => {
-    // The west seat's yard has room for the strip; the NE corner of yard-64 does not.
+  it("builds the Cyborg Central right after Research", () => {
     const { state } = humanVsEasy();
     const aiId = "A";
     state.players.get(aiId)!.ai = "easy";
     waitCore(state, aiId);
     campaign(state, aiId);
     withBase(state, aiId, ["dynamo", "smelter", "muster", "armory", "research", "dynamo"]);
+    secondSmelter(state, aiId);
+    troopers(state, aiId, 4);
+    const cpu = state.players.get(aiId)!;
+    cpu.structure = null;
+    cpu.scrap = 5000;
+    tickAi(state);
+    assert.equal(state.players.get(aiId)!.structure?.type, "cyborgcentral");
+  });
+
+  it("builds the Airfield once the factories, Research, and the Cyborg Central stand", () => {
+    // The west seat's yard has room for the strip; the NE corner of yard-64 does not.
+    const { state } = humanVsEasy();
+    const aiId = "A";
+    state.players.get(aiId)!.ai = "easy";
+    waitCore(state, aiId);
+    campaign(state, aiId);
+    withBase(state, aiId, ["dynamo", "smelter", "muster", "armory", "research", "dynamo", "cyborgcentral", "dynamo"]);
     secondSmelter(state, aiId);
     troopers(state, aiId, 4);
     const cpu = state.players.get(aiId)!;
@@ -744,7 +762,7 @@ describe("easy CPU", () => {
     const { state, aiId } = humanVsEasy();
     waitCore(state, aiId);
     campaign(state, aiId);
-    withBase(state, aiId, ["dynamo", "smelter", "muster", "armory", "research", "airfield"]);
+    withBase(state, aiId, ["dynamo", "smelter", "muster", "armory", "research", "cyborgcentral", "airfield"]);
     secondSmelter(state, aiId);
     const hq = coreOf(state, aiId);
     makeEntity(state, "dynamo", aiId, hq.x - 96, hq.y + 128, { tileX: hq.tileX - 12, tileY: hq.tileY + 16 });
@@ -773,7 +791,7 @@ describe("easy CPU", () => {
     const { state, aiId } = humanVsEasy();
     waitCore(state, aiId);
     campaign(state, aiId);
-    withBase(state, aiId, ["dynamo", "smelter", "muster", "armory", "research", "dynamo"]);
+    withBase(state, aiId, ["dynamo", "smelter", "muster", "armory", "research", "dynamo", "cyborgcentral", "dynamo"]);
     secondSmelter(state, aiId);
     troopers(state, aiId, 8);
     const cpu = state.players.get(aiId)!;
@@ -1129,7 +1147,7 @@ function boats(state: MatchState, aiId: string, type: Entity["type"], n: number,
 
 /** A standing base past every BUILD_ORDER step, with the Smelters it wants put off. */
 function fullBase(state: MatchState, aiId: string): void {
-  withBase(state, aiId, ["dynamo", "smelter", "muster", "armory", "research", "airfield"]);
+  withBase(state, aiId, ["dynamo", "smelter", "muster", "armory", "research", "cyborgcentral", "airfield"]);
   secondSmelter(state, aiId);
   const hq = coreOf(state, aiId);
   for (const [dx, dy] of [

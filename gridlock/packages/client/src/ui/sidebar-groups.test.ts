@@ -25,18 +25,19 @@ describe("sidebarGroupOf", () => {
     assert.equal(sidebarGroupOf("bunker"), "defences");
     assert.equal(sidebarGroupOf("tower"), "defences");
     assert.equal(sidebarGroupOf("ram"), "defences");
-    for (const t of ["dynamo", "smelter", "muster", "armory", "airfield", "dock", "research", "radar"] as const) assert.equal(sidebarGroupOf(t), "structures");
+    for (const t of ["dynamo", "smelter", "muster", "armory", "airfield", "dock", "research", "radar", "cyborgcentral"] as const) assert.equal(sidebarGroupOf(t), "structures");
   });
 
   it("splits trainables into infantry, tanks, boats, and aircraft", () => {
     for (const t of ["rifleman", "gunner", "sniper", "engineer", "medic", "cyborg", "droneop", "jumpjet"] as const) {
       assert.equal(sidebarGroupOf(t), "infantry", t);
     }
-    for (const t of ["hauler", "warden", "ss3", "jagdtiger", "walker", "titan", "mammoth", "supply"] as const) assert.equal(sidebarGroupOf(t), "tanks", t);
+    for (const t of ["hauler", "warden", "ss3", "jagdtiger", "feuerwirbel", "walker", "titan", "mammoth", "supply"] as const) assert.equal(sidebarGroupOf(t), "tanks", t);
     assert.equal(sidebarGroupOf("stuka"), "aircraft");
     assert.equal(sidebarGroupOf("fw190"), "aircraft");
     assert.equal(sidebarGroupOf("bv222"), "aircraft");
     assert.equal(sidebarGroupOf("he111"), "aircraft");
+    assert.equal(sidebarGroupOf("horten"), "aircraft");
     assert.equal(sidebarGroupOf("gunboat"), "naval");
     assert.equal(sidebarGroupOf("supplyboat"), "naval");
     assert.equal(sidebarGroupOf("submarine"), "naval");
@@ -51,7 +52,7 @@ describe("sidebarGroupOf", () => {
       const costs = g[id].map((e) => catalog(e.type).cost);
       assert.deepEqual(costs, [...costs].sort((a, b) => a - b), id);
     }
-    assert.deepEqual(g.aircraft.map((e) => e.type), ["fw190", "stuka", "he111", "bv222"]);
+    assert.deepEqual(g.aircraft.map((e) => e.type), ["fw190", "stuka", "horten", "he111", "bv222"]);
     assert.deepEqual(g.naval.map((e) => e.type), ["gunboat", "supplyboat", "submarine", "destroyer", "lst", "battleship"]);
   });
 });
