@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { copyMapUnit, mapAirfieldAt } from "@gridlock/shared";
-import { clearOrders, gridDiff, markDiff, markSheet, ownersWithoutStart, planesOn, setFeatureOwner, setGuard, setMaxPlayers, setUnitOwner, unionDirty } from "./builder-model.js";
+import { TILE_DIAMOND_SCRAP, TILE_SCRAP, copyMapUnit, mapAirfieldAt } from "@gridlock/shared";
+import { clearOrders, gridDiff, markDiff, markSheet, ownersWithoutStart, planesOn, setFeatureOwner, setGuard, setMaxPlayers, setUnitOwner, settle, smeltersOffScrap, startsFarFromScrap, unionDirty } from "./builder-model.js";
 import {
   GROUND_GRASS,
   GROUND_SAND,
@@ -719,5 +719,41 @@ describe("builder sides, planes, and guard", () => {
     assert.equal(s.units[0]!.owner, undefined);
     assert.equal(s.units[1]!.owner, 2);
     assert.deepEqual(ownersWithoutStart(s), [2]);
+  });
+});
+
+describe("map builder scrap checks", () => {
+  it("counts scrap in yard range from the Core's edge, not a circle round the start", () => {
+    const s = fresh();
+    s.spawns.push({ id: 1, x: 40, y: 40 }, { id: 2, x: 150, y: 150 });
+    // Start 1's Core spans 34..45; a Smelter within BUILD_RADIUS (32) of it covers scrap out to x = 88.
+    paintDisk(s, 86, 40, 2, TILE_DIAMOND_SCRAP);
+    settle(s);
+    assert.deepEqual(startsFarFromScrap(s), [2]);
+    paintDisk(s, 150, 100, 2, TILE_SCRAP);
+    settle(s);
+    assert.deepEqual(startsFarFromScrap(s), []);
+  });
+
+  it("flags a start whose nearest scrap is past the yard's reach", () => {
+    const s = fresh();
+    s.spawns.push({ id: 1, x: 40, y: 40 });
+    paintDisk(s, 93, 40, 2, TILE_DIAMOND_SCRAP);
+    settle(s);
+    assert.deepEqual(startsFarFromScrap(s), [1]);
+  });
+
+  it("keeps plain and diamond scrap under a placed Smelter", () => {
+    for (const tile of [TILE_SCRAP, TILE_DIAMOND_SCRAP]) {
+      const s = fresh();
+      paintDisk(s, 100, 100, 8, tile);
+      paintDisk(s, 140, 140, 8, tile);
+      s.features.push(houseAt("smelter", 96, 96, 0), houseAt("cottage", 136, 136, 0));
+      settle(s);
+      assert.equal(smeltersOffScrap(s), 0);
+      assert.equal(s.tiles[98 * s.width + 98], tile);
+      // Any other lot is still cleared to ground.
+      assert.notEqual(s.tiles[138 * s.width + 138], tile);
+    }
   });
 });
