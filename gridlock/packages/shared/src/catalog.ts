@@ -299,8 +299,11 @@ export const ASSAULT_RANGE_TILES = t(7.5);
 export const MG42_RANGE_TILES = t(11);
 export const WALKER_RANGE_TILES = t(8);
 export const CYBORG_RANGE_TILES = WALKER_RANGE_TILES;
-/** Sim Unit II's energy daggers: arm's reach. He closes to it himself. */
-export const SIMUNIT_REACH_TILES = t(1.5);
+/**
+ * Sim Unit II's energy daggers: arm's reach, from his centre to the target's body or wall,
+ * not centre to centre, and no longer from a hill. He closes to it himself, or blinks in.
+ */
+export const SIMUNIT_REACH_TILES = t(0.5);
 /** How far a Sim Unit II looks for someone to close on by himself. Inside his own eyes. */
 export const SIMUNIT_HUNT_TILES = t(7);
 export const SCOPED_RANGE_TILES = t(15);
@@ -1590,14 +1593,19 @@ export const COMMANDER_HP_REGEN_PER_SEC = 0.5;
  * Sim Unit II. A light, fast cyborg frame built for the knife: a short energy
  * dagger in each hand, and a blink drive that throws him SIMUNIT_BLINK_RANGE_TILES
  * in an instant on one charge, which comes back by itself in
- * SIMUNIT_BLINK_RECHARGE_SECONDS. The daggers cut a soldier down in two slashes,
- * open a Walker or a truck at SIMUNIT_LIGHT_MUL of that, and barely scratch a
- * tank or a wall. Against a structure or a hull with enemy soldiers inside he
- * blinks in, spends SIMUNIT_PURGE_SECONDS among them, kills every soldier
- * aboard, and blinks back out: that is the one order that spends his charge on
- * a target, and only a hostile garrison offers it.
+ * SIMUNIT_BLINK_RECHARGE_SECONDS. One slash kills any soldier who is not a
+ * cyborg; it opens a Walker or a truck at SIMUNIT_LIGHT_MUL of the hull cut, and barely
+ * scratches a tank or a wall. But only at arm's reach: an enemy he is going for
+ * that stands past it and inside the blink, he blinks onto while the charge is up.
+ * Against a structure or a hull with enemy soldiers inside he blinks in, spends
+ * SIMUNIT_PURGE_SECONDS among them, kills every soldier aboard, and blinks back out.
  */
-export const SIMUNIT_SLASH_DAMAGE = 22;
+/** A slash on a soldier: more than any man's whole pool. A Cyborg takes five. */
+export const SIMUNIT_SLASH_DAMAGE = 60;
+/** A slash on anything that is not a soldier, before the plate's share below. */
+export const SIMUNIT_HULL_SLASH_DAMAGE = 22;
+/** He walks a gap shorter than this rather than spend the blink on it. */
+export const SIMUNIT_STRIKE_MIN_TILES = t(1.5);
 /** Slash cooldown, seconds: two cuts a second, one hand then the other. */
 export const SIMUNIT_SLASH_SECONDS = 0.45;
 /** Share of a slash a light hull (a Walker, a truck) takes. */
@@ -1614,7 +1622,7 @@ export const SIMUNIT_PURGE_SECONDS = 2;
 export const DAGGERS = {
   id: "daggers" as const,
   name: "Energy daggers",
-  blurb: "A short blade in each hand. Arm's reach: he runs the target down himself. Two slashes kill a soldier; a Walker or a truck takes half; a tank or a wall takes almost nothing. Never needs a truck.",
+  blurb: "A short blade in each hand. Arm's reach: he runs the target down himself, or blinks onto it. One slash kills a soldier; a Walker or a truck takes a slit; a tank or a wall takes almost nothing. Never needs a truck.",
   damage: SIMUNIT_SLASH_DAMAGE,
   penetration: 0,
   caliber: 8,
@@ -5288,7 +5296,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: DAGGERS.penetration,
     caliber: DAGGERS.caliber,
     spreadDeg: DAGGERS.spreadDeg,
-    blurb: `A light, fast cyborg built for the knife. An energy dagger in each hand: he runs a soldier down and cuts him down in two slashes, opens a Walker or a truck at half that, and barely scratches a tank or a wall. A blink drive throws him up to ${SIMUNIT_BLINK_RANGE_TILES / TILE_SUBDIV} cells in an instant on one charge, back by itself in ${SIMUNIT_BLINK_RECHARGE_SECONDS} seconds. Right-click an enemy structure or hull with soldiers inside and he blinks in among them, kills every soldier aboard in ${SIMUNIT_PURGE_SECONDS} seconds, and blinks back out; only a hostile garrison offers it. Like the Cyborg he can shut down where he stands: dark and still, he reads as no one's machine and enemy guns pass him by until he powers up. Near death his legs are torn off and he crawls on, still cutting. Medics heal him, engineers repair him. He runs on your Cyborg Central's uplink or a living Cyborg Commander, like the Cyborg.`,
+    blurb: `A light, fast cyborg built for the knife. An energy dagger in each hand: one slash kills a soldier, but only at arm's reach. He opens a Walker or a truck slowly and barely scratches a tank or a wall. A blink drive throws him up to ${SIMUNIT_BLINK_RANGE_TILES / TILE_SUBDIV} cells in an instant on one charge, back by itself in ${SIMUNIT_BLINK_RECHARGE_SECONDS} seconds: an enemy he goes for inside that reach, he blinks straight onto while the charge is up. Right-click an enemy structure or hull with soldiers inside and he blinks in among them, kills every soldier aboard in ${SIMUNIT_PURGE_SECONDS} seconds, and blinks back out; only a hostile garrison offers it. Like the Cyborg he can shut down where he stands: dark and still, he reads as no one's machine and enemy guns pass him by until he powers up. Near death his legs are torn off and he crawls on, still cutting. Medics heal him, engineers repair him. He runs on your Cyborg Central's uplink or a living Cyborg Commander, like the Cyborg.`,
   },
   borgdrone: {
     type: "borgdrone",

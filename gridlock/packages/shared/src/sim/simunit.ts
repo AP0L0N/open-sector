@@ -3,12 +3,15 @@ import {
   SIMUNIT_BLINK_RANGE_TILES,
   SIMUNIT_BLINK_RECHARGE_SECONDS,
   SIMUNIT_PURGE_SECONDS,
+  SIMUNIT_STRIKE_MIN_TILES,
   canPowerDown,
   isInfantryType,
   isSimUnit,
   secondsToTicks,
 } from "../catalog.js";
 import { approachTile, livingGarrison, vacateIfEmpty } from "./garrison.js";
+import { isAirborne } from "./air.js";
+import { weaponRangeWorld } from "./elevation.js";
 import { allies, buildingCenter, clearOrder, inBounds, tileCenter, walkable, worldToTile } from "./geo.js";
 import { setPath } from "./path.js";
 import type { Entity, MatchState } from "./types.js";
@@ -21,6 +24,10 @@ import type { Entity, MatchState } from "./types.js";
  * then he goes. A purge order on a structure or hull with enemy soldiers inside blinks
  * him in among them; SIMUNIT_PURGE_SECONDS later every soldier aboard is dead and he
  * blinks back out to where he stood. Inside he is out of reach, like any passenger.
+ *
+ * Blink strike: an enemy soldier or hull he is going for, standing past the daggers'
+ * reach and inside the blink's, he blinks onto while the charge is up, and cuts the
+ * same tick. A gap under SIMUNIT_STRIKE_MIN_TILES he walks.
  *
  * Power-down: a Cyborg or a Sim Unit told to shut down stands dark where he is. He
  * takes no order but power-up, fires nothing, and no enemy gun picks him by itself:
@@ -68,6 +75,22 @@ function idle(e: Entity): void {
   if (e.order || e.waypoints.length > 0 || e.attackTarget != null || e.orderQueue) clearOrder(e);
   e.orderQueue = undefined;
   e.holdPosition = false;
+}
+
+/** From his centre to the target's body, or to the nearest edge of a building's footprint. */
+export function gapTo(state: MatchState, e: Entity, t: Entity): number {
+  if (t.kind === "building") {
+    const ts = state.tileSize;
+    const dx = Math.max(t.tileX * ts - e.x, 0, e.x - (t.tileX + t.tileW) * ts);
+    const dy = Math.max(t.tileY * ts - e.y, 0, e.y - (t.tileY + t.tileH) * ts);
+    return Math.hypot(dx, dy);
+  }
+  return Math.max(0, Math.hypot(t.x - e.x, t.y - e.y) - catalog(t.type).radius);
+}
+
+/** The daggers reach `t` from where he stands. */
+export function inStrikeReach(state: MatchState, e: Entity, t: Entity): boolean {
+  return gapTo(state, e, t) <= weaponRangeWorld(state, e);
 }
 
 /** Soldiers aboard a host, and aboard anything aboard it (a truck on an LST deck). */
@@ -215,6 +238,36 @@ function blinkOut(state: MatchState, e: Entity, host: Entity | undefined): void 
   e.state = "idle";
 }
 
+/** The enemy he is going for: a named attack, an auto pick, or the one an attack-move holds. */
+function strikeTarget(state: MatchState, e: Entity): Entity | undefined {
+  const o = e.order;
+  const id = o?.kind === "attack" || o?.kind === "forceattack" ? (o.targetId ?? e.attackTarget) : e.attackTarget;
+  if (id == null) return undefined;
+  const t = state.entities.get(id);
+  if (!t || t.kind !== "unit" || t.hp <= 0 || t.wreck || t.garrisonedIn != null || t.drone || isAirborne(t)) return undefined;
+  if (allies(state, e.ownerId, t.ownerId)) return undefined;
+  // A dark machine, or a Sim Unit inside on a purge, is only worth the charge when the player named it.
+  if (hiddenFromAuto(t) && !(o?.kind === "attack" && !o.auto) && o?.kind !== "forceattack") return undefined;
+  return t;
+}
+
+/** Blink onto the enemy he is going for when it stands past the daggers and inside the blink. */
+function tickBlinkStrike(state: MatchState, e: Entity): void {
+  if (e.holdPosition || !blinkReady(state, e)) return;
+  const t = strikeTarget(state, e);
+  if (!t || inStrikeReach(state, e, t)) return;
+  if (gapTo(state, e, t) < SIMUNIT_STRIKE_MIN_TILES * state.tileSize) return;
+  if (!inBlinkReach(state, e, t.x, t.y)) return;
+  // Land at his own arm's length on the near side of the target.
+  const d = Math.hypot(e.x - t.x, e.y - t.y) || 1;
+  const off = catalog(t.type).radius + catalog(e.type).radius;
+  const at = landing(state, e, t.x + ((e.x - t.x) / d) * off, t.y + ((e.y - t.y) / d) * off);
+  if (!at) return;
+  spendCharge(state, e);
+  teleport(state, e, at.x, at.y);
+  e.facing = Math.atan2(t.y - e.y, t.x - e.x);
+}
+
 function tickPurge(state: MatchState, e: Entity): void {
   const p = e.purge!;
   const host = state.entities.get(p.hostId);
@@ -257,5 +310,6 @@ export function tickSimUnits(state: MatchState): void {
     if (e.garrisonedIn != null || e.shutdown) continue;
     if (e.order?.kind === "blink" && e.order.x != null && e.order.y != null) tickBlinkOrder(state, e);
     else if (e.order?.kind === "purge") tickPurgeOrder(state, e);
+    else tickBlinkStrike(state, e);
   }
 }

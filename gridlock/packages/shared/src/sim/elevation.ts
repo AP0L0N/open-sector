@@ -28,6 +28,7 @@ import {
   AIRCRAFT_FLYING_SIGHT_BONUS,
   HORTEN_FLYING_SIGHT_BONUS,
   isReconType,
+  meleeOf,
   TANK_GUN_CLIMB,
   TANK_GUN_ELEV_DEG,
   GROVE_SIGHT_BUDGET,
@@ -307,6 +308,8 @@ export function weaponRangeWorld(state: MatchState, e: Entity): number {
   const gun = infantryGunFor(e);
   const base = gun?.rangeTiles ?? catalog(e.type).rangeTiles;
   if (base <= 0) return 0;
+  // A blade reaches an arm, on a hill or off it.
+  if (meleeOf(e.type)) return base * state.tileSize;
   let tiles = rangeTilesOf(e.type, entityHeight(state, e), base);
   if (inHouse && !host.garrisonHide) tiles += garrisonReachBonusOf(host.type);
   return tiles * state.tileSize * longReachMul(e);

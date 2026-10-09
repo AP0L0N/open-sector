@@ -4,9 +4,11 @@ import {
   SIMUNIT_BLINK_RECHARGE_SECONDS,
   SIMUNIT_PURGE_SECONDS,
   SIMUNIT_REACH_TILES,
+  SIMUNIT_SLASH_DAMAGE,
   TECH_REQUIRES,
   TICK_DT,
   TRAIN_TYPES,
+  HEIGHT_MAX,
   canPowerDown,
   catalog,
   infantryGunFor,
@@ -21,7 +23,8 @@ import { applyCommand } from "./commands.js";
 import { enterGarrison } from "./garrison.js";
 import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
-import { blinkCharge, purgeDenied } from "./simunit.js";
+import { weaponRangeWorld } from "./elevation.js";
+import { blinkCharge, gapTo, purgeDenied } from "./simunit.js";
 import { snapshotFor } from "./snapshot.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -87,15 +90,72 @@ describe("Sim Unit II catalog", () => {
 });
 
 describe("Sim Unit II daggers", () => {
-  it("runs an enemy soldier down on his own and cuts him down in a couple of slashes", () => {
+  it("kills any soldier who is not a cyborg in one slash", () => {
+    for (const type of ["rifleman", "gunner", "sniper", "pyro", "medic", "jumpjet"] as const) {
+      assert.ok(SIMUNIT_SLASH_DAMAGE * 0.9 > catalog(type).hp, `${type} has ${catalog(type).hp}`);
+    }
     const { state, a, b } = match();
+    const ts = state.tileSize;
+    const su = unit(state, "simunit2", a, 60, 40);
+    const rifle = makeEntity(state, "rifleman", b, su.x + 14, su.y);
+    applyCommand(state, a, { type: "cmd.attack", ids: [su.id], targetId: rifle.id });
+    ticks(state, 2);
+    assert.ok(!state.entities.has(rifle.id) || rifle.hp <= 0, `rifleman still at ${rifle.hp}`);
+    assert.equal(blinkCharge(state, su), 1, "no blink for a man already at his arm");
+    assert.ok(Math.abs(su.x - tileCenter(60, ts)) < 1, "did not move");
+  });
+
+  it("blinks onto an enemy soldier he goes for past arm's reach and cuts him the same tick", () => {
+    const { state, a, b } = match();
+    const ts = state.tileSize;
     const su = unit(state, "simunit2", a, 60, 40);
     const rifle = unit(state, "rifleman", b, 70, 40);
-    ticks(state, 10);
-    assert.equal(su.attackTarget, rifle.id, "picked him up past arm's reach");
-    ticks(state, 60);
+    ticks(state, 3);
     assert.ok(!state.entities.has(rifle.id) || rifle.hp <= 0, `rifleman still at ${rifle.hp}`);
+    assert.ok(su.x > tileCenter(67, ts), `blinked across, at ${su.x / ts}`);
+    assert.ok(blinkCharge(state, su) < 1, "the charge went on it");
     assert.ok(su.hp > 0);
+  });
+
+  it("blinks onto a named target out at the edge of the blink", () => {
+    const { state, a, b } = match();
+    const ts = state.tileSize;
+    const su = unit(state, "simunit2", a, 40, 40);
+    const rifle = unit(state, "rifleman", b, 84, 40);
+    applyCommand(state, a, { type: "cmd.attack", ids: [su.id], targetId: rifle.id });
+    ticks(state, 2);
+    assert.ok(Math.hypot(su.x - rifle.x, su.y - rifle.y) < ts * 4, "beside him");
+    assert.ok(!state.entities.has(rifle.id) || rifle.hp <= 0);
+  });
+
+  it("walks a short gap rather than spend the blink, and cannot cut from a cell off", () => {
+    const { state, a, b } = match();
+    const ts = state.tileSize;
+    const su = unit(state, "simunit2", a, 60, 40);
+    const rifle = unit(state, "rifleman", b, 64, 40);
+    assert.ok(gapTo(state, su, rifle) > weaponRangeWorld(state, su), "a cell off is past the blade");
+    su.holdPosition = true;
+    applyCommand(state, a, { type: "cmd.attack", ids: [su.id], targetId: rifle.id });
+    su.holdPosition = true;
+    rifle.holdPosition = true;
+    ticks(state, 10);
+    assert.equal(rifle.hp, rifle.hpMax, "held a cell off, no cut lands");
+    assert.equal(blinkCharge(state, su), 1, "no blink on hold");
+    su.holdPosition = false;
+    ticks(state, 20);
+    assert.ok(!state.entities.has(rifle.id) || rifle.hp <= 0, "walked in and cut");
+    assert.equal(blinkCharge(state, su), 1, "walked it, charge kept");
+  });
+
+  it("gets no reach from a hill", () => {
+    const { state, a } = match();
+    const su = unit(state, "simunit2", a, 60, 40);
+    const flat = weaponRangeWorld(state, su);
+    state.heights.fill(HEIGHT_MAX);
+    const rifle = unit(state, "rifleman", "B", 60, 42);
+    assert.ok(weaponRangeWorld(state, rifle) > catalog("rifleman").rangeTiles * state.tileSize, "the hill does lengthen a rifle");
+    assert.equal(weaponRangeWorld(state, su), flat);
+    assert.equal(flat, SIMUNIT_REACH_TILES * state.tileSize);
   });
 
   it("does moderate damage to a Walker and next to none to a Tiger", () => {

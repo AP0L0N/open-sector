@@ -150,6 +150,7 @@ import {
   TITAN_POD_ARC_DEG,
   SIMUNIT_BUILDING_MUL,
   SIMUNIT_HEAVY_MUL,
+  SIMUNIT_HULL_SLASH_DAMAGE,
   SIMUNIT_HUNT_TILES,
   SIMUNIT_LIGHT_MUL,
   SIMUNIT_SLASH_DAMAGE,
@@ -184,7 +185,7 @@ import {
 } from "./ballistics.js";
 import { fireStats, hullTurnMul, immobilized, rollCrits, rollLamp, takeDamage } from "./crits.js";
 import { damageMaulerCart } from "./mauler-cart.js";
-import { hiddenFromAuto } from "./simunit.js";
+import { hiddenFromAuto, inStrikeReach } from "./simunit.js";
 import { artilleryCanLay, artilleryReady, artilleryReloadMul, blastOnGun, bulletOnGun, gunCrewOf } from "./artillery.js";
 import { noteImpactSurface } from "./remains.js";
 import { stanceHitRadiusMul, stanceTargetSpreadMul, tickStance } from "./stance.js";
@@ -1767,7 +1768,8 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   }
   const range = weaponRangeWorld(state, e) * airReachMul(e, target);
   const dist = Math.hypot(aimX - e.x, aimY - e.y);
-  if (dist > range) {
+  // A blade reaches from his centre to the target's body or wall, not to its middle.
+  if (target && meleeOf(e.type) ? !inStrikeReach(state, e, target) : dist > range) {
     if (!holedUp) e.state = "attack";
     return;
   }
@@ -3077,18 +3079,20 @@ function crewPace(e: Entity): number {
 }
 
 /**
- * The Sim Unit's cut. A soldier takes the whole slash; a Walker or a truck SIMUNIT_LIGHT_MUL
- * of it; a tank, a wreck, or a plate SIMUNIT_HEAVY_MUL; a wall SIMUNIT_BUILDING_MUL, and
- * through the slits of a held house the soldiers inside instead. No round: the hit lands now.
+ * The Sim Unit's cut. A soldier takes SIMUNIT_SLASH_DAMAGE, more than his whole pool; anything
+ * else the hull cut: a Walker or a truck SIMUNIT_LIGHT_MUL of it; a tank, a wreck, or a plate
+ * SIMUNIT_HEAVY_MUL; a wall SIMUNIT_BUILDING_MUL, and through the slits of a held house the
+ * soldiers inside the soldier's cut instead. No round: the hit lands now.
  */
 function slash(state: MatchState, e: Entity, target: Entity): void {
   const def = catalog(target.type);
+  const soldier = target.kind === "unit" && !target.wreck && isInfantryType(target.type);
   let mul = 1;
   if (target.kind === "building") mul = SIMUNIT_BUILDING_MUL;
   else if (target.wreck || (isArmored(def) && !isLightHull(def))) mul = SIMUNIT_HEAVY_MUL;
   else if (isLightHull(def)) mul = SIMUNIT_LIGHT_MUL;
   const rand = () => nextRand(state);
-  const dmg = Math.round(SIMUNIT_SLASH_DAMAGE * mul * (0.9 + 0.2 * rand()));
+  const dmg = Math.round((soldier ? SIMUNIT_SLASH_DAMAGE : SIMUNIT_HULL_SLASH_DAMAGE * mul) * (0.9 + 0.2 * rand()));
   const vx = target.x - e.x;
   const vy = target.y - e.y;
   let kind: ImpactKind = "hit";
@@ -3097,7 +3101,7 @@ function slash(state: MatchState, e: Entity, target: Entity): void {
   } else if (dmg > 0) {
     takeDamage(target, dmg, state.tick);
     if (target.hp <= 0) kind = "kill";
-    else if (target.kind === "unit" && !target.wreck && isInfantryType(target.type)) rollCrits(target, "none", "hit", dmg, rand);
+    else if (soldier) rollCrits(target, "none", "hit", dmg, rand);
   } else {
     kind = "glance";
   }
