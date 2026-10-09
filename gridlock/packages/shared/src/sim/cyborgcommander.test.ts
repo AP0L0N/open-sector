@@ -77,13 +77,13 @@ function runBeam(state: MatchState, cmd: Entity): void {
 }
 
 describe("cyborg commander", () => {
-  it("is a research-gated Armory cyborg with a force field and a cutting laser", () => {
+  it("is a Borg cyborg from the Cyborg Central with a force field and a cutting laser", () => {
     const def = catalog("cyborgcommander");
     assert.equal(def.name, "Cyborg Commander");
     assert.equal(def.cost, 5000);
     assert.ok(TRAIN_TYPES.includes("cyborgcommander"));
-    assert.equal(producerType("cyborgcommander"), "armory");
-    assert.deepEqual(TECH_REQUIRES.cyborgcommander, ["research", "cyborgcentral"]);
+    assert.equal(producerType("cyborgcommander"), "cyborgcentral");
+    assert.equal(TECH_REQUIRES.cyborgcommander, "cyborgcentral");
     assert.equal(isCyborg("cyborgcommander"), true);
     assert.equal(isRepairableUnit("cyborgcommander"), true);
     assert.equal(hasForceField("cyborgcommander"), true);

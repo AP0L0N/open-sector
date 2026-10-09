@@ -1,0 +1,73 @@
+{
+  "key": "simunit2",
+  "out": "units/simunit2",
+  "voice": {
+    "name": "Open Sector - Sim Unit",
+    "description": "Quiet, smooth male voice of a stealthy cyborg infiltrator and assassin: low and soft, close to a whisper, cold and precise with a thin synthetic digital shimmer and a faint glitch at the edges of words, calm, patient and predatory, never raises his voice.",
+    "sample": "Sim Unit online. Blink drive charged. They will not see me until the blades are already inside. Point me at the garrison and I will empty it, quietly, and be gone.",
+    "stability": 0.55,
+    "similarity": 0.8,
+    "style": 0.35,
+    "speed": 1.05
+  },
+  "lines": {
+    "select": [
+      "Sim Unit.",
+      "[whispers] Listening.",
+      "Blades ready.",
+      "Unseen. Waiting.",
+      "Give me a target."
+    ],
+    "move": [
+      "Moving quiet.",
+      "Shadowing.",
+      "On my way.",
+      "Silent approach.",
+      "Understood."
+    ],
+    "attack": [
+      "Cutting them down.",
+      "[whispers] They won't see me.",
+      "Blades out.",
+      "Purging the garrison."
+    ],
+    "special": [
+      "Blinking.",
+      "Gone dark.",
+      "Powering up."
+    ],
+    "ready": [
+      "Sim Unit, deployed."
+    ],
+    "die": [
+      "Signal... fading...",
+      "[groans] Still... cutting..."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Two fast energy dagger slashes: sharp humming electric blades swishing through the air with a crackling sizzle on contact, close, no music, no voice",
+      "duration": 0.8,
+      "variants": 3,
+      "influence": 0.65
+    },
+    "special": {
+      "prompt": "Sci-fi short-range teleport blink: a quick inward whoosh, a sharp digital glitch zap and an outward pop of displaced air, very short, close, no music, no voice",
+      "duration": 0.8,
+      "variants": 2,
+      "influence": 0.7
+    },
+    "move": {
+      "prompt": "Light agile cyborg running: quiet quick footsteps on dirt with soft servo whirs and a faint electronic hum, close, no music, no voice",
+      "duration": 1.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Light cyborg destroyed: electric sparks and short circuit crackle, energy blades fizzling out with a dying whine, a light metal body dropping to the ground, close, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

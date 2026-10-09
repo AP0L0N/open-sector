@@ -1,4 +1,4 @@
-import { SMELTER_SCRAP_COVER, anchorsBuildRange, bridgeBrickLength, buildRadiusOf, catalog, isBridge, isEngineerBuilding, isFieldStructure, isYardField, onWaterBuilding, type BridgeType, type BuildingType, type FieldStructureType, type YardFieldType } from "../catalog.js";
+import { SMELTER_SCRAP_COVER, anchorsBuildRange, bridgeBrickLength, buildRadiusOf, catalog, isBridge, isEngineerBuilding, isFieldStructure, isSmelterType, isYardField, onWaterBuilding, type BridgeType, type BuildingType, type FieldStructureType, type YardFieldType } from "../catalog.js";
 import { TILE_BLOCKED, TILE_FENCE, TILE_WATER, getMap, isGroveTile, isMountainCliff } from "../maps.js";
 import type { MatchSnapshot } from "../protocol.js";
 import { planBridgeLine, type BridgeBrick, type BridgeGround, type BridgeSpan } from "../bridge-plan.js";
@@ -88,13 +88,13 @@ export function previewSite(snap: MatchSnapshot, type: BuildingType, tx: number,
     if (kind === TILE_BLOCKED || kind === TILE_FENCE) return false;
     if (isMountainCliff(map.tiles, map.heights, map.width, map.height, t.x, t.y)) return false;
     if (scrapCells.has(i)) {
-      if (type !== "smelter") return false;
+      if (!isSmelterType(type)) return false;
       scrapUnder++;
     }
     if (built.has(i)) return false;
   }
-  if (type === "smelter" && scrapUnder < Math.ceil(def.tileW * def.tileH * SMELTER_SCRAP_COVER)) return false;
-  if (type === "smelter" && smelterCrowded(snap.entities, tx, ty)) return false;
+  if (isSmelterType(type) && scrapUnder < Math.ceil(def.tileW * def.tileH * SMELTER_SCRAP_COVER)) return false;
+  if (isSmelterType(type) && smelterCrowded(snap.entities, tx, ty)) return false;
   return true;
 }
 

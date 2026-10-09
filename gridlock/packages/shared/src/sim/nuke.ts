@@ -1,4 +1,4 @@
-import { TITAN_NUKE, catalog, isArmoredType, isBridge, isGarrisonable, isInfantryType } from "../catalog.js";
+import { TITAN_NUKE, catalog, isArmoredType, isBridge, isGarrisonable, isHq, isInfantryType } from "../catalog.js";
 import type { ImpactView } from "../protocol.js";
 import { takeDamage } from "./crits.js";
 import { coverStrike } from "./field.js";
@@ -38,7 +38,7 @@ export const NUKE_SMALL_RADIUS = 16;
  * Never the HQ, nor a bridge.
  */
 export function nukeFlattens(o: Entity): boolean {
-  if (o.type === "core" || o.type === "rig") return false;
+  if (isHq(o.type)) return false;
   if (o.kind === "building") return !isBridge(o.type) && o.tileW * o.tileH <= NUKE_FLATTEN_FOOTPRINT;
   if (isInfantryType(o.type) || !isArmoredType(o.type)) return true;
   const def = catalog(o.type);

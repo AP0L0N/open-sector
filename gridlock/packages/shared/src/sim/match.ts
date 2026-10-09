@@ -15,6 +15,10 @@ import {
   PLAYTEST_START_SCRAP,
   START_SCRAP,
   TICK_DT,
+  HQ_OF,
+  isHq,
+  isHqBuilding,
+  type Faction,
 } from "../catalog.js";
 import { featureAngle, featureLotSite, getMap, isMapBridge, isMapSection, isPlaytestMapId, type MapDef } from "../maps.js";
 import { mapAirfieldAt, mapUnitHostAt } from "../custom-maps.js";
@@ -183,7 +187,7 @@ export function createMatch(
       tileH: site.h,
       facing,
     });
-    if (f.type === "core" && f.owner != null) coreOf.set(f.owner, b);
+    if (isHqBuilding(f.type) && f.owner != null) coreOf.set(f.owner, b);
     // The tower's lamp rests where the map pointed it, and lights that way once someone holds it.
     if (f.spot != null) b.spotFacing = (f.spot * Math.PI) / 180;
     if (f.patrol?.length && hasSpotlight(f.type)) {
@@ -204,15 +208,17 @@ export function createMatch(
     const pid = slot.playerId!;
     const pos = spawns.get(pid);
     if (!pos) continue;
-    // A start the map built a Core on begins from that Core; the rest unpack a Rig.
+    // A start the map built a Core on begins from that Core, grown as its seat's own; the rest unpack a Rig or a Seed.
+    const faction: Faction = slot.faction ?? "eu";
     const core = coreOf.get(pos.spawnId);
     let hqId: number;
     if (core) {
+      core.type = HQ_OF[faction].core;
       hqId = core.id;
     } else {
       const x = tileCenter(pos.x, map.tileSize);
       const y = tileCenter(pos.y, map.tileSize);
-      const rig = makeEntity(state, "rig", pid, x, y);
+      const rig = makeEntity(state, HQ_OF[faction].rig, pid, x, y);
       const towardX = map.width / 2 - pos.x;
       const towardY = map.height / 2 - pos.y;
       rig.facing = Math.atan2(towardY, towardX);
@@ -224,6 +230,7 @@ export function createMatch(
       name: slot.name ?? "Commander",
       colorId: slot.colorId,
       team: slot.team,
+      faction,
       alive: true,
       scrap: isPlaytestMapId(room.mapId) ? PLAYTEST_START_SCRAP : START_SCRAP,
       scrapCarry: 0,
@@ -496,7 +503,7 @@ function reapDead(state: MatchState): void {
       continue;
     }
     // A tank that goes down with its LST, or flat under an Apocalypse, leaves no hulk of its own.
-    if (!e.wreck && leavesWreck(e.type) && e.type !== "core" && e.type !== "rig" && e.garrisonedIn == null && !wasFlattened(e)) {
+    if (!e.wreck && leavesWreck(e.type) && !isHq(e.type) && e.garrisonedIn == null && !wasFlattened(e)) {
       toWreck(state, e);
       wrecks.push(e);
       continue;
@@ -519,7 +526,7 @@ function reapDead(state: MatchState): void {
   for (const id of dead) {
     const e = state.entities.get(id);
     if (!e) continue;
-    if (e.type === "core" || e.type === "rig") hqOwners.add(e.ownerId);
+    if (isHq(e.type)) hqOwners.add(e.ownerId);
     if (e.garrisonedIn != null) detachGarrisoned(state, e);
     if (e.garrison.length) spillGarrison(state, e);
     destroyEntity(state, e);
@@ -531,7 +538,7 @@ function reapLostHqs(state: MatchState): void {
   for (const p of [...state.players.values()]) {
     if (!p.alive) continue;
     const hq = state.entities.get(p.hqId);
-    if (hq && hq.hp > 0 && hq.ownerId !== p.playerId && (hq.type === "core" || hq.type === "rig")) {
+    if (hq && hq.hp > 0 && hq.ownerId !== p.playerId && isHq(hq.type)) {
       eliminate(state, p.playerId);
     }
   }

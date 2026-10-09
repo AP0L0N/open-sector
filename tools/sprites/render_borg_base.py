@@ -1,0 +1,599 @@
+#!/usr/bin/env python3
+"""Borg base buildings: Hive Core, Fusion Node, Assimilator.
+
+Each writes <id>.png, <id>-cameo.png (96 px), and <id>.json (pad metrics plus
+glow spots, source px in the image frame) into the buildings asset folder.
+
+  hivecore     t(3) x t(3)  the Borg HQ: a ribbed hive dome in a crown of
+                            ringed spines, a great glowing iris on its face
+  fusionnode   t(2) x t(2)  power: two coil spires on a plinth, a plasma
+                            core held between their tips over a glowing well
+  assimilator  t(3) x t(3)  scrap: a crawling claw-rig on four legs straddling
+                            a glowing intake pit, a feed silo beside it
+
+Look: forked from render_cyborgcentral.py, so the inked structure style of
+render_airfield.py (mesh, raster, ink, silhouette, key light, cast shadow),
+the same gunmetal palette family and the same concrete pad. The Borg glow is
+cyan-green, as on the Seed (render_seed.py). Pad scale matches the shipped
+sheets: a t(3) footprint at zoom 2 and a t(2) at zoom 3 both give a 384 px
+pad, like core.png, smelter.png, and dynamo.png.
+
+  python tools/sprites/render_borg_base.py --out gridlock/packages/client/src/assets/buildings
+  python tools/sprites/render_borg_base.py --out ... --only hivecore
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+from pathlib import Path
+
+import numpy as np
+from PIL import Image
+
+import render_airfield as ra
+
+SS = ra.SS
+SIDE_MARGIN = 6.0
+HEADROOM = 4.0  # world px above the highest point
+
+GLOW = "#3fe8b8"  # seams and rings
+CORE = "#86ffd9"  # the hot cores
+EMISSIVE = ("glow", "core", "iris", "pit", "hot")
+
+
+def rgb(h: str) -> np.ndarray:
+    return ra.rgb(h)
+
+
+# Iris frame for the Hive Core's eye texture: centre and axis, set by the builder.
+IRIS: dict[str, np.ndarray] = {}
+PIT: dict[str, float] = {}
+
+_base_tex = ra.tex
+
+
+def _flat(n: np.ndarray) -> float:
+    """The key-light shade the rasterizer will apply; emissive colours divide it back out."""
+    lam = max(0.0, float(np.dot(n, ra.LIGHT)))
+    return 0.5 + 0.62 * lam
+
+
+def tex(mat: str, P: np.ndarray, n: np.ndarray) -> np.ndarray:
+    X, Y, Z = P[:, 0], P[:, 1], P[:, 2]
+    nf = ra.vnoise(X / 1.1 + Z * 0.7, Y / 1.1 - Z * 0.5, 7)
+    nm = ra.fbm(X / 6 + Z * 0.2, Y / 6 + Z * 0.3, 9, 3)
+    along = X if abs(n[1]) >= abs(n[0]) else Y
+
+    def base(h):
+        return np.broadcast_to(rgb(h), (len(X), 3)).copy()
+
+    if mat == "slab":
+        c = base("#a9aea4") * (0.9 + 0.12 * nm[:, None]) * (0.96 + 0.06 * nf[:, None])
+        joint = (np.abs(np.mod(X, 16.0) - 8.0) > 7.7) | (np.abs(np.mod(Y, 16.0) - 8.0) > 7.7)
+        if abs(n[2]) > 0.7:
+            c[joint] *= 0.74
+        return c
+    if mat == "steel":
+        # Gunmetal hull plate: horizontal plate lines, grime low down.
+        c = base("#4c5258") * (0.9 + 0.14 * nm[:, None]) * (0.95 + 0.08 * nf[:, None])
+        if abs(n[2]) < 0.75:
+            c[np.mod(Z, 3.2) < 0.3] *= 0.72
+        grime = ra.smooth(0.65, 0.9, ra.fbm(X / 3, Y / 3 + Z, 23))
+        return ra.mix(c, base("#33302e"), grime * 0.3)
+    if mat == "ribbed":
+        # Vertical ribs: the hive's shell and the spires.
+        c = base("#5b636a") * (0.9 + 0.14 * nm[:, None]) * (0.95 + 0.08 * nf[:, None])
+        ang = np.arctan2(Y - RIB_C[1], X - RIB_C[0])
+        rib = np.mod(ang * RIB_N / (2 * np.pi), 1.0) < 0.18
+        c[rib] *= 0.68
+        return c
+    if mat == "steel_dark":
+        return base("#2e3236") * (0.9 + 0.14 * nm[:, None])
+    if mat == "roof":
+        return base("#5a5f63") * (0.9 + 0.12 * nm[:, None]) * (0.96 + 0.06 * nf[:, None])
+    if mat == "spine":
+        c = base("#3a3f44") * (0.9 + 0.16 * nf[:, None])
+        return c
+    if mat == "pipe":
+        return base("#6a6c68") * (0.9 + 0.16 * nf[:, None])
+    if mat == "coil":
+        # Dark wound coil with bright gaps between the turns.
+        c = base("#3d4246") * (0.9 + 0.12 * nf[:, None])
+        c[np.mod(Z, 1.6) < 0.35] = rgb("#22262a")
+        return c
+    if mat == "scrap":
+        c = ra.mix(base("#5a4a3c"), base("#7a5134"), ra.smooth(0.4, 0.8, nm))
+        return c * (0.8 + 0.3 * nf[:, None])
+    if mat == "hazard":
+        stripe = np.floor((X + Y + Z) / 1.4) % 2 == 0
+        c = base("#1d1a14")
+        c[stripe] = rgb("#d4a017")
+        return c
+    # ---- emissive: divide out the key light so the glow reads on the shaded side too.
+    s = _flat(n)
+    if mat == "glow":
+        return base(GLOW) * (0.92 + 0.12 * nf[:, None]) / s
+    if mat == "core":
+        c = base(CORE) * (0.9 + 0.14 * nf[:, None])
+        c[np.mod(Z, 2.6) < 0.3] = rgb("#2fbf97")
+        return c / s
+    if mat == "hot":
+        return base("#e6fff4") / s
+    if mat == "iris":
+        c0, ax = IRIS["c"], IRIS["a"]
+        u = np.cross(ax, np.array([0.0, 0.0, 1.0]))
+        u /= np.linalg.norm(u)
+        w = np.cross(ax, u)
+        d = P - c0
+        pu, pw = d @ u, d @ w
+        rad = np.hypot(pu, pw) / IRIS["r"]
+        ang = np.arctan2(pw, pu)
+        # Six shutter blades, swept, with a bright pupil and a dim outer ring.
+        blade = np.mod(ang * 6 / (2 * np.pi) + rad * 0.7, 1.0) < 0.12
+        c = ra.mix(base("#e6fff4"), base("#2fd4a4"), np.clip(rad * 1.3, 0, 1))
+        c[blade & (rad > 0.28)] = rgb("#14463a")
+        c[rad > 0.88] = rgb("#1f6b58")
+        return c / s
+    if mat == "pit":
+        # Molten feedstock: bright swirl, dark scrap floating in it.
+        r = np.hypot(X - PIT["x"], Y - PIT["y"]) / PIT["r"]
+        a = np.arctan2(Y - PIT["y"], X - PIT["x"])
+        swirl = 0.5 + 0.5 * np.sin(a * 3 + r * 9)
+        c = ra.mix(base("#2fd8a4"), base("#c8fff0"), np.clip((1 - r) * 0.8 + swirl * 0.25, 0, 1))
+        chunk = ra.smooth(0.62, 0.7, ra.fbm(X / 2.2, Y / 2.2, 41)) * ra.smooth(0.3, 0.6, r)
+        c = ra.mix(c, base("#24302c"), chunk)
+        return c / s
+    return _base_tex(mat, P, n)
+
+
+ra.tex = tex
+
+RIB_C = (0.0, 0.0)
+RIB_N = 24
+
+
+# ---------------------------------------------------------------- shapes
+
+
+def axis_point(a, b, t: float) -> np.ndarray:
+    a = np.asarray(a, float)
+    b = np.asarray(b, float)
+    return a + (b - a) * t
+
+
+def collar(m: ra.Mesh, a, b, t: float, r: float, half: float, mat: str) -> None:
+    """A short ring around the a-b shaft at fraction t."""
+    a = np.asarray(a, float)
+    b = np.asarray(b, float)
+    d = (b - a) / np.linalg.norm(b - a)
+    p = axis_point(a, b, t)
+    m.cyl(p - d * half, p + d * half, r, r, mat, n=10)
+
+
+def ball(m: ra.Mesh, c, r: float, mat: str, rings: int = 6, n: int = 14, squash: float = 1.0) -> None:
+    """A sphere from stacked frusta, one part."""
+    m.new_part()
+    cx, cy, cz = c
+    for i in range(rings):
+        a0 = -math.pi / 2 + math.pi * i / rings
+        a1 = -math.pi / 2 + math.pi * (i + 1) / rings
+        z0, z1 = cz + r * squash * math.sin(a0), cz + r * squash * math.sin(a1)
+        r0, r1 = max(r * math.cos(a0), 0.05), max(r * math.cos(a1), 0.05)
+        m.cyl((cx, cy, z0), (cx, cy, z1), r0, r1, mat, n=n, caps=False, part=False)
+
+
+def dome(m: ra.Mesh, cx: float, cy: float, z0: float, r: float, h: float, bands: int, mat: str, seam: str, n: int = 28) -> list[float]:
+    """A ribbed dome of `bands` shell rings with a thin glowing seam between each. Returns band tops."""
+    tops = []
+    gap = 0.06
+    for i in range(bands):
+        t0 = i / bands
+        t1 = (i + 1) / bands
+        if i > 0:
+            # Seam: a thin glowing ring, a touch inside the shell.
+            ts = t0
+            te = t0 + gap / bands * 4
+            rs = r * math.sqrt(max(0.0, 1 - ts * ts)) * 0.97
+            re = r * math.sqrt(max(0.0, 1 - te * te)) * 0.97
+            m.cyl((cx, cy, z0 + h * ts), (cx, cy, z0 + h * te), rs, re, seam, n=n, caps=False)
+            t0 = te
+        r0 = r * math.sqrt(max(0.0, 1 - t0 * t0))
+        r1 = max(r * math.sqrt(max(0.0, 1 - t1 * t1)), 0.4)
+        # Shell band with a proud lower lip.
+        m.cyl((cx, cy, z0 + h * t0), (cx, cy, z0 + h * t1), r0 * 1.03, r1, mat, n=n, caps=(i == bands - 1))
+        tops.append(z0 + h * t1)
+    return tops
+
+
+def make_canvas(mesh: ra.Mesh, W: float, H: float) -> ra.Canvas:
+    k = ra.ZOOM * SS
+    verts = np.array(mesh.verts)
+    # Highest screen point of the mesh, measured from the north corner (0, 0, 0).
+    top = float(np.max(verts[:, 2] - (verts[:, 0] + verts[:, 1]) * 0.5)) + HEADROOM
+    top = max(top, SIDE_MARGIN)
+    left = -(H + SIDE_MARGIN) * k
+    right = (W + SIDE_MARGIN) * k
+    bottom = ((W + H) * 0.5 + SIDE_MARGIN) * k
+    w = int(math.ceil((right - left) / SS)) * SS
+    h = int(math.ceil((bottom + top * k) / SS)) * SS
+    return ra.Canvas(w, h, -left, top * k)
+
+
+def screen(cv: ra.Canvas, x: float, y: float, z: float) -> list[float]:
+    sx, sy, _ = cv.to_screen(np.array([[x, y, z]]))
+    return [round(float(sx[0]) / SS, 1), round(float(sy[0]) / SS, 1)]
+
+
+def render_building(out_dir: Path, bid: str, W: float, H: float, zoom: float, build, spots) -> None:
+    ra.ZOOM = zoom
+    props = build(False)
+    full = build(True)
+    cv = make_canvas(full, W, H)
+    print(bid, "canvas", cv.w // SS, "x", cv.h // SS)
+
+    sh = ra.shadow_mask(props, cv)
+    ao = ra.contact_ao(props, cv)
+    fr = ra.rasterize(full, cv)
+    ra.ink(fr, SS)
+    ra.silhouette(fr, SS)
+    ys, xs = np.mgrid[0 : cv.h, 0 : cv.w].astype(np.float64) + 0.5
+    gx, gy = cv.to_world_ground(xs, ys)
+    near = (gx > -3) & (gx < W + 3) & (gy > -3) & (gy < H + 3)
+    shadow = np.clip(sh * 0.42 + ao * 0.12, 0, 0.6) * near
+    solid = fr.alpha > 0.5
+    c = fr.color
+    glowing = (c[..., 1] > 0.55) & (c[..., 1] > c[..., 0] * 1.4)
+    up = solid & (fr.normal[..., 2] > 0.7) & ~glowing
+    color = fr.color.copy()
+    color[up] *= (1 - shadow[up])[:, None]
+    alpha = fr.alpha.copy()
+    outside = ~solid & (shadow > 0.02)
+    color[outside] = ra.OUTLINE * 0.4
+    alpha[outside] = shadow[outside]
+    img = ra.downsample(color, alpha, SS)
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    img.save(out_dir / f"{bid}.png", optimize=True)
+
+    south = screen(cv, W, H, 0.0)
+    info = {
+        "padWidth": round((W + H) * ra.ZOOM, 1),
+        "padSouthX": south[0],
+        "padSouthY": south[1],
+        "size": list(img.size),
+    }
+    for key, pts in spots.items():
+        if key == "stack":
+            info["stackX"], info["stackY"] = screen(cv, *pts)
+        elif isinstance(pts, tuple):
+            info[key] = screen(cv, *pts)
+        else:
+            info[key] = [screen(cv, *p) for p in pts]
+    (out_dir / f"{bid}.json").write_text(json.dumps(info, indent=2) + "\n")
+    print("wrote", out_dir / f"{bid}.png", info)
+
+    cam = Image.new("RGBA", (96, 96), (0, 0, 0, 0))
+    bb = img.getbbox()
+    if bb:
+        crop = img.crop(bb)
+        f = min(92 / crop.width, 92 / crop.height)
+        crop = crop.resize((max(1, round(crop.width * f)), max(1, round(crop.height * f))), Image.Resampling.LANCZOS)
+        cam.alpha_composite(crop, ((96 - crop.width) // 2, (96 - crop.height) // 2))
+    cam.save(out_dir / f"{bid}-cameo.png")
+
+
+def pad(m: ra.Mesh, W: float, H: float) -> None:
+    m.box((0.6, 0.6, 0), (W - 0.6, H - 0.6, 1.0), "slab")
+
+
+# ---------------------------------------------------------------- Hive Core, t(3) x t(3)
+
+HC = 96.0
+HC_C = (47.0, 47.0)
+HC_DOME_Z = 6.0
+HC_DOME_R = 31.0
+HC_DOME_H = 42.0
+HC_SPINES = 8
+HC_SPINE_TIP_Z = 74.0
+HC_IRIS_EL = math.radians(28.0)
+HC_IRIS_R = 9.0
+
+
+def hc_spine(i: int) -> tuple[np.ndarray, np.ndarray]:
+    a = 2 * math.pi * (i + 0.5) / HC_SPINES + math.pi / 4
+    cx, cy = HC_C
+    base = np.array([cx + 37.0 * math.cos(a), cy + 37.0 * math.sin(a), 4.0])
+    tip = np.array([cx + 15.0 * math.cos(a), cy + 15.0 * math.sin(a), HC_SPINE_TIP_Z - 8.0 * (i % 2)])
+    return base, tip
+
+
+def hc_iris() -> tuple[np.ndarray, np.ndarray]:
+    cx, cy = HC_C
+    d = np.array([math.cos(HC_IRIS_EL) / math.sqrt(2), math.cos(HC_IRIS_EL) / math.sqrt(2), math.sin(HC_IRIS_EL) * HC_DOME_H / HC_DOME_R])
+    d /= np.linalg.norm(d)
+    # Surface point on the ellipsoidal dome along d.
+    t = 1.0 / math.sqrt((d[0] ** 2 + d[1] ** 2) / HC_DOME_R**2 + d[2] ** 2 / HC_DOME_H**2)
+    p = np.array([cx, cy, HC_DOME_Z]) + d * t
+    # Normal of the ellipsoid at p.
+    nrm = np.array([(p[0] - cx) / HC_DOME_R**2, (p[1] - cy) / HC_DOME_R**2, (p[2] - HC_DOME_Z) / HC_DOME_H**2])
+    return p, nrm / np.linalg.norm(nrm)
+
+
+def build_hivecore(with_pad: bool) -> ra.Mesh:
+    global RIB_C
+    RIB_C = HC_C
+    m = ra.Mesh()
+    if with_pad:
+        pad(m, HC, HC)
+    cx, cy = HC_C
+    # Plinth: a low ringed drum with a glowing seam, then a skirt.
+    m.cyl((cx, cy, 1.0), (cx, cy, 3.0), 41.0, 40.0, "steel_dark", n=32)
+    m.cyl((cx, cy, 3.0), (cx, cy, 3.6), 39.6, 39.4, "glow", n=32, caps=False)
+    m.cyl((cx, cy, 3.6), (cx, cy, HC_DOME_Z), 38.5, 36.0, "steel", n=32)
+    m.cyl((cx, cy, HC_DOME_Z - 0.2), (cx, cy, HC_DOME_Z + 0.4), 36.5, 36.5, "steel_dark", n=32)
+    # The hive shell.
+    dome(m, cx, cy, HC_DOME_Z, HC_DOME_R, HC_DOME_H, 5, "ribbed", "glow", n=32)
+    # Crown: a collar and a glowing beacon at the apex.
+    top = HC_DOME_Z + HC_DOME_H
+    m.cyl((cx, cy, top - 1.5), (cx, cy, top + 2.5), 7.0, 5.0, "steel_dark", n=16)
+    m.cyl((cx, cy, top + 2.5), (cx, cy, top + 6.5), 3.0, 2.2, "core", n=12)
+    m.cyl((cx, cy, top + 6.5), (cx, cy, top + 8.0), 3.4, 1.0, "spine", n=12)
+    # Ringed spines leaning in over the shell.
+    for i in range(HC_SPINES):
+        b, t = hc_spine(i)
+        m.box((b[0] - 3.0, b[1] - 3.0, 1.0), (b[0] + 3.0, b[1] + 3.0, 4.5), "steel_dark")
+        m.cyl(b, t, 2.2, 0.35, "spine", n=6)
+        for f in (0.32, 0.55, 0.74):
+            collar(m, b, t, f, 2.2 * (1 - f) + 0.9, 0.45, "glow")
+    # The iris on the south face, toward the camera.
+    p, a = hc_iris()
+    IRIS["c"] = p + a * 1.6
+    IRIS["a"] = a
+    IRIS["r"] = HC_IRIS_R
+    m.cyl(p - a * 1.5, p + a * 1.2, HC_IRIS_R + 2.6, HC_IRIS_R + 2.2, "steel_dark", n=24)
+    m.cyl(p + a * 1.2, p + a * 1.6, HC_IRIS_R, HC_IRIS_R, "iris", n=28)
+    # Two lesser vents low on the east and west flanks.
+    for ang in (math.radians(-20), math.radians(110)):
+        vx, vy = cx + 31.0 * math.cos(ang), cy + 31.0 * math.sin(ang)
+        dirv = np.array([math.cos(ang), math.sin(ang), 0.25])
+        pv = np.array([vx, vy, HC_DOME_Z + 6.0])
+        m.cyl(pv - dirv * 2.0, pv + dirv * 1.5, 4.0, 3.6, "steel_dark", n=12)
+        m.cyl(pv + dirv * 1.5, pv + dirv * 1.8, 2.6, 2.6, "core", n=12)
+    return m
+
+
+def hivecore_spots() -> dict:
+    cx, cy = HC_C
+    p, a = hc_iris()
+    top = HC_DOME_Z + HC_DOME_H
+    spines = [hc_spine(i) for i in range(HC_SPINES)]
+    return {
+        "iris": tuple(p + a * 1.6),
+        "beacon": (cx, cy, top + 4.5),
+        "rings": [tuple(axis_point(b, t, 0.74)) for b, t in spines],
+        "seams": [(cx + 30.5 * math.cos(math.radians(a_)), cy + 30.5 * math.sin(math.radians(a_)), HC_DOME_Z + HC_DOME_H * 0.2)
+                  for a_ in (20, 45, 70)],
+        "stack": (cx, cy, top + 9.0),
+    }
+
+
+# ---------------------------------------------------------------- Fusion Node, t(2) x t(2)
+
+FN = 64.0
+FN_C = (31.0, 31.0)
+FN_SPIRE_OFF = 12.5
+FN_SPIRE_TOP = 52.0
+FN_ORB_Z = 40.0
+
+
+def fn_spires() -> list[tuple[float, float]]:
+    cx, cy = FN_C
+    # Across the view (one screen-left, one screen-right) so both read.
+    return [(cx + FN_SPIRE_OFF, cy - FN_SPIRE_OFF), (cx - FN_SPIRE_OFF, cy + FN_SPIRE_OFF)]
+
+
+def build_fusionnode(with_pad: bool) -> ra.Mesh:
+    global RIB_C
+    RIB_C = FN_C
+    m = ra.Mesh()
+    if with_pad:
+        pad(m, FN, FN)
+    cx, cy = FN_C
+    # Octagonal plinth, a glowing seam, and a deck.
+    m.cyl((cx, cy, 1.0), (cx, cy, 4.0), 27.0, 26.0, "steel_dark", n=8)
+    m.cyl((cx, cy, 4.0), (cx, cy, 4.6), 25.6, 25.6, "glow", n=8, caps=False)
+    m.cyl((cx, cy, 4.6), (cx, cy, 7.0), 25.0, 23.0, "steel", n=8)
+    # The well: a glowing core column in a ribbed cage, between the spires.
+    m.cyl((cx, cy, 7.0), (cx, cy, 9.0), 9.0, 8.0, "steel_dark", n=16)
+    m.cyl((cx, cy, 9.0), (cx, cy, 24.0), 5.0, 4.2, "core", n=16)
+    for k in range(6):
+        a = 2 * math.pi * k / 6 + math.pi / 12
+        b = (cx + 6.2 * math.cos(a), cy + 6.2 * math.sin(a), 9.0)
+        t = (cx + 5.0 * math.cos(a), cy + 5.0 * math.sin(a), 24.0)
+        m.cyl(b, t, 0.8, 0.7, "spine", n=6)
+    m.cyl((cx, cy, 24.0), (cx, cy, 26.0), 7.0, 6.0, "steel_dark", n=16)
+    m.cyl((cx, cy, 26.0), (cx, cy, 27.5), 3.0, 1.5, "spine", n=12)
+    # Twin coil spires.
+    for sx, sy in fn_spires():
+        m.box((sx - 5.5, sy - 5.5, 7.0), (sx + 5.5, sy + 5.5, 10.0), "steel_dark", top="roof")
+        m.cyl((sx, sy, 10.0), (sx, sy, FN_SPIRE_TOP), 3.6, 1.4, "ribbed", n=10)
+        for z in np.arange(13.0, FN_SPIRE_TOP - 6.0, 4.2):
+            r = 3.6 + (1.4 - 3.6) * (z - 10.0) / (FN_SPIRE_TOP - 10.0)
+            m.cyl((sx, sy, z), (sx, sy, z + 2.6), r + 1.5, r + 1.3, "coil", n=12)
+            m.cyl((sx, sy, z + 2.6), (sx, sy, z + 3.1), r + 0.9, r + 0.9, "glow", n=12, caps=False)
+        ball(m, (sx, sy, FN_SPIRE_TOP + 1.2), 2.0, "core", rings=5, n=10)
+        # Prong toward the orb.
+        tx = cx + (sx - cx) * 0.35
+        ty = cy + (sy - cy) * 0.35
+        m.cyl((sx, sy, FN_ORB_Z + 3.0), (tx, ty, FN_ORB_Z + 0.5), 0.9, 0.4, "spine", n=6)
+    # The plasma core, held between the spires, in a halo ring.
+    ball(m, (cx, cy, FN_ORB_Z), 5.6, "core", rings=8, n=16)
+    # Two thin containment hoops, crossed, around the core.
+    m.cyl((cx - 0.3, cy + 0.3, FN_ORB_Z - 6.6), (cx + 0.3, cy - 0.3, FN_ORB_Z + 6.6), 0.35, 0.35, "spine", n=6)
+    m.cyl((cx, cy, FN_ORB_Z - 0.25), (cx, cy, FN_ORB_Z + 0.25), 6.6, 6.6, "spine", n=20, caps=False)
+    # Conduits from the plinth to the spires.
+    for sx, sy in fn_spires():
+        m.cyl((cx, cy, 8.0), (sx, sy, 8.6), 1.0, 1.0, "pipe", n=8)
+    # A capacitor tower behind the well, north corner.
+    px_, py_ = cx - 15.0, cy - 15.0
+    m.cyl((px_, py_, 1.0), (px_, py_, 18.0), 4.2, 3.6, "steel", n=12)
+    for z in (8.0, 12.0, 16.0):
+        m.cyl((px_, py_, z), (px_, py_, z + 0.7), 4.0, 4.0, "glow", n=12, caps=False)
+    m.cyl((px_, py_, 18.0), (px_, py_, 19.5), 3.6, 1.8, "steel_dark", n=12)
+    # Glowing vents in the deck toward the camera.
+    for k in (-1, 1):
+        vx, vy = cx + 15.0 + k * 5.0, cy + 15.0 - k * 5.0
+        m.box((vx - 2.0, vy - 2.0, 7.0), (vx + 2.0, vy + 2.0, 7.4), "glow")
+    return m
+
+
+def fusionnode_spots() -> dict:
+    cx, cy = FN_C
+    sp = fn_spires()
+    return {
+        "core": (cx, cy, FN_ORB_Z),
+        "well": (cx + 4.0, cy + 4.0, 16.0),
+        "tips": [(sx, sy, FN_SPIRE_TOP + 1.2) for sx, sy in sp],
+        "arcs": [(cx + (sx - cx) * 0.35, cy + (sy - cy) * 0.35, FN_ORB_Z + 0.5) for sx, sy in sp],
+        "stack": (cx, cy, FN_SPIRE_TOP + 4.0),
+    }
+
+
+# ---------------------------------------------------------------- Assimilator, t(3) x t(3)
+
+AS = 96.0
+AS_PIT = (54.0, 54.0)
+AS_PIT_R = 19.0
+AS_BODY = (40.0, 40.0)
+AS_BODY_Z = (26.0, 36.0)
+
+
+def leg_path(hip, knee, foot) -> list[tuple[np.ndarray, np.ndarray, float, float]]:
+    return [(np.asarray(hip, float), np.asarray(knee, float), 2.4, 1.9), (np.asarray(knee, float), np.asarray(foot, float), 1.9, 1.0)]
+
+
+def as_legs() -> list[tuple[tuple, tuple, tuple]]:
+    bx, by = AS_BODY
+    z = AS_BODY_Z[0] + 3.0
+    out = []
+    for dx, dy in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
+        hip = (bx + dx * 9.0, by + dy * 9.0, z)
+        knee = (bx + dx * 24.0, by + dy * 24.0, z + 12.0)
+        foot = (bx + dx * 34.0, by + dy * 34.0, 1.0)
+        out.append((hip, knee, foot))
+    return out
+
+
+def as_claws() -> list[tuple[tuple, tuple, tuple]]:
+    """Shoulder, elbow, wrist for the two claw arms reaching into the pit."""
+    bx, by = AS_BODY
+    px, py = AS_PIT
+    out = []
+    for off in (-1, 1):
+        sh = (bx + 6.0 + off * 5.0, by + 6.0 - off * 5.0, AS_BODY_Z[0] + 2.0)
+        el = (px + off * 8.0, py - off * 8.0, AS_BODY_Z[0] + 4.0)
+        wr = (px + off * 4.0 + 2.0, py - off * 4.0 + 2.0, 8.0)
+        out.append((sh, el, wr))
+    return out
+
+
+def build_assimilator(with_pad: bool) -> ra.Mesh:
+    global RIB_C
+    RIB_C = AS_BODY
+    m = ra.Mesh()
+    if with_pad:
+        pad(m, AS, AS)
+    px, py = AS_PIT
+    PIT.update({"x": px, "y": py, "r": AS_PIT_R})
+    # The intake pit: a ringed rim, toothed, and the glowing melt inside.
+    m.cyl((px, py, 1.0), (px, py, 1.3), AS_PIT_R, AS_PIT_R, "pit", n=32)
+    m.cyl((px, py, 1.0), (px, py, 3.4), AS_PIT_R + 3.4, AS_PIT_R + 3.0, "steel_dark", n=32, caps=False)
+    m.cyl((px, py, 3.4), (px, py, 3.8), AS_PIT_R + 3.0, AS_PIT_R + 2.2, "glow", n=32, caps=False)
+    m.cyl((px, py, 1.0), (px, py, 3.4), AS_PIT_R + 0.2, AS_PIT_R, "steel", n=32, caps=False)
+    for k in range(10):
+        a = 2 * math.pi * k / 10
+        tx, ty = px + (AS_PIT_R + 1.6) * math.cos(a), py + (AS_PIT_R + 1.6) * math.sin(a)
+        m.cyl((tx, ty, 3.4), (px + (AS_PIT_R - 1.5) * math.cos(a), py + (AS_PIT_R - 1.5) * math.sin(a), 5.2), 1.0, 0.2, "spine", n=5)
+    # Feed silo, north-east, and a chute down to the pit.
+    sx, sy = 78.0, 18.0
+    m.cyl((sx, sy, 1.0), (sx, sy, 4.0), 10.5, 10.0, "steel_dark", n=16)
+    m.cyl((sx, sy, 4.0), (sx, sy, 30.0), 8.6, 8.0, "steel", n=16)
+    for z in (11.0, 19.0, 27.0):
+        m.cyl((sx, sy, z), (sx, sy, z + 0.6), 8.7, 8.7, "glow", n=16, caps=False)
+    m.cyl((sx, sy, 30.0), (sx, sy, 34.0), 8.0, 3.0, "steel_dark", n=16)
+    m.cyl((sx - 4.0, sy + 5.0, 14.0), (px + 6.0, py - 14.0, 5.0), 2.0, 2.0, "pipe", n=8)
+    # Scrap heaped by the pit, waiting to go in.
+    for (x0, y0, w, d, h) in ((14, 74, 9, 6, 4), (22, 82, 6, 5, 3), (8, 62, 5, 7, 3), (84, 46, 6, 5, 3)):
+        m.box((x0, y0, 1.0), (x0 + w, y0 + d, 1.0 + h), "scrap")
+
+    # The claw-rig: a ribbed carapace body on four legs, straddling the pit.
+    bx, by = AS_BODY
+    z0, z1 = AS_BODY_Z
+    m.cyl((bx, by, z0 - 2.5), (bx, by, z0), 7.0, 10.0, "steel_dark", n=12)
+    m.cyl((bx, by, z0), (bx, by, z1), 12.5, 11.0, "ribbed", n=16)
+    m.cyl((bx, by, z0 + 4.0), (bx, by, z0 + 4.6), 12.3, 12.3, "glow", n=16, caps=False)
+    m.cyl((bx, by, z1), (bx, by, z1 + 3.5), 11.0, 6.0, "steel", n=16)
+    ball(m, (bx, by, z1 + 4.5), 4.0, "core", rings=5, n=12, squash=0.8)
+    # A sensor head on the pit side, eyes down on the melt.
+    hx, hy, hz = bx + 9.0, by + 9.0, z0 + 2.0
+    m.box((hx - 3.5, hy - 3.5, hz - 2.5), (hx + 3.5, hy + 3.5, hz + 3.0), "steel", top="roof")
+    m.box((hx + 3.5, hy - 2.5, hz - 0.5), (hx + 3.9, hy + 2.5, hz + 1.2), "glow")
+    m.box((hx - 2.5, hy + 3.5, hz - 0.5), (hx + 2.5, hy + 3.9, hz + 1.2), "glow")
+    for hip, knee, foot in as_legs():
+        m.cyl(hip, knee, 2.4, 1.9, "spine", n=8)
+        m.cyl(knee, foot, 1.9, 0.9, "spine", n=8)
+        ball(m, knee, 2.6, "steel", rings=4, n=10)
+        collar(m, knee, foot, 0.25, 2.3, 0.5, "glow")
+        m.cyl((foot[0], foot[1], 1.0), (foot[0], foot[1], 2.2), 3.0, 2.0, "steel_dark", n=8)
+    for sh, el, wr in as_claws():
+        m.cyl(sh, el, 2.5, 2.0, "steel", n=8)
+        ball(m, el, 2.2, "steel_dark", rings=4, n=10)
+        m.cyl(el, wr, 2.0, 1.5, "steel", n=8)
+        collar(m, el, wr, 0.35, 1.9, 0.4, "glow")
+        # Three fingers, splayed, tips in the melt.
+        w = np.asarray(wr, float)
+        for k in range(3):
+            a = 2 * math.pi * k / 3 + 0.4
+            tip = w + np.array([3.4 * math.cos(a), 3.4 * math.sin(a), -5.6])
+            mid = w + np.array([2.6 * math.cos(a), 2.6 * math.sin(a), -1.6])
+            m.cyl(w, mid, 1.1, 0.85, "spine", n=5)
+            m.cyl(mid, tip, 0.85, 0.2, "spine", n=5)
+    return m
+
+
+def assimilator_spots() -> dict:
+    px, py = AS_PIT
+    bx, by = AS_BODY
+    return {
+        "pit": (px, py, 1.3),
+        "pitRim": [(px + (AS_PIT_R + 2.6) * math.cos(a), py + (AS_PIT_R + 2.6) * math.sin(a), 3.6) for a in (0.3, 0.8, 1.3)],
+        "core": (bx, by, AS_BODY_Z[1] + 4.5),
+        "silo": [(78.0 + 8.6 * math.cos(0.8), 18.0 + 8.6 * math.sin(0.8), z) for z in (11.3, 19.3, 27.3)],
+        "smoke": (px, py, 4.0),
+        "stack": (bx, by, AS_BODY_Z[1] + 9.0),
+    }
+
+
+BUILDINGS = {
+    "hivecore": (HC, HC, 2.0, build_hivecore, hivecore_spots),
+    "fusionnode": (FN, FN, 3.0, build_fusionnode, fusionnode_spots),
+    "assimilator": (AS, AS, 2.0, build_assimilator, assimilator_spots),
+}
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out", required=True, help="buildings asset folder")
+    ap.add_argument("--only", nargs="*", choices=sorted(BUILDINGS))
+    args = ap.parse_args()
+    for bid in args.only or list(BUILDINGS):
+        W, H, zoom, build, spots = BUILDINGS[bid]
+        # Build once so module state (iris frame, pit centre) is set for the spots and the texture.
+        build(True)
+        render_building(Path(args.out), bid, W, H, zoom, build, spots())
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,18 @@
+{
+  "key": "assimilator",
+  "out": "units/assimilator",
+  "sfx": {
+    "special": {
+      "prompt": "Alien biomechanical matter-processing structure starting up: grinding mandible-like machinery churning, wet organic pumping, metal intake jaws clanking open, a low synthetic drone rising as it begins to consume, close, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Alien biomechanical processing structure collapsing: grinding machinery seizing with a screech, a wet organic burst, energy discharge crackling, heavy alien metal frame buckling and crashing to the ground, medium distance outdoors, no music, no voice",
+      "duration": 4.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

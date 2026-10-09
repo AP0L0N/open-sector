@@ -1,6 +1,7 @@
 /**
  * Smelter economy. A Smelter stands on a scrap field and melts it down for the
  * whole match: the field never runs out, and every Smelter adds its own share.
+ * The Borg Assimilator is a Smelter in every rule here.
  * A Smelter on diamond scrap pours DIAMOND_SCRAP_MUL times the plain rate.
  */
 
@@ -12,6 +13,7 @@ import {
   SMELTER_SCRAP_COVER,
   SMELTER_SCRAP_PER_SEC,
   catalog,
+  isSmelterType,
 } from "../catalog.js";
 import { footprintGap, scrapAt, scrapTilesUnder, tilesBlocked } from "./geo.js";
 import { powerOf, productionSpeed } from "./power.js";
@@ -38,7 +40,7 @@ export function smelterCrowded(
 ): boolean {
   const def = catalog("smelter");
   for (const e of entities) {
-    if (e.kind !== "building" || e.type !== "smelter" || e.hp <= 0 || e.wreck) continue;
+    if (e.kind !== "building" || !isSmelterType(e.type) || e.hp <= 0 || e.wreck) continue;
     if (footprintGap(tx, ty, def.tileW, def.tileH, e.tileX, e.tileY, e.tileW, e.tileH) <= SMELTER_CLEARANCE) return true;
   }
   return false;
@@ -77,7 +79,7 @@ export function smelterRateOn(yieldAt: (x: number, y: number) => number, tx: num
 
 /** A standing Smelter on its scrap field. */
 export function smelterYields(state: MatchState, e: Entity): boolean {
-  return e.kind === "building" && e.type === "smelter" && e.hp > 0 && !e.wreck && smelterOnScrap(state, e.tileX, e.tileY);
+  return e.kind === "building" && isSmelterType(e.type) && e.hp > 0 && !e.wreck && smelterOnScrap(state, e.tileX, e.tileY);
 }
 
 /** Scrap a second this commander's Smelters earn at full power, the CPU's head start included. */
@@ -96,7 +98,7 @@ export function smelterIncome(state: MatchState, playerId: string): number {
 export function smelterCount(state: MatchState, playerId: string): number {
   let n = 0;
   for (const e of state.entities.values()) {
-    if (e.ownerId === playerId && e.kind === "building" && e.type === "smelter" && e.hp > 0 && !e.wreck) n++;
+    if (e.ownerId === playerId && e.kind === "building" && isSmelterType(e.type) && e.hp > 0 && !e.wreck) n++;
   }
   return n;
 }

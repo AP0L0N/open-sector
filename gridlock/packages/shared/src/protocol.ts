@@ -8,6 +8,7 @@ import type {
   DroneMode,
   EntityKind,
   EntityType,
+  Faction,
   InfantryWeaponId,
   ShellType,
   FieldStructureType,
@@ -18,7 +19,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 127;
+export const PROTOCOL_VERSION = 128;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -60,6 +61,8 @@ export interface Slot {
   ready: boolean;
   /** Set when status is ai. */
   ai?: AiDifficulty;
+  /** Earth United or Borg. Missing reads as Earth United. */
+  faction?: Faction;
 }
 
 export interface RoomState {
@@ -397,6 +400,8 @@ export interface PlayerPublic {
   colorId: number;
   team: number;
   alive: boolean;
+  /** Missing reads as Earth United. */
+  faction?: Faction;
 }
 
 export interface YouState {
@@ -764,7 +769,7 @@ export type ClientMessage =
   | { type: "room.create"; mapId: string; maxSlots: number; mode?: RoomMode }
   | { type: "room.join"; code: string }
   | { type: "room.leave" }
-  | { type: "slot.update"; colorId?: number; team?: number; spawnId?: number; ready?: boolean }
+  | { type: "slot.update"; colorId?: number; team?: number; spawnId?: number; ready?: boolean; faction?: Faction }
   | {
       type: "slot.host";
       slotIndex: number;
@@ -773,6 +778,7 @@ export type ClientMessage =
       colorId?: number;
       team?: number;
       spawnId?: number;
+      faction?: Faction;
       /** CPU type: seats one with status "ai", or switches the CPU already in the slot. */
       ai?: AiDifficulty;
     }

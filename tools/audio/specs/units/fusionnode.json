@@ -1,0 +1,18 @@
+{
+  "key": "fusionnode",
+  "out": "units/fusionnode",
+  "sfx": {
+    "special": {
+      "prompt": "Alien energy generator node powering up: a glowing fusion core igniting with a bright rising electric whine, a pulsing synthetic hum settling into a steady throb, crackling plasma arcs, biomechanical vents hissing open, close, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Alien fusion energy node destroyed: an overloading power core shrieking and bursting in a plasma explosion, electric arcs crackling out, alien metal and organic casing tearing and collapsing, medium distance outdoors, no music, no voice",
+      "duration": 4.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

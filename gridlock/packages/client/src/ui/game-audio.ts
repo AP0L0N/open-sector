@@ -93,12 +93,23 @@ const ANNOUNCE_GAP_MS: Record<string, number> = {
 const lastAnnounce = new Map<string, number>();
 const queue: string[] = [];
 let announcing = false;
+/** Borg commanders hear the Hive Mind (announcer-borg/); a line it lacks falls back to Battle Control. */
+let announcerFolders: readonly string[] = ["announcer"];
+
+export function setAnnouncerFaction(faction: "eu" | "borg"): void {
+  announcerFolders = faction === "borg" ? ["announcer-borg", "announcer"] : ["announcer"];
+}
+
+/** The folder that voices this event for the current faction, or null when none does. */
+export function announcerFolderFor(event: string): string | null {
+  return announcerFolders.find((f) => bank.get(f, `voice-${event}`).length > 0) ?? null;
+}
 
 export function announce(event: string): void {
   const now = performance.now();
   if (now - (lastAnnounce.get(event) ?? -Infinity) < (ANNOUNCE_GAP_MS[event] ?? 3000)) return;
   if (queue.includes(event) || queue.length >= 3) return;
-  if (bank.get("announcer", `voice-${event}`).length === 0) return;
+  if (!announcerFolderFor(event)) return;
   lastAnnounce.set(event, now);
   queue.push(event);
   if (!announcing) nextAnnouncement();
@@ -110,7 +121,8 @@ function nextAnnouncement(): void {
     announcing = false;
     return;
   }
-  const url = pick("announcer", `voice-${event}`);
+  const folder = announcerFolderFor(event);
+  const url = folder ? pick(folder, `voice-${event}`) : null;
   if (!url) return nextAnnouncement();
   announcing = true;
   playClip(url, ANNOUNCE_VOLUME, { maxLateS: 3, onEnded: () => window.setTimeout(nextAnnouncement, 150) });

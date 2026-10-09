@@ -13,6 +13,7 @@ import {
   type SlotStatus,
 } from "./protocol.js";
 import { COLORS } from "./colors.js";
+import { isFaction, type Faction } from "./catalog.js";
 import { getMap } from "./maps.js";
 import { AI_PROFILES } from "./sim/ai-profile.js";
 
@@ -63,6 +64,7 @@ export function resetSlot(slot: Slot, status: SlotStatus): void {
   delete slot.playerId;
   delete slot.name;
   delete slot.ai;
+  delete slot.faction;
   Object.assign(slot, emptySlot(index, status));
 }
 
@@ -190,11 +192,15 @@ export function leaveRoom(room: RoomState, playerId: string): { emptied: boolean
 export function updateSelf(
   room: RoomState,
   playerId: string,
-  patch: { colorId?: number; team?: number; spawnId?: number; ready?: boolean },
+  patch: { colorId?: number; team?: number; spawnId?: number; ready?: boolean; faction?: Faction },
 ): LobbyResult<void> {
   if (room.phase !== "lobby") return fail("started", "Match already started.");
   const slot = findPlayerSlot(room, playerId);
   if (!slot) return fail("not_member", "You are not in this room.");
+  if (patch.faction !== undefined) {
+    if (!isFaction(patch.faction)) return fail("bad_payload", "No such faction.");
+    slot.faction = patch.faction;
+  }
 
   if (patch.colorId !== undefined) {
     if (!COLORS.some((c) => c.id === patch.colorId)) return fail("bad_payload", "Invalid color.");
@@ -236,6 +242,7 @@ export function hostSlot(
     colorId?: number;
     team?: number;
     spawnId?: number;
+    faction?: Faction;
     /** CPU type to seat, or to switch the CPU already in the slot to. */
     ai?: AiDifficulty;
   },
@@ -245,6 +252,7 @@ export function hostSlot(
   const slot = room.slots[slotIndex];
   if (!slot) return fail("bad_slot", "No such slot.");
   if (action.ai !== undefined && !isAiDifficulty(action.ai)) return fail("bad_payload", "No such CPU type.");
+  if (action.faction !== undefined && !isFaction(action.faction)) return fail("bad_payload", "No such faction.");
 
   if (action.kick || action.status === "closed" || action.status === "open" || action.status === "ai") {
     if (slot.playerId === hostId) return fail("bad_slot", "Host cannot kick or close their own slot.");
@@ -301,8 +309,9 @@ function setAiType(slot: Slot, difficulty: AiDifficulty): void {
 function patchAiSeat(
   room: RoomState,
   slot: Slot,
-  patch: { colorId?: number; team?: number; spawnId?: number },
+  patch: { colorId?: number; team?: number; spawnId?: number; faction?: Faction },
 ): LobbyResult<void> {
+  if (patch.faction !== undefined) slot.faction = patch.faction;
   if (patch.colorId !== undefined) {
     if (!COLORS.some((c) => c.id === patch.colorId)) return fail("bad_payload", "Invalid color.");
     if (usedColors(room, slot.playerId).has(patch.colorId)) {

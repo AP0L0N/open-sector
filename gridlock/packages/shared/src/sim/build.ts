@@ -14,7 +14,13 @@ import {
   type BuildingType,
   type YardFieldType,
   yardBuildSeconds,
+  factionOf,
+  isHq,
+  isHqBuilding,
+  isSmelterType,
+  HQ_OF,
 } from "../catalog.js";
+import { NOT_YOUR_FACTION } from "./train.js";
 import {
   destroyEntity,
   fellTreeAt,
@@ -105,7 +111,9 @@ export function buildTechMissing(state: MatchState, playerId: string, type: Buil
 export function startBuild(state: MatchState, playerId: string, type: BuildingType | YardFieldType): string | null {
   const p = state.players.get(playerId);
   if (!p || !p.alive) return "You are out of the fight.";
-  if (!hasCore(state, playerId)) return "Deploy the Rig.";
+  const faction = p.faction ?? "eu";
+  if (factionOf(type) !== faction) return NOT_YOUR_FACTION;
+  if (!hasCore(state, playerId)) return `Deploy the ${catalog(HQ_OF[faction].rig).name}.`;
   const slot = slotOf(type);
   if (jobIn(p, slot)) return "Construction already underway.";
   const def = catalog(type);
@@ -266,7 +274,7 @@ export function buildingSiteError(
     }
   }
   if (onWaterBuilding(type)) return waterSiteError(state, tx, ty, def.tileW, def.tileH);
-  if (type === "smelter") {
+  if (isSmelterType(type)) {
     if (!smelterSiteOk(state, tx, ty)) {
       // Trees under it are no bar: raiseBuilding fells them.
       const blocked = tilesBlocked(state, tx, ty, def.tileW, def.tileH, false);
@@ -404,7 +412,7 @@ export function sellBuilding(state: MatchState, playerId: string, id: number): s
   const e = state.entities.get(id);
   if (!e || e.ownerId !== playerId) return "Not yours.";
   if (e.kind !== "building") return "Cannot sell that.";
-  if (e.type === "core") return "Cannot sell the Core.";
+  if (isHqBuilding(e.type)) return `Cannot sell the ${catalog(e.type).name}.`;
   if (isCivilianType(e.type)) return "Cannot sell that.";
   // Sold with men inside: they walk out unhurt.
   if (e.garrison.length) spillGarrison(state, e, { damage: false });
@@ -426,7 +434,7 @@ export function deleteOwn(state: MatchState, playerId: string, ids: readonly num
   for (const id of ids) {
     const e = state.entities.get(id);
     if (!e || e.ownerId !== playerId || e.hp <= 0 || e.wreck) continue;
-    if (e.type === "core" || e.type === "rig") continue;
+    if (isHq(e.type)) continue;
     if (e.kind === "building" && isCivilianType(e.type)) continue;
     if (e.kind === "building" && e.garrison.length) spillGarrison(state, e, { damage: false });
     e.hp = 0;

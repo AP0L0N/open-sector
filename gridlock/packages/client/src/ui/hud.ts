@@ -1,6 +1,10 @@
 import {
   BUILDING_TYPES,
   YARD_FIELD_TYPES,
+  isHqBuilding,
+  isHqRig,
+  isSmelterType,
+  type Faction,
   CRIT_LABEL,
   isCyborg,
   canContinuousTrain,
@@ -106,7 +110,7 @@ import {
   STOP_HOTKEY,
 } from "../render/mapview.js";
 import { buzzDeny } from "./audio.js";
-import { announce, selectionVoice } from "./game-audio.js";
+import { announce, selectionVoice, setAnnouncerFaction } from "./game-audio.js";
 import { el } from "./dom.js";
 import { renderOptionsPane } from "./pause.js";
 import { garrisonRoster, type GarrisonSeat } from "./garrison-roster.js";
@@ -126,6 +130,13 @@ let configFocus: EntityType | null = null;
 /** Ready structure: first right-click is a no-op; second cancels. */
 let readyCancelArmed: BuildingType | YardFieldType | null = null;
 let sidebarGroup: SidebarGroup = "structures";
+/** The local commander's faction: which cameos the sidebar holds and which announcer speaks. */
+let hudFaction: Faction = "eu";
+
+/** The faction this snapshot's viewer plays. */
+export function viewerFaction(m: { youPlayerId: string; players: readonly { playerId: string; faction?: Faction }[] }): Faction {
+  return m.players.find((p) => p.playerId === m.youPlayerId)?.faction ?? "eu";
+}
 
 /** Fire on press so a snapshot rebuild cannot swallow the click between mousedown and mouseup. */
 function pressDisabled(btn: HTMLElement): boolean {
@@ -210,7 +221,9 @@ export function mountBattlefield(
   const tabs = el("div", { class: "group-tabs", attrs: { id: "group-tabs", role: "tablist" } });
   const heading = el("h3", { class: "group-heading", attrs: { id: "group-heading" } });
   const panels = el("div", { class: "group-panels" });
-  const entries = groupEntries();
+  hudFaction = viewerFaction(ctx.match);
+  setAnnouncerFaction(hudFaction);
+  const entries = groupEntries(hudFaction);
   for (const g of SIDEBAR_GROUPS) {
     const tab = el("button", {
       class: "group-tab",
@@ -435,7 +448,7 @@ function cameoButton(
 
 /** Show the chosen group's cameos; light every tab by what its cameos are doing. */
 function paintGroupTabs(): void {
-  const entries = groupEntries();
+  const entries = groupEntries(hudFaction);
   for (const g of SIDEBAR_GROUPS) {
     const active = g.id === sidebarGroup;
     document.getElementById("cameos-" + g.id)?.classList.toggle("hidden", !active);
@@ -605,7 +618,7 @@ export function paintBattleHud(ctx: Ctx): void {
     const yieldAt = scrapYieldLookup(m.scrap ?? []);
     let rate = 0;
     for (const e of m.entities) {
-      if (e.ownerId === m.youPlayerId && e.type === "smelter" && e.hp > 0 && !e.wreck) rate += smelterRateOn(yieldAt, e.tileX, e.tileY);
+      if (e.ownerId === m.youPlayerId && isSmelterType(e.type) && e.hp > 0 && !e.wreck) rate += smelterRateOn(yieldAt, e.tileX, e.tileY);
     }
     // A full store pours nothing, so the rate would only mislead.
     const full = m.you.scrap >= m.you.scrapCap;
@@ -636,7 +649,7 @@ export function paintBattleHud(ctx: Ctx): void {
   top?.classList.toggle("low-power", m.you.lowPower);
   paintMatchClock(m.tick);
 
-  const coreUp = m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === "core");
+  const coreUp = m.entities.some((e) => e.ownerId === m.youPlayerId && isHqBuilding(e.type));
   const armed = readyCancelArmed ? laneQueue(m, readyCancelArmed) : null;
   if (!armed?.ready || armed.type !== readyCancelArmed) readyCancelArmed = null;
   for (const type of [...BUILDING_TYPES, ...YARD_FIELD_TYPES]) {
@@ -771,10 +784,10 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
   const e = ctx.match.entities.find((x) => x.id === id);
   if (!e) {
     box.textContent = ctx.match.you.alive
-      ? ctx.match.entities.some((x) => x.ownerId === ctx.match!.youPlayerId && x.type === "core")
+      ? ctx.match.entities.some((x) => x.ownerId === ctx.match!.youPlayerId && isHqBuilding(x.type))
         ? "No selection."
-        : `Select the Rig, then click it again or press ${SPECIAL_HOTKEY.toUpperCase()} to deploy.`
-      : "Core down.";
+        : `Select the ${hudFaction === "borg" ? "Seed" : "Rig"}, then click it again or press ${SPECIAL_HOTKEY.toUpperCase()} to deploy.`
+      : hudFaction === "borg" ? "Hive Core down." : "Core down.";
     return;
   }
   const owner = ctx.match.players.find((p) => p.playerId === e.ownerId);
@@ -1216,9 +1229,13 @@ const TYPE_ORDER: EntityType[] = [
   "teeth",
   "trench",
   "rig",
+  "seed",
   "core",
+  "hivecore",
   "dynamo",
+  "fusionnode",
   "smelter",
+  "assimilator",
   "muster",
   "armory",
   "airfield",
@@ -2412,7 +2429,7 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       title: "Drop the field gun here. The crew sets it up to fire.",
     });
   }
-  if (buildings.some((e) => e.type !== "core" && !isCivilianType(e.type))) {
+  if (buildings.some((e) => !isHqBuilding(e.type) && !isCivilianType(e.type))) {
     out.push({
       slot: "sell",
       act: "sell",
@@ -2421,8 +2438,8 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
     });
   }
   if (
-    units.some((e) => e.type !== "rig") ||
-    buildings.some((e) => e.type !== "core" && !isCivilianType(e.type))
+    units.some((e) => !isHqRig(e.type)) ||
+    buildings.some((e) => !isHqBuilding(e.type) && !isCivilianType(e.type))
   ) {
     out.push({
       slot: "delete",

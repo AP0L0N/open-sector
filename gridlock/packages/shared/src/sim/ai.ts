@@ -47,6 +47,9 @@ import {
   torpedoesOf,
   type BuildingType,
   type TrainType,
+  isHqRig,
+  isSmelterType,
+  smelterOf,
 } from "../catalog.js";
 import { droneCall, subDepthCall, tickNeutralCrews } from "./ai-crew.js";
 import { aiProfile, type AiProfile } from "./ai-profile.js";
@@ -177,9 +180,6 @@ export const CPU_ARMY: Readonly<Record<"muster" | "armory" | "airfield" | "dock"
     { unit: "mammoth", want: 1 },
     { unit: "apocalypse", want: 1 },
     { unit: "supply", want: 1 },
-    { unit: "cyborg", want: 1 },
-    { unit: "cyborgcommander", want: 1 },
-    { unit: "simunit2", want: 1 },
     { unit: "titan", want: 1 },
     { unit: "nebelwerfer", want: 1 },
   ],
@@ -201,7 +201,7 @@ export const CPU_ARMY: Readonly<Record<"muster" | "armory" | "airfield" | "dock"
 /**
  * Base structures, one after another, each until the side owns `n`. Smelter second so its scrap
  * funds the Barracks and the first towers, and a second Smelter right behind the Barracks to pay
- * for the army. The Machine Shop waits for a tower; the Marine Base, Research, Cyborg Central, air, and the Radar
+ * for the army. The Machine Shop waits for a tower; the Marine Base, Research, air, and the Radar
  * Station wait until the base is fortified. With all of that standing, more Smelters up to the type's wantSmelters.
  */
 const BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
@@ -213,7 +213,6 @@ const BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
   // Only with water in the yard that reaches the enemy or the middle (wantDock).
   { type: "dock", n: 1 },
   { type: "research", n: 1 },
-  { type: "cyborgcentral", n: 1 },
   { type: "airfield", n: 1 },
   { type: "radar", n: 1 },
 ];
@@ -222,7 +221,7 @@ const CORE_BUILDINGS: readonly BuildingType[] = ["dynamo", "smelter", "muster"];
 /** Troops train only once these stand, so scrap is held for them while they go up. */
 const FACTORIES: readonly BuildingType[] = [...CORE_BUILDINGS, "armory"];
 /** Extras that wait for a fortified base. */
-const AFTER_FORTIFY: readonly BuildingType[] = ["dock", "research", "cyborgcentral", "airfield", "radar"];
+const AFTER_FORTIFY: readonly BuildingType[] = ["dock", "research", "airfield", "radar"];
 
 /** Unarmed units that walk out with a wave beside a fighter. */
 const ESCORTS: ReadonlySet<string> = new Set(["medic", "supply", "droneop"]);
@@ -286,12 +285,16 @@ function thinkCpu(state: MatchState, p: SimPlayer): void {
   const hq = hqOf(state, p.playerId);
   if (!hq) return;
   if (!hasCore(state, p.playerId)) {
-    if (hq.type === "rig" && hq.state !== "deploy") {
+    if (isHqRig(hq.type) && hq.state !== "deploy") {
       applyCommand(state, p.playerId, { type: "cmd.deploy", id: hq.id });
     }
     return;
   }
   const plan = aiPlanOf(p);
+  if (p.faction === "borg") {
+    thinkBorg(state, p, hq, plan);
+    return;
+  }
 
   if (!placeReadyBuilding(state, p, p.structure)) {
     const next = nextBuilding(state, p);
@@ -323,6 +326,88 @@ function thinkCpu(state: MatchState, p: SimPlayer): void {
     seaWork(state, p, hq, plan);
     microUnits(state, p, hq, plan);
   }
+}
+
+/**
+ * Borg base: Fusion Node, Assimilator, Cyborg Central, then a second Assimilator and more power.
+ * With all of that standing, more Assimilators up to the type's wantSmelters.
+ */
+const BORG_BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
+  { type: "fusionnode", n: 1 },
+  { type: "assimilator", n: 1 },
+  { type: "cyborgcentral", n: 1 },
+  { type: "assimilator", n: CPU_FORTIFY_SMELTERS },
+  { type: "fusionnode", n: 2 },
+];
+/** The Borg army, all from the Cyborg Central. */
+export const BORG_ARMY: readonly { unit: TrainType; want: number }[] = [
+  { unit: "cyborg", want: 8 },
+  { unit: "simunit2", want: 3 },
+  { unit: "cyborgcommander", want: 1 },
+];
+
+/**
+ * The Borg CPU. No towers, walls, or fleet yet: it raises its hive, fills the ranks from the
+ * Cyborg Central, and campaigns once the army stands or the fortify time runs out.
+ */
+function thinkBorg(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): void {
+  if (!placeReadyBuilding(state, p, p.structure)) {
+    const next = nextBorgBuilding(state, p);
+    if (next && !p.structure && p.scrap >= catalog(next).cost) {
+      if (findBuildTile(state, p.playerId, next)) {
+        applyCommand(state, p.playerId, { type: "cmd.build", building: next });
+      } else {
+        noRoom(state, p, next);
+      }
+    }
+  }
+  if (ownsLive(state, p.playerId, "cyborgcentral")) {
+    // Pay for the next building first while the base is short of one.
+    const next = nextBorgBuilding(state, p);
+    const reserve = next && countType(state, p.playerId, "cyborgcentral") === 0 ? catalog(next).cost : 0;
+    if (queuedOn(state, p.playerId, "cyborgcentral") < TRAIN_QUEUE_SOFT * countType(state, p.playerId, "cyborgcentral")) {
+      const pick = neediest(state, p, BORG_ARMY);
+      if (pick && countType(state, p.playerId, pick.unit) < pick.want && p.scrap >= catalog(pick.unit).cost + reserve) {
+        applyCommand(state, p.playerId, { type: "cmd.train", unit: pick.unit });
+      }
+    }
+  }
+  if (state.tick >= (p.aiNextMicroTick ?? 0)) {
+    p.aiNextMicroTick = state.tick + CPU_MICRO_EVERY_TICKS;
+    watchSky(state, p, plan);
+    if (plan.posture === "fortify" && (state.tick >= aiProfile(p.ai).fortifyMaxTicks || fighterCount(state, p.playerId) >= CPU_MIN_FIGHTERS * 2)) {
+      plan.posture = "campaign";
+      p.aiNextAttackTick = Math.max(p.aiNextAttackTick, state.tick + CPU_ATTACK_RETRY_TICKS);
+    }
+    defendBase(state, p, hq, plan);
+    defendCentre(state, p, plan);
+    scramble(state, p, hq);
+    rallyFactories(state, p, hq);
+    campaign(state, p, hq, plan);
+    microUnits(state, p, hq, plan);
+  }
+}
+
+function nextBorgBuilding(state: MatchState, p: SimPlayer): BuildingType | null {
+  const pow = powerOf(state, p.playerId);
+  const roomy = (t: BuildingType): boolean => (p.aiNoRoomUntil?.[t] ?? 0) <= state.tick;
+  const power = (): BuildingType | null => (roomy("fusionnode") ? "fusionnode" : null);
+  for (const { type: t, n } of BORG_BUILD_ORDER) {
+    if (countType(state, p.playerId, t) >= n || !roomy(t)) continue;
+    const draw = Math.max(0, -catalog(t).power);
+    if (t !== "fusionnode" && pow.used + draw > pow.provided) return power();
+    return t;
+  }
+  if (pow.used >= pow.provided) return power();
+  if (countType(state, p.playerId, "assimilator") < aiProfile(p.ai).wantSmelters && roomy("assimilator")) {
+    if (pow.used + Math.max(0, -catalog("assimilator").power) > pow.provided) return power();
+    return "assimilator";
+  }
+  if (aiPlanOf(p).posture === "campaign" && countType(state, p.playerId, "cyborgcentral") < aiProfile(p.ai).campaignFactories && roomy("cyborgcentral")) {
+    if (pow.used + Math.max(0, -catalog("cyborgcentral").power) > pow.provided) return power();
+    return "cyborgcentral";
+  }
+  return null;
 }
 
 /** Place a finished building, or refund it when the base has no room. Returns whether this job was ready. */
@@ -617,7 +702,7 @@ function centreHeld(state: MatchState, playerId: string): boolean {
   const reach = CENTRE_HOLD_TILES * state.tileSize;
   for (const e of state.entities.values()) {
     if (e.ownerId !== playerId || e.kind !== "building" || e.hp <= 0) continue;
-    if (e.type !== "smelter" && e.type !== "tower") continue;
+    if (!isSmelterType(e.type) && e.type !== "tower") continue;
     if (Math.hypot(e.x - c.x, e.y - c.y) <= reach) return true;
   }
   return false;
@@ -1067,7 +1152,7 @@ function crewBunkers(state: MatchState, p: SimPlayer, plan: AiPlan): void {
 function rallyFactories(state: MatchState, p: SimPlayer, hq: Entity): void {
   let at: Vec | undefined;
   for (const b of state.entities.values()) {
-    if (b.ownerId !== p.playerId || b.hp <= 0 || (b.type !== "muster" && b.type !== "armory")) continue;
+    if (b.ownerId !== p.playerId || b.hp <= 0 || (b.type !== "muster" && b.type !== "armory" && b.type !== "cyborgcentral")) continue;
     at ??= homeMuster(state, p, hq);
     if (b.rally && Math.hypot(b.rally.x - at.x, b.rally.y - at.y) < 2 * state.tileSize) continue;
     applyCommand(state, p.playerId, { type: "cmd.rally", ids: [b.id], x: at.x, y: at.y });
@@ -2304,7 +2389,7 @@ export function findBuildTile(
   playerId: string,
   type: BuildingType,
 ): { tx: number; ty: number } | null {
-  if (type === "smelter") return findSmelterTile(state, playerId);
+  if (isSmelterType(type)) return findSmelterTile(state, playerId);
   if (type === "dock") return findDockTile(state, playerId, true);
   const def = catalog(type);
   const hq = hqOf(state, playerId);
@@ -2320,7 +2405,8 @@ export function findBuildTile(
   // Keep the next Smelter's ground: a building packed against the scrap shuts its lane, and the
   // yard may have no other footprint on the field in range.
   const smelter = catalog("smelter");
-  const keep = countType(state, playerId, "smelter") < aiProfile(state.players.get(playerId)?.ai).wantSmelters ? findSmelterTile(state, playerId) : null;
+  const owner = state.players.get(playerId);
+  const keep = countType(state, playerId, smelterOf(owner?.faction ?? "eu")) < aiProfile(owner?.ai).wantSmelters ? findSmelterTile(state, playerId) : null;
   for (let r = 1; r <= maxR; r++) {
     const ring: { tx: number; ty: number; inward: number }[] = [];
     for (let dy = -r; dy <= r; dy++) {

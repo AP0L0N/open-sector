@@ -46,6 +46,9 @@ import towerUrl from "../assets/buildings/tower.png";
 import ciwsTurretUrl from "../assets/buildings/ciws-turret.png";
 import researchUrl from "../assets/buildings/research.png";
 import cyborgCentralUrl from "../assets/buildings/cyborgcentral.png";
+import hiveCoreUrl from "../assets/buildings/hivecore.png";
+import fusionNodeUrl from "../assets/buildings/fusionnode.png";
+import assimilatorUrl from "../assets/buildings/assimilator.png";
 import radarUrl from "../assets/buildings/radar.png";
 import dockUrl from "../assets/buildings/dock.png";
 import ramUrl from "../assets/buildings/ram.png";
@@ -328,6 +331,7 @@ import { engineRowFromFacing, engineRowFromScreen } from "./turntable.js";
 import { BATTLESHIP_MODEL, battleshipDrawSize } from "./battleship.js";
 import scoutHeadUrl from "../assets/units/scout-head.png";
 import rigSheetUrl from "../assets/units/rig-move.png";
+import seedSheetUrl from "../assets/units/seed-move.png";
 import armIconUrl from "../assets/status/arm.png";
 import legIconUrl from "../assets/status/leg.png";
 import tracksIconUrl from "../assets/status/tracks.png";
@@ -1664,6 +1668,18 @@ export const RIG_SPRITE: UnitSpriteDef = {
   facingSpace: "world",
 };
 
+/** Borg carrier that unpacks into a Hive Core. The Rig's lock: tools/sprites/render_seed.py. */
+export const SEED_SPRITE: UnitSpriteDef = {
+  image: loadSheet(seedSheetUrl),
+  dirs: 16,
+  frames: 1,
+  frameSize: 192,
+  fps: 6,
+  drawSize: Math.round(64 * UNIT_VISUAL_SCALE),
+  contactY: 0.9,
+  facingSpace: "world",
+};
+
 /**
  * Burnt-out hulk on the live sheet's cell, scale, and contact line, so the wreck
  * sits where the hull stood (tools/sprites/render_wrecks.py). One layer: the
@@ -1744,6 +1760,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   drone: DRONE_SPRITE,
   aswheli: ASWHELI_SPRITE,
   rig: RIG_SPRITE,
+  seed: SEED_SPRITE,
 };
 
 const INFANTRY_DIE: Partial<Record<EntityType, UnitSpriteDef>> = {
@@ -1885,6 +1902,13 @@ const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   research: building(researchUrl, 384, 210, 324, 150, 70),
   // Assembly hall, uplink mast, reactor annex. Metrics from tools/sprites/render_cyborgcentral.py (cyborgcentral.json).
   cyborgcentral: building(cyborgCentralUrl, 384, 210, 348, 204, 60),
+  // Borg. Metrics from tools/sprites/render_borg_base.py (<type>.json).
+  // Hive dome, ringed spines, iris: the Borg HQ, t(3) like the Core.
+  hivecore: building(hiveCoreUrl, 384, 204, 274.2, 204, 62.2),
+  // Twin coil spires and a plasma core: the Borg power plant, t(2) like the Dynamo.
+  fusionnode: building(fusionNodeUrl, 384, 210, 277.9, 210, 10.9),
+  // Claw-rig over a glowing intake pit: the Borg scrap smelter, t(3) like the Smelter.
+  assimilator: building(assimilatorUrl, 384, 204, 256.2, 204, 54.2),
   // Ops hut, lattice mast, dish. Metrics from tools/sprites/render_radar.py (radar.json); the stack hangs over the dish.
   radar: building(radarUrl, 384, 210, 354, 216, 58),
   // The pier stands in its pond: a hard edge, no blend onto ground that is not there.

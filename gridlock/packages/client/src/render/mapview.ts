@@ -42,6 +42,10 @@ import {
   wallAxes,
   GUARD_CONE_DEG,
   isCivilianType,
+  isHq,
+  isHqBuilding,
+  isHqRig,
+  isSmelterType,
   isRubble,
   isFieldStructure,
   isBridge,
@@ -544,7 +548,7 @@ function workLit(e: EntityView): boolean {
   if (e.kind !== "building" || e.hp <= 0 || e.wreck || e.ruined) return false;
   if (!e.ownerId || e.ownerId === NEUTRAL_OWNER || e.unpowered) return false;
   if (isGarrisonable(e.type)) return false;
-  return e.type === "core" || (BUILDING_TYPES as readonly string[]).includes(e.type);
+  return isHqBuilding(e.type) || (BUILDING_TYPES as readonly string[]).includes(e.type);
 }
 import {
   blitTerrain,
@@ -599,7 +603,11 @@ export function setEdgeScroll(on: boolean): void {
 
 const EXTRUDE: Record<EntityType, number> = {
   core: 62,
+  hivecore: 62,
   smelter: 50,
+  assimilator: 50,
+  fusionnode: 34,
+  seed: 22,
   armory: 54,
   muster: 38,
   dynamo: 30,
@@ -732,7 +740,7 @@ const TORPEDO_WAKE_MUL = 6;
 
 function isProducerView(e: EntityView): boolean {
   // The Airfield trains too, but its planes park on the strip; it has no rally point.
-  return e.kind === "building" && (e.type === "muster" || e.type === "smelter" || e.type === "armory" || e.type === "dock");
+  return e.kind === "building" && (e.type === "muster" || isSmelterType(e.type) || e.type === "armory" || e.type === "dock" || e.type === "cyborgcentral");
 }
 
 function hpBarFill(ratio: number, hostile: boolean, vivid = false): string {
@@ -2985,7 +2993,7 @@ export class MapView {
     for (const id of this.selected) {
       const ent = this.currById.get(id);
       if (!ent || ent.ownerId !== this.curr.youPlayerId || ent.kind !== "building" || ent.wreck || ent.hp <= 0) continue;
-      if (ent.type === "core" || isCivilianType(ent.type)) continue;
+      if (isHqBuilding(ent.type) || isCivilianType(ent.type)) continue;
       out.push(ent);
     }
     return out;
@@ -2997,7 +3005,7 @@ export class MapView {
     for (const id of this.selected) {
       const ent = this.currById.get(id);
       if (!ent || ent.ownerId !== this.curr.youPlayerId || ent.wreck || ent.hp <= 0) continue;
-      if (ent.type === "core" || ent.type === "rig") continue;
+      if (isHq(ent.type)) continue;
       if (ent.kind === "building" && isCivilianType(ent.type)) continue;
       out.push(ent);
     }
@@ -3559,7 +3567,7 @@ export class MapView {
     return (
       this.curr.entities.find((e) => e.id === this.curr.you.hqId) ??
       this.curr.entities.find(
-        (e) => e.ownerId === this.curr.youPlayerId && (e.type === "rig" || e.type === "core"),
+        (e) => e.ownerId === this.curr.youPlayerId && isHq(e.type),
       )
     );
   }
@@ -6674,7 +6682,7 @@ export class MapView {
       });
     }
     const layoutW = bw * 0.56;
-    if (e.ownerId === this.curr.youPlayerId && (e.type === "core" || e.type === "rig")) {
+    if (e.ownerId === this.curr.youPlayerId && isHq(e.type)) {
       const name = this.curr.players.find((p) => p.playerId === e.ownerId)?.name ?? "";
       ctx.font = "12px 'Share Tech Mono', monospace";
       ctx.textAlign = "center";
@@ -7175,7 +7183,7 @@ export class MapView {
     ctx.closePath();
     ctx.fill();
     ctx.restore();
-    if (e.ownerId === this.curr.youPlayerId && e.type === "rig") {
+    if (e.ownerId === this.curr.youPlayerId && isHqRig(e.type)) {
       const name = this.curr.players.find((pl) => pl.playerId === e.ownerId)?.name ?? "";
       ctx.font = "12px 'Share Tech Mono', monospace";
       ctx.textAlign = "center";
@@ -7185,7 +7193,7 @@ export class MapView {
     this.maybeHp(e, s.x - r, s.y - ez - 10, r * 2);
     this.drawCrits(e, s.x + r, s.y - ez - 26);
     this.drawDeployProgress(e, s.x - r, s.y + 6, r * 2);
-    if (e.type === "rig" && (e.state === "deploy" || e.state === "undeploy")) {
+    if (isHqRig(e.type) && (e.state === "deploy" || e.state === "undeploy")) {
       const prog = e.deployProgress ?? 0;
       const size = this.ts() * (1 + 2 * prog);
       ctx.strokeStyle = "#fff6c8";
@@ -7492,7 +7500,7 @@ export class MapView {
     const paint = drawn ? this.unitPaint(e, def, p, s) : null;
     const head = paint ? paint.y : s.y - size * def.contactY;
     const right = paint ? Math.max(paint.x + paint.w, s.x + size * 0.2) : s.x + size * 0.45;
-    if (e.ownerId === this.curr.youPlayerId && e.type === "rig") {
+    if (e.ownerId === this.curr.youPlayerId && isHqRig(e.type)) {
       const name = this.curr.players.find((pl) => pl.playerId === e.ownerId)?.name ?? "";
       ctx.font = "12px 'Share Tech Mono', monospace";
       ctx.textAlign = "center";
@@ -7510,7 +7518,7 @@ export class MapView {
     this.drawCrits(e, right + 2, e.field && !e.wreck ? Math.min(head - 18, barBase - 27) : head - 18);
     this.drawDeployProgress(e, s.x - size * 0.45, s.y + 6, size * 0.9);
     this.drawBuildProgress(e, s.x - size * 0.45, s.y + 6, size * 0.9);
-    if (e.type === "rig" && (e.state === "deploy" || e.state === "undeploy")) {
+    if (isHqRig(e.type) && (e.state === "deploy" || e.state === "undeploy")) {
       const prog = e.deployProgress ?? 0;
       const footprint = this.ts() * (1 + 2 * prog);
       ctx.strokeStyle = "#fff6c8";

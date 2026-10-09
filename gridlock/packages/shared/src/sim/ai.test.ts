@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { BUILD_RADIUS, DIAMOND_SCRAP_MUL, SCRAP_TILE_YIELD, SMELTER_SCRAP_PER_SEC, START_SCRAP, SUPPLY_CARGO, catalog } from "../catalog.js";
+import { BUILD_RADIUS, DIAMOND_SCRAP_MUL, SCRAP_TILE_YIELD, SMELTER_SCRAP_PER_SEC, START_SCRAP, SUPPLY_CARGO, catalog, factionOf } from "../catalog.js";
 import { createRoom, hostSlot, startMatch, updateSelf } from "../lobby.js";
 import type { AiDifficulty } from "../protocol.js";
 import { AI_PROFILES } from "./ai-profile.js";
 import {
+  BORG_ARMY,
   CPU_ARMY,
   CPU_EXPAND_TILES,
   CPU_FLEET_MIN,
@@ -753,23 +754,13 @@ describe("CPU types", () => {
     }
   });
 
-  it("builds the Cyborg Central right after Research", () => {
-    const { state } = humanVsEasy();
-    const aiId = "A";
-    state.players.get(aiId)!.ai = "defensive";
-    waitCore(state, aiId);
-    campaign(state, aiId);
-    withBase(state, aiId, ["dynamo", "smelter", "muster", "armory", "research", "dynamo"]);
-    secondSmelter(state, aiId);
-    troopers(state, aiId, 4);
-    const cpu = state.players.get(aiId)!;
-    cpu.structure = null;
-    cpu.scrap = 5000;
-    tickAi(state);
-    assert.equal(state.players.get(aiId)!.structure?.type, "cyborgcentral");
+  it("never plans a Borg building or unit for Earth United", () => {
+    for (const rows of Object.values(CPU_ARMY)) {
+      for (const row of rows) assert.equal(factionOf(row.unit), "eu", row.unit);
+    }
   });
 
-  it("builds the Airfield once the factories, Research, and the Cyborg Central stand", () => {
+  it("builds the Airfield once the factories and Research stand", () => {
     // The west seat's yard has room for the strip; the NE corner of yard-64 does not.
     const { state } = humanVsEasy();
     const aiId = "A";
@@ -1427,5 +1418,80 @@ describe("easy CPU at sea", () => {
     assert.equal(order?.kind, "attackmove");
     assert.equal(isWater(state, Math.floor(order!.x! / state.tileSize), Math.floor(order!.y! / state.tileSize)), false);
     assert.ok(Math.hypot(order!.x! - raider.x, order!.y! - raider.y) < 20 * state.tileSize, "goes to the bank by the boat");
+  });
+});
+
+describe("Borg CPU", () => {
+  function humanVsBorg(): { state: MatchState; aiId: string } {
+    const made = createRoom({ id: "AIB", hostId: "A", hostName: "Alpha", mapId: "yard-64", maxSlots: 8 });
+    if (!made.ok) throw new Error(made.message);
+    const room = made.value;
+    const add = hostSlot(room, "A", 1, { status: "ai", ai: "defensive", faction: "borg" });
+    if (!add.ok) throw new Error(add.message);
+    updateSelf(room, "A", { ready: true });
+    const started = startMatch(room, "A", () => 0);
+    if (!started.ok) throw new Error(started.message);
+    return { state: createMatch(room, started.value), aiId: "ai:1" };
+  }
+
+  function hiveOf(state: MatchState, aiId: string): Entity {
+    return [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "hivecore")!;
+  }
+
+  function standBy(state: MatchState, aiId: string, types: Entity["type"][]): void {
+    const hq = hiveOf(state, aiId);
+    const spots: [number, number][] = [[-12, 0], [16, 0], [0, 16], [0, -14], [16, 16]];
+    types.forEach((type, i) => {
+      const [dx, dy] = spots[i]!;
+      makeEntity(state, type, aiId, hq.x + dx * 8, hq.y + dy * 8, { tileX: hq.tileX + dx, tileY: hq.tileY + dy });
+    });
+  }
+
+  function nextStructure(state: MatchState, aiId: string): string | undefined {
+    const cpu = state.players.get(aiId)!;
+    cpu.structure = null;
+    cpu.scrap = 5000;
+    tickAi(state);
+    return state.players.get(aiId)!.structure?.type;
+  }
+
+  it("unpacks its Seed into a Hive Core", () => {
+    const { state, aiId } = humanVsBorg();
+    assert.ok([...state.entities.values()].some((e) => e.ownerId === aiId && e.type === "seed"));
+    waitCore(state, aiId);
+    assert.ok(hiveOf(state, aiId));
+  });
+
+  it("raises a Fusion Node, then an Assimilator", () => {
+    const { state, aiId } = humanVsBorg();
+    waitCore(state, aiId);
+    assert.equal(nextStructure(state, aiId), "fusionnode");
+    standBy(state, aiId, ["fusionnode"]);
+    assert.equal(nextStructure(state, aiId), "assimilator");
+  });
+
+  it("raises the Cyborg Central once power and an Assimilator stand", () => {
+    const { state, aiId } = humanVsBorg();
+    waitCore(state, aiId);
+    standBy(state, aiId, ["fusionnode", "assimilator"]);
+    assert.equal(nextStructure(state, aiId), "cyborgcentral");
+  });
+
+  it("trains its army at the Cyborg Central", () => {
+    const { state, aiId } = humanVsBorg();
+    waitCore(state, aiId);
+    standBy(state, aiId, ["fusionnode", "assimilator", "cyborgcentral", "fusionnode"]);
+    state.players.get(aiId)!.scrap = 5000;
+    tickAi(state);
+    const central = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "cyborgcentral")!;
+    assert.ok(central.queue.length > 0, "nothing queued at the Central");
+    assert.ok(BORG_ARMY.some((r) => r.unit === central.queue[0]!.type));
+  });
+
+  it("lists only Borg units, all from the Cyborg Central", () => {
+    for (const row of BORG_ARMY) {
+      assert.equal(factionOf(row.unit), "borg", row.unit);
+      assert.equal(producerType(row.unit), "cyborgcentral", row.unit);
+    }
   });
 });

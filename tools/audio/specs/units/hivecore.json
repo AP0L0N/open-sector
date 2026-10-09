@@ -1,0 +1,18 @@
+{
+  "key": "hivecore",
+  "out": "units/hivecore",
+  "sfx": {
+    "special": {
+      "prompt": "Huge alien cyborg hive core growing and powering up: biomechanical structure swelling with wet organic creaks, metal plates locking into place, a deep resonant synthetic drone rising in pitch and a slow heartbeat-like energy pulse, close, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Huge alien biomechanical hive structure collapsing: a deep energy core bursting with a descending synthetic wail, crackling electric arcs, organic tissue and metal plates tearing and crashing down, a final heavy rumble, medium distance outdoors, no music, no voice",
+      "duration": 4.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

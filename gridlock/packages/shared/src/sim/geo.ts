@@ -45,6 +45,8 @@ import {
   UNIT_SPACE_PAD,
   twinCiwsOf,
   type EntityType,
+  isHq,
+  isHqBuilding,
 } from "../catalog.js";
 import { buildingRect, buildingTilesOf, isTurnedBuilding, rectContains, segmentRectT } from "../building-rect.js";
 import {
@@ -801,7 +803,7 @@ export function ownedUnits(state: MatchState, playerId: string): number {
 
 export function hasCore(state: MatchState, playerId: string): boolean {
   for (const e of state.entities.values()) {
-    if (e.ownerId === playerId && e.type === "core" && e.hp > 0) return true;
+    if (e.ownerId === playerId && isHqBuilding(e.type) && e.hp > 0) return true;
   }
   return false;
 }
@@ -810,9 +812,9 @@ export function hqOf(state: MatchState, playerId: string): Entity | undefined {
   const p = state.players.get(playerId);
   if (!p) return undefined;
   const e = state.entities.get(p.hqId);
-  if (e && e.hp > 0 && (e.type === "rig" || e.type === "core")) return e;
+  if (e && e.hp > 0 && isHq(e.type)) return e;
   for (const ent of state.entities.values()) {
-    if (ent.ownerId === playerId && (ent.type === "rig" || ent.type === "core") && ent.hp > 0) return ent;
+    if (ent.ownerId === playerId && isHq(ent.type) && ent.hp > 0) return ent;
   }
   return undefined;
 }

@@ -2,9 +2,9 @@ import type { EntityType, EntityView } from "@gridlock/shared";
 import type { BuildingSpriteDef } from "./sprites.js";
 
 /** Buildings that train units. Full-strength overlay only while a job is running. */
-const PRODUCERS = new Set<EntityType>(["muster", "smelter", "armory"]);
+const PRODUCERS = new Set<EntityType>(["muster", "smelter", "armory", "assimilator", "cyborgcentral"]);
 /** Keep a quiet always-on overlay: blinks, the Smelter's chimneys, the lab's coil. */
-const IDLE_ALWAYS = new Set<EntityType>(["core", "dynamo", "smelter", "research", "radar", "cyborgcentral"]);
+const IDLE_ALWAYS = new Set<EntityType>(["core", "dynamo", "smelter", "research", "radar", "cyborgcentral", "hivecore", "fusionnode", "assimilator"]);
 /** Chimney smoke never fades below this, so an idle Smelter still reads as lit. */
 const IDLE_SMOKE_GAIN = 0.75;
 
@@ -124,6 +124,52 @@ const DEFS: Partial<Record<EntityType, BuildingAnimDef>> = {
       { x: 210, y: 42, r: 5, color: "#ff5a4a", period: 2000, phase: 0.0, mode: "blink" },
     ],
     arcs: [{ x: 325, y: 167 }],
+  },
+  // Borg spots from tools/sprites/render_borg_base.py (hivecore.json, fusionnode.json, assimilator.json).
+  // Hive Core: the iris breathes, the crown rings chase round the spines, the apex beacon blinks.
+  hivecore: {
+    lights: [
+      { x: 204, y: 164, r: 16, color: "#6dffc8", period: 3200, phase: 0.0, mode: "pulse" },
+      { x: 182, y: 92, r: 6, color: "#7fe3ff", period: 2400, phase: 0.0, mode: "pulse" },
+      { x: 150, y: 88, r: 6, color: "#7fe3ff", period: 2400, phase: 0.125, mode: "pulse" },
+      { x: 150, y: 53, r: 6, color: "#7fe3ff", period: 2400, phase: 0.25, mode: "pulse" },
+      { x: 182, y: 49, r: 6, color: "#7fe3ff", period: 2400, phase: 0.375, mode: "pulse" },
+      { x: 226, y: 38, r: 6, color: "#7fe3ff", period: 2400, phase: 0.5, mode: "pulse" },
+      { x: 258, y: 65, r: 6, color: "#7fe3ff", period: 2400, phase: 0.625, mode: "pulse" },
+      { x: 258, y: 76, r: 6, color: "#7fe3ff", period: 2400, phase: 0.75, mode: "pulse" },
+      { x: 226, y: 104, r: 6, color: "#7fe3ff", period: 2400, phase: 0.875, mode: "pulse" },
+      { x: 240, y: 187, r: 6, color: "#6dffc8", period: 2800, phase: 0.2, mode: "pulse" },
+      { x: 204, y: 191, r: 6, color: "#6dffc8", period: 2800, phase: 0.4, mode: "pulse" },
+      { x: 168, y: 187, r: 6, color: "#6dffc8", period: 2800, phase: 0.6, mode: "pulse" },
+      { x: 204, y: 71, r: 5, color: "#b6fff0", period: 1600, phase: 0.0, mode: "blink" },
+    ],
+  },
+  // Fusion Node: the caged plasma orb throbs fast, the well glows under it, and arcs jump between the coils.
+  fusionnode: {
+    lights: [
+      { x: 210, y: 59, r: 14, color: "#8ff7ff", period: 900, phase: 0.0, mode: "pulse" },
+      { x: 210, y: 143, r: 10, color: "#6dffc8", period: 1400, phase: 0.3, mode: "pulse" },
+      { x: 285, y: 19, r: 5, color: "#b6fff0", period: 1100, phase: 0.0, mode: "blink" },
+      { x: 135, y: 19, r: 5, color: "#b6fff0", period: 1100, phase: 0.5, mode: "blink" },
+    ],
+    arcs: [
+      { x: 236, y: 57 },
+      { x: 184, y: 57 },
+    ],
+  },
+  // Assimilator: the melt in the pit churns, the rim and silo bands chase, and thin vapour lifts off the melt.
+  assimilator: {
+    lights: [
+      { x: 204, y: 170, r: 16, color: "#7dff9a", period: 700, phase: 0.0, mode: "pulse" },
+      { x: 232, y: 192, r: 6, color: "#6dffc8", period: 1200, phase: 0.1, mode: "pulse" },
+      { x: 203, y: 196, r: 6, color: "#6dffc8", period: 1200, phase: 0.43, mode: "pulse" },
+      { x: 174, y: 192, r: 6, color: "#6dffc8", period: 1200, phase: 0.76, mode: "pulse" },
+      { x: 204, y: 63, r: 8, color: "#7fe3ff", period: 2200, phase: 0.2, mode: "pulse" },
+      { x: 324, y: 150, r: 5, color: "#7fe3ff", period: 1500, phase: 0.0, mode: "pulse" },
+      { x: 324, y: 134, r: 5, color: "#7fe3ff", period: 1500, phase: 0.33, mode: "pulse" },
+      { x: 324, y: 118, r: 5, color: "#7fe3ff", period: 1500, phase: 0.66, mode: "pulse" },
+    ],
+    smoke: [{ x: 204, y: 164, rise: 40, thin: true }],
   },
   // Spots from tools/sprites/render_cyborgcentral.py (cyborgcentral.json): red sensor band, reactor core, emitter rings climbing the mast, mast lamp.
   cyborgcentral: {

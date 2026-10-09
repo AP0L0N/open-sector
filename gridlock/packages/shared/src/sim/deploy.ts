@@ -4,6 +4,10 @@ import {
   deploySecondsOf,
   HAULER_SMOKE_CHARGES,
   hpMaxOf,
+  deployTarget,
+  isHqBuilding,
+  isHqRig,
+  packTarget,
   specialOf,
   specialCooldownOf,
 } from "../catalog.js";
@@ -38,10 +42,10 @@ function armSpecialCooldown(e: Entity): void {
 }
 
 export function beginDeploy(state: MatchState, e: Entity): string | null {
-  if (e.type === "rig") {
+  if (isHqRig(e.type)) {
     if (e.specialCooldown > 0) return "Special recharging.";
     if (e.state === "deploy" || e.state === "undeploy") return "Already transforming.";
-    const core = catalog("core");
+    const core = catalog(deployTarget(e.type));
     const tx = e.tileX - Math.floor(core.tileW / 2);
     const ty = e.tileY - Math.floor(core.tileH / 2);
     if (tilesBlockedOrScrap(state, tx, ty, core.tileW, core.tileH, false)) {
@@ -54,7 +58,7 @@ export function beginDeploy(state: MatchState, e: Entity): string | null {
     armSpecialCooldown(e);
     return null;
   }
-  if (e.type === "core") {
+  if (isHqBuilding(e.type)) {
     if (e.specialCooldown > 0) return "Special recharging.";
     if (e.state === "deploy" || e.state === "undeploy") return "Already transforming.";
     e.state = "undeploy";
@@ -103,15 +107,16 @@ export function tickDeploy(state: MatchState, dt: number): void {
     if (e.state !== "deploy" && e.state !== "undeploy") continue;
     e.deployTime += dt;
     if (e.deployTime < deploySecondsOf(e.type)) continue;
-    if (e.state === "deploy" && e.type === "rig") finishDeploy(state, e);
-    else if (e.state === "undeploy" && e.type === "core") finishUndeploy(state, e);
+    if (e.state === "deploy" && isHqRig(e.type)) finishDeploy(state, e);
+    else if (e.state === "undeploy" && isHqBuilding(e.type)) finishUndeploy(state, e);
     else if (bracesOf(e.type)) setBraced(e, e.state === "deploy");
   }
 }
 
 function finishDeploy(state: MatchState, rig: Entity): void {
   const player = state.players.get(rig.ownerId);
-  const coreDef = catalog("core");
+  const coreType = isHqRig(rig.type) ? deployTarget(rig.type) : "core";
+  const coreDef = catalog(coreType);
   const tx = rig.tileX - Math.floor(coreDef.tileW / 2);
   const ty = rig.tileY - Math.floor(coreDef.tileH / 2);
   if (tilesBlockedOrScrap(state, tx, ty, coreDef.tileW, coreDef.tileH, false)) {
@@ -127,7 +132,7 @@ function finishDeploy(state: MatchState, rig: Entity): void {
     ...structuredCloneBase(rig),
     id: rig.id,
     kind: "building",
-    type: "core",
+    type: coreType,
     x: c.x,
     y: c.y,
     facing: 0,
@@ -159,7 +164,8 @@ function finishUndeploy(state: MatchState, core: Entity): void {
   const player = state.players.get(core.ownerId);
   const frac = core.hp / core.hpMax;
   vacateEntity(state, core);
-  const rigDef = catalog("rig");
+  const rigType = isHqBuilding(core.type) ? packTarget(core.type) : "rig";
+  const rigDef = catalog(rigType);
   const cx = core.tileX + Math.floor(core.tileW / 2);
   const cy = core.tileY + Math.floor(core.tileH / 2);
   const ts = state.tileSize;
@@ -167,7 +173,7 @@ function finishUndeploy(state: MatchState, core: Entity): void {
     ...structuredCloneBase(core),
     id: core.id,
     kind: "unit",
-    type: "rig",
+    type: rigType,
     x: cx * ts + ts / 2,
     y: cy * ts + ts / 2,
     hp: Math.max(1, Math.round(rigDef.hp * frac)),

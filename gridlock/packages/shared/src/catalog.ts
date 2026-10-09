@@ -538,6 +538,7 @@ export const CAPTURE_DECAY_PER_SEC = 0.25;
 
 export type EntityType =
   | "rig"
+  | "seed"
   | "rifleman"
   | "gunner"
   | "sniper"
@@ -569,8 +570,11 @@ export type EntityType =
   | "destroyer"
   | "lst"
   | "core"
+  | "hivecore"
   | "dynamo"
+  | "fusionnode"
   | "smelter"
+  | "assimilator"
   | "muster"
   | "armory"
   | "airfield"
@@ -647,7 +651,9 @@ export type BuildingType =
   | "flak"
   | "research"
   | "radar"
-  | "cyborgcentral";
+  | "cyborgcentral"
+  | "fusionnode"
+  | "assimilator";
 /**
  * Placed by an engineer. Sandbags and walls can also be queued from the Defences tab. The gate comes
  * only from there. Barbwire is laid by maps for now: the Map Builder stands it like sandbags.
@@ -816,6 +822,8 @@ export const BUILDING_TYPES: readonly BuildingType[] = [
   "research",
   "radar",
   "cyborgcentral",
+  "fusionnode",
+  "assimilator",
 ];
 /**
  * Emplaced guns: the building is the gun, and its garrison is the crew. It fires only while
@@ -838,7 +846,7 @@ export const ENGINEER_BUILD_SPEED = 0.8;
 /** Seconds the yard spends on a base building. */
 export function yardBuildSeconds(type: BuildingType): number {
   const s = catalog(type).buildSeconds;
-  return isEngineerBuilding(type) ? s / YARD_ENGINEER_BUILDING_SPEED : s;
+  return isEngineerBuilding(type) || type === "assimilator" ? s / YARD_ENGINEER_BUILDING_SPEED : s;
 }
 /** Seconds an engineer works to raise `type` in the field. */
 export function engineerBuildSeconds(type: BuildingType): number {
@@ -897,8 +905,8 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly Bu
   apocalypse: "research",
   jagdtiger: "research",
   cyborg: "cyborgcentral",
-  cyborgcommander: ["research", "cyborgcentral"],
-  simunit2: ["research", "cyborgcentral"],
+  cyborgcommander: "cyborgcentral",
+  simunit2: "cyborgcentral",
   titan: "research",
   mammoth: "research",
   nebelwerfer: "research",
@@ -918,6 +926,77 @@ export function techNeeds(unit: TrainType): readonly BuildingType[] {
   const need = TECH_REQUIRES[unit];
   if (!need) return [];
   return typeof need === "string" ? [need] : need;
+}
+
+/**
+ * Factions. Each seat picks one in the lobby. Earth United fields everything that is not
+ * listed under the Borg; the Borg field only what is.
+ */
+export type Faction = "eu" | "borg";
+export const FACTIONS: readonly Faction[] = ["eu", "borg"];
+export const FACTION_NAMES: Record<Faction, string> = { eu: "Earth United", borg: "Borg" };
+export function isFaction(v: unknown): v is Faction {
+  return v === "eu" || v === "borg";
+}
+/** Everything the Borg build, train, or start with. */
+export const BORG_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([
+  "seed",
+  "hivecore",
+  "fusionnode",
+  "assimilator",
+  "cyborgcentral",
+  "cyborg",
+  "cyborgcommander",
+  "simunit2",
+]);
+/** The faction that fields `type`. Neutral structures and civilian buildings read as Earth United. */
+export function factionOf(type: string): Faction {
+  return BORG_TYPES.has(type as EntityType) ? "borg" : "eu";
+}
+/** May a player of `faction` queue, place, or train `type`? */
+export function inFaction(type: string, faction: Faction): boolean {
+  return factionOf(type) === faction;
+}
+/** What each faction starts with, and what that unpacks into. */
+export const HQ_OF: Record<Faction, { rig: "rig" | "seed"; core: "core" | "hivecore" }> = {
+  eu: { rig: "rig", core: "core" },
+  borg: { rig: "seed", core: "hivecore" },
+};
+/** The headquarters building: losing it eliminates the player. */
+export function isHqBuilding(type: string): type is "core" | "hivecore" {
+  return type === "core" || type === "hivecore";
+}
+/** The headquarters packed up and on the move. */
+export function isHqRig(type: string): type is "rig" | "seed" {
+  return type === "rig" || type === "seed";
+}
+/** Either form of a headquarters. */
+export function isHq(type: string): boolean {
+  return isHqBuilding(type) || isHqRig(type);
+}
+/** The Core a Rig unpacks into. */
+export function deployTarget(rig: "rig" | "seed"): "core" | "hivecore" {
+  return rig === "seed" ? "hivecore" : "core";
+}
+/** The Rig a Core packs into. */
+export function packTarget(core: "core" | "hivecore"): "rig" | "seed" {
+  return core === "hivecore" ? "seed" : "rig";
+}
+/** A building that pours scrap from a scrap field: the Smelter, or the Borg Assimilator. */
+export type SmelterType = "smelter" | "assimilator";
+export function isSmelterType(type: string): type is SmelterType {
+  return type === "smelter" || type === "assimilator";
+}
+/** A building that only makes power. */
+export function isPowerPlantType(type: string): type is "dynamo" | "fusionnode" {
+  return type === "dynamo" || type === "fusionnode";
+}
+/** The faction's own Smelter and Power Plant. */
+export function smelterOf(faction: Faction): SmelterType {
+  return faction === "borg" ? "assimilator" : "smelter";
+}
+export function powerPlantOf(faction: Faction): "dynamo" | "fusionnode" {
+  return faction === "borg" ? "fusionnode" : "dynamo";
 }
 
 /** Advanced defences: the yard queues one only while every building listed here stands. */
@@ -3594,6 +3673,53 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     ...UNARMED,
     special: "deploy",
   },
+  seed: {
+    type: "seed",
+    kind: "unit",
+    name: "Seed",
+    letter: "E",
+    cost: 0,
+    buildSeconds: 0,
+    hp: 800,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 14,
+    moveTilesPerSec: paced(1.3),
+    turnDegPerSec: 120,
+    turnInPlace: true,
+    rangeTiles: 0,
+    sightTiles: t(6),
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    special: "deploy",
+    blurb: "A Borg hive pod on six legs. Root it where the ground is level and it grows into a Hive Core.",
+  },
+  hivecore: {
+    type: "hivecore",
+    kind: "building",
+    name: "Hive Core",
+    letter: "H",
+    cost: 0,
+    buildSeconds: DEPLOY_SECONDS,
+    hp: 2500,
+    power: 50,
+    tileW: t(3),
+    tileH: t(3),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    special: "deploy",
+    blurb: "The Borg hive that grew from the Seed. It raises every Borg structure. Lose it and the collective falls.",
+  },
   core: {
     type: "core",
     kind: "building",
@@ -3658,6 +3784,50 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     blurb: `Stands on a scrap field: at least half its footprint must cover scrap, and it needs ${SMELTER_CLEARANCE} open tiles between it and any other Smelter. It melts the field down for ${SMELTER_SCRAP_PER_SEC} scrap a second for as long as it stands, and the field never runs out. Each Smelter adds its own share. On diamond scrap, where stones glint through the salvage, it pours ${DIAMOND_SCRAP_MUL}× as much. Low power slows it. The yard places one near the base; an engineer can raise one on any scrap field he can walk to, which also pushes your build range out to it. Each standing Smelter lets you hold up to ${SCRAP_CAP_PER_SMELTER} scrap; past that, the pour and any salvage go to waste.`,
+  },
+  fusionnode: {
+    type: "fusionnode",
+    kind: "building",
+    name: "Fusion Node",
+    letter: "F",
+    cost: 550,
+    buildSeconds: 12,
+    hp: 650,
+    power: 110,
+    tileW: t(2),
+    tileH: t(2),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: "Twin coils around a caged plasma core. Powers the hive: a little more than a Power Plant gives, on a thinner shell.",
+  },
+  assimilator: {
+    type: "assimilator",
+    kind: "building",
+    name: "Assimilator",
+    letter: "A",
+    cost: 1600,
+    buildSeconds: 24,
+    hp: 1200,
+    power: -40,
+    tileW: t(3),
+    tileH: t(3),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: `Claws over a glowing intake pit that break a scrap field down to feedstock. Stands on scrap like a Smelter: half its footprint on the field, ${SMELTER_CLEARANCE} open tiles from any other. It pours ${SMELTER_SCRAP_PER_SEC} scrap a second, ${DIAMOND_SCRAP_MUL}× on diamond scrap, slower on low power, and each one lets you hold up to ${SCRAP_CAP_PER_SMELTER} scrap.`,
   },
   muster: {
     type: "muster",
@@ -3766,7 +3936,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Tiger, Apocalypse, Jagdtiger, Titan, Nebelwerfer, Drone Op, Submarine, and Destroyer, with a Radar Station the Battle Ship, and with a Cyborg Central the Cyborg Commander.",
+    blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Tiger, Apocalypse, Jagdtiger, Titan, Nebelwerfer, Drone Op, Submarine, and Destroyer, and with a Radar Station the Battle Ship.",
   },
   cyborgcentral: {
     type: "cyborgcentral",
@@ -3788,7 +3958,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `Assembly hall and uplink mast that run your cyborgs. Unlocks the Cyborg, and with a Research Facility the Cyborg Commander and the Sim Unit II. Your Cyborgs and Sim Units live on its uplink: if it falls or your power runs short while no Cyborg Commander of yours lives, ${CYBORG_SHUTDOWN_SECONDS} seconds later every Cyborg of yours on the field shuts down: still yours, but dead still and silent. Get the link back (a new Central, or the power) and they wake up, unless an enemy Cyborg Commander took them first. A living Cyborg Commander keeps yours running without it, and takes over any enemy's shut-down Cyborg near him.`,
+    blurb: `Assembly hall and uplink mast that run your cyborgs. Trains the Cyborg, the Cyborg Commander, and the Sim Unit II. Your Cyborgs and Sim Units live on its uplink: if it falls or your power runs short while no Cyborg Commander of yours lives, ${CYBORG_SHUTDOWN_SECONDS} seconds later every Cyborg of yours on the field shuts down: still yours, but dead still and silent. Get the link back (a new Central, or the power) and they wake up, unless an enemy Cyborg Commander took them first. A living Cyborg Commander keeps yours running without it, and takes over any enemy's shut-down Cyborg near him.`,
   },
   radar: {
     type: "radar",
@@ -6659,7 +6829,7 @@ export function specialReady(type: EntityType, state: string, cooldownSec = 0): 
 
 export function specialLabel(type: EntityType, braced = false): string | null {
   if (!specialOf(type)) return null;
-  return type === "core" || braced ? "Pack" : "Deploy";
+  return isHqBuilding(type) || braced ? "Pack" : "Deploy";
 }
 
 /** Walks through water. Infantry swim; this is the vehicle flag. */

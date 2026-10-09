@@ -21,6 +21,7 @@ import {
   secondsToTicks,
   stanceOf,
   supplyShortOf,
+  factionOf,
 } from "../catalog.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
@@ -82,11 +83,12 @@ function setHpShare(e: Entity, share: number): void {
 }
 
 describe("cyborg", () => {
-  it("is an Armory-trained infantry type with one gatling and a drum that never reloads", () => {
+  it("is a Borg infantry type from the Cyborg Central with one gatling and a drum that never reloads", () => {
     const def = catalog("cyborg");
     assert.equal(def.name, "Cyborg");
     assert.ok(TRAIN_TYPES.includes("cyborg"));
-    assert.equal(producerType("cyborg"), "armory");
+    assert.equal(producerType("cyborg"), "cyborgcentral");
+    assert.equal(factionOf("cyborg"), "borg");
     assert.equal(isInfantryType("cyborg"), true);
     assert.equal(isRepairableUnit("cyborg"), true);
     assert.equal(isRepairableUnit("rifleman"), false);
@@ -102,7 +104,8 @@ describe("cyborg", () => {
     assert.equal(GATLING.bulky, true);
     const trained = applyCommand(match().state, "A", { type: "cmd.train", unit: "cyborg" });
     assert.equal(trained.ok, false);
-    if (!trained.ok) assert.equal(trained.message, "Need a Machine Shop.");
+    // The Cyborg is Borg; this Earth United commander cannot train one.
+    if (!trained.ok) assert.equal(trained.message, "Not available to your faction.");
   });
 
   it("spawns with a full drum, fires one gatling's burst, and stays dry at empty", () => {

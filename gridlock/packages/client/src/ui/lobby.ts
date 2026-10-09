@@ -2,11 +2,14 @@ import {
   AI_DIFFICULTIES,
   AI_PROFILES,
   COLORS,
+  FACTIONS,
+  FACTION_NAMES,
   getMap,
   listMaps,
   usedColors,
   usedSpawns,
   waitingReason,
+  type Faction,
   type Slot,
 } from "@gridlock/shared";
 import type { Ctx } from "../ctx.js";
@@ -42,8 +45,8 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
   const thead = el("thead");
   const hr = el("tr");
   const headers = skirmish
-    ? ["#", "Name", "Color", "Team", "Start", ""]
-    : ["#", "Name", "Color", "Team", "Start", "Ready", ""];
+    ? ["#", "Name", "Faction", "Color", "Team", "Start", ""]
+    : ["#", "Name", "Faction", "Color", "Team", "Start", "Ready", ""];
   for (const h of headers) {
     hr.append(el("th", { text: h }));
   }
@@ -76,6 +79,28 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
     if (slot.status === "human") nameText = slot.name ?? "Commander";
     if (slot.status === "ai") nameText = slot.name ?? `${AI_PROFILES[slot.ai ?? "defensive"].label} CPU`;
     tr.append(el("td", { text: nameText }));
+
+    const factionTd = el("td");
+    if (occupied(slot)) {
+      const sel = el("select", { class: "faction-select", attrs: { "data-slot": String(slot.index) } });
+      for (const f of FACTIONS) {
+        const o = el("option", { text: FACTION_NAMES[f], attrs: { value: f } });
+        if ((slot.faction ?? "eu") === f) o.selected = true;
+        sel.append(o);
+      }
+      const canEdit = slot.playerId === you || (isHost && slot.status === "ai");
+      sel.disabled = !canEdit;
+      sel.addEventListener("change", () => {
+        const faction = sel.value as Faction;
+        if (slot.status === "ai") {
+          ctx.net.send({ type: "slot.host", slotIndex: slot.index, faction });
+        } else {
+          ctx.net.send({ type: "slot.update", faction });
+        }
+      });
+      factionTd.append(sel);
+    }
+    tr.append(factionTd);
 
     const colorTd = el("td");
     if (occupied(slot)) {

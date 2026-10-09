@@ -1,4 +1,4 @@
-import type { AirDrop, BridgeType, BuildingType, Crit, DroneMode, EntityType, FieldStructureType, InfantryWeaponId, ShellType, Stance, TrainType, YardFieldType } from "../catalog.js";
+import type { AirDrop, BridgeType, BuildingType, Crit, DroneMode, EntityType, Faction, FieldStructureType, InfantryWeaponId, ShellType, Stance, TrainType, YardFieldType } from "../catalog.js";
 import type { AiDifficulty, BlinkView, ClientMessage, CorpseView, EntityState, ImpactView, RocketLaunchView, ShellHoleView } from "../protocol.js";
 
 export interface Vec {
@@ -896,6 +896,8 @@ export interface SimPlayer {
   scrapCarry: number;
   /** Sim tick this side's Cyborgs lost their link (no powered Cyborg Central, no living Commander). Absent while linked. */
   cyborgLinkLostTick?: number;
+  /** The seat's faction. Missing reads as Earth United (old saves, hand-built test players). */
+  faction?: Faction;
   /**
    * Units this commander keeps training. Each of his producers for that unit
    * holds one job until he turns it off. Absent when none.

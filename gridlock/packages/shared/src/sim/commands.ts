@@ -17,6 +17,7 @@ import {
   isEngineerBuilding,
   isFieldStructure,
   isYardField,
+  inFaction,
   garrisonCandidate,
   isGarrisonable,
   tankDeckOf,
@@ -59,7 +60,7 @@ import { orderFieldBuild, orderRepair, setGatesLocked } from "./field.js";
 import { orderConstruct } from "./construct.js";
 import { orderBridge } from "./bridge.js";
 import { deployId } from "./deploy.js";
-import { cancelTrain, pauseTrain, setContinuous, setRally, startTrain } from "./train.js";
+import { NOT_YOUR_FACTION, cancelTrain, pauseTrain, setContinuous, setRally, startTrain } from "./train.js";
 import { groupMovePace, groupMoveTargets } from "./formation.js";
 import { escortAnchor } from "./orders.js";
 import { setPath } from "./path.js";
@@ -166,6 +167,7 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
       return wrap(startBuild(state, playerId, msg.building), "no_core");
     case "cmd.place":
       if (!isBuildingType(msg.building)) return fail("bad_payload", "Unknown structure.");
+      if (!inFaction(msg.building, state.players.get(playerId)?.faction ?? "eu")) return wrap(NOT_YOUR_FACTION, "invalid_place");
       if (msg.facing != null && (typeof msg.facing !== "number" || !Number.isFinite(msg.facing))) {
         return fail("bad_payload", "Unknown facing.");
       }
@@ -243,6 +245,7 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
       if (!isFieldStructure(msg.structure)) return fail("bad_payload", "Unknown structure.");
       if (!Array.isArray(msg.ids) || msg.ids.length === 0) {
         if (!isYardField(msg.structure)) return wrap("That structure is not ready.", "invalid_place");
+        if (!inFaction(msg.structure, state.players.get(playerId)?.faction ?? "eu")) return wrap(NOT_YOUR_FACTION, "invalid_place");
         return wrap(
           placeBaseField(state, playerId, msg.structure, msg.x, msg.y, msg.facing, msg.x2, msg.y2, fieldPathOf(msg.path)),
           "invalid_place",

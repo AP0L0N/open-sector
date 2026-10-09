@@ -1,4 +1,4 @@
-import { canContinuousTrain, clampGameSpeed, type TrainType } from "../catalog.js";
+import { canContinuousTrain, clampGameSpeed, isFaction, type Faction, type TrainType } from "../catalog.js";
 import { getMap, TILE_EMPTY } from "../maps.js";
 import { MAX_SLOTS, MIN_SLOTS, SLOT_COUNT, isAiDifficulty, type AiDifficulty, type SlotStatus } from "../protocol.js";
 import { restampForts } from "./field.js";
@@ -41,6 +41,7 @@ export interface SaveSeat {
   team: number;
   spawnId: number;
   ai?: AiDifficulty;
+  faction?: Faction;
 }
 
 /**
@@ -142,6 +143,7 @@ export function exportSave(state: MatchState, room: RoomState, now = Date.now())
       team: s.team,
       spawnId: s.spawnId,
       ai: s.ai,
+      faction: s.faction,
     })),
   };
   return JSON.parse(JSON.stringify(save)) as SaveGame;
@@ -300,6 +302,7 @@ export function applySaveSeats(room: RoomState, save: SaveGame, humanPlayerId: s
     delete slot.playerId;
     delete slot.name;
     delete slot.ai;
+    delete slot.faction;
     if (!src) {
       slot.status = "closed";
       slot.colorId = slot.index;
@@ -313,6 +316,7 @@ export function applySaveSeats(room: RoomState, save: SaveGame, humanPlayerId: s
     slot.colorId = src.colorId;
     slot.team = src.team;
     slot.spawnId = src.spawnId;
+    if (src.faction) slot.faction = src.faction;
     slot.ready = slot.status === "human" || slot.status === "ai";
     if (human) {
       slot.playerId = humanPlayerId;
@@ -405,7 +409,8 @@ function playerOk(v: unknown): v is SimPlayer {
   return typeof p.playerId === "string" && p.playerId.length > 0 && p.playerId.length <= 80
     && typeof p.name === "string"
     && num(p.colorId) && num(p.team) && typeof p.alive === "boolean"
-    && num(p.scrap) && num(p.hqId);
+    && num(p.scrap) && num(p.hqId)
+    && (p.faction == null || isFaction(p.faction));
 }
 
 function entityOk(v: unknown): v is Entity {
@@ -444,6 +449,7 @@ function seatOk(v: unknown): v is SaveSeat {
   if (!Number.isInteger(s.spawnId) || s.spawnId < 0 || s.spawnId > SLOT_COUNT) return false;
   if (s.playerId != null && (typeof s.playerId !== "string" || s.playerId.length > 80)) return false;
   if (s.name != null && typeof s.name !== "string") return false;
+  if (s.faction != null && !isFaction(s.faction)) return false;
   // "easy" is the type older saves carry; it loads as Defensive.
   if (s.ai != null && (s.ai as string) !== "easy" && !isAiDifficulty(s.ai)) return false;
   return true;

@@ -926,6 +926,8 @@ input[type="range"] { padding: 0; }
 #build-research,
 #build-radar,
 #build-cyborgcentral,
+#build-fusionnode,
+#build-assimilator,
 #build-bunker,
 #build-tower,
 #build-ram,
@@ -1177,6 +1179,16 @@ input[type="range"] { padding: 0; }
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/buildings/cyborgcentral-cameo.png");
+}
+#build-fusionnode {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/fusionnode-cameo.png");
+}
+#build-assimilator {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/assimilator-cameo.png");
 }
 #build-bunker {
   background-image:
@@ -1532,6 +1544,10 @@ input[type="range"] { padding: 0; }
   background-image: url("../assets/units/artillery-cameo.png");
 }
 .config-type[data-type="rig"] { background-image: url("../assets/units/rig-cameo.png"); }
+.config-type[data-type="seed"] { background-image: url("../assets/units/seed-cameo.png"); }
+.config-type[data-type="hivecore"] { background-image: url("../assets/buildings/hivecore-cameo.png"); }
+.config-type[data-type="fusionnode"] { background-image: url("../assets/buildings/fusionnode-cameo.png"); }
+.config-type[data-type="assimilator"] { background-image: url("../assets/buildings/assimilator-cameo.png"); }
 .config-type[data-type="dynamo"] { background-image: url("../assets/buildings/dynamo-cameo.png"); }
 .config-type[data-type="smelter"] { background-image: url("../assets/buildings/smelter-cameo.png"); }
 .config-type[data-type="muster"] { background-image: url("../assets/buildings/muster-cameo.png"); }

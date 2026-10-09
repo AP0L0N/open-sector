@@ -642,6 +642,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       colorId: p.colorId,
       team: p.team,
       alive: p.alive,
+      faction: p.faction ?? "eu",
     })),
     entities,
     projectiles: state.projectiles

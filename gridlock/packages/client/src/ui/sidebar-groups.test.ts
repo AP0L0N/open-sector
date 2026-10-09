@@ -1,16 +1,19 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { BUILDING_TYPES, TRAIN_TYPES, YARD_FIELD_TYPES, catalog, isHiddenField } from "@gridlock/shared";
+import { BUILDING_TYPES, TRAIN_TYPES, YARD_FIELD_TYPES, catalog, factionOf, isHiddenField } from "@gridlock/shared";
 import { groupEntries, groupState, sidebarGroupOf, type CameoFlags } from "./sidebar-groups.js";
 
 const idle: CameoFlags = { disabled: false, ready: false, working: false, paused: false };
 
 describe("sidebarGroupOf", () => {
-  it("files every buildable and trainable type into exactly one group", () => {
+  it("files every buildable and trainable type into exactly one group of one faction", () => {
     const g = groupEntries();
+    const borg = Object.values(groupEntries("borg")).flat();
     const all = Object.values(g).flat();
     const shownYard = YARD_FIELD_TYPES.filter((t) => !isHiddenField(t));
-    assert.equal(all.length, BUILDING_TYPES.length + TRAIN_TYPES.length + shownYard.length);
+    assert.equal(all.length + borg.length, BUILDING_TYPES.length + TRAIN_TYPES.length + shownYard.length);
+    for (const e of all) assert.equal(factionOf(e.type), "eu", e.type);
+    for (const e of borg) assert.equal(factionOf(e.type), "borg", e.type);
     assert.equal(new Set(all.map((e) => e.id)).size, all.length);
     const defenceTypes = g.defences.map((e) => e.type);
     assert.ok(defenceTypes.includes("sandbags"));
@@ -18,6 +21,16 @@ describe("sidebarGroupOf", () => {
     assert.ok(defenceTypes.includes("gate"), "the gate is built from the Defences tab");
     assert.equal(defenceTypes.includes("greatwall"), false, "Large wall is hidden for now");
     assert.equal(all.some((e) => e.id === "build-teeth" || e.id === "build-trench"), false);
+  });
+
+  it("gives the Borg their base and cyborgs, and nothing of Earth United's", () => {
+    const g = groupEntries("borg");
+    assert.deepEqual(g.structures.map((e) => e.type).sort(), ["assimilator", "cyborgcentral", "fusionnode"]);
+    assert.deepEqual(g.infantry.map((e) => e.type).sort(), ["cyborg", "cyborgcommander", "simunit2"]);
+    assert.equal(g.defences.length + g.tanks.length + g.naval.length + g.aircraft.length, 0);
+    const eu = Object.values(groupEntries("eu")).flat().map((e) => e.type);
+    assert.equal(eu.includes("cyborg"), false);
+    assert.equal(eu.includes("cyborgcentral"), false);
   });
 
   it("puts the gun building under defences and the rest under structures", () => {

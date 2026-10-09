@@ -1,4 +1,4 @@
-import { AIRFIELD_PADS, canContinuousTrain, catalog, isAircraftType, isNavalType, isOneAtATime, secondsToTicks, techNeeds, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, type BuildingType, type TrainType } from "../catalog.js";
+import { AIRFIELD_PADS, canContinuousTrain, catalog, inFaction, isAircraftType, isCyborg, isNavalType, isOneAtATime, secondsToTicks, techNeeds, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, type BuildingType, type TrainType } from "../catalog.js";
 import { airfieldPadWorld, freePad, padsSpoken, parkHeading } from "./air.js";
 import { makeEntity, newAirState, ownedUnits, rallyPoint, worldToTile } from "./geo.js";
 import { openSpotNear, packRadius, packSlots } from "./formation.js";
@@ -7,7 +7,11 @@ import { powerOf, productionSpeed } from "./power.js";
 import { advancePaidJob, jobFullyPaid, refundPaid } from "./production.js";
 import type { Entity, MatchState, TrainJob } from "./types.js";
 
-export function producerType(unit: TrainType): "muster" | "armory" | "airfield" | "dock" {
+/** The refusal when a player asks for the other faction's building or unit. */
+export const NOT_YOUR_FACTION = "Not available to your faction.";
+
+export function producerType(unit: TrainType): "muster" | "armory" | "airfield" | "dock" | "cyborgcentral" {
+  if (isCyborg(unit)) return "cyborgcentral";
   if (unit === "rifleman" || unit === "gunner" || unit === "sniper" || unit === "atinfantry" || unit === "rocketer" || unit === "pyro" || unit === "mortarman" || unit === "engineer" || unit === "medic" || unit === "droneop" || unit === "jumpjet") return "muster";
   if (isAircraftType(unit)) return "airfield";
   if (isNavalType(unit)) return "dock";
@@ -56,6 +60,7 @@ function queuedCount(state: MatchState, playerId: string): number {
 export function startTrain(state: MatchState, playerId: string, unit: TrainType): string | null {
   const p = state.players.get(playerId);
   if (!p || !p.alive) return "You are out of the fight.";
+  if (!inFaction(unit, p.faction ?? "eu")) return NOT_YOUR_FACTION;
   const def = catalog(unit);
   const taken = oneAtATimeTaken(state, playerId, unit);
   if (taken === "alive") return `Only one ${def.name} at a time. Yours is still in the field.`;
@@ -83,6 +88,7 @@ export function startTrain(state: MatchState, playerId: string, unit: TrainType)
     if (want === "airfield") return "Need an Airfield.";
     if (want === "muster") return "Need a Barracks.";
     if (want === "dock") return "Need a Marine Base.";
+    if (want === "cyborgcentral") return "Need a Cyborg Central.";
     return "Need a Machine Shop.";
   }
   const tech = techMissing(state, playerId, unit);
@@ -115,6 +121,7 @@ function producerNeeded(unit: TrainType): string {
   if (want === "airfield") return "Need an Airfield.";
   if (want === "muster") return "Need a Barracks.";
   if (want === "dock") return "Need a Marine Base.";
+  if (want === "cyborgcentral") return "Need a Cyborg Central.";
   return "Need a Machine Shop.";
 }
 
@@ -122,6 +129,7 @@ function producerNeeded(unit: TrainType): string {
 function queueOn(state: MatchState, playerId: string, unit: TrainType, building: Entity): string | null {
   const p = state.players.get(playerId);
   if (!p || !p.alive) return "You are out of the fight.";
+  if (!inFaction(unit, p.faction ?? "eu")) return NOT_YOUR_FACTION;
   const def = catalog(unit);
   const taken = oneAtATimeTaken(state, playerId, unit);
   if (taken === "alive") return `Only one ${def.name} at a time. Yours is still in the field.`;
@@ -415,7 +423,7 @@ function packAtDoor(state: MatchState, from: Entity, fresh: Entity, door: { x: n
 }
 
 export function isProducer(e: Entity): boolean {
-  return e.kind === "building" && (e.type === "muster" || e.type === "armory" || e.type === "dock");
+  return e.kind === "building" && (e.type === "muster" || e.type === "armory" || e.type === "dock" || e.type === "cyborgcentral");
 }
 
 /** Sets the rally point on every owned producer in `ids`. A point on the building's own footprint clears it. */

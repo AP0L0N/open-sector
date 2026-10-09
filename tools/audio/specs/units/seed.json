@@ -1,0 +1,65 @@
+{
+  "key": "seed",
+  "out": "units/seed",
+  "voice": {
+    "name": "Open Sector - Seed",
+    "description": "Low, buzzing insectoid drone voice of a crawling alien seed-pod machine: deep and guttural with dry clicking and chittering between words, slow, alien and emotionless, slightly hissed consonants, a resonant synthetic undertone like an insect speaking through a machine.",
+    "sample": "Seed is listening. The ground here is good, the ground here is warm. Carry me to the place and I will open, I will root, I will grow the hive for the collective.",
+    "stability": 0.55,
+    "similarity": 0.8,
+    "style": 0.35,
+    "speed": 0.95
+  },
+  "lines": {
+    "select": [
+      "Seed listens.",
+      "The hive waits.",
+      "Where do we grow?",
+      "Seed, dormant.",
+      "Seeking fertile ground."
+    ],
+    "move": [
+      "Crawling.",
+      "Seed moves.",
+      "To the warm ground.",
+      "We follow.",
+      "Slowly. Carefully."
+    ],
+    "ready": [
+      "Seed released."
+    ],
+    "hit": [
+      "[gasps] The shell cracks!",
+      "Seed is wounded."
+    ],
+    "die": [
+      "[screaming] The seed... withers...",
+      "No hive... will grow..."
+    ],
+    "special": [
+      "Rooting now.",
+      "The hive core grows.",
+      "Unfolding. Stand clear."
+    ]
+  },
+  "sfx": {
+    "move": {
+      "prompt": "Large alien biomechanical pod crawling forward: many insect legs clicking and skittering on dirt, wet organic squelch, low servo hum, close, outdoors, no music, no voice",
+      "duration": 2.0,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "special": {
+      "prompt": "Alien biomechanical seed pod unfolding and rooting into the ground: wet organic tearing, chitin plates cracking open, tendrils burrowing into soil, a rising synthetic hum and a deep pulsing throb as a hive structure begins to grow, close, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.65
+    },
+    "die": {
+      "prompt": "Alien biomechanical pod destroyed: a wet bursting crack of chitin shell, electric sparks and a dying synthetic whine, insect clicks fading out, organic matter splattering, close, outdoors, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

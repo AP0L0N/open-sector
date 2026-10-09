@@ -35,6 +35,7 @@ import {
   type RoomMode,
   type RoomState,
   type ServerMessage,
+  type Faction,
 } from "@gridlock/shared";
 import { MapStore } from "./map-store.js";
 
@@ -331,7 +332,7 @@ export class Hub {
 
   private onSlotUpdate(
     session: Session,
-    patch: { colorId?: number; team?: number; spawnId?: number; ready?: boolean },
+    patch: { colorId?: number; team?: number; spawnId?: number; ready?: boolean; faction?: Faction },
   ): void {
     const room = this.roomOf(session);
     if (!room) return this.err(session, "not_member", "You are not in a room.");
@@ -349,6 +350,7 @@ export class Hub {
       colorId?: number;
       team?: number;
       spawnId?: number;
+      faction?: Faction;
       ai?: AiDifficulty;
     },
   ): void {
@@ -361,6 +363,7 @@ export class Hub {
       colorId: msg.colorId,
       team: msg.team,
       spawnId: msg.spawnId,
+      faction: msg.faction,
       ai: msg.ai,
     });
     if (!res.ok) return this.err(session, res.code, res.message);

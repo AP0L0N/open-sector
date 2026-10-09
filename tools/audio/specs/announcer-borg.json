@@ -1,0 +1,43 @@
+{
+  "key": "announcer-borg",
+  "out": "announcer-borg",
+  "voice": {
+    "name": "Open Sector - Hive Mind",
+    "description": "The collective voice of an alien cyborg hive mind: cold, layered and synthetic, as if many voices speak the same words in perfect unison, deep and androgynous, flat and emotionless, slow measured machine cadence, a metallic resonant edge and a faint electronic hum under every word, utterly calm and inevitable.",
+    "sample": "We are the collective. Construct complete. Drone ready. Energy deficit detected. The collective is under attack. Resistance is irrelevant. New designs assimilated.",
+    "stability": 0.75,
+    "similarity": 0.8,
+    "style": 0.15,
+    "speed": 0.95
+  },
+  "lines": {
+    "ready": ["Drone ready."],
+    "building": ["Constructing."],
+    "complete": ["Construct complete."],
+    "placed": ["Construct placed."],
+    "training": ["Growing drone."],
+    "onhold": ["Suspended."],
+    "cancelled": ["Terminated."],
+    "noscrap": ["Insufficient matter."],
+    "lowpower": ["Energy deficit."],
+    "powerrestored": ["Energy restored."],
+    "underattack": ["The collective is under attack.", "Hive structures under attack."],
+    "unitattack": ["Drones under attack.", "Drones engaged. Damage sustained."],
+    "unitlost": ["Drone lost."],
+    "buildinglost": ["Construct lost."],
+    "captured": ["Structure assimilated."],
+    "buildingcaptured": ["A construct has been taken from the collective."],
+    "start": ["The collective is awake."],
+    "victory": ["Resistance has ended. The collective prevails."],
+    "defeat": ["The collective is silenced."],
+    "selecttarget": ["Designate target."],
+    "cannotdeploy": ["Cannot root here."],
+    "reinforcements": ["More drones have joined the collective."],
+    "newconstruction": ["New designs assimilated."],
+    "sonarcontact": ["Submerged contact. Submarine detected.", "Submerged contact."],
+    "cyborglinklost": ["Warning: hive link severed."],
+    "cyborglinkrestored": ["Hive link restored."],
+    "cyborgsoffline": ["Drones disconnected."],
+    "cyborgacquired": ["Drone assimilated."]
+  }
+}

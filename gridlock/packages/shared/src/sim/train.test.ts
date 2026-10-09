@@ -483,7 +483,8 @@ describe("research gate", () => {
     for (const unit of gated.filter((u) => producerType(u) !== "dock" && producerType(u) !== "airfield")) {
       const r = applyCommand(state, "A", { type: "cmd.train", unit });
       assert.equal(r.ok, false, unit);
-      if (!r.ok) assert.equal(r.message, unit === "cyborg" ? "Need a Cyborg Central." : "Need a Research Facility.", unit);
+      // The cyborgs are Borg: Earth United cannot train them at all.
+      if (!r.ok) assert.equal(r.message, cyborgs.has(unit) ? "Not available to your faction." : "Need a Research Facility.", unit);
     }
     assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "ss3" }).ok, true);
     // The Feuerwirbel needs only the Machine Shop.
@@ -494,7 +495,7 @@ describe("research gate", () => {
     assert.equal(techMissing(state, "A", "warden"), null);
     assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "warden" }).ok, true);
     assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "droneop" }).ok, true);
-    // The Cyborg and his Commander also want a Cyborg Central; the lab alone is not enough.
+    // Every cyborg wants only a Cyborg Central; the lab does not unlock them.
     for (const unit of cyborgs) assert.equal(techMissing(state, "A", unit), "cyborgcentral", unit);
 
     makeEntity(state, "cyborgcentral", "A", tileCenter(30, ts), tileCenter(14, ts), { tileX: 30, tileY: 14 });
@@ -503,9 +504,8 @@ describe("research gate", () => {
     lab.hp = 0;
     assert.equal(techMissing(state, "A", "titan"), "research");
     assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "titan" }).ok, false);
-    // Without the lab the Commander is locked again; the plain Cyborg needs only the Central.
-    assert.equal(techMissing(state, "A", "cyborgcommander"), "research");
-    assert.equal(techMissing(state, "A", "cyborg"), null);
+    // The Central alone keeps every cyborg unlocked.
+    for (const unit of cyborgs) assert.equal(techMissing(state, "A", unit), null, unit);
   });
 
   it("does not count another player's Research Facility", () => {
@@ -513,7 +513,7 @@ describe("research gate", () => {
     const ts = state.tileSize;
     makeEntity(state, "research", "B", tileCenter(10, ts), tileCenter(14, ts), { tileX: 10, tileY: 14 });
     makeEntity(state, "cyborgcentral", "B", tileCenter(20, ts), tileCenter(14, ts), { tileX: 20, tileY: 14 });
-    assert.equal(techMissing(state, "A", "cyborgcommander"), "research");
+    assert.equal(techMissing(state, "A", "cyborgcommander"), "cyborgcentral");
     assert.equal(techMissing(state, "B", "cyborgcommander"), null);
     assert.equal(techMissing(state, "A", "cyborg"), "cyborgcentral");
     assert.equal(techMissing(state, "B", "cyborg"), null);
@@ -591,13 +591,16 @@ describe("naval tech gate", () => {
 });
 
 describe("one at a time", () => {
-  function armed(): { state: MatchState; shops: ReturnType<typeof makeEntity>[] } {
+  /** Two of the unit's factories for A. A cyborg's are Cyborg Centrals, and A is Borg. */
+  function armed(unit: TrainType = "titan"): { state: MatchState; shops: ReturnType<typeof makeEntity>[] } {
     const { state } = twoPlayerMatch();
     seedCore(state);
     const ts = state.tileSize;
+    const shop = producerType(unit);
+    if (shop === "cyborgcentral") state.players.get("A")!.faction = "borg";
     const shops = [
-      makeEntity(state, "armory", "A", tileCenter(20, ts), tileCenter(4, ts), { tileX: 20, tileY: 4 }),
-      makeEntity(state, "armory", "A", tileCenter(30, ts), tileCenter(4, ts), { tileX: 30, tileY: 4 }),
+      makeEntity(state, shop, "A", tileCenter(20, ts), tileCenter(4, ts), { tileX: 20, tileY: 4 }),
+      makeEntity(state, shop, "A", tileCenter(30, ts), tileCenter(4, ts), { tileX: 30, tileY: 4 }),
     ];
     makeEntity(state, "research", "A", tileCenter(10, ts), tileCenter(14, ts), { tileX: 10, tileY: 14 });
     makeEntity(state, "cyborgcentral", "A", tileCenter(40, ts), tileCenter(14, ts), { tileX: 40, tileY: 14 });
@@ -605,8 +608,9 @@ describe("one at a time", () => {
   }
 
   for (const unit of ["titan", "cyborgcommander"] as const) {
-    it(`queues only one ${unit}, across every Machine Shop`, () => {
-      const { state, shops } = armed();
+    it(`queues only one ${unit}, across every factory`, () => {
+      const { state, shops } = armed(unit);
+      const other = unit === "titan" ? "ss3" : "cyborg";
       assert.ok(ONE_AT_A_TIME.includes(unit));
       assert.equal(applyCommand(state, "A", { type: "cmd.train", unit }).ok, true);
       assert.equal(oneAtATimeTaken(state, "A", unit), "queued");
@@ -614,9 +618,9 @@ describe("one at a time", () => {
       assert.equal(again.ok, false);
       if (!again.ok) assert.match(again.message, /already in the queue/);
       const jobs = shops.reduce((n, s) => n + s.queue.filter((j) => j.type === unit).length, 0);
-      assert.equal(jobs, 1, "the second Machine Shop did not take one either");
+      assert.equal(jobs, 1, "the second factory did not take one either");
       // Other units still queue beside it.
-      assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "ss3" }).ok, true);
+      assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: other }).ok, true);
       // Cancelled, the slot opens again.
       assert.equal(applyCommand(state, "A", { type: "cmd.cancel", what: "train", unit }).ok, true);
       assert.equal(oneAtATimeTaken(state, "A", unit), null);
@@ -624,7 +628,7 @@ describe("one at a time", () => {
     });
 
     it(`refuses a second ${unit} while the first lives, and allows one once it is destroyed`, () => {
-      const { state } = armed();
+      const { state } = armed(unit);
       const ts = state.tileSize;
       const first = makeEntity(state, unit, "A", tileCenter(40, ts), tileCenter(40, ts));
       assert.equal(oneAtATimeTaken(state, "A", unit), "alive");
@@ -641,7 +645,7 @@ describe("one at a time", () => {
   }
 
   it("leaves every other type alone", () => {
-    const { state } = armed();
+    const { state } = armed("cyborg");
     for (let i = 0; i < 3; i++) assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "cyborg" }).ok, true);
     assert.equal(oneAtATimeTaken(state, "A", "cyborg"), null);
   });
