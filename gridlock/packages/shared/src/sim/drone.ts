@@ -212,7 +212,7 @@ function inLeash(state: MatchState, op: Entity, x: number, y: number): { x: numb
 }
 
 function validStrikeTarget(state: MatchState, d: Entity, op: Entity, t: Entity | undefined): t is Entity {
-  if (!t || t.hp <= 0 || t.wreck || t.garrisonedIn != null || t.id === d.id) return false;
+  if (!t || t.hp <= 0 || t.wreck || t.garrisonedIn != null || t.id === d.id || t.dormant) return false;
   if (ownerless(t) || allies(state, d.ownerId, t.ownerId)) return false;
   if (t.air || airAlt(t) > 0 || isLowFieldWork(t.type)) return false;
   if (Math.hypot(t.x - op.x, t.y - op.y) > leash(state) + t.radius) return false;

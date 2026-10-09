@@ -895,7 +895,7 @@ function patrolPlaneTarget(state: MatchState, e: Entity): Entity | undefined {
 }
 
 function planePatrolContact(state: MatchState, e: Entity, o: Entity, route: readonly { x: number; y: number }[], range: number): boolean {
-  if (o.kind !== "unit" || o.hp <= 0 || o.wreck || o.id === e.id || isCrashing(o)) return false;
+  if (o.kind !== "unit" || o.hp <= 0 || o.wreck || o.id === e.id || isCrashing(o) || o.dormant) return false;
   if (ownerless(o) || allies(state, e.ownerId, o.ownerId)) return false;
   if (!canSeeEntity(state, e.ownerId, o) || !canHurt(state, e, o)) return false;
   return distToRoute(route, o.x, o.y, e.order?.loop === true) <= range;
@@ -933,7 +933,7 @@ function acquireGround(state: MatchState, e: Entity): Entity | undefined {
   let best: Entity | undefined;
   let bestD = reach * reach;
   for (const o of state.entities.values()) {
-    if (o.hp <= 0 || o.wreck || o.garrisonedIn != null || o.id === e.id) continue;
+    if (o.hp <= 0 || o.wreck || o.garrisonedIn != null || o.id === e.id || o.dormant) continue;
     if (ownerless(o) || allies(state, e.ownerId, o.ownerId)) continue;
     if (isAirborne(o) || isLowFieldWork(o.type)) continue;
     if (o.kind === "building" && a.bombs <= 0) continue;

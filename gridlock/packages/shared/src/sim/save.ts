@@ -252,6 +252,7 @@ export function restoreMatch(
     crates: save.crates.map((c) => ({ ...c, ownerId: mapOwner(c.ownerId) })),
     impacts: [],
     launches: [],
+    blinks: [],
     rngState: save.rngState >>> 0,
     winner: save.winner ? { playerId: mapOwner(save.winner.playerId), team: save.winner.team } : undefined,
     ended: save.ended,

@@ -42,8 +42,11 @@ import {
   type InfantryWeaponId,
   type ShellType,
   type Stance,
+  canPowerDown,
+  isSimUnit,
 } from "../catalog.js";
 import type { ClientMessage, ErrorCode } from "../protocol.js";
+import { powerDown, powerUp, purgeDenied } from "./simunit.js";
 import { pathToCapture, wantsCapture } from "./capture.js";
 import { allies, clearOrder, hqOf, worldToTile } from "./geo.js";
 import { endWalkerCharge } from "./walker-charge.js";
@@ -145,9 +148,21 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
     case "cmd.fielddivert":
       if (typeof msg.on !== "boolean") return fail("bad_payload", "Unknown field setting.");
       return cmdFieldDivert(state, playerId, msg.ids, msg.on);
+<<<<<<< HEAD
     case "cmd.engagecontacts":
       if (typeof msg.on !== "boolean") return fail("bad_payload", "Unknown contact setting.");
       return cmdEngageContacts(state, playerId, msg.ids, msg.on);
+=======
+    case "cmd.powerdown":
+      if (typeof msg.on !== "boolean" || !Array.isArray(msg.ids)) return fail("bad_payload", "Unknown power setting.");
+      return cmdPowerDown(state, playerId, msg.ids, msg.on);
+    case "cmd.blink":
+      if (!Array.isArray(msg.ids) || typeof msg.x !== "number" || typeof msg.y !== "number") return fail("bad_payload", "Bad blink order.");
+      return cmdBlink(state, playerId, msg.ids, msg.x, msg.y);
+    case "cmd.purge":
+      if (!Array.isArray(msg.ids) || typeof msg.targetId !== "number") return fail("bad_payload", "Bad purge order.");
+      return cmdPurge(state, playerId, msg.ids, msg.targetId);
+>>>>>>> worktree-worktree-sim-unit-2
     case "cmd.build":
       if (isYardField(msg.building)) return fail("bad_payload", "Place that on the map.");
       if (!isBuildingType(msg.building)) return fail("bad_payload", "Unknown structure.");
@@ -336,6 +351,8 @@ const QUEUEABLE = new Set<string>([
   "cmd.disable",
   "cmd.board",
   "cmd.minelay",
+  "cmd.blink",
+  "cmd.purge",
 ]);
 
 /** Unqueued orders that replace what a unit was doing, and so drop its queue. */
@@ -708,7 +725,8 @@ function owned(state: MatchState, playerId: string, ids: number[]) {
   for (const id of ids) {
     const e = state.entities.get(id);
     // A paratrooper takes orders once he is on the ground. A running torpedo takes none.
-    if (e && e.ownerId === playerId && e.hp > 0 && e.kind === "unit" && !e.wreck && !e.chute && !isTorpedoBody(e.type)) out.push(e);
+    // A powered-down machine takes only Power up (cmdPowerDown); one mid-purge takes nothing.
+    if (e && e.ownerId === playerId && e.hp > 0 && e.kind === "unit" && !e.wreck && !e.chute && !isTorpedoBody(e.type) && !e.dormant && !e.purge) out.push(e);
   }
   return out;
 }
@@ -1430,11 +1448,57 @@ function cmdFieldDivert(state: MatchState, playerId: string, ids: number[], on: 
   return ok();
 }
 
+<<<<<<< HEAD
 /** Cyborgs fire on what their side's thermal and APS read, out of sight but inside their reach. */
 function cmdEngageContacts(state: MatchState, playerId: string, ids: number[], on: boolean): CmdResult {
   const units = owned(state, playerId, ids).filter((e) => isCyborg(e.type));
   if (units.length === 0) return fail("not_yours", "Select a Cyborg.");
   for (const e of units) e.engageContacts = on ? true : undefined;
+=======
+/** Shut a Cyborg or a Sim Unit down where he stands, or power him up again. */
+function cmdPowerDown(state: MatchState, playerId: string, ids: number[], on: boolean): CmdResult {
+  let n = 0;
+  for (const id of ids) {
+    const e = state.entities.get(id);
+    if (!e || e.ownerId !== playerId || e.hp <= 0 || e.kind !== "unit" || e.wreck || !canPowerDown(e.type)) continue;
+    // One dark for want of a link, aboard, or mid-blink is not his to switch.
+    if (e.shutdown || e.garrisonedIn != null || e.purge) continue;
+    if (on) powerDown(e);
+    else powerUp(e);
+    n++;
+  }
+  if (n === 0) return fail("not_yours", "Select a Cyborg or a Sim Unit.");
+  return ok();
+}
+
+/** Sim Unit II: blink to the point. Past his reach he walks until it is in reach. */
+function cmdBlink(state: MatchState, playerId: string, ids: number[], x: number, y: number): CmdResult {
+  const units = owned(state, playerId, ids).filter((e) => isSimUnit(e.type) && e.garrisonedIn == null && !e.shutdown);
+  if (units.length === 0) return fail("not_yours", "Select a Sim Unit.");
+  for (const e of units) {
+    clearOrder(e);
+    e.holdPosition = false;
+    e.order = { kind: "blink", x, y };
+    e.state = "move";
+  }
+  return ok();
+}
+
+/** Sim Unit II: blink into a hostile garrison, kill every soldier aboard, and blink back out. */
+function cmdPurge(state: MatchState, playerId: string, ids: number[], targetId: number): CmdResult {
+  const host = state.entities.get(targetId);
+  if (!host) return fail("not_found", "Nothing there.");
+  const units = owned(state, playerId, ids).filter((e) => isSimUnit(e.type) && e.garrisonedIn == null && !e.shutdown);
+  if (units.length === 0) return fail("not_yours", "Select a Sim Unit.");
+  const why = purgeDenied(state, units[0]!, host);
+  if (why) return fail("busy", why);
+  for (const e of units) {
+    clearOrder(e);
+    e.holdPosition = false;
+    e.order = { kind: "purge", targetId: host.id };
+    e.state = "move";
+  }
+>>>>>>> worktree-worktree-sim-unit-2
   return ok();
 }
 

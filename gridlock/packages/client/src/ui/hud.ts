@@ -86,6 +86,8 @@ import {
   hasForceField,
   type BuildingType,
   type YardFieldType,
+  canPowerDown,
+  isSimUnit,
   type EntityType,
   type EntityView,
   type MatchSnapshot,
@@ -810,16 +812,26 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
           : "";
   const armor = armorLabel(e.type);
   const plates = armor ? `  ·  armor ${armor}` : "";
-  const field = e.field
-    ? `  ·  field ${e.field.hp}/${e.field.max}${e.field.hp <= 0 ? " (down)" : ""}${e.fieldDivert ? " · SHIELD POWER" : ""}`
-    : "";
+  const blink = e.purge
+    ? `  ·  PURGING ${Math.round(e.purge.u * 100)}%`
+    : e.blink
+      ? e.blink.u >= 1
+        ? "  ·  blink ready"
+        : `  ·  blink ${Math.round(e.blink.u * 100)}%`
+      : "";
+  const field =
+    (e.field
+      ? `  ·  field ${e.field.hp}/${e.field.max}${e.field.hp <= 0 ? " (down)" : ""}${e.fieldDivert ? " · SHIELD POWER" : ""}`
+      : "") + blink;
   const wreck = e.wreck
     ? "  ·  WRECK"
     : e.shutdown
       ? e.takeover
         ? `  ·  SHUT DOWN — uplink ${Math.round(e.takeover.u * 100)}%`
         : "  ·  SHUT DOWN — wakes when the link is back, unless an enemy Cyborg Commander takes him over"
-      : "";
+      : e.dormant
+        ? "  ·  SHUT DOWN — hiding in plain sight: enemy guns pass him by. Power up to resume"
+        : "";
   const injuries =
     e.crits && e.crits.length > 0
       ? `  ·  ${e.crits.map((c) => (isCyborg(e.type) && c === "leg" ? "legs torn off" : CRIT_LABEL[c])).join(", ")}${e.shielded ? " (plating holds — cannot be hurt yet)" : ""}`
@@ -863,6 +875,8 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
         ? `  ·  ${gun.name} dark`
         : e.reload && e.reload > 0
         ? `  ·  ${gun.name} reloading ${e.reload.toFixed(1)}s`
+        : "id" in gun && gun.id === "daggers"
+        ? `  ·  ${gun.name}`
         : `  ·  ${gun.name} ${e.clip}/${gun.clip}`
       : "";
   const rack =
@@ -1035,6 +1049,7 @@ function beltLine(live: EntityView[]): string {
 function infantryClipLine(live: EntityView[]): string {
   const gun = live[0] ? infantryGunFor(live[0]) : null;
   if (!gun) return "Small arms";
+  if (gun.id === "daggers") return "Energy daggers — never run dry";
   if (gun.id === "penetrator") {
     const have = live.reduce((n, e) => n + (e.heavy ?? 0), 0);
     const cap = live.length;
@@ -1170,6 +1185,7 @@ const TYPE_ORDER: EntityType[] = [
   "walker",
   "cyborg",
   "cyborgcommander",
+  "simunit2",
   "titan",
   "mammoth",
   "nebelwerfer",
@@ -1605,6 +1621,8 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
                 ? "No weapon. He walks to a wounded soldier nearby and closes the wound. A long kneel sets a broken arm or leg. The bag does not run out."
               : focus.type === "cyborg"
                 ? "Stands under fire — no crouch, no prone. Near death the legs tear off and he drags himself on, still firing. A medic or an engineer brings the legs back. Only a supply truck refills the drum. He shells a structure; he does not capture it."
+              : focus.type === "simunit2"
+                ? "Stands under fire — no crouch, no prone. A dagger in each hand: he runs a soldier down himself and cuts him down in two slashes; a Walker or a truck takes half, a tank or a wall almost nothing. Blink throws him across the ground on one charge that comes back by itself. Right-click a structure or hull with enemy soldiers inside and he blinks in, kills every soldier aboard in a couple of seconds, and blinks out. Shut down and he stands dark as no one's machine until you power him up. Near death the legs tear off and he drags himself on, still cutting. He shells nothing and captures nothing."
               : focus.type === "cyborgcommander"
                 ? "Stands under fire — no crouch, no prone. The blue bar is his force field: it takes every hit first and comes back on after a while out of the fire. Power: Shield puts the laser's power into it, five times the points and five times the recharge, but he cannot attack. His plating mends itself, very slowly. The laser always cuts to full reach: a sweep across soldiers burns every man it passes, yours too, and one beam cuts a hull and anyone in front of it. Trees in the path burn down. Near death the legs tear off and he drags himself on, still firing. He shells a structure; he does not capture it."
               : "Capture player structures at point-blank. Civilian houses are garrisoned, not captured.",
@@ -2307,6 +2325,38 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       disabled: packs <= 0,
     });
   }
+  const blinkers = units.filter((e) => isSimUnit(e.type) && !e.garrisonedIn && !e.dormant && !e.purge);
+  if (blinkers.length > 0) {
+    const charge = Math.min(...blinkers.map((e) => e.blink?.u ?? 1));
+    const ready = charge >= 1;
+    out.push({
+      slot: "blink",
+      act: "blink",
+      label: "Blink",
+      title: ready
+        ? "Click the ground inside the ring: he is there at once. Click past the ring and he walks until it is in reach, then blinks. Shift queues it. Right-click an enemy garrison instead to blink in and purge it."
+        : `The drive is charging (${Math.round(charge * 100)}%). Click a point now and he goes the moment it is back.`,
+      on: !!view?.blinkMode,
+      badge: ready ? undefined : `${Math.round(charge * 100)}%`,
+    });
+  }
+  const dark = units.filter((e) => e.dormant);
+  const canDark = units.filter((e) => canPowerDown(e.type) && !e.dormant && !e.shutdown && !e.garrisonedIn && !e.purge);
+  if (dark.length > 0) {
+    out.push({
+      slot: "power",
+      act: "power-on",
+      label: "Power up",
+      title: "Wake him where he stands. He takes orders and fires again at once.",
+    });
+  } else if (canDark.length > 0) {
+    out.push({
+      slot: "power",
+      act: "power-off",
+      label: "Shut down",
+      title: "Power him down where he stands: dark, still, and silent. Enemy guns pass him by on their own; to the other side he reads as no one's machine. A named shot still finds him. Power up resumes at once.",
+    });
+  }
   const ships = units.filter((e) => e.asw);
   if (ships.length > 0) {
     const mines = ships.reduce((n, e) => n + e.asw!.mines, 0);
@@ -2630,6 +2680,16 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   }
   if (act === "deploy-mines") {
     if (units.some((e) => (e.minePacks ?? 0) > 0)) view.setMineLayMode(!view.mineLayMode);
+    return;
+  }
+  if (act === "blink") {
+    if (units.some((e) => isSimUnit(e.type) && !e.garrisonedIn && !e.dormant)) view.setBlinkMode(!view.blinkMode);
+    return;
+  }
+  if (act === "power-off" || act === "power-on") {
+    const on = act === "power-off";
+    const ids = units.filter((e) => canPowerDown(e.type) && (on ? !e.dormant && !e.shutdown && !e.garrisonedIn && !e.purge : !!e.dormant)).map((e) => e.id);
+    if (ids.length) ctx.net.send({ type: "cmd.powerdown", ids, on });
     return;
   }
   if (act === "lay-mine") {

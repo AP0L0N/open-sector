@@ -109,7 +109,7 @@ export function setGarrisonHide(state: MatchState, house: Entity, hide: boolean)
 }
 
 /** Empty civilian houses are always neutral. Anyone may enter. */
-function vacateIfEmpty(state: MatchState, house: Entity): void {
+export function vacateIfEmpty(state: MatchState, house: Entity): void {
   if (livingGarrison(state, house).length > 0) return;
   let dirty = false;
   if (house.garrisonHide) {

@@ -18,7 +18,11 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
+<<<<<<< HEAD
 export const PROTOCOL_VERSION = 125;
+=======
+export const PROTOCOL_VERSION = 124;
+>>>>>>> worktree-worktree-sim-unit-2
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -135,6 +139,15 @@ export interface EntityView {
   shutdown?: true;
   /** Shut-down Cyborg a Cyborg Commander (`by`) is taking over; `u` is the share done, 0–1. */
   takeover?: { by: number; u: number };
+  /**
+   * Cyborg or Sim Unit powered down on his own order: still and silent, passed over by enemy guns.
+   * Everyone who sees him sees it; to an enemy he comes with no owner, like a map's own machine.
+   */
+  dormant?: true;
+  /** Sim Unit II, own side only: blink drive charge, 0–1. 1 is ready. */
+  blink?: { u: number };
+  /** Sim Unit II inside a hostile garrison, own side only: the host and the share of the purge done, 0–1. */
+  purge?: { hostId: number; u: number };
   /**
    * Cyborg Commander's laser now cutting. A sweep runs from a0 to a1 (world radians);
    * `u` is the share already cut and `dur` the whole sweep in seconds. `lens` is the
@@ -499,6 +512,18 @@ export interface ProjectileView {
 
 export type ImpactKind = "miss" | "puff" | "crush" | "ricochet" | "glance" | "hit" | "pen" | "kill";
 
+/** A Sim Unit's blink: he left (x, y) and stands at (tx, ty) now. `inside` is a blink into or out of a garrison host. */
+export interface BlinkView {
+  id: number;
+  unitId: number;
+  ownerId: string;
+  x: number;
+  y: number;
+  tx: number;
+  ty: number;
+  inside?: true;
+}
+
 export interface ImpactView {
   id: number;
   ownerId: string;
@@ -678,6 +703,8 @@ export interface MatchSnapshot {
   impacts: ImpactView[];
   /** Rockets launched since the last snapshot that you can see. */
   launches: RocketLaunchView[];
+  /** Sim Unit blinks since the last snapshot with an end you can see. */
+  blinks?: BlinkView[];
   smoke: SmokeCloudView[];
   /** Burning ground on tiles you can see, and fires your side lit. Empty until the first flamethrower burst. */
   fires: GroundFireView[];
@@ -791,7 +818,16 @@ export type ClientMessage =
   | { type: "cmd.selfdestruct"; ids: number[]; on: boolean }
   /** Cyborg Commander: `on` puts the laser's power into the force field. He cannot attack while it is. */
   | { type: "cmd.fielddivert"; ids: number[]; on: boolean }
+<<<<<<< HEAD
   | { type: "cmd.engagecontacts"; ids: number[]; on: boolean }
+=======
+  /** Cyborg and Sim Unit: `on` shuts him down where he stands (dark, still, passed over by enemy guns); off powers him up. */
+  | { type: "cmd.powerdown"; ids: number[]; on: boolean }
+  /** Sim Unit II: blink to (x, y). Past his reach he walks until it is in reach, then blinks. */
+  | { type: "cmd.blink"; ids: number[]; x: number; y: number; queue?: boolean }
+  /** Sim Unit II: blink into a hostile garrison (`targetId`), kill every soldier aboard, and blink back out. */
+  | { type: "cmd.purge"; ids: number[]; targetId: number; queue?: boolean }
+>>>>>>> worktree-worktree-sim-unit-2
   | { type: "cmd.rockets"; ids: number[]; on: boolean }
   | { type: "cmd.reach"; ids: number[]; max: boolean }
   | { type: "cmd.build"; building: BuildingType | YardFieldType }

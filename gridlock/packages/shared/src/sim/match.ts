@@ -50,6 +50,8 @@ import { tickHeal } from "./heal.js";
 import { tickForceFields, tickLasers } from "./laser.js";
 import { tickSupply } from "./supply.js";
 import { tickMineLaunchers } from "./minelauncher.js";
+import { tickSimUnits } from "./simunit.js";
+import type { BlinkView } from "../protocol.js";
 import { syncTowedGuns, tickArtillery } from "./artillery.js";
 import { tickShipRearm } from "./battleship.js";
 import { tickMovement, repathIfBlocked } from "./orders.js";
@@ -102,6 +104,7 @@ export function createMatch(
     crates: [],
     impacts: [],
     launches: [],
+    blinks: [],
     rngState: seedRng(room.id),
     ended: false,
     initialHumans: commanders(room).length,
@@ -331,6 +334,7 @@ function stepHeld(state: MatchState, dt: number): void {
   state.tick += 1;
   state.phaseRev++;
   state.impacts = [];
+  state.blinks = [];
   state.launches = [];
   restampForts(state);
   restampBridges(state);
@@ -352,6 +356,7 @@ function stepHeld(state: MatchState, dt: number): void {
   tickArtillery(state, dt);
   tickPlaneBoarding(state);
   tickMineLaunchers(state, dt);
+  tickSimUnits(state);
   tickOrderQueue(state);
   tickPatrol(state);
   groundLstBows(state);
@@ -401,16 +406,19 @@ export function stepMatch(state: MatchState, dt = TICK_DT): void {
   const n = clampGameSpeed(state.gameSpeed);
   const impacts: ImpactView[] = [];
   const launches: RocketLaunchView[] = [];
+  const blinks: BlinkView[] = [];
   holdSightKeys(true);
   try {
     for (let i = 0; i < n; i++) {
       step(state, dt);
       impacts.push(...state.impacts);
       launches.push(...state.launches);
+      blinks.push(...state.blinks);
       if (state.ended) break;
     }
     state.impacts = impacts;
     state.launches = launches;
+    state.blinks = blinks;
     state.phaseRev++;
     tickAi(state);
   } finally {

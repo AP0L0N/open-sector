@@ -60,6 +60,8 @@ import { supplyHasDriver, supplyRiders } from "./supply.js";
 import { powerOf } from "./power.js";
 import { radarContacts, radarOnline } from "./radar.js";
 import { cyborgShutdownIn } from "./cyborg-link.js";
+import { blinkCharge, purgeProgress } from "./simunit.js";
+import { isSimUnit } from "../catalog.js";
 import { aswDeckView, sonarContacts } from "./destroyer.js";
 import { scrapCap } from "./smelter.js";
 import { thermalContacts } from "./thermal.js";
@@ -241,6 +243,7 @@ function queuedPoint(state: MatchState, m: QueueableCommand): PlanPointView | nu
     case "cmd.attack":
     case "cmd.repair":
     case "cmd.supply":
+    case "cmd.purge":
       at = entityAt(state, m.targetId);
       break;
     case "cmd.disable":
@@ -385,7 +388,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       id: e.id,
       kind: e.kind,
       type: e.type,
-      ownerId: e.ownerId,
+      // Powered down, he reads to the other side as no one's machine.
+      ownerId: e.dormant && !friendly ? NEUTRAL_OWNER : e.ownerId,
       x: e.x,
       y: e.y,
       facing: e.facing,
@@ -419,6 +423,9 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       shielded: e.hp > 0 && cyborgShielded(e, state.tick) ? true : undefined,
       field: e.hp > 0 && hasForceField(e.type) ? { hp: Math.round(e.field ?? 0), max: forceFieldMax(e) } : undefined,
       shutdown: e.shutdown,
+      dormant: e.dormant,
+      blink: friendly && isSimUnit(e.type) && !e.wreck ? { u: blinkCharge(state, e) } : undefined,
+      purge: friendly && e.purge ? { hostId: e.purge.hostId, u: purgeProgress(state, e) ?? 0 } : undefined,
       takeover: e.takeover ? { by: e.takeover.by, u: Math.min(1, e.takeover.ticks / secondsToTicks(CYBORG_TAKEOVER_SECONDS)) } : undefined,
       laser: e.laser ? laserView(e.laser, state.tick) : undefined,
       crits: e.crits.length > 0 ? [...e.crits] : undefined,
@@ -669,6 +676,9 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       const from = state.entities.get(l.fromId);
       return (from != null && allies(state, youPlayerId, from.ownerId)) || canSeeWorld(state, vis, l.x, l.y);
     }),
+    blinks: state.blinks.filter(
+      (b) => allies(state, youPlayerId, b.ownerId) || canSeeWorld(state, vis, b.x, b.y) || canSeeWorld(state, vis, b.tx, b.ty),
+    ),
     smoke: state.smokeClouds.map((c) => ({
       id: c.id,
       x: c.x,
