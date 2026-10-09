@@ -139,6 +139,8 @@ import {
   TITAN_NUKE,
   CLUSTER_RADIUS_TILES,
   MAMMOTH_MINE_RANGE_TILES,
+  SIMUNIT_BLINK_RANGE_TILES,
+  isSimUnit,
 } from "@gridlock/shared";
 import { drawNuke, drawNukeFlash, drawNukeScorch, NUKE_FX_MS, NUKE_SCORCH_MS } from "./nuke-fx.js";
 import { drawTitanThrust } from "./titan-jet-fx.js";
@@ -441,6 +443,8 @@ import { pyroNozzleScreen } from "./pyro-nozzle.js";
 import { cyborgCommanderLens } from "./cyborgcommander-muzzle.js";
 import { beamEnd, beamShare, drawForceField, drawLaserBeam } from "./laser-beam.js";
 import { drawShutdownMark, drawUplink, SHUTDOWN_UNIT_FILTER } from "./cyborg-link-fx.js";
+import { BLINK_FX_MS, drawBlinkFx, drawPurgeMark } from "./blink-fx.js";
+import { SIMUNIT2_CRAWL_FIRE_SPRITE, SIMUNIT2_CRAWL_SPRITE, SIMUNIT2_DIE_SPRITE, SIMUNIT2_FIRE_SPRITE, SIMUNIT2_SPRITE, UNIT_SPRITE_DRAW_SIZE } from "./sprites.js";
 import { inScreenRect, unitGroundSink, unitPickRect, type ScreenRect } from "./unit-hit.js";
 import { engineRowFromProjectedFacing, engineRowFromScreen } from "./turntable.js";
 import { drawSelectFrame, fieldFrameCorners } from "./select-frame.js";
@@ -641,6 +645,7 @@ const EXTRUDE: Record<EntityType, number> = {
   medic: 26,
   cyborg: 26,
   cyborgcommander: 26,
+  simunit2: 26,
   sandbags: 12,
   barbwire: 9,
   wall: 18,
@@ -1044,6 +1049,11 @@ export class MapView {
   forceAttackMode = false;
   /** Deploy mines: the next ground click sends the selected Mammoths' launchers there. */
   mineLayMode = false;
+  /** Blink: the next ground click sends the selected Sim Units' blink drives there. */
+  blinkMode = false;
+  /** Blink flashes in flight: both ends in world px and when they started. */
+  private blinkFx: { from: { x: number; y: number }; to: { x: number; y: number }; at: number; inside?: boolean }[] = [];
+  private seenBlinks = new Set<number>();
   rotateMode = false;
   /** Rotate light: the rotate click swings only the selected Battle Ships' and Titans' lamps. */
   rotateLight = false;
@@ -1176,10 +1186,29 @@ export class MapView {
     this.onPlaceMode();
   }
 
+  setBlinkMode(on: boolean): void {
+    if (this.blinkMode === on) return;
+    this.blinkMode = on;
+    if (on) {
+      this.placeMode = false;
+      this.attackMoveMode = false;
+      this.forceAttackMode = false;
+      this.mineLayMode = false;
+      this.rotateMode = false;
+      this.fieldPlace = null;
+      this.constructPlace = null;
+      this.bridgePlace = null;
+      this.setGuardMode(false);
+      this.setPatrolMode(false);
+    }
+    this.onAttackMoveMode();
+  }
+
   setMineLayMode(on: boolean): void {
     if (this.mineLayMode === on) return;
     this.mineLayMode = on;
     if (on) {
+      this.blinkMode = false;
       this.placeMode = false;
       this.attackMoveMode = false;
       this.forceAttackMode = false;
@@ -1399,6 +1428,12 @@ export class MapView {
       this.noteRocketLaunch(shooter, l, now);
       this.rocketLaunched.set(l.id, this.rocketFrom.get(l.id) ?? { x: l.x, y: l.y, z: l.z });
     }
+    for (const b of match.blinks ?? []) {
+      if (this.seenBlinks.has(b.id)) continue;
+      if (this.seenBlinks.size > 200) this.seenBlinks.clear();
+      this.seenBlinks.add(b.id);
+      this.blinkFx.push({ from: { x: b.x, y: b.y }, to: { x: b.tx, y: b.ty }, at: now, inside: b.inside });
+    }
     for (const i of match.impacts ?? []) {
       if (i.fromId != null && (i.caliber ?? 0) > 0 && (i.caliber ?? 0) < 40 && i.kind !== "crush") {
         const shooter = this.currById.get(i.fromId);
@@ -1567,6 +1602,7 @@ export class MapView {
     if (this.patrolMode && this.ownPatrolIds().length === 0) this.setPatrolMode(false);
     if (this.forceAttackMode && this.ownForceIds().length === 0) this.setForceAttackMode(false);
     if (this.mineLayMode && this.ownMineLayerIds().length === 0) this.setMineLayMode(false);
+    if (this.blinkMode && this.ownSimUnitIds().length === 0) this.setBlinkMode(false);
     if (this.rotateMode && (this.rotateLight ? this.ownShipLampIds() : this.ownRotateIds()).length === 0) {
       this.setRotateMode(false);
     }
@@ -2524,10 +2560,11 @@ export class MapView {
           this.onPlaceMode();
           return;
         }
-        if (this.attackMoveMode || this.forceAttackMode || this.mineLayMode || this.rotateMode || this.guardMode || this.fieldPlace || this.constructPlace || this.bridgePlace) {
+        if (this.attackMoveMode || this.forceAttackMode || this.mineLayMode || this.blinkMode || this.rotateMode || this.guardMode || this.fieldPlace || this.constructPlace || this.bridgePlace) {
           this.setAttackMoveMode(false);
           this.setForceAttackMode(false);
           this.setMineLayMode(false);
+      this.setBlinkMode(false);
           this.setRotateMode(false);
           this.setGuardMode(false);
           this.fieldPlace = null;
@@ -2570,6 +2607,10 @@ export class MapView {
         if (this.fieldPlace || this.readyYardField()) {
           const w = this.screenToWorld(mx, my);
           this.fieldDrag = { x: w.x, y: w.y };
+          return;
+        }
+        if (this.blinkMode) {
+          this.commitBlink(mx, my);
           return;
         }
         if (this.mineLayMode) {
@@ -2753,13 +2794,14 @@ export class MapView {
     }
     if (
       k === "escape" &&
-      (this.attackMoveMode || this.forceAttackMode || this.mineLayMode || this.rotateMode || this.guardMode || this.patrolMode)
+      (this.attackMoveMode || this.forceAttackMode || this.mineLayMode || this.blinkMode || this.rotateMode || this.guardMode || this.patrolMode)
     ) {
       e.preventDefault();
       e.stopPropagation();
       this.setAttackMoveMode(false);
       this.setForceAttackMode(false);
       this.setMineLayMode(false);
+      this.setBlinkMode(false);
       this.setRotateMode(false);
       this.setGuardMode(false);
       this.setPatrolMode(false);
@@ -2827,6 +2869,7 @@ export class MapView {
       this.setAttackMoveMode(false);
       this.setForceAttackMode(false);
       this.setMineLayMode(false);
+      this.setBlinkMode(false);
       this.setRotateMode(false);
       this.setGuardMode(false);
       this.setPatrolMode(false);
@@ -2878,6 +2921,7 @@ export class MapView {
         this.setAttackMoveMode(false);
         this.setForceAttackMode(false);
         this.setMineLayMode(false);
+      this.setBlinkMode(false);
         this.setRotateMode(false);
       }
     }
@@ -2902,6 +2946,7 @@ export class MapView {
     this.setAttackMoveMode(false);
     this.setForceAttackMode(false);
     this.setMineLayMode(false);
+    this.setBlinkMode(false);
     this.setRotateMode(false);
     this.setGuardMode(false);
     this.setPatrolMode(false);
@@ -3212,6 +3257,25 @@ export class MapView {
       if (ent && ent.ownerId === you && ent.hp > 0 && !ent.wreck && (ent.minePacks ?? 0) > 0) out.push(id);
     }
     return out;
+  }
+
+  private ownSimUnitIds(): number[] {
+    const you = this.curr.youPlayerId;
+    const out: number[] = [];
+    for (const id of this.selected) {
+      const ent = this.currById.get(id);
+      if (ent && ent.ownerId === you && ent.hp > 0 && !ent.wreck && isSimUnit(ent.type) && !ent.garrisonedIn && !ent.dormant) out.push(id);
+    }
+    return out;
+  }
+
+  private commitBlink(px: number, py: number): void {
+    const ids = this.ownSimUnitIds();
+    if (!this.keepModeForQueue()) this.setBlinkMode(false);
+    if (ids.length === 0) return;
+    const w = this.screenToWorld(px, py);
+    this.pulseMoveClick(w.x, w.y);
+    this.command({ type: "cmd.blink", ids, x: w.x, y: w.y });
   }
 
   private commitMineLay(px: number, py: number): void {
@@ -3636,6 +3700,10 @@ export class MapView {
     const t = Math.min(1, (performance.now() - this.snapAt) / 100);
     const prev = this.prevById.get(e.id);
     if (!prev || t >= 1) return { x: e.x, y: e.y, facing: e.facing, turretFacing: turretNow };
+    // A blink: he is simply there. Nothing slides across the ground between the two spots.
+    if (isSimUnit(e.type) && Math.hypot(e.x - prev.x, e.y - prev.y) > this.ts() * 6) {
+      return { x: e.x, y: e.y, facing: e.facing, turretFacing: turretNow };
+    }
     const snapFacing = isInfantryType(e.type);
     let df = e.facing - prev.facing;
     while (df > Math.PI) df -= Math.PI * 2;
@@ -3934,7 +4002,7 @@ export class MapView {
       .map((id) => this.currById.get(id))
       .filter((e): e is EntityView => !!e && !e.wreck && e.hp > 0);
     const you = this.curr.youPlayerId;
-    const own = selected.filter((e) => e.ownerId === you && !e.shutdown);
+    const own = selected.filter((e) => e.ownerId === you && !e.shutdown && !e.dormant && !e.purge);
     if (own.length === 0 && !selected.some((e) => e.garrison?.ownerId === you)) return;
     const producers = own.filter(isProducerView);
     if (producers.length > 0 && !own.some((e) => e.kind === "unit")) {
@@ -3986,6 +4054,11 @@ export class MapView {
     }
     if (action === "ungarrison" && hit) {
       this.command({ type: "cmd.ungarrison", buildingId: hit.id });
+      return;
+    }
+    if (action === "purge" && hit) {
+      const blinkers = own.filter((e) => e.kind === "unit" && isSimUnit(e.type) && !e.garrisonedIn);
+      if (blinkers.length) this.command({ type: "cmd.purge", ids: blinkers.map((e) => e.id), targetId: hit.id });
       return;
     }
     if ((action === "attack" || action === "capture") && hit) {
@@ -4415,6 +4488,9 @@ export class MapView {
     this.drawDroneLeash();
     this.drawRadarReach();
     this.drawMineLayReach();
+    this.drawBlinkReach();
+    this.drawPurgeMarks();
+    this.drawBlinkFlashes();
     this.drawSonarContacts();
     this.drawThermalContacts();
   }
@@ -4984,6 +5060,80 @@ export class MapView {
       ctx.stroke();
     }
     ctx.restore();
+  }
+
+  /** Blink armed: a dashed cyan ring of the drive's reach round each selected Sim Unit. Past it he walks first. */
+  private drawBlinkReach(): void {
+    if (!this.blinkMode) return;
+    const units = this.ownSimUnitIds()
+      .map((id) => this.currById.get(id))
+      .filter((e): e is EntityView => !!e);
+    if (units.length === 0) return;
+    const ts = this.ts();
+    const reach = SIMUNIT_BLINK_RANGE_TILES * ts;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.setLineDash([6, 5]);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = "rgba(120, 232, 255, 0.6)";
+    for (const e of units) {
+      ctx.beginPath();
+      for (let i = 0; i <= 96; i++) {
+        const a = (i / 96) * Math.PI * 2;
+        const s = this.toScreen(e.x + Math.cos(a) * reach, e.y + Math.sin(a) * reach);
+        if (i === 0) ctx.moveTo(s.x, s.y);
+        else ctx.lineTo(s.x, s.y);
+      }
+      ctx.stroke();
+    }
+    if (!this.overControl && this.mouseX >= 0 && this.mouseY >= 0) {
+      const w = this.screenToWorld(this.mouseX, this.mouseY);
+      const inReach = units.some((e) => Math.hypot(w.x - e.x, w.y - e.y) <= reach);
+      const charged = units.some((e) => (e.blink?.u ?? 1) >= 1);
+      ctx.setLineDash([]);
+      ctx.font = "11px 'Share Tech Mono', monospace";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      const word = !charged ? "BLINK (CHARGING)" : inReach ? "BLINK" : "MOVE + BLINK";
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "#140e0a";
+      ctx.fillStyle = inReach && charged ? "#78e8ff" : "#dc7850";
+      ctx.strokeText(word, this.mouseX + 12, this.mouseY + 8);
+      ctx.fillText(word, this.mouseX + 12, this.mouseY + 8);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = ctx.fillStyle;
+      ctx.beginPath();
+      ctx.moveTo(this.mouseX, this.mouseY - 8);
+      ctx.lineTo(this.mouseX, this.mouseY + 8);
+      ctx.moveTo(this.mouseX - 8, this.mouseY);
+      ctx.lineTo(this.mouseX + 8, this.mouseY);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /** Your Sim Unit inside a host on a purge: the ring on the host fills as the count runs. */
+  private drawPurgeMarks(): void {
+    const you = this.curr.youPlayerId;
+    const now = performance.now();
+    for (const e of this.curr.entities) {
+      if (!e.purge || e.ownerId !== you) continue;
+      const host = this.currById.get(e.purge.hostId);
+      const at = host ? this.toScreen(host.x, host.y) : this.toScreen(e.x, e.y);
+      drawPurgeMark(this.ctx, at.x, at.y, (host?.kind === "building" ? 26 : 16) * this.zoom, e.purge.u, now);
+    }
+  }
+
+  private drawBlinkFlashes(): void {
+    if (this.blinkFx.length === 0) return;
+    const now = performance.now();
+    const speed = this.curr.gameSpeed || 1;
+    this.blinkFx = this.blinkFx.filter((f) => (now - f.at) * speed < BLINK_FX_MS);
+    for (const f of this.blinkFx) {
+      const a = this.toScreen(f.from.x, f.from.y);
+      const b = this.toScreen(f.to.x, f.to.y);
+      drawBlinkFx(this.ctx, a, b, (now - f.at) * speed, UNIT_SPRITE_DRAW_SIZE * this.zoom, f.inside);
+    }
   }
 
   private selectedProducers(): EntityView[] {
@@ -6825,6 +6975,20 @@ export class MapView {
       if (sheet === "swim") return spriteFor("cyborg", "stand", true);
       return CYBORG_SPRITE;
     }
+    if (e.type === "simunit2") {
+      const sheet = cyborgSheet({
+        swimming: e.swimming,
+        wreck: e.wreck,
+        stance: e.stance,
+        shotAgeMs: this.infantryShotAge(e.id),
+      });
+      if (sheet === "die") return SIMUNIT2_DIE_SPRITE;
+      if (sheet === "fire") return SIMUNIT2_FIRE_SPRITE;
+      if (sheet === "crawl-fire") return SIMUNIT2_CRAWL_FIRE_SPRITE;
+      if (sheet === "crawl") return SIMUNIT2_CRAWL_SPRITE;
+      if (sheet === "swim") return spriteFor("simunit2", "stand", true);
+      return SIMUNIT2_SPRITE;
+    }
     if (e.type === "cyborgcommander") {
       // He holds the firing pose while the beam is out.
       const sheet = cyborgSheet({ swimming: e.swimming, wreck: e.wreck, stance: e.stance, shotAgeMs: e.laser ? 0 : null });
@@ -7136,8 +7300,8 @@ export class MapView {
       }
     }
     if (e.wreck && !corpse && sheet === def) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
-    // A shut-down Cyborg is dark: the machine is off.
-    else if (!e.wreck && e.shutdown) ctx.filter = SHUTDOWN_UNIT_FILTER;
+    // A shut-down or powered-down Cyborg is dark: the machine is off.
+    else if (!e.wreck && (e.shutdown || e.dormant)) ctx.filter = SHUTDOWN_UNIT_FILTER;
     // A map's neutral unit is grey: no one's colours, everyone's enemy.
     else if (!e.wreck && !e.ownerId) ctx.filter = NEUTRAL_UNIT_FILTER;
     // The ship's mounts are placed on the sim's own spots: no ground sink under the hull.
@@ -7234,7 +7398,7 @@ export class MapView {
         e.id,
       );
     }
-    if (drawn && !e.wreck && e.shutdown) drawShutdownMark(ctx, s.x, s.y + unitGroundSink(size), size, performance.now(), e.id);
+    if (drawn && !e.wreck && (e.shutdown || e.dormant)) drawShutdownMark(ctx, s.x, s.y + unitGroundSink(size), size, performance.now(), e.id);
     if (drawn && !e.wreck && isInfantryType(e.type) && !e.swimming) {
       const heat = this.fireHeatAt(p.x, p.y);
       if (heat > 0) drawBodyFlames(ctx, s.x, s.y, size, heat, performance.now(), e.id);
@@ -8596,7 +8760,7 @@ export class MapView {
       (this.attackMoveMode ||
         this.patrolMode ||
         this.forceAttackMode ||
-        this.mineLayMode ||
+        this.mineLayMode || this.blinkMode ||
         this.rotateMode ||
         this.guardMode ||
         (this.ctrlHeld && this.ownForceIds().length > 0)) &&

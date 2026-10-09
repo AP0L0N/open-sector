@@ -13,6 +13,7 @@ import {
   garrisonWindowsOf,
   garrisonOpenTopOf,
   garrisonWoundMulOf,
+  garrisonBulletMulOf,
   isCivilianType,
   isGarrisonable,
   isInfantryType,
@@ -36,7 +37,7 @@ import {
 } from "./geo.js";
 import { atRamp, deckGunners, isTankDeck, rampExitTile, rampLandings, rampPoint, tubPoint } from "./lst.js";
 import { astar, setPath } from "./path.js";
-import type { Entity, MatchState } from "./types.js";
+import type { Entity, MatchState, Projectile } from "./types.js";
 
 export function livingGarrison(state: MatchState, house: Entity): Entity[] {
   const out: Entity[] = [];
@@ -108,7 +109,7 @@ export function setGarrisonHide(state: MatchState, house: Entity, hide: boolean)
 }
 
 /** Empty civilian houses are always neutral. Anyone may enter. */
-function vacateIfEmpty(state: MatchState, house: Entity): void {
+export function vacateIfEmpty(state: MatchState, house: Entity): void {
   if (livingGarrison(state, house).length > 0) return;
   let dirty = false;
   if (house.garrisonHide) {
@@ -164,15 +165,34 @@ export function detachGarrisoned(state: MatchState, unit: Entity): void {
   unit.garrisonedIn = null;
 }
 
+/** A rifle, machine-gun, or gatling round: no shell, no arc, below the structural caliber. */
+export function isBulletRound(p: Pick<Projectile, "caliber" | "shell" | "flight">): boolean {
+  return p.shell == null && p.flight == null && p.caliber < GARRISON_STRUCTURAL_CALIBER;
+}
+
 /**
  * Incoming fire through the walls. A random occupant eats most of the hit;
  * others may catch splinters. Heavy calibers wound more of the stack.
+ * `bullet` marks a small-arms round (isBulletRound): a Bunker's or Watch
+ * Tower's slits let only garrisonBulletMul of it through on top of the
+ * wall share.
  */
-export function woundGarrison(state: MatchState, house: Entity, incoming: number, caliber = 0, plunging = false): void {
+export function woundGarrison(
+  state: MatchState,
+  house: Entity,
+  incoming: number,
+  caliber = 0,
+  plunging = false,
+  bullet = false,
+): void {
   const units = livingGarrison(state, house);
   if (units.length === 0 || incoming <= 0) return;
   // Fire from overhead drops straight into an open-topped hole; the parapet is no help.
-  if (!(plunging && garrisonOpenTopOf(house.type))) incoming *= garrisonWoundMulOf(house.type);
+  if (!(plunging && garrisonOpenTopOf(house.type))) {
+    incoming *= garrisonWoundMulOf(house.type);
+    // A rifle, MG, or gatling round has to find a slit. A shell or a burst does not.
+    if (bullet && caliber < GARRISON_STRUCTURAL_CALIBER) incoming *= garrisonBulletMulOf(house.type);
+  }
   const heavy = caliber >= GARRISON_STRUCTURAL_CALIBER;
   const primary = units[Math.floor(nextRand(state) * units.length)]!;
   woundOccupant(primary, incoming * (heavy ? 0.5 + nextRand(state) * 0.7 : 0.4 + nextRand(state) * 0.7), state.tick);

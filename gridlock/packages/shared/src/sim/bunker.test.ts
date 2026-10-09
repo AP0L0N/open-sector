@@ -10,6 +10,7 @@ import {
   BUNKER_TYPES,
   BUNKER_WOUND_MUL,
   GARRISON_WATCH_SIGHT_BONUS,
+  SLIT_BULLET_WOUND_MUL,
   MEDIC_HEAL_PER_SEC,
   TICK_DT,
   catalog,
@@ -25,7 +26,7 @@ import { placedFacing, raiseBuilding, sellBuilding } from "./build.js";
 import { tickCombat } from "./combat.js";
 import { sightTilesForEntity, weaponRangeWorld } from "./elevation.js";
 import { destroyEntity, makeEntity, occupant, tileCenter } from "./geo.js";
-import { canGarrison, enterGarrison, livingGarrison, setGarrisonHide, woundGarrison } from "./garrison.js";
+import { canGarrison, enterGarrison, isBulletRound, livingGarrison, setGarrisonHide, woundGarrison } from "./garrison.js";
 import { createMatch, step } from "./match.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -125,6 +126,40 @@ describe("bunker", () => {
       assert.ok(took >= 1 && took <= Math.ceil(50 * BUNKER_WOUND_MUL * 1.1), `took ${took}`);
       inf.hp = inf.hpMax;
     }
+  });
+
+  it("stops two thirds of the bullets its wall share lets through, but not shells", () => {
+    const { state, a } = twoPlayerMatch();
+    const bunker = bunkerAt(state, a);
+    const inf = trooper(state, "rifleman", a);
+    assert.equal(enterGarrison(state, inf, bunker), true);
+    assert.equal(catalog("bunker").garrisonBulletMul, SLIT_BULLET_WOUND_MUL);
+    const sum = (bullet: boolean, caliber: number): number => {
+      let total = 0;
+      for (let i = 0; i < 400; i++) {
+        inf.hp = inf.hpMax;
+        woundGarrison(state, bunker, 120, caliber, false, bullet);
+        total += inf.hpMax - inf.hp;
+      }
+      return total;
+    };
+    const rifle = sum(true, 7.92);
+    const open = sum(false, 7.92);
+    const ratio = rifle / open;
+    assert.ok(ratio > 0.28 && ratio < 0.4, `bullet share ${ratio.toFixed(3)}`);
+    // A 75 mm shell is no bullet whatever the caller says.
+    const shellFlag = sum(true, 75);
+    const shell = sum(false, 75);
+    assert.ok(shellFlag / shell > 0.85 && shellFlag / shell < 1.15, `shell share ${(shellFlag / shell).toFixed(3)}`);
+  });
+
+  it("tells a bullet from a shell, a bomb, and a flame glob", () => {
+    assert.equal(isBulletRound({ caliber: 7.92, shell: null }), true);
+    assert.equal(isBulletRound({ caliber: 8, shell: null, flight: undefined }), true);
+    assert.equal(isBulletRound({ caliber: 75, shell: "ap" }), false);
+    assert.equal(isBulletRound({ caliber: 60, shell: null, flight: "mortar" }), false);
+    assert.equal(isBulletRound({ caliber: 1, shell: null, flight: "flame" }), false);
+    assert.equal(isBulletRound({ caliber: 120, shell: null, flight: "bomb" }), false);
   });
 
   it("lets the gunner fire his MG from the slit, but not from a cottage window", () => {

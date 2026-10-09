@@ -147,6 +147,12 @@ import {
   isTorpedoBody,
   isLowFieldWork,
   TITAN_POD_ARC_DEG,
+  SIMUNIT_BUILDING_MUL,
+  SIMUNIT_HEAVY_MUL,
+  SIMUNIT_HUNT_TILES,
+  SIMUNIT_LIGHT_MUL,
+  SIMUNIT_SLASH_DAMAGE,
+  meleeOf,
 } from "../catalog.js";
 import { aimableBridge, bridgeSweep, strikeBridge, tagBridgeRounds } from "./bridge.js";
 import type { ImpactKind, ImpactView } from "../protocol.js";
@@ -177,6 +183,7 @@ import {
 } from "./ballistics.js";
 import { fireStats, hullTurnMul, immobilized, rollCrits, rollLamp, takeDamage } from "./crits.js";
 import { damageMaulerCart } from "./mauler-cart.js";
+import { hiddenFromAuto } from "./simunit.js";
 import { artilleryCanLay, artilleryReady, artilleryReloadMul, blastOnGun, bulletOnGun, gunCrewOf } from "./artillery.js";
 import { noteImpactSurface } from "./remains.js";
 import { stanceHitRadiusMul, stanceTargetSpreadMul, tickStance } from "./stance.js";
@@ -217,6 +224,7 @@ import {
   garrisonLooksOccupied,
   livingGarrison,
   garrisonMuzzleToward,
+  isBulletRound,
   woundDeckGunners,
   syncHullGarrisons,
   wallsShieldGarrison,
@@ -551,7 +559,7 @@ function roofCiwsTarget(
   const grid = spatialGrid();
   const pool = grid ? queryCircle(grid, from.x, from.y, Math.max(range, airRange)) : state.entities.values();
   for (const o of pool) {
-    if (o.kind !== "unit" || o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn != null) continue;
+    if (o.kind !== "unit" || o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn != null || hiddenFromAuto(o)) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
     const air = isAirborne(o) || !!o.drone;
     const d = (o.x - from.x) ** 2 + (o.y - from.y) ** 2;
@@ -634,7 +642,7 @@ function hullFlamerRange(state: MatchState, e: Entity): number {
 
 /** Fire hurts it: a soldier or a soft vehicle in the open, or a house with an enemy garrison showing. */
 function flameWorthIt(state: MatchState, e: Entity, o: Entity): boolean {
-  if (o.id === e.id || o.hp <= 0 || o.wreck || allies(state, e.ownerId, o.ownerId)) return false;
+  if (o.id === e.id || o.hp <= 0 || o.wreck || hiddenFromAuto(o) || allies(state, e.ownerId, o.ownerId)) return false;
   if (o.kind === "unit") return burnShare(o) > 0;
   return isGarrisonable(o.type) && garrisonIsHostile(state, e.ownerId, o) && garrisonLooksOccupied(state, e.ownerId, o);
 }
@@ -808,7 +816,7 @@ function twinCiwsTargets(state: MatchState, e: Entity, range: number, airRange: 
   for (const o of poolCircle(state, e.x, e.y, Math.max(range, airRange))) {
     if (o.id === e.id || o.hp <= 0 || o.wreck || o.garrisonedIn != null || isCrashing(o)) continue;
     if (o.kind !== "unit" && o.id !== main?.id) continue;
-    if (o.id !== named?.id && allies(state, e.ownerId, o.ownerId)) continue;
+    if (o.id !== named?.id && (allies(state, e.ownerId, o.ownerId) || hiddenFromAuto(o))) continue;
     if (o.kind === "unit" && outOfReachAloft(state, e, o)) continue;
     const air = isAirborne(o) || !!o.drone;
     const d = Math.hypot(o.x - e.x, o.y - e.y);
@@ -1119,8 +1127,8 @@ function canFight(e: Entity): boolean {
   // Aircraft fire their own guns and bombs in tickAir.
   // A paratrooper under his canopy keeps his rifle slung until he is down.
   if (e.type === "artillery" && gunCrewOf(e) === 0) return false;
-  // A shut-down Cyborg fires at nothing.
-  if (e.shutdown) return false;
+  // A shut-down Cyborg fires at nothing; nor does one powered down, or a Sim Unit inside a garrison on a purge.
+  if (e.shutdown || e.dormant || e.purge) return false;
   // A Cyborg Commander with the laser's power in his field fires nothing.
   if (e.fieldDivert) return false;
   // An emplaced gun with nobody at it is silent, and so is one whose crew lies low.
@@ -1308,7 +1316,7 @@ function patrolContact(state: MatchState, e: Entity, o: Entity): boolean {
   const route = e.order?.route;
   if (!route) return false;
   if (o.kind !== "unit" || o.hp <= 0 || o.wreck || o.id === e.id || o.garrisonedIn != null) return false;
-  if (isCrashing(o) || ownerless(o) || allies(state, e.ownerId, o.ownerId)) return false;
+  if (isCrashing(o) || ownerless(o) || hiddenFromAuto(o) || allies(state, e.ownerId, o.ownerId)) return false;
   // The cheap reach checks first: most of the pool is too far to be worth a sight ray.
   const range = weaponRangeWorld(state, e);
   if (range <= 0) return false;
@@ -1441,6 +1449,7 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
       skipsFriendly(state, e, target) ||
       dropsEmptyGarrison(state, e, target) ||
       walkerSparesBuilding(state, e, target) ||
+      (e.order.auto && hiddenFromAuto(target)) ||
       dropsWreck(e, target) ||
       dropsUnharmedArmor(state, e, target) ||
       dropsProofWall(state, e, target)
@@ -1461,6 +1470,7 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
       dropsEmptyGarrison(state, e, target) ||
       walkerSparesBuilding(state, e, target) ||
       sparesBuilding(state, e, target) ||
+      hiddenFromAuto(target) ||
       dropsWreck(e, target) ||
       dropsUnharmedArmor(state, e, target) ||
       dropsProofWall(state, e, target)
@@ -1531,6 +1541,8 @@ function currentTarget(state: MatchState, e: Entity): Entity | undefined {
   // A bridge is held only by a force-attack, and only until it falls.
   if (isBridge(t.type) && (e.order?.kind !== "forceattack" || !aimableBridge(t))) return undefined;
   if (outOfReachAloft(state, e, t)) return undefined;
+  // A powered-down machine, or a Sim Unit inside on a purge, is only a target the player named.
+  if (e.order?.kind !== "forceattack" && !(e.order?.kind === "attack" && !e.order.auto) && hiddenFromAuto(t)) return undefined;
   if (e.order?.kind !== "forceattack" && skipsFriendly(state, e, t)) return undefined;
   if (e.order?.kind !== "forceattack" && dropsEmptyGarrison(state, e, t)) return undefined;
   if (walkerSparesBuilding(state, e, t)) return undefined;
@@ -1635,6 +1647,8 @@ function infantryRoundCanHarm(state: MatchState, e: Entity, target: Entity): boo
   if (gun.id === "gatling" && isLightHull(def)) return true;
   // The Commander's laser cuts any plate.
   if (gun.id === "laser") return true;
+  // The Sim Unit's daggers open a light hull; a heavy plate is not worth the run.
+  if (gun.id === "daggers") return isLightHull(def);
   if (entityIsScouting(target) && gun.caliber < GARRISON_STRUCTURAL_CALIBER) return true;
   const vx = target.x - e.x;
   const vy = target.y - e.y;
@@ -1918,6 +1932,14 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     e.clip = Math.max(0, e.clip - 1);
     e.cooldown = infantryGun.cooldown;
     if (e.clip <= 0) beginReload(e, infantryGun);
+    if (e.order?.once) clearOrder(e);
+    return;
+  }
+  // The Sim Unit's daggers: a cut at arm's reach, no round in the air. On a bare point he cuts the air.
+  if (infantryGun?.id === "daggers") {
+    if (target) slash(state, e, target);
+    else slashAir(state, e, aimX, aimY);
+    e.cooldown = infantryGun.cooldown;
     if (e.order?.once) clearOrder(e);
     return;
   }
@@ -2310,7 +2332,7 @@ function mainTargetId(e: Entity): number | null {
  */
 function podValue(state: MatchState, e: Entity, o: Entity): number {
   if (o.hp <= 0 || o.wreck || o.garrisonedIn != null || o.id === e.id || isCrashing(o)) return 0;
-  if (allies(state, e.ownerId, o.ownerId)) return 0;
+  if (allies(state, e.ownerId, o.ownerId) || hiddenFromAuto(o)) return 0;
   if (o.kind === "building") {
     return isGarrisonable(o.type) && garrisonIsHostile(state, e.ownerId, o) && garrisonLooksOccupied(state, e.ownerId, o)
       ? 2
@@ -2824,7 +2846,7 @@ function walkerSecondTarget(state: MatchState, e: Entity, primary: Entity): Enti
   let bestD = range * range;
   for (const o of poolCircle(state, e.x, e.y, range)) {
     if (o.id === primary.id || o.id === e.id || o.hp <= 0 || o.wreck || o.garrisonedIn || isBridge(o.type) || isRubble(o)) continue;
-    if (allies(state, e.ownerId, o.ownerId)) continue;
+    if (allies(state, e.ownerId, o.ownerId) || hiddenFromAuto(o)) continue;
     // A map defence nobody has taken yet is no one's enemy.
     if (o.kind === "building" && !o.ownerId && !isCivilianType(o.type)) continue;
     if (walkerSparesBuilding(state, e, o)) continue;
@@ -3049,6 +3071,52 @@ function crewPace(e: Entity): number {
   if (!crewGunOf(e.type)) return 1;
   return garrisonCapOf(e.type) / Math.max(1, e.garrison.length);
 }
+
+/**
+ * The Sim Unit's cut. A soldier takes the whole slash; a Walker or a truck SIMUNIT_LIGHT_MUL
+ * of it; a tank, a wreck, or a plate SIMUNIT_HEAVY_MUL; a wall SIMUNIT_BUILDING_MUL, and
+ * through the slits of a held house the soldiers inside instead. No round: the hit lands now.
+ */
+function slash(state: MatchState, e: Entity, target: Entity): void {
+  const def = catalog(target.type);
+  let mul = 1;
+  if (target.kind === "building") mul = SIMUNIT_BUILDING_MUL;
+  else if (target.wreck || (isArmored(def) && !isLightHull(def))) mul = SIMUNIT_HEAVY_MUL;
+  else if (isLightHull(def)) mul = SIMUNIT_LIGHT_MUL;
+  const rand = () => nextRand(state);
+  const dmg = Math.round(SIMUNIT_SLASH_DAMAGE * mul * (0.9 + 0.2 * rand()));
+  const vx = target.x - e.x;
+  const vy = target.y - e.y;
+  let kind: ImpactKind = "hit";
+  if (target.kind === "building" && wallsShieldGarrison(state, target)) {
+    woundGarrison(state, target, SIMUNIT_SLASH_DAMAGE, DAGGER_CALIBER);
+  } else if (dmg > 0) {
+    takeDamage(target, dmg, state.tick);
+    if (target.hp <= 0) kind = "kill";
+    else if (target.kind === "unit" && !target.wreck && isInfantryType(target.type)) rollCrits(target, "none", "hit", dmg, rand);
+  } else {
+    kind = "glance";
+  }
+  state.impacts.push({
+    id: state.nextId++,
+    ownerId: e.ownerId,
+    kind,
+    fromId: e.id,
+    x: target.x,
+    y: target.y,
+    vx,
+    vy,
+    caliber: DAGGER_CALIBER,
+  });
+}
+
+/** A force-attack on the ground: the blades pass through nothing. The client still shows the swing. */
+function slashAir(state: MatchState, e: Entity, x: number, y: number): void {
+  state.impacts.push({ id: state.nextId++, ownerId: e.ownerId, kind: "miss", fromId: e.id, x, y, vx: x - e.x, vy: y - e.y, caliber: DAGGER_CALIBER });
+}
+
+/** Shown as a small-arms spark on the client; it also marks the slash as the Sim Unit's shot. */
+const DAGGER_CALIBER = 8;
 
 function fireRound(
   state: MatchState,
@@ -3300,7 +3368,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       if (isConcreteLine(blocker.e.type)) {
         // A shell chips the concrete. Any round that stops on a manned Large wall reaches the slits.
         if (isTankShell(p)) takeDamage(blocker.e, Math.max(1, Math.round(p.damage)), state.tick);
-        if (wallsShieldGarrison(state, blocker.e)) woundGarrison(state, blocker.e, p.damage, p.caliber, false);
+        if (wallsShieldGarrison(state, blocker.e)) woundGarrison(state, blocker.e, p.damage, p.caliber, false, isBulletRound(p));
         pushImpact(state, p, "hit", blocker.x, blocker.y);
         continue;
       }
@@ -3463,7 +3531,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       }
       hideScout(state, e);
     }
-    if (occupied) woundGarrison(state, e, res.damage, p.caliber, !!p.plunging);
+    if (occupied) woundGarrison(state, e, res.damage, p.caliber, !!p.plunging, isBulletRound(p));
     else woundDeckGunners(state, e, p.damage);
     // A bullet that meets the body can smash the lamps, even when it only sparks.
     if (e.hp > 0 && !e.wreck) rollLamp(e, lampShotOf(p), rand);
@@ -3753,7 +3821,8 @@ function sweepAgainst(
 function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undefined {
   // Dry tanks: the Pyro has nothing to go at them with until a truck refills him.
   if (e.type === "pyro" && e.clip <= 0) return undefined;
-  const range = weaponRangeWorld(state, e);
+  // The knife reaches an arm; the man carrying it looks further and runs the target down.
+  const range = meleeOf(e.type) ? Math.max(weaponRangeWorld(state, e), SIMUNIT_HUNT_TILES * state.tileSize) : weaponRangeWorld(state, e);
   // The CIWS takes units only, and a plane in the air before anything on the ground.
   const radar = radarLaidOf(e.type);
   let best: Entity | undefined;
@@ -3768,7 +3837,7 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
   if (grid && !anyHostileNear(grid, state, e.ownerId, e.x, e.y, reach)) return undefined;
   const pool = grid ? queryCircle(grid, e.x, e.y, reach) : state.entities.values();
   for (const o of pool) {
-    if (o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn || isCrashing(o)) continue;
+    if (o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn || isCrashing(o) || hiddenFromAuto(o)) continue;
     // Reach first: most of the field is too far to be worth the checks below.
     const dx = o.x - e.x;
     const dy = o.y - e.y;

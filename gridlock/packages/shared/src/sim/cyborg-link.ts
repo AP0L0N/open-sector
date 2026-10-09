@@ -1,4 +1,4 @@
-import { CYBORG_SHUTDOWN_SECONDS, CYBORG_TAKEOVER_RANGE_TILES, CYBORG_TAKEOVER_SECONDS, secondsToTicks } from "../catalog.js";
+import { CYBORG_SHUTDOWN_SECONDS, CYBORG_TAKEOVER_RANGE_TILES, CYBORG_TAKEOVER_SECONDS, isSimUnit, secondsToTicks } from "../catalog.js";
 import { allies, clearOrder } from "./geo.js";
 import { powerOf } from "./power.js";
 import type { Entity, MatchState } from "./types.js";
@@ -23,9 +23,9 @@ function commanderUp(state: MatchState, e: Entity): boolean {
   return e.type === "cyborgcommander" && live(e) && e.garrisonedIn == null && !!state.players.get(e.ownerId)?.alive;
 }
 
-/** A Cyborg the link rule reaches: a plain Cyborg on the field. One aboard waits until he steps off. */
+/** A Cyborg the link rule reaches: a plain Cyborg or a Sim Unit on the field. One aboard waits until he steps off. */
 function fieldCyborg(e: Entity): boolean {
-  return e.type === "cyborg" && e.kind === "unit" && live(e) && e.garrisonedIn == null;
+  return (e.type === "cyborg" || isSimUnit(e.type)) && e.kind === "unit" && live(e) && e.garrisonedIn == null;
 }
 
 /** This side's Cyborg Central stands and its power is not short. */

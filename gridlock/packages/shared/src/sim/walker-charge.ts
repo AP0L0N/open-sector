@@ -24,6 +24,7 @@ import {
 import { mortarFalloff } from "./mortar.js";
 import { setPath } from "./path.js";
 import type { Entity, MatchState } from "./types.js";
+import { hiddenFromAuto } from "./simunit.js";
 import { canSeeEntity } from "./vision.js";
 
 /** Vehicles stop at the radius sum. This reaches across that gap. */
@@ -133,7 +134,7 @@ function chargeTarget(state: MatchState, walker: Entity): Entity | undefined {
 
 function hostile(state: MatchState, walker: Entity, o: Entity): boolean {
   if (ownerless(o)) return false;
-  if (o.id === walker.id || o.hp <= 0 || o.wreck || o.garrisonedIn != null) return false;
+  if (o.id === walker.id || o.hp <= 0 || o.wreck || o.garrisonedIn != null || hiddenFromAuto(o)) return false;
   if (isAirborne(o)) return false;
   return !allies(state, walker.ownerId, o.ownerId);
 }
