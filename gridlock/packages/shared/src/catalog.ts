@@ -2539,8 +2539,8 @@ export const FLAK_BURST_RADIUS = 128;
  * its release or strafing height while the shell climbs is still caught. Planes cruise at AIR_CRUISE_ALT.
  */
 export const FLAK_BURST_DEPTH = 24;
-/** Damage at the heart of a burst: small, since nearly every burst finds something. A Stuka takes about a dozen. */
-export const FLAK_BURST_DAMAGE = 10;
+/** Damage at the heart of a burst. Doubled from 10: the first lay left a plane in the cloud barely scratched. */
+export const FLAK_BURST_DAMAGE = 20;
 /**
  * Scatter of the burst off the predicted point, world px, at point blank and at full reach.
  * Thirty percent wider than the first lay (12 and 34).
