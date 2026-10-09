@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { EntityView, MatchSnapshot } from "@gridlock/shared";
+import { AIR_CRUISE_ALT, type EntityView, type MatchSnapshot } from "@gridlock/shared";
 import { impactSound, SENSOR_CALL_GAP_MS, SoundTracker, type SoundEvent } from "./sound-events.js";
 
 const ME = "p1";
@@ -86,6 +86,22 @@ describe("SoundTracker", () => {
     const home = t.step(snap({ entities: [unit(1, "destroyer")] }), 300);
     assert.deepEqual(kinds(home, "unitsfx"), [{ kind: "unitsfx", type: "aswheli", cue: "special", x: 20, y: 5 }]);
     assert.equal(kinds(home, "death").length, 0);
+  });
+
+  it("winds up a Stuka's siren once as it tips over from cruise into its dive, not when it lands", () => {
+    const t = new SoundTracker();
+    const stuka = (alt: number, phase = "fly") => unit(1, "stuka", "p2", { air: { phase, alt } } as never);
+    const dives = (evs: SoundEvent[]) => kinds(evs, "unitsfx").filter((e) => (e as { cue: string }).cue === "dive");
+    t.step(snap({ entities: [stuka(AIR_CRUISE_ALT)] }), 0);
+    assert.equal(dives(t.step(snap({ entities: [stuka(AIR_CRUISE_ALT)] }), 100)).length, 0, "level at cruise");
+    assert.deepEqual(dives(t.step(snap({ entities: [stuka(AIR_CRUISE_ALT - 1.4)] }), 200)), [
+      { kind: "unitsfx", type: "stuka", cue: "dive", x: 10, y: 5 },
+    ]);
+    assert.equal(dives(t.step(snap({ entities: [stuka(AIR_CRUISE_ALT - 2.8)] }), 300)).length, 0, "already diving");
+    assert.equal(dives(t.step(snap({ entities: [stuka(AIR_CRUISE_ALT)] }), 6000)).length, 0, "climbing back out");
+    assert.equal(dives(t.step(snap({ entities: [stuka(AIR_CRUISE_ALT - 1.4, "landing")] }), 7000)).length, 0, "landing");
+    t.step(snap({ entities: [stuka(AIR_CRUISE_ALT)] }), 8000);
+    assert.equal(dives(t.step(snap({ entities: [stuka(AIR_CRUISE_ALT - 1.4)] }), 9000)).length, 1, "the next pass");
   });
 
   it("hears a new projectile as its shooter firing, once per shot", () => {

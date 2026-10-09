@@ -1,7 +1,60 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { catalog, TILE_SIZE } from "@gridlock/shared";
-import { RUBBLE_MAX_RISE, rubbleLayout, rubblePalette } from "./rubble.js";
+import { CIVILIAN_TYPES, catalog, TILE_SIZE } from "@gridlock/shared";
+import { readFileSync } from "node:fs";
+import {
+  RUBBLE_MAX_RISE,
+  RUIN_FIRE_FULL_MS,
+  RUIN_FIRE_OUT_MS,
+  RUIN_SMOKE_OUT_MS,
+  ruinFireLife,
+  ruinFireState,
+  rubbleLayout,
+  rubblePalette,
+} from "./rubble.js";
+
+describe("ruins", () => {
+  const manifest = JSON.parse(readFileSync(new URL("../assets/ruins/ruins.json", import.meta.url), "utf8")) as Record<
+    string,
+    { file: string; padWidth: number; fires: number[][] }[]
+  >;
+
+  it("gives every civilian house its own ruin in all four faces, with fires on the lot", () => {
+    for (const type of CIVILIAN_TYPES) {
+      const faces = manifest[type];
+      assert.equal(faces?.length, 4, type);
+      const w = catalog(type).tileW * TILE_SIZE;
+      const h = catalog(type).tileH * TILE_SIZE;
+      for (const f of faces!) {
+        assert.ok(f.file.startsWith(type), f.file);
+        assert.equal(f.padWidth, (w + h) * 3, `${type} pad`);
+        assert.ok(f.fires.length >= 1, `${type} has a fire`);
+        for (const [x, y, z] of f.fires) {
+          assert.ok(x! >= 0 && x! <= w && y! >= 0 && y! <= h, `${type} fire ${x},${y} on its ${w}x${h} lot`);
+          assert.ok(z! >= 0 && z! < 20, `${type} fire z ${z}`);
+        }
+      }
+    }
+  });
+
+  it("burns, sinks to embers, smoulders, then goes cold", () => {
+    assert.ok(ruinFireState(10_000, 1).heat >= 0.99);
+    const dying = ruinFireState((RUIN_FIRE_FULL_MS + RUIN_FIRE_OUT_MS) / 2, 1);
+    assert.ok(dying.heat > 0.2 && dying.heat < 0.8, `${dying.heat}`);
+    const smoulder = ruinFireState((RUIN_FIRE_OUT_MS + RUIN_SMOKE_OUT_MS) / 2, 1);
+    assert.equal(smoulder.heat, 0);
+    assert.ok(smoulder.smoke > 0);
+    assert.deepEqual(ruinFireState(RUIN_SMOKE_OUT_MS + 1, 1), { heat: 0, smoke: 0 });
+  });
+
+  it("lets the side fires go out before the main one", () => {
+    assert.equal(ruinFireLife(5, 0), 1);
+    for (let i = 1; i < 6; i++) {
+      const l = ruinFireLife(5, i);
+      assert.ok(l >= 0.55 && l < 0.9, `${l}`);
+    }
+  });
+});
 
 describe("rubble layout", () => {
   const lots = (["shack", "house", "manor", "factory"] as const).map((t) => ({

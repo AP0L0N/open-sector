@@ -50,11 +50,16 @@
   },
   "sfx": {
     "fire": {
-      "prompt": "A World War 2 dive bomber's bomb falling with a rising terrifying whistle, then a massive explosion shaking the ground and debris raining down.",
-      "duration": 6.0,
+      "prompt": "Junkers Ju 87 Stuka dive bomber pulling out of its dive right overhead, heard from the ground: a heavy mechanical clunk as the bomb swings free of its crutch, then the piston engine roars at full power as the plane levels out and climbs away, fading into the distance, no siren, no whistle, no explosion, no music, no voice",
+      "duration": 2.5,
       "variants": 3,
-      "influence": 0.6,
-      "lufs": -9
+      "influence": 0.65,
+      "note": "Bomb release. The siren is the dive cue and the blast is the bomb's own impact (explosion_large), so neither is in here."
+    },
+    "dive": {
+      "source": "imports/stuka-dive.mp3",
+      "variants": 1,
+      "note": "Jericho trumpet wind-up, played as the Stuka tips over into its dive. Take from the prompt: 'Air-raid style screaming siren on a diving WWII Stuka: one continuous ear-piercing wail that sweeps upward in pitch the whole time, a long rising glissando from a low moan to a shrill howl, never falling, propeller engine roar growing louder underneath, outdoors, no explosion, no music, no voice' (3.5 s, influence 0.8); it climbs ~400 to ~1450 Hz over 2.2 s, then holds. A 0.8 s fade-out was put on its tail."
     },
     "move": {
       "prompt": "WWII single-engine piston dive bomber flying past overhead, propeller engine roar with doppler shift, outdoors, no music, no voice",

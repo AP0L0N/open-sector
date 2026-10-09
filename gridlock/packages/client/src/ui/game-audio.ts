@@ -129,7 +129,7 @@ export function warmUnit(type: string): void {
   if (warmed.has(type)) return;
   warmed.add(type);
   const folder = unitFolder(type);
-  for (const cue of ["sfx-fire", "sfx-fire_line", "sfx-fire_flame", "sfx-rockets", "sfx-die", "voice-die", "sfx-shield_hit"]) {
+  for (const cue of ["sfx-fire", "sfx-fire_line", "sfx-fire_flame", "sfx-rockets", "sfx-dive", "sfx-die", "voice-die", "sfx-shield_hit"]) {
     for (const url of bank.get(folder, cue)) preloadSample(url);
   }
 }
@@ -258,10 +258,12 @@ export function playSoundEvents(events: readonly SoundEvent[], mixAt: (x: number
         if (!unitTalking()) unitVoice(ev.type, ev.event);
         break;
       case "unitsfx": {
+        // The dive comes before the bomb: load its take now, or the first one decodes too late to play.
+        if (ev.cue === "dive") warmUnit(ev.type);
         const url = pick(unitFolder(ev.type), `sfx-${ev.cue}`);
         const mix = url ? mixAt(ev.x, ev.y) : null;
-        // A hull crumpling under the Apocalypse is heard over the fight around it; a Cyborg link cue sits between.
-        const volume = ev.cue === "crush" ? 0.9 : ev.cue === "special" ? 0.6 : 0.75;
+        // A hull crumpling under the Apocalypse and a Stuka's siren are heard over the fight around them; a Cyborg link cue sits between.
+        const volume = ev.cue === "crush" || ev.cue === "dive" ? 0.9 : ev.cue === "special" ? 0.6 : 0.75;
         if (url && mix) playSample(url, mix, { volume, maxVoices: 2, jitter: ev.cue === "special" ? undefined : 0.04 });
         break;
       }

@@ -3,7 +3,7 @@
  * deaths, new units, and base alerts are found by comparing one snapshot with the
  * one before. Pure: no audio, no DOM. `game-audio.ts` plays what this returns.
  */
-import { isBuildingType, isInfantryType, tankDeckOf, type EntityView, type MatchSnapshot } from "@gridlock/shared";
+import { AIR_CRUISE_ALT, isBuildingType, isInfantryType, tankDeckOf, type EntityView, type MatchSnapshot } from "@gridlock/shared";
 import { movers, type Mover } from "./ambient.js";
 
 export type ImpactSound =
@@ -64,10 +64,10 @@ export type SoundEvent =
   | { kind: "voice"; type: string; event: "ready" | "special" | "load" | LinkVoice | SensorVoice }
   /**
    * A unit's own effect at a point, played without an order: the ASW helicopter settling back on
-   * its deck, one of your defences going up (sandbags thumped down, a gun set in its pit), or
-   * (crush) an Apocalypse rolling a hull flat.
+   * its deck, one of your defences going up (sandbags thumped down, a gun set in its pit),
+   * (crush) an Apocalypse rolling a hull flat, or (dive) a Stuka's siren as it tips over into its dive.
    */
-  | { kind: "unitsfx"; type: string; cue: "special" | "crush" | LinkSfx; x: number; y: number }
+  | { kind: "unitsfx"; type: string; cue: "special" | "crush" | "dive" | LinkSfx; x: number; y: number }
   | { kind: "announce"; event: AnnounceEvent };
 
 /**
@@ -109,6 +109,10 @@ const FIRE_GAP_MS: Record<string, number> = {
   flak: 350,
 };
 const DEFAULT_FIRE_GAP_MS = 140;
+/** A Stuka's siren winds up once a dive: one sample covers the drop, the release and the pull-out. */
+const DIVE_GAP_MS = 4000;
+/** How far under cruise height a plane may already be and still be starting its dive. */
+const DIVE_FROM_BELOW_CRUISE = 1;
 /** An LST loading a column calls it once, not once a soldier. */
 const LOAD_LINE_GAP_MS = 6000;
 /**
@@ -161,6 +165,7 @@ export class SoundTracker {
   private lastShellFire = new Map<number, number>();
   private lastShieldHit = new Map<number, number>();
   private lastLoadLine = new Map<number, number>();
+  private lastDive = new Map<number, number>();
   /** Share of health left, not raw hp: bracing or packing up rescales both hp and hpMax. */
   private lastHp = new Map<number, number>();
   private lowPower = false;
@@ -316,6 +321,18 @@ export class SoundTracker {
         if (e.ownerId === me && e.kind === "building" && isBuildingType(e.type)) {
           out.push({ kind: "unitsfx", type: e.type, cue: "special", x: e.x, y: e.y });
         }
+      }
+      // A Stuka leaving cruise height in flight is diving on something (landing is its own phase).
+      if (
+        e.type === "stuka" &&
+        e.air?.phase === "fly" &&
+        prev?.air &&
+        prev.air.alt >= AIR_CRUISE_ALT - DIVE_FROM_BELOW_CRUISE &&
+        e.air.alt < prev.air.alt &&
+        now - (this.lastDive.get(e.id) ?? -Infinity) >= DIVE_GAP_MS
+      ) {
+        this.lastDive.set(e.id, now);
+        out.push({ kind: "unitsfx", type: e.type, cue: "dive", x: e.x, y: e.y });
       }
       if (prev && !prev.wreck && e.wreck) {
         out.push({ kind: "death", type: e.type, infantry: false, x: e.x, y: e.y });
