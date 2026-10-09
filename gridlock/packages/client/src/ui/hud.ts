@@ -2334,7 +2334,7 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       slot: "sell",
       act: "sell",
       label: "Sell",
-      title: "Sell selected structures for half their cost. The key sells only while no units are selected. Asks first.",
+      title: "Sell selected structures for half their cost. Asks first.",
     });
   }
   if (

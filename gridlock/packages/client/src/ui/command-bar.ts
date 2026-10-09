@@ -63,8 +63,6 @@ const HOTKEYS: Record<string, string> = {
   garrison: "U",
   ungarrison: "U",
   "confirm-field": "Enter",
-  // S sells only when no own unit is selected; with units it is Stop.
-  sell: "S",
   delete: "Del",
 };
 
