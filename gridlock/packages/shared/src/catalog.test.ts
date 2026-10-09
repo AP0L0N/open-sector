@@ -438,7 +438,7 @@ describe("building capture", () => {
 });
 
 describe("game speed", () => {
-  it("clamps to 1–5×", () => {
+  it("clamps to 1–8×", () => {
     assert.equal(clampGameSpeed(GAME_SPEED_DEFAULT), GAME_SPEED_MIN);
     assert.equal(clampGameSpeed(2.4), 2);
     assert.equal(clampGameSpeed(9), GAME_SPEED_MAX);
@@ -448,9 +448,9 @@ describe("game speed", () => {
 
   it("nudges in integer steps and stops at the cap", () => {
     assert.equal(nudgeGameSpeed(1, 1), 2);
-    assert.equal(nudgeGameSpeed(4, 1), 5);
-    assert.equal(nudgeGameSpeed(5, 1), 5);
+    assert.equal(nudgeGameSpeed(7, 1), 8);
+    assert.equal(nudgeGameSpeed(8, 1), 8);
     assert.equal(nudgeGameSpeed(1, -1), 1);
-    assert.equal(nudgeGameSpeed(5, -1), 4);
+    assert.equal(nudgeGameSpeed(8, -1), 7);
   });
 });
