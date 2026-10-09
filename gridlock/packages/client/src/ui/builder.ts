@@ -711,6 +711,11 @@ function lineTool(): boolean {
   return tool.id === "road" || tool.id === "bridge" || (tool.id === "defence" && isMapSection(tool.defence));
 }
 
+/** The armed tool sets things down (not a brush, the Eraser, or Select): right-click puts it down. */
+function placingTool(): boolean {
+  return tool.id !== "select" && tool.id !== "erase" && !isBrush(tool.id);
+}
+
 function linePending(): boolean {
   return lineTool() && (line.points.length > 0 || line.press !== null);
 }
@@ -1398,7 +1403,7 @@ type Drag =
   | { kind: "unit"; index: number; from: MapUnit; startX: number; startY: number; moved: boolean; marked: boolean }
   /** A press on a sandbag or wall line: the release pins its start or its next corner. */
   | { kind: "line" }
-  /** Right or middle drag. A right click that never moved takes back a line corner. */
+  /** Right or middle drag. A right click that never moved takes back a line corner, or puts the placing tool down. */
   | { kind: "pan"; x: number; y: number; px: number; py: number; button: number; moved: boolean; camX: number; camY: number }
   /** The Eraser held down: everything it passes over goes in one commit, one undo step. */
   | { kind: "erase"; erased: boolean };
@@ -2069,7 +2074,14 @@ function onUp(): void {
     line.points = pinFieldPoint(line.points, press, M.tileWorld(hover.x, hover.y), len * 0.5);
     queueDraw();
   } else if (d.kind === "pan") {
-    if (d.button === 2 && !d.moved && linePending()) undoLinePoint();
+    // A still right-click takes back a line's last corner; with nothing left to take back it puts the placing tool down, as Esc does.
+    if (d.button === 2 && !d.moved) {
+      if (linePending()) undoLinePoint();
+      else if (placingTool() && ctxRef) {
+        say("");
+        setTool(ctxRef, { id: "select" });
+      }
+    }
   } else if (d.kind === "erase") {
     if (d.erased) finishStroke();
     else undo.pop();

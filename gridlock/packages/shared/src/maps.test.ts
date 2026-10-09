@@ -24,6 +24,7 @@ import {
   GROUND_SWAMP,
   GROUND_TALL_GRASS,
   dressGroundCover,
+  featureBox,
   groundAt,
   heightAt,
   isMountainCliff,
@@ -32,6 +33,7 @@ import {
   normalizeTerrain,
   tileAt,
 } from "./maps.js";
+import { featureOnWater } from "./custom-maps.js";
 import { vertexElev } from "./sim/elevation.js";
 import { initGrids } from "./sim/geo.js";
 
@@ -555,6 +557,24 @@ describe("mountains", () => {
     assert.equal(heights[3 * w + 2], HEIGHT_BASE, "the cliff does not drag a ramp");
     assert.equal(isMountainCliff(tiles, heights, w, h, 2, 3), true);
     assert.ok(MOUNTAIN_MIN_HEIGHT >= 12);
+  });
+
+  it("keeps the water under a Marine Base and clears it under a house", () => {
+    const w = 64;
+    const tiles = new Array<number>(w * w).fill(TILE_WATER);
+    const heights = new Array<number>(w * w).fill(0);
+    const dock: MapFeature = { type: "dock", x: 2 * TILE_SUBDIV, y: 2 * TILE_SUBDIV, facing: 0 };
+    const core: MapFeature = { type: "core", x: 9 * TILE_SUBDIV, y: 9 * TILE_SUBDIV, facing: 0 };
+    normalizeTerrain(tiles, heights, w, w, [], [dock, core]);
+    const under = (f: MapFeature): number[] => {
+      const b = featureBox(f);
+      const out: number[] = [];
+      for (let y = b.y0; y < b.y1; y++) for (let x = b.x0; x < b.x1; x++) out.push(tiles[y * w + x]!);
+      return out;
+    };
+    assert.ok(under(dock).every((t) => t === TILE_WATER), "the Marine Base still floats");
+    assert.ok(featureOnWater(dock, { width: w, tiles }));
+    assert.ok(under(core).every((t) => t === TILE_EMPTY), "a house still gets dry ground");
   });
 
   it("walks over rock like open ground; only mountain cliffs block", () => {

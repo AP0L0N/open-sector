@@ -13,6 +13,7 @@ import {
   catalog,
   fieldSpan,
   isBridge,
+  onWaterBuilding,
   type BridgeType,
   type CivilianType,
   type TrainType,
@@ -2455,7 +2456,8 @@ export function normalizeTerrain(
   }
   for (const f of features) {
     // A bridge spans what is under it: the water stays water, for the boats and for when it falls.
-    if (isMapBridge(f.type)) continue;
+    // A Marine Base floats: its berth has to stay water.
+    if (isMapBridge(f.type) || onWaterBuilding(f.type)) continue;
     const b = featureBox(f);
     for (let y = Math.max(0, b.y0); y < Math.min(height, b.y1); y++) {
       for (let x = Math.max(0, b.x0); x < Math.min(width, b.x1); x++) tiles[idx(width, x, y)] = TILE_EMPTY;
