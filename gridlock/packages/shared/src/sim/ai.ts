@@ -1,5 +1,6 @@
 /**
- * Easy CPU. It fortifies first: Watch Towers on the side facing the enemy, a Bunker,
+ * The CPU. Its type (ai-profile.ts) sets how long it digs in, how big its waves are, how
+ * often they come, and how fast its Smelters pour; Defensive is the old Easy. It fortifies first: Watch Towers on the side facing the enemy, a Bunker,
  * an MG nest and a Pak 36 turned toward that side, a Tobruk pit, a timber lookout,
  * wall lines with a gate, and soldiers in every slit. Then it campaigns: an army gathers,
  * takes the diamond scrap in the middle, and an engineer raises a Smelter there. From
@@ -7,8 +8,8 @@
  * while larger and larger waves swing round alternate flanks, in ranks: hulls in front,
  * rifles behind them, long guns at the back. On the approach it pours a Pak 43 and a heavy
  * casemate. Enemy planes bring up a CIWS, a Flak gun, rocketmen, and fighters. Campaigning,
- * it keeps a bigger army and a second Barracks and Machine Shop, paid for by Smelters that
- * pour twice as fast. Where open water near its base reaches the enemy Core or the middle,
+ * it keeps a bigger army and more Barracks and Machine Shops, paid for by Smelters that
+ * pour faster than a player's. Where open water near its base reaches the enemy Core or the middle,
  * it raises a Marine Base, keeps a small fleet, and sends the warships out together to shell
  * what stands near that water.
  */
@@ -48,6 +49,7 @@ import {
   type TrainType,
 } from "../catalog.js";
 import { droneCall, subDepthCall, tickNeutralCrews } from "./ai-crew.js";
+import { aiProfile, type AiProfile } from "./ai-profile.js";
 import { isAirborne } from "./air.js";
 import { droneOf } from "./drone.js";
 import { turnedBox } from "../building-rect.js";
@@ -61,51 +63,29 @@ import { needsSupply } from "./supply.js";
 import { canSeeEntity } from "./vision.js";
 import type { AiFleet, AiForce, AiPlan, Entity, MatchState, SimPlayer, StructureJob, Vec } from "./types.js";
 
-/** Earliest campaign wave. The fortify posture holds the army at home until then anyway. */
-export const EASY_ATTACK_FIRST_TICKS = 70 * TICK_HZ;
-/** Pause between task forces leaving. Waves come together, not one by one. */
-export const EASY_ATTACK_EVERY_TICKS = 25 * TICK_HZ;
-export const EASY_ATTACK_RETRY_TICKS = 8 * TICK_HZ;
+/** Attack timing, wave sizes, army scale, and Smelter count come from the CPU's type: see ai-profile.ts. */
+export const CPU_ATTACK_RETRY_TICKS = 8 * TICK_HZ;
 /** Strategy, support, shell, and defense upkeep runs this often, not every think. */
-export const EASY_MICRO_EVERY_TICKS = 2 * TICK_HZ;
+export const CPU_MICRO_EVERY_TICKS = 2 * TICK_HZ;
 /** A building with no legal spot in the base waits this long before the CPU tries it again. */
-export const EASY_NO_ROOM_RETRY_TICKS = 60 * TICK_HZ;
-export const EASY_MIN_FIGHTERS = 4;
-/**
- * Smelters the CPU keeps. The yard raises the second right after the Barracks; the rest go up
- * once the base stands, from the yard while its scrap lasts and then by engineers on nearby fields.
- */
-export const EASY_WANT_SMELTERS = 4;
+export const CPU_NO_ROOM_RETRY_TICKS = 60 * TICK_HZ;
+export const CPU_MIN_FIGHTERS = 4;
 /** Smelters the CPU raises while it fortifies. */
-export const EASY_FORTIFY_SMELTERS = 2;
+export const CPU_FORTIFY_SMELTERS = 2;
 /** An engineer raises a Smelter on a scrap field this far from the Core at most, in tiles. */
-export const EASY_EXPAND_TILES = 30 * 4;
+export const CPU_EXPAND_TILES = 30 * 4;
 /** Enemies this far from the HQ, in tiles, pull the home guard. */
-export const EASY_DEFEND_TILES = DEFENCE_BUILD_RADIUS + 6 * 4;
-/** Fortify gives up waiting on its defences after this long and campaigns anyway. */
-export const EASY_FORTIFY_MAX_TICKS = 4 * 60 * TICK_HZ;
-/** Fighters the first force needs before it walks out for the middle. */
-export const EASY_CENTRE_FORCE = 6;
-/** Fighters the first wave at the enemy needs. Each later wave needs EASY_WAVE_GROWTH more. */
-export const EASY_WAVE_MIN = 8;
-export const EASY_WAVE_GROWTH = 1;
-export const EASY_WAVE_MAX = 16;
-/** Campaigning, the CPU keeps this many times each EASY_ARMY fighting rank. */
-export const EASY_CAMPAIGN_ARMY_MUL = 1.5;
-/** Campaigning, the CPU raises Barracks and Machine Shops up to this many of each. */
-export const EASY_CAMPAIGN_FACTORIES = 2;
-/** An army this many times the wave size splits and comes at the enemy from both flanks. */
-const EASY_PINCER_MUL = 1.6;
+export const CPU_DEFEND_TILES = DEFENCE_BUILD_RADIUS + 6 * 4;
 /** Campaign towers, around the middle and then toward the enemy, start no faster than this. */
-export const EASY_TOWER_EVERY_TICKS = 40 * TICK_HZ;
+export const CPU_TOWER_EVERY_TICKS = 40 * TICK_HZ;
 /** Each Smelter past the first shortens the wait between campaign towers, down to this. */
-export const EASY_TOWER_MIN_TICKS = 20 * TICK_HZ;
+export const CPU_TOWER_MIN_TICKS = 20 * TICK_HZ;
 /** Footprint gap the CPU keeps between its buildings, in tiles. 1 = touching; 5 leaves a vehicle lane. */
-const EASY_BUILD_LANE_TILES = 5;
+const CPU_BUILD_LANE_TILES = 5;
 /** A wave this close to a seen enemy building, in tiles, turns on it. */
-const EASY_SIEGE_TILES = 16 * 4;
+const CPU_SIEGE_TILES = 16 * 4;
 /** Engineers and trucks look for work this far from themselves, in tiles. */
-const EASY_WORK_TILES = 20 * 4;
+const CPU_WORK_TILES = 20 * 4;
 const TRAIN_QUEUE_SOFT = 2;
 const FIRST_WAVE_TROOPERS = 4;
 
@@ -159,13 +139,13 @@ const FORCE_MIN = 3;
 const STRAGGLE_TILES = BOUND_TILES * 2.5;
 const FORCES_MAX = 4;
 /** Open water smaller than this, in tiles, floats no fleet: the CPU raises no Marine Base on it. */
-export const EASY_SEA_MIN_TILES = 300;
+export const CPU_SEA_MIN_TILES = 300;
 /** Water this close to the enemy Core or the diamond field's middle, in tiles, is worth a fleet. */
-export const EASY_SEA_REACH_TILES = 40;
+export const CPU_SEA_REACH_TILES = 40;
 /** Warships lying at home, armed, before the fleet sails. */
-export const EASY_FLEET_MIN = 3;
+export const CPU_FLEET_MIN = 3;
 /** Enemies this close to a Marine Base, in tiles, pull the warships at home. */
-const EASY_HARBOUR_DEFEND_TILES = 30;
+const CPU_HARBOUR_DEFEND_TILES = 30;
 /** A warship this close to the fleet's water, in tiles, is on station. */
 const STATION_TILES = 12;
 
@@ -174,7 +154,7 @@ const STATION_TILES = 12;
  * offers its row furthest below its share, neediest first, so the ranks fill evenly.
  * Order breaks ties. Riflemen and rocketmen rise with empty slits and enemy planes.
  */
-export const EASY_ARMY: Readonly<Record<"muster" | "armory" | "airfield" | "dock", readonly { unit: TrainType; want: number }[]>> = {
+export const CPU_ARMY: Readonly<Record<"muster" | "armory" | "airfield" | "dock", readonly { unit: TrainType; want: number }[]>> = {
   muster: [
     { unit: "rifleman", want: 8 },
     { unit: "gunner", want: 3 },
@@ -207,7 +187,7 @@ export const EASY_ARMY: Readonly<Record<"muster" | "armory" | "airfield" | "dock
     { unit: "fw190", want: 1 },
   ],
   // The fleet: boats to screen, a Destroyer to hear submarines, a Battle Ship to shell the shore.
-  // No Transport LST: the Easy CPU makes no landings.
+  // No Transport LST: the CPU makes no landings.
   dock: [
     { unit: "gunboat", want: 2 },
     { unit: "destroyer", want: 1 },
@@ -221,13 +201,13 @@ export const EASY_ARMY: Readonly<Record<"muster" | "armory" | "airfield" | "dock
  * Base structures, one after another, each until the side owns `n`. Smelter second so its scrap
  * funds the Barracks and the first towers, and a second Smelter right behind the Barracks to pay
  * for the army. The Machine Shop waits for a tower; the Marine Base, Research, Cyborg Central, air, and the Radar
- * Station wait until the base is fortified. With all of that standing, more Smelters up to EASY_WANT_SMELTERS.
+ * Station wait until the base is fortified. With all of that standing, more Smelters up to the type's wantSmelters.
  */
 const BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
   { type: "dynamo", n: 1 },
   { type: "smelter", n: 1 },
   { type: "muster", n: 1 },
-  { type: "smelter", n: EASY_FORTIFY_SMELTERS },
+  { type: "smelter", n: CPU_FORTIFY_SMELTERS },
   { type: "armory", n: 1 },
   // Only with water in the yard that reaches the enemy or the middle (wantDock).
   { type: "dock", n: 1 },
@@ -282,7 +262,7 @@ export function tickAi(state: MatchState): void {
   tickNeutralCrews(state);
   for (const p of state.players.values()) {
     if (!p.ai || !p.alive) continue;
-    thinkEasy(state, p);
+    thinkCpu(state, p);
   }
 }
 
@@ -301,7 +281,7 @@ export function aiPlanOf(p: SimPlayer): AiPlan {
   return p.aiPlan;
 }
 
-function thinkEasy(state: MatchState, p: SimPlayer): void {
+function thinkCpu(state: MatchState, p: SimPlayer): void {
   const hq = hqOf(state, p.playerId);
   if (!hq) return;
   if (!hasCore(state, p.playerId)) {
@@ -323,13 +303,13 @@ function thinkEasy(state: MatchState, p: SimPlayer): void {
     }
   }
 
-  trainEasy(state, p);
+  trainCpu(state, p);
   if (state.tick >= (p.aiNextMicroTick ?? 0)) {
-    p.aiNextMicroTick = state.tick + EASY_MICRO_EVERY_TICKS;
+    p.aiNextMicroTick = state.tick + CPU_MICRO_EVERY_TICKS;
     watchSky(state, p, plan);
     if (plan.posture === "fortify" && fortified(state, p, hq, plan)) {
       plan.posture = "campaign";
-      p.aiNextAttackTick = Math.max(p.aiNextAttackTick, state.tick + EASY_ATTACK_RETRY_TICKS);
+      p.aiNextAttackTick = Math.max(p.aiNextAttackTick, state.tick + CPU_ATTACK_RETRY_TICKS);
     }
     defenceLane(state, p, hq, plan);
     lineLane(state, p, hq, plan);
@@ -371,7 +351,7 @@ function nextBuilding(state: MatchState, p: SimPlayer): BuildingType | null {
   }
   if (pow.used >= pow.provided && roomy("dynamo")) return "dynamo";
   // The base is complete: every further Smelter adds its own pour.
-  if (countType(state, p.playerId, "smelter") < EASY_WANT_SMELTERS && roomy("smelter")) {
+  if (countType(state, p.playerId, "smelter") < aiProfile(p.ai).wantSmelters && roomy("smelter")) {
     const draw = Math.max(0, -catalog("smelter").power);
     if (pow.used + draw > pow.provided) return roomy("dynamo") ? "dynamo" : null;
     return "smelter";
@@ -379,7 +359,7 @@ function nextBuilding(state: MatchState, p: SimPlayer): BuildingType | null {
   // Campaigning, spare scrap goes into more factories so the waves come faster.
   if (aiPlanOf(p).posture === "campaign") {
     for (const t of ["muster", "armory"] as const) {
-      if (countType(state, p.playerId, t) >= EASY_CAMPAIGN_FACTORIES || !roomy(t)) continue;
+      if (countType(state, p.playerId, t) >= aiProfile(p.ai).campaignFactories || !roomy(t)) continue;
       const draw = Math.max(0, -catalog(t).power);
       if (pow.used + draw > pow.provided) return roomy("dynamo") ? "dynamo" : null;
       return t;
@@ -389,7 +369,7 @@ function nextBuilding(state: MatchState, p: SimPlayer): BuildingType | null {
 }
 
 function noRoom(state: MatchState, p: SimPlayer, type: BuildingType): void {
-  p.aiNoRoomUntil = { ...p.aiNoRoomUntil, [type]: state.tick + EASY_NO_ROOM_RETRY_TICKS };
+  p.aiNoRoomUntil = { ...p.aiNoRoomUntil, [type]: state.tick + CPU_NO_ROOM_RETRY_TICKS };
 }
 
 function canStartBuilding(state: MatchState, p: SimPlayer, next: BuildingType): boolean {
@@ -399,7 +379,7 @@ function canStartBuilding(state: MatchState, p: SimPlayer, next: BuildingType): 
   const plan = aiPlanOf(p);
   if (plan.posture === "fortify") {
     // Walls and towers first: the Machine Shop waits for one tower, the extras for the whole ring.
-    if (AFTER_FORTIFY.includes(next) || (next === "smelter" && countType(state, p.playerId, "smelter") >= EASY_FORTIFY_SMELTERS)) return false;
+    if (AFTER_FORTIFY.includes(next) || (next === "smelter" && countType(state, p.playerId, "smelter") >= CPU_FORTIFY_SMELTERS)) return false;
     if (next === "armory" && countType(state, p.playerId, "tower") === 0) return false;
   }
   const troopers = countType(state, p.playerId, "rifleman");
@@ -407,7 +387,7 @@ function canStartBuilding(state: MatchState, p: SimPlayer, next: BuildingType): 
   return p.scrap >= cost + hold;
 }
 
-function trainEasy(state: MatchState, p: SimPlayer): void {
+function trainCpu(state: MatchState, p: SimPlayer): void {
   const reserve = trainReserve(state, p);
   const tryTrain = (unit: TrainType, want: number): boolean => {
     if (countType(state, p.playerId, unit) >= want) return false;
@@ -422,7 +402,7 @@ function trainEasy(state: MatchState, p: SimPlayer): void {
   for (const factory of ["armory", "muster", "airfield", "dock"] as const) {
     if (!ownsLive(state, p.playerId, factory)) continue;
     if (queuedOn(state, p.playerId, factory) >= TRAIN_QUEUE_SOFT * countType(state, p.playerId, factory)) continue;
-    const pick = neediest(state, p, EASY_ARMY[factory]);
+    const pick = neediest(state, p, CPU_ARMY[factory]);
     if (pick) picks.push(pick);
   }
   picks.sort((a, b) => a.share - b.share);
@@ -452,11 +432,11 @@ function neediest(
 
 /**
  * Riflemen to fill every empty slit; rocketmen and fighters once enemy planes are about.
- * Campaigning, every fighting rank is EASY_CAMPAIGN_ARMY_MUL times larger to feed the waves.
+ * Campaigning, every fighting rank is the type's campaignArmyMul times larger to feed the waves.
  */
 function wantOf(state: MatchState, p: SimPlayer, unit: TrainType, base: number): number {
   // The fleet stays the size it is: the waves are fed ashore.
-  if (aiPlanOf(p).posture === "campaign" && fires(unit) && !isNavalType(unit)) base = Math.ceil(base * EASY_CAMPAIGN_ARMY_MUL);
+  if (aiPlanOf(p).posture === "campaign" && fires(unit) && !isNavalType(unit)) base = Math.ceil(base * aiProfile(p.ai).campaignArmyMul);
   // Riflemen seated at an emplaced gun came with it. Train their number again for the field.
   if (unit === "rifleman") return base + Math.min(12, emptySlits(state, p.playerId)) + gunRiflemen(state, p.playerId);
   const air = aiPlanOf(p).airSeenTick != null;
@@ -527,7 +507,7 @@ function trainReserve(state: MatchState, p: SimPlayer): number {
     if (site && !p.defence) return catalog(site.type).cost;
   }
   if (countType(state, p.playerId, "armory") === 0) return catalog("armory").cost;
-  if (fighterCount(state, p.playerId) < EASY_MIN_FIGHTERS * 2) return 0;
+  if (fighterCount(state, p.playerId) < CPU_MIN_FIGHTERS * 2) return 0;
   // Either lane already drawing scrap is the build being saved for. Do not reserve it twice.
   if (p.structure || p.defence) return 0;
   const next = nextBuilding(state, p);
@@ -791,14 +771,18 @@ function siteFailed(state: MatchState, plan: AiPlan, site: Site): boolean {
 /**
  * Fortified: every base site stands or has no room, every base tower has a wall line and at
  * least two soldiers, and the gate is in. A base that cannot get there in time campaigns anyway.
+ * An Aggressive CPU waits only for the front tower and the Bunker, and not for the walls.
  */
 function fortified(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): boolean {
-  if (state.tick >= EASY_FORTIFY_MAX_TICKS) return true;
+  const prof = aiProfile(p.ai);
+  if (state.tick >= prof.fortifyMaxTicks) return true;
   for (const site of fortifySites(state, p, hq)) {
     // The tower behind the Core is a bonus: the front and both flanks are the defence.
     if (site.key === "base:rear") continue;
+    if (!prof.fortifyFlanks && (site.key === "base:left" || site.key === "base:right")) continue;
     if (!siteHeld(state, p.playerId, site) && !siteFailed(state, plan, site)) return false;
   }
+  if (!prof.fortifyWalls) return true;
   if (plan.gate || p.line) return false;
   const home = (BASE_RING_TILES + SITE_HOLD_TILES) * state.tileSize;
   for (const t of state.entities.values()) {
@@ -830,7 +814,7 @@ function defenceLane(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan):
       let facing = placeFacing(state, p.playerId, next.type, next.site.at);
       if (!findSiteNear(state, p.playerId, next.type, next.site.at, facing)) {
         if (facing === 0 || !findSiteNear(state, p.playerId, next.type, next.site.at, 0)) {
-          plan.siteRetry[next.site.key] = state.tick + EASY_NO_ROOM_RETRY_TICKS;
+          plan.siteRetry[next.site.key] = state.tick + CPU_NO_ROOM_RETRY_TICKS;
           continue;
         }
         facing = 0;
@@ -856,7 +840,7 @@ function defenceLane(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan):
 /** Wait between campaign towers: the more Smelters pour, the sooner the next goes up. */
 function towerEvery(state: MatchState, playerId: string): number {
   const smelters = Math.max(1, countType(state, playerId, "smelter"));
-  return Math.max(EASY_TOWER_MIN_TICKS, Math.round((EASY_TOWER_EVERY_TICKS * 2) / (1 + smelters)));
+  return Math.max(CPU_TOWER_MIN_TICKS, Math.round((CPU_TOWER_EVERY_TICKS * 2) / (1 + smelters)));
 }
 
 function placeDefence(state: MatchState, p: SimPlayer, plan: AiPlan, job: StructureJob): void {
@@ -878,7 +862,7 @@ function placeDefence(state: MatchState, p: SimPlayer, plan: AiPlan, job: Struct
  * Base sites first, and again whenever one falls: the tower ring, then the nest, Pak 36,
  * Tobruk, and lookout. A CIWS once enemy planes are about. Campaigning, a Flak gun for
  * those planes, a RAM for the rockets, a Pak 43 and a casemate on the approach, then a
- * fire-control tower on the middle and a watch tower every EASY_TOWER_EVERY_TICKS out
+ * fire-control tower on the middle and a watch tower every CPU_TOWER_EVERY_TICKS out
  * toward the enemy.
  */
 function* nextDefences(
@@ -1141,7 +1125,7 @@ function sortie(state: MatchState, p: SimPlayer, x: number, y: number): void {
 
 /** Seen enemies inside the base pull every free fighter near home, and the planes. */
 function defendBase(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): void {
-  const reach = EASY_DEFEND_TILES * state.tileSize;
+  const reach = CPU_DEFEND_TILES * state.tileSize;
   defendPoint(state, p, plan, hq, reach, reach * 1.5, true);
 }
 
@@ -1207,33 +1191,34 @@ function forceMembers(plan: AiPlan): Set<number> {
 function campaign(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): void {
   plan.forces = plan.forces.filter((f) => stepForce(state, p, hq, plan, f));
   if (plan.posture !== "campaign") return;
+  const prof = aiProfile(p.ai);
   if (state.tick < p.aiNextAttackTick) return;
   if (plan.forces.length >= FORCES_MAX) {
-    p.aiNextAttackTick = state.tick + EASY_ATTACK_RETRY_TICKS;
+    p.aiNextAttackTick = state.tick + CPU_ATTACK_RETRY_TICKS;
     return;
   }
   const free = freeArmy(state, p, plan);
   const centreForce = plan.forces.some((f) => f.goal === "centre");
   if (!centreHeld(state, p.playerId) && !centreForce) {
-    if (free.length < EASY_CENTRE_FORCE) {
-      p.aiNextAttackTick = state.tick + EASY_ATTACK_RETRY_TICKS;
+    if (free.length < prof.centreForce) {
+      p.aiNextAttackTick = state.tick + CPU_ATTACK_RETRY_TICKS;
       return;
     }
     const c = groundNear(state, diamondCentre(state));
     launch(state, p, hq, plan, free, "centre", [homeMuster(state, p, hq), c]);
-    p.aiNextAttackTick = state.tick + EASY_ATTACK_EVERY_TICKS;
+    p.aiNextAttackTick = state.tick + prof.attackEveryTicks;
     return;
   }
   const foe = enemyHq(state, p.playerId);
   // At the unit cap the army cannot grow into a bigger wave: send what stands ready.
   const capped = unitCount(state, p.playerId) >= UNIT_CAP - 2;
-  const need = capped ? Math.min(waveSize(plan.waves), EASY_WAVE_MIN) : waveSize(plan.waves);
+  const need = capped ? Math.min(waveSize(prof, plan.waves), prof.waveMin) : waveSize(prof, plan.waves);
   if (!foe || free.length < need) {
-    p.aiNextAttackTick = state.tick + EASY_ATTACK_RETRY_TICKS;
+    p.aiNextAttackTick = state.tick + CPU_ATTACK_RETRY_TICKS;
     return;
   }
   const gather = musterPoint(state, p, hq);
-  if (free.length >= need * EASY_PINCER_MUL && plan.forces.length + 2 <= FORCES_MAX) {
+  if (free.length >= need * prof.pincerMul && plan.forces.length + 2 <= FORCES_MAX) {
     const [a, b] = splitRanks(free);
     launch(state, p, hq, plan, a, "enemy", flankRoute(state, gather, foe, -1));
     launch(state, p, hq, plan, b, "enemy", flankRoute(state, gather, foe, 1));
@@ -1242,7 +1227,7 @@ function campaign(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): vo
     plan.flank = plan.flank === 1 ? -1 : 1;
   }
   plan.waves++;
-  p.aiNextAttackTick = state.tick + EASY_ATTACK_EVERY_TICKS;
+  p.aiNextAttackTick = state.tick + prof.attackEveryTicks;
 }
 
 function unitCount(state: MatchState, playerId: string): number {
@@ -1251,8 +1236,8 @@ function unitCount(state: MatchState, playerId: string): number {
   return n;
 }
 
-export function waveSize(waves: number): number {
-  return Math.min(EASY_WAVE_MAX, EASY_WAVE_MIN + EASY_WAVE_GROWTH * waves);
+export function waveSize(prof: AiProfile, waves: number): number {
+  return Math.min(prof.waveMax, prof.waveMin + prof.waveGrowth * waves);
 }
 
 /** Gather, swing wide round one flank, then the enemy Core. */
@@ -1524,7 +1509,7 @@ const seaCache = new WeakMap<MatchState, Sea>();
 
 function seaOf(state: MatchState): Sea {
   const old = seaCache.get(state);
-  if (old && state.tick >= old.tick && state.tick - old.tick < EASY_MICRO_EVERY_TICKS) return old;
+  if (old && state.tick >= old.tick && state.tick - old.tick < CPU_MICRO_EVERY_TICKS) return old;
   const w = state.width;
   const h = state.height;
   const body = new Int32Array(w * h);
@@ -1648,7 +1633,7 @@ function openWaterNear(state: MatchState, id: number, at: Vec): Vec | null {
 
 /**
  * Open water on this body near the enemy Core, else near an enemy Marine Base, else near the
- * diamond field's middle: the first the body comes within EASY_SEA_REACH_TILES of. Null for a pond
+ * diamond field's middle: the first the body comes within CPU_SEA_REACH_TILES of. Null for a pond
  * too small or too far to matter.
  */
 function strikeWater(state: MatchState, playerId: string, id: number): Vec | null {
@@ -1657,7 +1642,7 @@ function strikeWater(state: MatchState, playerId: string, id: number): Vec | nul
   if (!mine) sea.strike.set(playerId, (mine = new Map()));
   if (mine.has(id)) return mine.get(id) ?? null;
   let found: Vec | null = null;
-  if ((sea.size[id] ?? 0) >= EASY_SEA_MIN_TILES) {
+  if ((sea.size[id] ?? 0) >= CPU_SEA_MIN_TILES) {
     const ts = state.tileSize;
     const foe = enemyHq(state, playerId);
     const goals: { at: Vec; slack: number }[] = [];
@@ -1683,7 +1668,7 @@ function strikeWater(state: MatchState, playerId: string, id: number): Vec | nul
           bestD = d;
         }
       }
-      if (best < 0 || bestD > EASY_SEA_REACH_TILES + g.slack) continue;
+      if (best < 0 || bestD > CPU_SEA_REACH_TILES + g.slack) continue;
       found = openWaterNear(state, id, g.at);
       if (found) break;
     }
@@ -1694,7 +1679,7 @@ function strikeWater(state: MatchState, playerId: string, id: number): Vec | nul
 
 /**
  * A Marine Base footprint on water worth a fleet, nearest the Core. `yard`: inside the build
- * range, for the yard to place. Otherwise within EASY_EXPAND_TILES of the Core and nearer it than
+ * range, for the yard to place. Otherwise within CPU_EXPAND_TILES of the Core and nearer it than
  * any enemy base, for an engineer to swim out and raise.
  */
 export function findDockTile(state: MatchState, playerId: string, yard: boolean): { tx: number; ty: number } | null {
@@ -1725,7 +1710,7 @@ export function findDockTile(state: MatchState, playerId: string, yard: boolean)
       const cx = tx + def.tileW / 2;
       const cy = ty + def.tileH / 2;
       const d = Math.hypot(cx - ox, cy - oy);
-      if (d >= bestD || (!yard && d > EASY_EXPAND_TILES)) continue;
+      if (d >= bestD || (!yard && d > CPU_EXPAND_TILES)) continue;
       if (!strikeWater(state, playerId, id)) continue;
       if (yard && !anchors.some((b) => footprintGap(tx, ty, def.tileW, def.tileH, b.tileX, b.tileY, b.tileW, b.tileH) <= BUILD_RADIUS)) continue;
       if (!yard && foes.some((f) => Math.hypot(cx - f.x, cy - f.y) <= d)) continue;
@@ -1796,7 +1781,7 @@ function warshipsOf(state: MatchState, playerId: string): Entity[] {
 }
 
 /**
- * The fleet. At home the warships guard the Marine Base. Campaigning, once EASY_FLEET_MIN of them
+ * The fleet. At home the warships guard the Marine Base. Campaigning, once CPU_FLEET_MIN of them
  * lie armed on one body of water, they sail together for the water nearest the enemy Core (or the
  * middle) and shell what they find there. A ship low on shells or torpedoes sails home to rearm.
  */
@@ -1817,7 +1802,7 @@ function seaWork(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): voi
   }
   let pick: { id: number; ships: Entity[] } | undefined;
   for (const [id, ships] of groups) if (ships.length > (pick?.ships.length ?? 0)) pick = { id, ships };
-  if (!pick || pick.ships.length < EASY_FLEET_MIN) return;
+  if (!pick || pick.ships.length < CPU_FLEET_MIN) return;
   const to = strikeWater(state, p.playerId, pick.id);
   if (!to) return;
   const ids = pick.ships.map((e) => e.id);
@@ -1901,7 +1886,7 @@ function shellShore(state: MatchState, p: SimPlayer, e: Entity, sites: Entity[])
 
 /** A seen enemy near a Marine Base pulls the warships lying at home on the same water. */
 function guardHarbour(state: MatchState, p: SimPlayer, home: Entity[]): boolean {
-  const reach = EASY_HARBOUR_DEFEND_TILES * state.tileSize;
+  const reach = CPU_HARBOUR_DEFEND_TILES * state.tileSize;
   const docks = [...state.entities.values()].filter((b) => b.ownerId === p.playerId && b.type === "dock" && b.hp > 0);
   if (docks.length === 0) return false;
   let intruder: Entity | undefined;
@@ -2018,7 +2003,7 @@ function freeEngineer(state: MatchState, playerId: string, at: Vec): Entity | un
  */
 function expandSmelters(state: MatchState, p: SimPlayer, hq: Entity): void {
   if (aiPlanOf(p).posture !== "campaign") return;
-  if (countType(state, p.playerId, "smelter") >= EASY_WANT_SMELTERS) return;
+  if (countType(state, p.playerId, "smelter") >= aiProfile(p.ai).wantSmelters) return;
   if (p.scrap < catalog("smelter").cost || !powerFor(state, p.playerId, "smelter")) return;
   if (findSmelterTile(state, p.playerId)) return;
   const spot = findOutlyingSmelterTile(state, p.playerId, hq);
@@ -2030,7 +2015,7 @@ function expandSmelters(state: MatchState, p: SimPlayer, hq: Entity): void {
 }
 
 /**
- * Plain scrap within EASY_EXPAND_TILES of the Core and nearer it than any enemy base: the
+ * Plain scrap within CPU_EXPAND_TILES of the Core and nearer it than any enemy base: the
  * footprint nearest the Core. The diamond field is left to the force that takes the middle.
  */
 export function findOutlyingSmelterTile(state: MatchState, playerId: string, hq: Entity): { tx: number; ty: number } | null {
@@ -2053,7 +2038,7 @@ export function findOutlyingSmelterTile(state: MatchState, playerId: string, hq:
       const cx = tx + def.tileW / 2;
       const cy = ty + def.tileH / 2;
       const d = Math.hypot(cx - ox, cy - oy);
-      if (d > EASY_EXPAND_TILES || d >= bestD) continue;
+      if (d > CPU_EXPAND_TILES || d >= bestD) continue;
       if (foes.some((f) => Math.hypot(cx - f.x, cy - f.y) <= d)) continue;
       if (!smelterSiteOk(state, tx, ty) || !keepsLanes(state, tx, ty, def.tileW, def.tileH)) continue;
       best = { tx, ty };
@@ -2075,7 +2060,7 @@ function stagingFinder(state: MatchState, hq: Entity): Staging {
     const inwardX = Math.sign(state.width / 2 - ox) || 1;
     const inwardY = Math.sign(state.height / 2 - oy) || 1;
     const maxR = Math.max(state.width, state.height);
-    for (let r = EASY_BUILD_LANE_TILES; r < maxR && !spot; r += 2) {
+    for (let r = CPU_BUILD_LANE_TILES; r < maxR && !spot; r += 2) {
       for (let k = 0; k <= r && !spot; k += 2) {
         for (const [dx, dy] of [
           [r, k],
@@ -2126,7 +2111,7 @@ function siege(state: MatchState, p: SimPlayer, e: Entity, sites: Entity[]): voi
   if (!isInfantryType(e.type) && catalog(e.type).caliber < GARRISON_STRUCTURAL_CALIBER) return;
   const idle = !e.order || e.order.auto || e.order.kind === "attackmove";
   if (!idle || (e.attackTarget != null && state.entities.get(e.attackTarget)?.hp)) return;
-  const reach = EASY_SIEGE_TILES * state.tileSize;
+  const reach = CPU_SIEGE_TILES * state.tileSize;
   let best: Entity | undefined;
   let bestD = Infinity;
   for (const b of sites) {
@@ -2160,7 +2145,7 @@ function settleLauncher(state: MatchState, p: SimPlayer, e: Entity): void {
 /** Patch the base and its hulls, then cut wrecks near home into scrap. */
 function engineerWork(state: MatchState, p: SimPlayer, e: Entity, hq: Entity): void {
   if (e.order && !e.order.auto) return;
-  const reach = EASY_WORK_TILES * state.tileSize;
+  const reach = CPU_WORK_TILES * state.tileSize;
   let repair: Entity | undefined;
   let wreck: Entity | undefined;
   let repairD = Infinity;
@@ -2195,7 +2180,7 @@ function truckWork(state: MatchState, p: SimPlayer, e: Entity, hq: Entity, stage
     if (depot) applyCommand(state, p.playerId, { type: "cmd.supply", ids: [e.id], targetId: depot.id });
     return;
   }
-  const reach = EASY_WORK_TILES * state.tileSize;
+  const reach = CPU_WORK_TILES * state.tileSize;
   let best: Entity | undefined;
   let bestD = Infinity;
   for (const o of state.entities.values()) {
@@ -2300,7 +2285,7 @@ export function findBuildTile(
   // Keep the next Smelter's ground: a building packed against the scrap shuts its lane, and the
   // yard may have no other footprint on the field in range.
   const smelter = catalog("smelter");
-  const keep = countType(state, playerId, "smelter") < EASY_WANT_SMELTERS ? findSmelterTile(state, playerId) : null;
+  const keep = countType(state, playerId, "smelter") < aiProfile(state.players.get(playerId)?.ai).wantSmelters ? findSmelterTile(state, playerId) : null;
   for (let r = 1; r <= maxR; r++) {
     const ring: { tx: number; ty: number; inward: number }[] = [];
     for (let dy = -r; dy <= r; dy++) {
@@ -2318,7 +2303,7 @@ export function findBuildTile(
       if (tilesBlockedOrScrap(state, spot.tx, spot.ty, def.tileW, def.tileH)) continue;
       if (!inBuildRadius(state, playerId, spot.tx, spot.ty, def.tileW, def.tileH, radius)) continue;
       if (!keepsLanes(state, spot.tx, spot.ty, def.tileW, def.tileH)) continue;
-      if (keep && footprintGap(spot.tx, spot.ty, def.tileW, def.tileH, keep.tx, keep.ty, smelter.tileW, smelter.tileH) < EASY_BUILD_LANE_TILES) continue;
+      if (keep && footprintGap(spot.tx, spot.ty, def.tileW, def.tileH, keep.tx, keep.ty, smelter.tileW, smelter.tileH) < CPU_BUILD_LANE_TILES) continue;
       return { tx: spot.tx, ty: spot.ty };
     }
   }
@@ -2360,7 +2345,7 @@ export function findSmelterTile(state: MatchState, playerId: string): { tx: numb
 function keepsLanes(state: MatchState, tx: number, ty: number, w: number, h: number): boolean {
   for (const b of state.entities.values()) {
     if (b.kind !== "building" || b.hp <= 0 || isFieldStructure(b.type)) continue;
-    if (footprintGap(tx, ty, w, h, b.tileX, b.tileY, b.tileW, b.tileH) < EASY_BUILD_LANE_TILES) return false;
+    if (footprintGap(tx, ty, w, h, b.tileX, b.tileY, b.tileW, b.tileH) < CPU_BUILD_LANE_TILES) return false;
   }
   return true;
 }

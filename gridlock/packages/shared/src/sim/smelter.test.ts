@@ -305,15 +305,17 @@ describe("Smelter on scrap", () => {
     assert.equal(smelterIncome(state, "B"), 0);
   });
 
-  it("pours twice as fast for an Easy CPU", () => {
+  it("pours faster for a CPU, by its type", () => {
     const { state } = twoPlayerMatch();
     clearGround(state, 60, 60, 30, 30);
     paintScrap(state, 64, 64, sm.tileW, sm.tileH);
     const c = buildingCenter(64, 64, sm.tileW, sm.tileH, state.tileSize);
     makeEntity(state, "smelter", "A", c.x, c.y, { tileX: 64, tileY: 64 });
     assert.equal(smelterIncome(state, "A"), SMELTER_SCRAP_PER_SEC);
-    state.players.get("A")!.ai = "easy";
+    state.players.get("A")!.ai = "defensive";
     assert.equal(smelterIncome(state, "A"), 2 * SMELTER_SCRAP_PER_SEC);
+    state.players.get("A")!.ai = "aggressive";
+    assert.equal(smelterIncome(state, "A"), 2.5 * SMELTER_SCRAP_PER_SEC);
   });
 
   it("pours five times as much on diamond scrap, when most of its scrap is diamond", () => {

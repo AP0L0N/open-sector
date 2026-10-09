@@ -18,7 +18,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 124;
+export const PROTOCOL_VERSION = 125;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -29,8 +29,12 @@ export const MIN_HUMANS_TO_START = 1;
 
 export type Phase = "lobby" | "countdown" | "playing" | "ended";
 export type SlotStatus = "open" | "human" | "closed" | "ai";
-/** CPU difficulty. Easy is the only mode for now. */
-export type AiDifficulty = "easy";
+/** CPU types. Defensive digs in before it marches; Aggressive comes early and often. Tuning: sim/ai-profile.ts. */
+export const AI_DIFFICULTIES = ["defensive", "balanced", "aggressive"] as const;
+export type AiDifficulty = (typeof AI_DIFFICULTIES)[number];
+export function isAiDifficulty(v: unknown): v is AiDifficulty {
+  return typeof v === "string" && (AI_DIFFICULTIES as readonly string[]).includes(v);
+}
 export type RoomMode = "skirmish" | "network";
 export type EntityState =
   | "idle"
@@ -742,6 +746,8 @@ export type ClientMessage =
       colorId?: number;
       team?: number;
       spawnId?: number;
+      /** CPU type: seats one with status "ai", or switches the CPU already in the slot. */
+      ai?: AiDifficulty;
     }
   | { type: "room.map"; mapId: string }
   | { type: "room.start" }

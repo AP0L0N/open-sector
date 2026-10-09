@@ -6,7 +6,7 @@ import { applyCommand } from "./commands.js";
 import { fellTreeAt } from "./geo.js";
 import { createMatch, step, stepMatch } from "./match.js";
 import { soakBlast } from "./remains.js";
-import { exportSave, restoreMatch } from "./save.js";
+import { applySaveSeats, exportSave, restoreMatch } from "./save.js";
 import type { MatchState } from "./types.js";
 import type { RoomState } from "../protocol.js";
 
@@ -108,6 +108,22 @@ describe("skirmish save", () => {
     assert.ok(rig);
     assert.equal([...restored.entities.values()].some((e) => e.ownerId === "A"), false);
     assert.equal([...restored.entities.values()].some((e) => e.ownerId === "ai:1"), true);
+  });
+
+  it("loads a save from before the CPU types: its Easy CPU plays on as Defensive", () => {
+    const { state, room } = skirmish();
+    const saved = exportSave(state, room, 1_700_000_000_000);
+    const seat = saved.seats.find((s) => s.status === "ai")!;
+    (seat as { ai?: string }).ai = "easy";
+    (saved.players.find((p) => p.playerId === "ai:1")! as { ai?: string }).ai = "easy";
+    const back = restoreMatch(saved, { roomId: "OLD", humanPlayerId: "A" });
+    assert.equal(back.ok, true, !back.ok ? back.message : "");
+    if (!back.ok) return;
+    assert.equal(back.value.state.players.get("ai:1")?.ai, "defensive");
+    const next = createRoom({ id: "OLD", hostId: "A", hostName: "Alpha", mapId: saved.mapId, maxSlots: 8, mode: "skirmish" });
+    if (!next.ok) throw new Error(next.message);
+    applySaveSeats(next.value, back.value.save, "A", "Alpha");
+    assert.equal(next.value.slots[1]?.ai, "defensive");
   });
 
   it("holds the sim while paused and rejects orders", () => {

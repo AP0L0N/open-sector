@@ -1,7 +1,7 @@
 /**
  * Crew calls a CPU or a map's neutral troops make for themselves, the way a
  * player would press the button: a submarine goes down when it sees the
- * enemy, and a Drone Op sends his drone up to look or to hunt. The Easy CPU
+ * enemy, and a Drone Op sends his drone up to look or to hunt. The CPU
  * gives these as commands (ai.ts); neutral crews, who have no seat to command
  * from, act on them directly (tickNeutralCrews).
  */

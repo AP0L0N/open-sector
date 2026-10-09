@@ -18,7 +18,8 @@ import {
 import { featureAngle, featureLotSite, getMap, isMapBridge, isMapSection, type MapDef } from "../maps.js";
 import { mapAirfieldAt, mapUnitHostAt } from "../custom-maps.js";
 import { commanders } from "../lobby.js";
-import { EASY_ATTACK_FIRST_TICKS, tickAi } from "./ai.js";
+import { tickAi } from "./ai.js";
+import { aiProfile } from "./ai-profile.js";
 import type { ImpactView, RocketLaunchView, RoomState } from "../protocol.js";
 import { buildingCenter, destroyEntity, initGrids, makeEntity, newAirState, tileCenter } from "./geo.js";
 import { aircraftDown, airfieldPadWorld, beginAircraftCrash, isAirborne, orderAircraft, parkHeading, tickAir } from "./air.js";
@@ -227,7 +228,7 @@ export function createMatch(
       placingType: null,
       hqId,
       ai: slot.ai,
-      aiNextAttackTick: slot.ai ? EASY_ATTACK_FIRST_TICKS : 0,
+      aiNextAttackTick: slot.ai ? aiProfile(slot.ai).attackFirstTicks : 0,
     });
   }
 

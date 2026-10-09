@@ -809,7 +809,7 @@ export interface AiForce {
   progressTick?: number;
 }
 
-/** Easy CPU's standing plan. Plain data so it saves with the player. */
+/** The CPU's standing plan. Plain data so it saves with the player. */
 export interface AiPlan {
   /** Fortify: raise and crew the base defences first. Campaign: take the middle, then push. */
   posture: "fortify" | "campaign";
@@ -837,7 +837,7 @@ export interface AiPlan {
   fleet?: AiFleet;
 }
 
-/** Easy CPU's fleet at sea: the warships that sailed, bound for one stretch of water. */
+/** The CPU's fleet at sea: the warships that sailed, bound for one stretch of water. */
 export interface AiFleet {
   ids: number[];
   /** Water the fleet strikes from, world pixels. */
