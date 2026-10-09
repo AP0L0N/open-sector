@@ -1,7 +1,7 @@
 /**
  * Whose is it: the commander's colour on the field itself, not only on the
- * minimap. A unit stands in a ring of its owner's colour on the ground; a
- * building flies a pennant in it. Client-only; no sim traffic.
+ * minimap. A unit stands in a faint ring of its owner's colour on the ground; a
+ * garrisoned building flies a pennant in its holder's. Client-only; no sim traffic.
  */
 
 export interface MarkPt {
@@ -44,13 +44,13 @@ export function drawOwnerRing(ctx: CanvasRenderingContext2D, pts: readonly MarkP
   ctx.moveTo(pts[0]!.x, pts[0]!.y);
   for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i]!.x, pts[i]!.y);
   ctx.closePath();
-  ctx.fillStyle = `rgba(${c}, ${0.16 * alpha})`;
+  ctx.fillStyle = `rgba(${c}, ${0.07 * alpha})`;
   ctx.fill();
   ctx.lineWidth = 3;
-  ctx.strokeStyle = `rgba(8, 6, 4, ${0.45 * alpha})`;
+  ctx.strokeStyle = `rgba(8, 6, 4, ${0.22 * alpha})`;
   ctx.stroke();
   ctx.lineWidth = 1.6;
-  ctx.strokeStyle = `rgba(${c}, ${0.9 * alpha})`;
+  ctx.strokeStyle = `rgba(${c}, ${0.45 * alpha})`;
   ctx.stroke();
   ctx.restore();
 }

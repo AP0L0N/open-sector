@@ -6681,8 +6681,8 @@ export class MapView {
       ctx.fillStyle = "#e8dcc4";
       ctx.fillText(name, stack.x, stack.y - 12);
     }
-    // Whose it is: a pennant in the owner's colour, or the colour of whoever holds a house.
-    if (e.ownerId || e.garrison?.ownerId) {
+    // Who holds it: a garrisoned building flies a pennant in the colour of the men inside.
+    if ((e.garrison?.count ?? 0) > 0) {
       drawOwnerPennant(ctx, Math.round(stack.x - layoutW / 2 - 6), Math.round(stack.y + 6), hex, ghost ? 0.6 : 1);
     }
     if (!ghost) {
