@@ -4681,7 +4681,7 @@ export class MapView {
       }
     }
     // The map's street lamps: a still pool round each post, or an aimed lamp's beam.
-    for (const { lamp, wx, wy } of this.standingLamps()) {
+    for (const { lamp, wx, wy } of this.shiningLamps()) {
       const spec = STREET_LAMPS[lamp.type];
       const flicker = streetLampFlicker(lamp.type, lamp.x, lamp.y, nowSec);
       if (!spec.beam) {
@@ -4707,6 +4707,11 @@ export class MapView {
       out.push({ lamp, wx: (lamp.x + 0.5) * ts, wy: (lamp.y + 0.5) * ts });
     }
     return out;
+  }
+
+  /** Standing street lamps whose post is in sight now. A lamp on ground you have only scouted stays dark. */
+  private shiningLamps(): { lamp: MapLamp; wx: number; wy: number }[] {
+    return this.standingLamps().filter(({ lamp }) => this.lit(lamp.x, lamp.y));
   }
 
   /** Street lamp posts. They stand and sort with units like the signposts. */
@@ -4793,8 +4798,9 @@ export class MapView {
 
   /** The lit bulb on each street lamp: a soft halo where the glass is. */
   private drawLampBulbs(glow: number): void {
-    const lamps = this.standingLamps();
-    if (lamps.length === 0 || glow <= 0) return;
+    if (glow <= 0) return;
+    const lamps = this.shiningLamps();
+    if (lamps.length === 0) return;
     const ctx = this.ctx;
     const nowSec = performance.now() / 1000;
     ctx.save();
