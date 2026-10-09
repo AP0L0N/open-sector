@@ -4,6 +4,7 @@ import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
   AIR_CRUISE_ALT,
   BUNKER_GARRISON_CAP,
+  FLAK_BURST_DAMAGE,
   FLAK_FUSE_SCATTER_Z,
   FLAK_RACK,
   FLAK_SCATTER_FAR,
@@ -282,6 +283,26 @@ describe("crewed guns", () => {
     assert.ok(Math.abs(b.cooldown - fullCooldown * 2) < 0.05, `${b.cooldown} vs ${fullCooldown}`);
   });
 
+  it("short-handed, a two-man gun swings at half pace", () => {
+    const swing = (lone: boolean) => {
+      const state = match();
+      const pak = gun(state, "pak43");
+      if (lone) {
+        const [first] = livingGarrison(state, pak);
+        assert.ok(first && exitGarrison(state, first));
+      }
+      const start = pak.turretFacing;
+      // Straight behind: far enough that neither crew gets there in a few ticks.
+      assert.equal(applyCommand(state, "A", { type: "cmd.rotate", ids: [pak.id], x: pak.x - 100, y: pak.y + 1 }).ok, true);
+      for (let i = 0; i < 3; i++) step(state, TICK_DT);
+      return Math.abs(pak.turretFacing - start);
+    };
+    const full = swing(false);
+    const half = swing(true);
+    assert.ok(full > 0 && full < Math.PI - 0.1, `full crew swung ${full}`);
+    assert.ok(Math.abs(half - full / 2) < 1e-6, `${half} vs ${full}`);
+  });
+
   it("only the Flak and the MG reach a plane", () => {
     const state = match();
     for (const [type, aa] of [
@@ -467,6 +488,43 @@ describe("crewed gun ammunition", () => {
     const burst = state.impacts.find((i) => i.flak);
     assert.ok(burst && burst.z === AIR_CRUISE_ALT, "the client gets a burst at the plane's height");
     assert.equal(state.projectiles.length, 0);
+  });
+
+  it("one flak burst takes a little off every plane of a loose formation", () => {
+    const state = match();
+    const flak = gun(state, "flak");
+    const x = flak.x + 20 * state.tileSize;
+    const y = flak.y;
+    const wing = [planeOver(state, "B", x, y), planeOver(state, "B", x + 40, y - 24), planeOver(state, "B", x - 36, y + 30)];
+    const hp = wing.map((p) => p.hp);
+    state.projectiles = [
+      {
+        id: state.nextId++,
+        ownerId: "A",
+        team: 0,
+        x,
+        y,
+        vx: 0,
+        vy: 0,
+        damage: catalog("flak").damage,
+        penetration: 10,
+        caliber: 37,
+        life: 0.001,
+        ignoreId: flak.id,
+        fromId: flak.id,
+        bounced: false,
+        shell: "he",
+        flight: "flak",
+        z: AIR_CRUISE_ALT + 6,
+        vz: 0,
+      },
+    ];
+    tickProjectiles(state, TICK_DT);
+    wing.forEach((p, i) => {
+      const lost = hp[i]! - p.hp;
+      assert.ok(lost > 0, `plane ${i} is hit`);
+      assert.ok(lost <= FLAK_BURST_DAMAGE * 1.2, `plane ${i} loses only a little (${lost})`);
+    });
   });
 
   it("a forced aim at the ground puts a barrage up over that point", () => {

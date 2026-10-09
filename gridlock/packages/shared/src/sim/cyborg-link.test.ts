@@ -14,8 +14,8 @@ import { applyCommand } from "./commands.js";
 import { cyborgLinked, cyborgShutdownIn } from "./cyborg-link.js";
 import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
-import { headlightLit } from "./night.js";
 import { snapshotFor } from "./snapshot.js";
+import { thermalContacts } from "./thermal.js";
 import type { Entity, MatchState } from "./types.js";
 
 function match(): { state: MatchState; a: string; b: string } {
@@ -174,19 +174,27 @@ describe("cyborg link", () => {
     assert.ok(cy.hp < hp, `the enemy fires on him (hp ${cy.hp})`);
   });
 
-  it("puts his headlight out, and lights it again once he is taken over", () => {
-    const { state, a } = match();
+  it("darkens his thermal scanner, and lights it again once he is taken over", () => {
+    const { state, a, b } = match();
     const ts = state.tileSize;
     const cy = cyborg(state, a, 60, 40);
-    assert.equal(headlightLit(cy), true);
+    const blind = new Uint8Array(state.width * state.height);
+    /** A fresh foe 6 tiles off his nose, read once and taken away again. */
+    const heard = (): boolean => {
+      cy.facing = 0;
+      const foe = makeEntity(state, "rifleman", b, cy.x + 6 * ts, cy.y);
+      const hit = thermalContacts(state, a, blind).some((c) => c.id === foe.id);
+      destroyEntity(state, foe);
+      return hit;
+    };
+    assert.equal(heard(), true);
     ticks(state, GRACE + 2);
-    assert.equal(headlightLit(cy), false);
-    const view = snapshotFor(state, a).entities.find((e) => e.id === cy.id)!;
-    assert.equal(headlightLit(view), false, "the client draws no beam either");
-    makeEntity(state, "cyborgcommander", a, cy.x - 2 * ts, cy.y);
+    assert.equal(heard(), false, "a shut-down Cyborg reads nothing");
+    const cmd = makeEntity(state, "cyborgcommander", a, cy.x - 2 * ts, cy.y);
     ticks(state, TAKEOVER + 2);
     assert.equal(cy.ownerId, a);
-    assert.equal(headlightLit(cy), true);
+    destroyEntity(state, cmd);
+    assert.equal(heard(), true, "his own scanner, not the Commander's");
   });
 
   it("lets a Cyborg Commander take over a shut-down Cyborg in reach, the enemy's too", () => {

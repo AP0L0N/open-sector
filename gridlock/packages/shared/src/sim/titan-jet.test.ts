@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
-import { TICK_DT, TITAN_JET_FLIGHT, TITAN_NUKE, catalog, jetFlightOf, nukesOnDeath } from "../catalog.js";
+import { TICK_DT, TITAN_JET_FLIGHT, TITAN_NUKE, TITAN_POD_ARC_DEG, catalog, jetFlightOf, nukesOnDeath } from "../catalog.js";
 import { isAirborne, isCrashing } from "./air.js";
 import { applyCommand } from "./commands.js";
 import { makeEntity, tileCenter } from "./geo.js";
@@ -111,6 +111,26 @@ describe("Titan leg jets", () => {
     const shots = launchedDuring(state, Math.ceil(6 / TICK_DT)).filter((p) => p.fromId === t.id);
     assert.ok(shots.length > 0, "the pods should fire");
     assert.ok(shots.every((p) => p.flight === "rocket"), "nothing but rockets from the air");
+  });
+
+  it("carries twelve seconds of fuel, double the old hop", () => {
+    assert.equal(TITAN_JET_FLIGHT.fuelSeconds, 12);
+  });
+
+  it("aloft the pods turn the torso onto a target behind it before they fire", () => {
+    const state = twoPlayerMatch();
+    const t = airborneTitan(state, 40, 30);
+    t.turretFacing = 0;
+    const foe = put(state, "warden", "B", 30, 30);
+    const bearing = Math.atan2(foe.y - t.y, foe.x - t.x);
+    const off = () => Math.abs(Math.atan2(Math.sin(bearing - t.turretFacing), Math.cos(bearing - t.turretFacing)));
+    let fired = 0;
+    for (let i = 0; i < Math.ceil(6 / TICK_DT); i++) {
+      const shots = launchedDuring(state, 1).filter((p) => p.fromId === t.id);
+      if (shots.length) assert.ok(off() <= (TITAN_POD_ARC_DEG * Math.PI) / 180 + 1e-6, "fired off the torso's bearing");
+      fired += shots.length;
+    }
+    assert.ok(fired > 0, "once round, the pods fire");
   });
 
   it("aloft a tank and a rifleman cannot reach it; anti-air rockets can", () => {

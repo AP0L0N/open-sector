@@ -103,16 +103,17 @@ function tileFree(state: MatchState, e: Entity, x: number, y: number): boolean {
   return true;
 }
 
-/** How far past its own plate the Apocalypse fells trees as it rolls, in sim tiles. */
+/** How far past its own plate the Apocalypse or the Titan fells trees as it goes, in sim tiles. */
 const WOODS_FELL_REACH_TILES = 1.5;
 
 export function crushTreesUnder(state: MatchState, e: Entity): void {
   if (!isActiveUnit(e) || !isMotorVehicle(e.type)) return;
-  if (!rolling(e)) return;
+  // A Titan on its leg jets passes over the woods; it fells them again once it sets down.
+  if (!rolling(e) || jetAloft(e)) return;
   crushClutterUnder(state, e);
   crushWireUnder(state, e);
   const ts = state.tileSize;
-  // The Apocalypse shoulders down woods as it goes: groves too, and the trunks just beside its plate.
+  // The Apocalypse and the Titan shoulder down woods as they go: groves too, and the trunks just beside them.
   const woods = rollsThroughWoods(e.type);
   const r = e.radius + ts * (woods ? WOODS_FELL_REACH_TILES : 0.45);
   const x0 = worldToTile(e.x - r, ts);

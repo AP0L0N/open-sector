@@ -7,7 +7,7 @@ import {
   RADAR_LONG_RANGE_MUL,
   catalog,
 } from "@gridlock/shared";
-import { footprintPeak, radarReachTiles } from "./radar-reach.js";
+import { footprintPeak, radarReachTiles, showsReachRing } from "./radar-reach.js";
 
 describe("radar reach ring", () => {
   it("shows the CIWS's plane reach outside its ground reach, and Max range on both", () => {
@@ -24,6 +24,17 @@ describe("radar reach ring", () => {
     const r = radarReachTiles("ram", HEIGHT_BASE, false);
     assert.equal(r.ground, catalog("ram").rangeTiles);
     assert.equal(r.air, r.ground);
+  });
+
+  it("rings the Flak 37 and the Pak 43 at their catalog reach, which Max range does not stretch", () => {
+    for (const type of ["flak", "pak43"] as const) {
+      assert.ok(showsReachRing(type), type);
+      const r = radarReachTiles(type, HEIGHT_BASE, true);
+      assert.equal(r.ground, catalog(type).rangeTiles, type);
+      assert.equal(r.air, r.ground, type);
+    }
+    assert.ok(showsReachRing("ciws") && showsReachRing("ram"));
+    assert.ok(!showsReachRing("mgnest") && !showsReachRing("pak36") && !showsReachRing("bunker"));
   });
 
   it("adds the height bonus from the highest tile under the pad, as the sim does", () => {

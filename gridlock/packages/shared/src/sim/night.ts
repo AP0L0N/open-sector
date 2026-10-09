@@ -126,17 +126,25 @@ export function spotlightsOn(tick: number): boolean {
   return daylightAt(tick) < SPOTLIGHT_ON_DAYLIGHT;
 }
 
-/** The Watch Tower's cab lamp, the Fire-Control Tower's roof lamp, the Spotlight post's pole lamp, and the Battle Ship's searchlight on the bridge. */
+/** The Watch Tower's cab lamp, the Fire-Control Tower's roof lamp, the Spotlight post's pole lamp, the Battle Ship's searchlight on the bridge, and the Titan's torso lamp. */
 export function hasSpotlight(type: EntityType): boolean {
-  return type === "tower" || type === "leitturm" || type === "spotlight" || type === "battleship";
+  return type === "tower" || type === "leitturm" || type === "spotlight" || type === "battleship" || type === "titan";
 }
 
 /**
- * Armored ground hulls and the Cyborg carry a headlight. Planes and drones fly
- * dark, and so does a submarine.
+ * A Titan up on its leg jets tips its lamp down: one round pool of light on the
+ * ground ahead (TITAN_LAMP_POOL_*), not a beam.
+ */
+export function lampPools(e: { type: EntityType; jet?: { alt: number } }): boolean {
+  return e.type === "titan" && (e.jet?.alt ?? 0) > 0;
+}
+
+/**
+ * Armored ground hulls carry a headlight. Planes and drones fly dark, and so
+ * does a submarine. Cyborgs carry no lamp: they see by thermal (sim/thermal.ts).
  */
 export function hasHeadlight(type: EntityType): boolean {
-  if (isCyborg(type)) return true;
+  if (isCyborg(type)) return false;
   if (catalog(type).submerges) return false;
   return isArmoredType(type) && !isAircraftType(type) && !isDroneType(type) && !hasSpotlight(type);
 }
@@ -180,11 +188,8 @@ export function headlightLit(e: {
   garrisonedIn?: number | null;
   air?: unknown;
   crits?: readonly Crit[];
-  shutdown?: true;
 }): boolean {
   if (hasCrit({ crits: e.crits ?? [] }, "lamp")) return false;
-  // A shut-down Cyborg's headlight goes out with the rest of him.
-  if (e.shutdown) return false;
   return e.kind === "unit" && hasHeadlight(e.type) && (e.hp ?? 1) > 0 && !e.wreck && e.garrisonedIn == null && !e.air;
 }
 
@@ -207,14 +212,11 @@ export function spotlightManned(e: {
   ruined?: boolean;
   wreck?: boolean;
   crits?: readonly Crit[];
-  shutdown?: true;
   /** The sim's occupant ids, or a snapshot's head count. Read for a post that needs its man. */
   garrison?: readonly unknown[] | { count: number };
 }): boolean {
   if (hasCrit({ crits: e.crits ?? [] }, "lamp")) return false;
   if (lampCrewOf(e.type) && crewAt(e.garrison) <= 0) return false;
-  // A shut-down Cyborg's headlight goes out with the rest of him.
-  if (e.shutdown) return false;
   return hasSpotlight(e.type) && (e.ownerId !== NEUTRAL_OWNER || e.kind === "unit") && e.hp > 0 && !e.ruined && !e.wreck;
 }
 

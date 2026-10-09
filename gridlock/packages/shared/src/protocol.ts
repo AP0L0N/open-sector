@@ -18,7 +18,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 120;
+export const PROTOCOL_VERSION = 122;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -431,6 +431,18 @@ export interface SonarContactView {
   down?: boolean;
 }
 
+/**
+ * An enemy your Cyborgs pick up but nobody sees: a soldier's heat in a Cyborg's
+ * thermal cone or round a Cyborg Commander, or an armored hull on the
+ * Commander's APS radar (`armored`). Off the fog mask only. World pixels.
+ */
+export interface ThermalContactView {
+  id: number;
+  x: number;
+  y: number;
+  armored?: true;
+}
+
 export interface ScrapCell {
   x: number;
   y: number;
@@ -704,6 +716,8 @@ export interface MatchSnapshot {
   radar?: RadarContactView[];
   /** Sonar contacts for `youPlayerId`. Omitted while none of your Destroyers hears a submarine. */
   sonar?: SonarContactView[];
+  /** Thermal and APS contacts your Cyborgs pick up off the fog mask. Omitted while there are none. */
+  thermal?: ThermalContactView[];
   winner?: { playerId: string; team: number };
 }
 
@@ -805,6 +819,8 @@ export type ClientMessage =
   /** Rally point for owned producers in `ids`. A point on a building's own footprint clears its rally. */
   | { type: "cmd.rally"; ids: number[]; x: number; y: number }
   | { type: "cmd.sell"; id: number }
+  /** Scrap own units and structures for no refund (Delete key). The Core and the Rig are refused. */
+  | { type: "cmd.delete"; ids: number[] }
   | { type: "cmd.deploy"; id: number }
   /** Lock and unlock own gates. A gate is built from the Defences tab. */
   | { type: "cmd.gate"; ids: number[]; action: "lock" | "unlock" }

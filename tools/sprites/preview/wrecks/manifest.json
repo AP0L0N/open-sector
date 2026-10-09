@@ -143,8 +143,8 @@
     "clipped_dirs": []
   },
   {
-    "type": "blackbird",
-    "out": "gridlock/packages/client/src/assets/units/wrecks/blackbird.png",
+    "type": "horten",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/horten.png",
     "cell": 128,
     "rows": 16,
     "frames": 1,

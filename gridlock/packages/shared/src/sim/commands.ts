@@ -51,7 +51,7 @@ import { forceAimHolds, garrisonCanShoot, garrisonShotReaches, relayGarrisonForc
 import { approachTile, canGarrison, exitGarrison, garrisonOwner, livingGarrison, setGarrisonHide } from "./garrison.js";
 import { rampAshore } from "./lst.js";
 import { setScoutOut } from "./scout.js";
-import { cancelStructure, pauseStructure, placeBaseField, placeBuilding, sellBuilding, startBuild } from "./build.js";
+import { cancelStructure, deleteOwn, pauseStructure, placeBaseField, placeBuilding, sellBuilding, startBuild } from "./build.js";
 import { orderFieldBuild, orderRepair, setGatesLocked } from "./field.js";
 import { orderConstruct } from "./construct.js";
 import { orderBridge } from "./bridge.js";
@@ -191,6 +191,9 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
       return wrap(setRally(state, playerId, msg.ids, msg.x, msg.y), "bad_payload");
     case "cmd.sell":
       return wrap(sellBuilding(state, playerId, msg.id), "not_yours");
+    case "cmd.delete":
+      if (!Array.isArray(msg.ids)) return fail("bad_payload", "Select something to scrap.");
+      return wrap(deleteOwn(state, playerId, msg.ids), "not_yours");
     case "cmd.deploy": {
       const err = deployId(state, playerId, msg.id);
       return wrap(err, "busy");
