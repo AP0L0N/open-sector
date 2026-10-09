@@ -128,6 +128,7 @@ import {
   isRubble,
   isGarrisonable,
   NEUTRAL_OWNER,
+  isCyborg,
   isInfantryType,
   isSmokeShell,
   stanceOf,
@@ -3848,8 +3849,10 @@ function maybeHaulerSmokeScreen(state: MatchState, victim: Entity, p: Projectile
   return true;
 }
 
+/** Only flesh-and-blood soldiers fall back when hit. Cyborgs and hulls hold. */
 function maybeWithdraw(state: MatchState, victim: Entity, p: Projectile): void {
   if (victim.kind !== "unit" || victim.wreck || victim.garrisonedIn || victim.air) return;
+  if (!isInfantryType(victim.type) || isCyborg(victim.type)) return;
   if (catalog(victim.type).turnInPlace) return;
   if (victim.holdPosition || immobilized(victim)) return;
   if (victim.state === "deploy" || victim.state === "undeploy") return;
