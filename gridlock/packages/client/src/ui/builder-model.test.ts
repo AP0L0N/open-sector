@@ -759,6 +759,19 @@ describe("map builder scrap checks", () => {
     assert.deepEqual(startsFarFromScrap(s), [1]);
   });
 
+  it("paints scrap under a Smelter that stands on bare ground", () => {
+    const s = fresh();
+    s.features.push(houseAt("smelter", 96, 96, 0));
+    settle(s);
+    assert.equal(smeltersOffScrap(s), 1);
+    paintDisk(s, 100, 100, 3, TILE_DIAMOND_SCRAP);
+    settle(s);
+    assert.equal(smeltersOffScrap(s), 0);
+    // Other ground still keeps off the lot.
+    paintDisk(s, 100, 100, 3, TILE_ROAD);
+    assert.equal(s.tiles[100 * s.width + 100], TILE_DIAMOND_SCRAP);
+  });
+
   it("keeps plain and diamond scrap under a placed Smelter", () => {
     for (const tile of [TILE_SCRAP, TILE_DIAMOND_SCRAP]) {
       const s = fresh();

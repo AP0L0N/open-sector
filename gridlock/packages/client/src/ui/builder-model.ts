@@ -716,9 +716,9 @@ export function diskTouches(s: Sheet, cx: number, cy: number, r: number): boolea
 /** Paint ground in a disk. Houses keep their lots; start pads only take roads. Returns changed cells. */
 export function paintDisk(s: Sheet, cx: number, cy: number, r: number, tile: number, dirty?: Dirty): number {
   const ri = Math.ceil(r);
-  // Only lots and pads near the brush can refuse a tile.
+  // Only lots and pads near the brush can refuse a tile. A Smelter's lot takes scrap: it pours what is under it.
   const lots = s.features
-    .filter((f) => !isMapBridge(f.type))
+    .filter((f) => !isMapBridge(f.type) && !(f.type === "smelter" && isScrapTile(tile)))
     .map((f) => featureBox(f))
     .filter((b) => b.x1 > cx - ri && b.x0 <= cx + ri && b.y1 > cy - ri && b.y0 <= cy + ri);
   const pads = PAD_CLEARS(tile) ? s.spawns.filter((sp) => Math.hypot(sp.x - cx, sp.y - cy) <= SPAWN_PAD_R + ri + 1) : [];
