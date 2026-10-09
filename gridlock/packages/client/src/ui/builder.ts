@@ -235,6 +235,9 @@ type Selection = { kind: "feature"; index: number } | { kind: "spawn"; id: numbe
 /** Unit tabs, as the match's sidebar groups them. Aircraft park on an Airfield. */
 const UNIT_TABS: readonly SidebarGroup[] = ["infantry", "tanks", "naval", "aircraft"];
 const COLLAPSE_STORE = "gridlock.builderCollapsed";
+const TAB_STORE = "gridlock.builderTab";
+/** The tools page open on the rail. Kept across visits. */
+let builderTab: string = store()?.getItem(TAB_STORE) ?? "Terrain";
 
 interface Stage {
   root: HTMLElement;
@@ -427,6 +430,7 @@ function changed(box?: M.Dirty): void {
   else repaintGround();
   queueDraw();
   scheduleChecks();
+  paintToolbar();
 }
 
 let checksTimer: ReturnType<typeof setTimeout> | null = null;
@@ -2499,7 +2503,9 @@ function refreshPalette(): void {
   const root = stage?.root;
   if (!root) return;
   const key = toolKey(tool);
-  for (const b of root.querySelectorAll<HTMLElement>(".bld-asset[data-tool]")) b.classList.toggle("is-on", b.dataset.tool === key);
+  for (const b of root.querySelectorAll<HTMLElement>("[data-tool]")) b.classList.toggle("is-on", b.dataset.tool === key);
+  markArmedPage();
+  paintToolbar();
   paintTurnLabels();
   const door = root.querySelector("[data-door]");
   if (door) door.textContent = `Door: ${DOOR_FACES[tool.facing]}`;
@@ -2837,14 +2843,8 @@ function toolsPanel(ctx: Ctx): HTMLElement {
   });
   sideRow.append(el("label", { text: "Place for" }), swatch, sidePick);
   panel.append(sideRow);
-  const edit = el("div", { class: "bld-palette" });
-  edit.append(
-    asset("Select", "move, turn, delete", el("span", { class: "bld-start-mark", text: "⬚" }), "Pick up a placed building, defence, or start. Drag to move it, R turns it, Delete removes it.", { id: "select" }),
-    asset("Eraser", "buildings, lamps, clutter, starts", el("span", { class: "bld-start-mark", text: "✕" }), "Remove buildings, defences, lamps, clutter, and starts.", { id: "erase" }),
-  );
-  const sel = el("div", { class: "bld-sel" });
-  if (stage) stage.sel = sel;
-  panel.append(section("Edit", edit, sel));
+  /** The pages behind the rail, in rail order. */
+  const pages: Page[] = [];
 
   const relief = el("div", { class: "bld-palette three" });
   const reliefTool = (id: ToolId, label: string, glyph: string, title: string): HTMLButtonElement => {
@@ -2931,8 +2931,8 @@ function toolsPanel(ctx: Ctx): HTMLElement {
     queueDraw();
   });
   brushRow.append(brushIn, brushVal);
-  panel.append(
-    section(
+  pages.push(
+    page(
       "Terrain",
       el("h3", { class: "bld-sub", text: "Elevation" }),
       relief,
@@ -2967,8 +2967,8 @@ function toolsPanel(ctx: Ctx): HTMLElement {
   const turn = el("button", { class: "btn btn-ghost bld-mini", text: `Door: ${DOOR_FACES[tool.facing]}`, attrs: { type: "button", "data-door": "1" } });
   turn.addEventListener("click", () => setTool(ctx, { facing: (tool.facing + 1) & 3 }));
   faceRow.append(turn);
-  panel.append(
-    section(
+  pages.push(
+    page(
       "Buildings",
       houses,
       faceRow,
@@ -2988,8 +2988,8 @@ function toolsPanel(ctx: Ctx): HTMLElement {
       asset(def.name, size, houseThumb(type, angle), def.blurb ?? def.name, { id: "base", base: type }),
     );
   }
-  panel.append(
-    section(
+  pages.push(
+    page(
       "Base",
       bases,
       el("p", {
@@ -3015,8 +3015,8 @@ function toolsPanel(ctx: Ctx): HTMLElement {
   };
   const turnLabel = turnLabelEl();
   defFaceRow.append(turnBy(-1, "⟲ 15°", "Turn 15° counter-clockwise"), turnLabel, turnBy(1, "15° ⟳", "Turn 15° clockwise"));
-  panel.append(
-    section(
+  pages.push(
+    page(
       "Defences",
       defences,
       defFaceRow,
@@ -3087,8 +3087,8 @@ function toolsPanel(ctx: Ctx): HTMLElement {
   const roadFaceRow = el("div", { class: "bld-row" });
   const roadTurnLabel = turnLabelEl();
   roadFaceRow.append(turnBy(-1, "⟲ 15°", "Turn 15° counter-clockwise"), roadTurnLabel, turnBy(1, "15° ⟳", "Turn 15° clockwise"));
-  panel.append(
-    section(
+  pages.push(
+    page(
       "Decorations",
       el("h3", { class: "bld-sub", text: "Roads" }),
       decor,
@@ -3133,8 +3133,8 @@ function toolsPanel(ctx: Ctx): HTMLElement {
   const bridgeFaceRow = el("div", { class: "bld-row" });
   const bridgeTurnLabel = turnLabelEl();
   bridgeFaceRow.append(turnBy(-1, "⟲ 15°", "Turn 15° counter-clockwise"), bridgeTurnLabel, turnBy(1, "15° ⟳", "Turn 15° clockwise"));
-  panel.append(
-    section(
+  pages.push(
+    page(
       "Bridges",
       bridges,
       bridgeFaceRow,
@@ -3170,8 +3170,8 @@ function toolsPanel(ctx: Ctx): HTMLElement {
   const unitFaceRow = el("div", { class: "bld-row" });
   const unitTurnLabel = turnLabelEl();
   unitFaceRow.append(turnBy(-1, "⟲ 15°", "Turn 15° counter-clockwise"), unitTurnLabel, turnBy(1, "15° ⟳", "Turn 15° clockwise"));
-  panel.append(
-    section(
+  pages.push(
+    page(
       "Units",
       tabs,
       unitPal,
@@ -3189,8 +3189,8 @@ function toolsPanel(ctx: Ctx): HTMLElement {
   starts.append(
     asset("Start", next === null ? "all placed" : `next: ${next}`, el("span", { class: "bld-start-mark", text: String(next ?? "✓") }), "Commander start position.", { id: "spawn" }),
   );
-  panel.append(
-    section(
+  pages.push(
+    page(
       "Start positions",
       starts,
       el("p", {
@@ -3199,7 +3199,177 @@ function toolsPanel(ctx: Ctx): HTMLElement {
       }),
     ),
   );
+
+  // The rail down the left opens one page at a time; the page remembers across visits.
+  if (!pages.some((p) => p.title === builderTab)) builderTab = pages[0]?.title ?? builderTab;
+  const rail = el("div", { class: "bld-rail", attrs: { role: "tablist" } });
+  const body = el("div", { class: "bld-tab-panel" });
+  for (const p of pages) {
+    const tab = el("button", {
+      class: `bld-rail-tab${p.title === builderTab ? " is-active" : ""}`,
+      attrs: { type: "button", role: "tab", title: p.title, "data-page": p.title, "aria-selected": String(p.title === builderTab) },
+      html: `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="${p.icon}"/></svg><span>${p.short}</span>`,
+    });
+    tab.addEventListener("click", () => openPage(p.title));
+    rail.append(tab);
+    p.body.hidden = p.title !== builderTab;
+    body.append(p.body);
+  }
+  const inspector = el("div", { class: "bld-inspector" });
+  const sel = el("div", { class: "bld-sel" });
+  if (stage) stage.sel = sel;
+  inspector.append(sel);
+  panel.append(rail, body, inspector);
+  markArmedPage();
   return panel;
+}
+
+/** One page of the tools panel: a titled body behind a rail tab. */
+interface Page {
+  title: string;
+  /** Two to five letters under the rail icon. */
+  short: string;
+  /** A 16×16 SVG path. */
+  icon: string;
+  body: HTMLElement;
+}
+
+const PAGE_LOOKS: Record<string, { short: string; icon: string }> = {
+  Terrain: { short: "Land", icon: "M1 14L5.5 5l2.7 4.6L10.5 6 15 14zM5.5 7.4L3.3 12h4.4zM10.5 8.2L8.9 11l.5.9 3.3.1z" },
+  Buildings: { short: "Town", icon: "M8 1.5L14.5 7H13v7.5H9.5V10h-3v4.5H3V7H1.5z" },
+  Base: { short: "Base", icon: "M1 15V8l4-3v3l4-3v3l4-3v2h2v8z" },
+  Defences: { short: "Def", icon: "M8 1l6 2.2V8c0 3.4-2.5 5.9-6 7-3.5-1.1-6-3.6-6-7V3.2z" },
+  Decorations: { short: "Dress", icon: "M6.5 1h3v1.6a3.2 3.2 0 11-3 0zM7.3 7.4h1.4V13h2.3v2H5v-2h2.3z" },
+  Bridges: { short: "Span", icon: "M1 13V7.5a7 7 0 0114 0V13h-3V8a4 4 0 00-8 0v5zM1 14h14v1H1z" },
+  Units: { short: "Units", icon: "M8 1a2.1 2.1 0 110 4.2A2.1 2.1 0 018 1zM4.5 6.4h7L10.3 11H9.4V15H6.6V11H5.7z" },
+  "Start positions": { short: "Starts", icon: "M3 1h2v14H3zM5 2h9l-2.5 3L14 8H5z" },
+};
+
+/** A page for the rail: its body holds `kids`, headed by its title. */
+function page(title: string, ...kids: Node[]): Page {
+  const look = PAGE_LOOKS[title] ?? { short: title.slice(0, 5), icon: "M2 2h12v12H2z" };
+  const body = el("div", { class: "bld-page", attrs: { "data-page": title } });
+  body.append(el("h2", { class: "bld-page-title", text: title }), ...kids);
+  return { title, short: look.short, icon: look.icon, body };
+}
+
+/** Show one page of the tools panel and light its rail tab, in place. */
+function openPage(title: string): void {
+  builderTab = title;
+  try {
+    store()?.setItem(TAB_STORE, title);
+  } catch {
+    // Private window: the choice lasts this visit.
+  }
+  const root = stage?.root;
+  if (!root) return;
+  for (const tab of root.querySelectorAll<HTMLElement>(".bld-rail-tab[data-page]")) {
+    const on = tab.dataset.page === title;
+    tab.classList.toggle("is-active", on);
+    tab.setAttribute("aria-selected", String(on));
+  }
+  for (const body of root.querySelectorAll<HTMLElement>(".bld-page[data-page]")) body.hidden = body.dataset.page !== title;
+}
+
+/** The page the armed tool lives on, or null for Select and the Eraser. */
+function pageOfTool(id: ToolId): string | null {
+  switch (id) {
+    case "raise":
+    case "lower":
+    case "level":
+    case "mountain":
+    case "ground":
+    case "cover":
+      return "Terrain";
+    case "house":
+      return "Buildings";
+    case "base":
+      return "Base";
+    case "defence":
+      return "Defences";
+    case "lamp":
+    case "clutter":
+    case "road":
+      return "Decorations";
+    case "bridge":
+      return "Bridges";
+    case "unit":
+      return "Units";
+    case "spawn":
+      return "Start positions";
+    default:
+      return null;
+  }
+}
+
+/** Dot the rail tab of the page whose tool is armed, so a tool picked elsewhere is still findable. */
+function markArmedPage(): void {
+  const root = stage?.root;
+  if (!root) return;
+  const armed = pageOfTool(tool.id);
+  for (const tab of root.querySelectorAll<HTMLElement>(".bld-rail-tab[data-page]")) tab.classList.toggle("is-armed", tab.dataset.page === armed);
+}
+
+/** A 16×16 icon button for the stage toolbar. */
+function toolbarButton(icon: string, title: string, onClick: () => void, patch?: Partial<Tool>): HTMLButtonElement {
+  const attrs: Record<string, string> = { type: "button", title };
+  if (patch) attrs["data-tool"] = toolKey({ ...tool, ...patch });
+  const b = el("button", { class: `bld-tb-btn${patch && attrs["data-tool"] === toolKey(tool) ? " is-on" : ""}`, attrs, html: `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="${icon}"/></svg>` });
+  b.addEventListener("click", onClick);
+  return b;
+}
+
+const TB_ICONS = {
+  select: "M3 1.5l10 7.2-4.6.9 2.6 5.2-1.8.9-2.6-5.2L3 13.8z",
+  erase: "M9.6 1.2l5.2 5.2-7.2 7.2H3.8L1 10.8zM4.3 12.2h2.5l4.6-4.6-2.6-2.6L4.2 9.6z",
+  undo: "M6 2.5L1 6.8l5 4.3V8.6h4a2.4 2.4 0 010 4.8H6v2h4a4.4 4.4 0 000-8.8H6z",
+  redo: "M10 2.5l5 4.3-5 4.3V8.6H6a2.4 2.4 0 000 4.8h4v2H6a4.4 4.4 0 010-8.8h4z",
+};
+
+/**
+ * Quick tools in the stage's top-right corner: Select, the Eraser, Undo and Redo, the brush
+ * size, and the turn of whatever turning tool is armed. Lit and refreshed with the palette.
+ */
+function stageToolbar(ctx: Ctx): HTMLElement {
+  const bar = el("div", { class: "bld-toolbar", attrs: { role: "toolbar" } });
+  bar.append(
+    toolbarButton(TB_ICONS.select, "Select (V): pick up, move, turn, delete", () => setTool(ctx, { id: "select" }), { id: "select" }),
+    toolbarButton(TB_ICONS.erase, "Eraser: remove buildings, lamps, clutter, units, starts", () => setTool(ctx, { id: "erase" }), { id: "erase" }),
+    el("span", { class: "bld-tb-sep" }),
+  );
+  const undoBtn = toolbarButton(TB_ICONS.undo, "Undo (Ctrl+Z)", () => step(undo, redo));
+  const redoBtn = toolbarButton(TB_ICONS.redo, "Redo (Ctrl+Y)", () => step(redo, undo));
+  undoBtn.dataset.undo = "1";
+  redoBtn.dataset.redo = "1";
+  bar.append(undoBtn, redoBtn, el("span", { class: "bld-tb-sep" }));
+  const brush = el("div", { class: "bld-tb-group", attrs: { title: "Brush size: [ and ] change it" } });
+  const brushIn = el("input", { attrs: { type: "range", min: "0", max: "24", step: "1", "data-field": "brush" } });
+  brushIn.value = String(tool.brush);
+  brushIn.addEventListener("input", () => {
+    tool.brush = Number(brushIn.value);
+    refreshPalette();
+  });
+  brush.append(el("span", { class: "bld-tb-label", text: "Brush" }), brushIn, el("span", { class: "bld-val", text: `${tool.brush * 2 + 1} tiles`, attrs: { "data-field-val": "brush" } }));
+  const turn = el("div", { class: "bld-tb-group", attrs: { "data-turn-group": "1", title: "Turn the armed piece 15° (scroll does too)" } });
+  const turnBy = (steps: number, text: string): HTMLButtonElement => {
+    const b = el("button", { class: "btn btn-ghost bld-mini", text, attrs: { type: "button" } });
+    b.addEventListener("click", () => setTool(ctx, { turn: M.wrapTurn(tool.turn + steps) }));
+    return b;
+  };
+  turn.append(turnBy(-1, "⟲"), turnLabelEl(), turnBy(1, "⟳"));
+  turn.hidden = !turningTool();
+  bar.append(brush, turn);
+  return bar;
+}
+
+/** Bring the toolbar up to the sheet and tool: undo/redo greyed when empty, the turn shown for a turning tool. */
+function paintToolbar(): void {
+  const root = stage?.root;
+  if (!root) return;
+  const editing = Boolean(sheet) && !newOpen;
+  for (const b of root.querySelectorAll<HTMLButtonElement>(".bld-tb-btn[data-undo]")) b.disabled = !editing || undo.length === 0;
+  for (const b of root.querySelectorAll<HTMLButtonElement>(".bld-tb-btn[data-redo]")) b.disabled = !editing || redo.length === 0;
+  for (const g of root.querySelectorAll<HTMLElement>("[data-turn-group]")) g.hidden = !turningTool();
 }
 
 function sidePanel(ctx: Ctx): HTMLElement {
@@ -3573,7 +3743,8 @@ export function renderBuilder(root: HTMLElement, ctx: Ctx): void {
   const stageBox = el("div", { class: "bld-stage panel" });
   stageBox.append(canvas, status);
   if (!sheet || newOpen) stageBox.append(newForm(ctx));
-  else stageBox.append(viewToggles());
+  else stageBox.append(stageToolbar(ctx), viewToggles());
+  paintToolbar();
   wrap.append(tools, stageBox, sidePanel(ctx));
   screen.append(wrap);
   root.append(screen);
