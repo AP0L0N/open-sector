@@ -360,6 +360,8 @@ export const TITAN_ROCKET_SPLASH_TILES = t(1.3);
 export const TITAN_ROCKET_SPEED = t(16.64) * TILE_SIZE;
 /** Elevation units above the Titan's eye where the pods sit. */
 export const TITAN_ROCKET_POD_LIFT = 6;
+/** The pods sit fixed on the torso: they fire only on a bearing this close to where the torso, and its gun, faces. */
+export const TITAN_POD_ARC_DEG = 12;
 export const TITAN_ROCKET = {
   /** Infantry and soft targets at the blast center. */
   damage: 42,
@@ -2526,6 +2528,13 @@ export const SPOTLIGHT_ON_DAYLIGHT = 0.5;
 export const SPOTLIGHT_REACH_TILES = INFANTRY_SIGHT_TILES + TOWER_SIGHT_BONUS;
 /** Half the beam's width. */
 export const SPOTLIGHT_HALF_DEG = 14;
+/**
+ * The Titan carries the tower's lamp on its torso. Up on its leg jets the lamp
+ * tips down: instead of a beam it lights one round pool of ground ahead of the
+ * Titan, this far out along the lamp's heading, this wide.
+ */
+export const TITAN_LAMP_POOL_AHEAD_TILES = t(7);
+export const TITAN_LAMP_POOL_RADIUS_TILES = t(4.5);
 /** How fast the cab lamp turns, for Rotate and for a patrol sweep. */
 export const SPOTLIGHT_TURN_DEG_PER_SEC = 18;
 /**
@@ -2898,7 +2907,7 @@ export const JUMPJET_FLIGHT: JetFlightDef = {
  * main gun is stowed and only the shoulder pods fire, and only anti-air
  * weapons reach it. Shot down, it drops straight down and goes up on the ground.
  */
-export const TITAN_JET_FUEL_SECONDS = 6;
+export const TITAN_JET_FUEL_SECONDS = 12;
 export const TITAN_JET_FLIGHT: JetFlightDef = {
   fuelSeconds: TITAN_JET_FUEL_SECONDS,
   takeoffMinSeconds: 3,
@@ -4931,7 +4940,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     power: 0,
     tileW: 1,
     tileH: 1,
-    radius: 13,
+    radius: 15,
     moveTilesPerSec: paced(1.15),
     turnDegPerSec: 70,
     rangeTiles: TITAN_RANGE_TILES,
@@ -4959,7 +4968,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rocketAmmo: TITAN_ROCKET_AMMO,
     bracedHpMul: TITAN_BRACED_HP_MUL,
     shellResist: TITAN_SHELL_RESIST,
-    blurb: "Heavy assault walker, built to take a beating: tank shells do it half harm, and no single shell kills it outright. The Tiger's gun on a traversing torso, loaded with armor-piercing shot only, and a four-rocket pod on the shoulders that picks its own target, apart from the gun, and ripples its salvo one rocket after another. Sixteen rockets in the rack; a supply truck refills them. Rockets scatter wide at full reach and draw in as the target closes. They shred infantry, dent tanks, usually break a track from the side or rear, and can burst beside a plane in the air. Switch the pods off to save them. Wades through water with only its torso showing: the main gun stays silent there, the rockets still fire. Deploy plants the outriggers: it cannot move, and its hit points grow by three-quarters until it packs up. Leg jets lift it for a short hop over anything: aloft the gun is stowed and only the pods fire, and only anti-air weapons reach it; the burners take a long while to recover. Its reactor makes it a bomb: destroyed, it goes up in a small nuclear blast that wrecks everything close by, friend or foe. Shot down in the air, it drops straight down and goes up on the ground. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
+    blurb: "Heavy assault walker, built to take a beating: tank shells do it half harm, and no single shell kills it outright. The Tiger's gun on a traversing torso, loaded with armor-piercing shot only, and a four-rocket pod on the shoulders that ripples its salvo one rocket after another. The pods are fixed to the torso: they fire only the way the torso faces, so the Titan turns to bring them to bear as it turns for its gun, and they take any target on that bearing. Sixteen rockets in the rack; a supply truck refills them. Rockets scatter wide at full reach and draw in as the target closes. They shred infantry, dent tanks, usually break a track from the side or rear, and can burst beside a plane in the air. Switch the pods off to save them. Wades through water with only its torso showing: the main gun stays silent there, the rockets still fire. Deploy plants the outriggers: it cannot move, and its hit points grow by three-quarters until it packs up. It strides straight through woods, felling every tree it brushes. A big lamp on the torso lights the ground far ahead at night; Rotate light swings only the lamp. Leg jets lift it for a short hop over anything, and the lamp tips down to light one wide pool of ground ahead of it: aloft the gun is stowed and only the pods fire, and only anti-air weapons reach it; the burners take a long while to recover. Its reactor makes it a bomb: destroyed, it goes up in a small nuclear blast that wrecks everything close by, friend or foe. Shot down in the air, it drops straight down and goes up on the ground. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
   },
   mammoth: {
     type: "mammoth",
@@ -6013,9 +6022,9 @@ export function crushes(mover: EntityType, victim: EntityType): boolean {
   return mover === "apocalypse" && APOCALYPSE_CRUSHES.includes(victim);
 }
 
-/** A hull heavy enough to drive straight through woods, not only over a lone tree: the Apocalypse. */
+/** A hull heavy enough to go straight through woods, not only over a lone tree: the Apocalypse, and the Titan on its legs. */
 export function rollsThroughWoods(type: EntityType): boolean {
-  return type === "apocalypse";
+  return type === "apocalypse" || type === "titan";
 }
 
 /**
