@@ -30,6 +30,7 @@ import {
   deckAt,
   moveFeature,
   QUARTER_TURN,
+  sectionEndAt,
   sectionLine,
   paintRoad,
   roadLegs,
@@ -340,6 +341,33 @@ describe("builder select and defences", () => {
     if (back.ok) assert.deepEqual(back.spec.features, s.features);
     // Laid twice, every section lands on one already there.
     assert.deepEqual(laySections(s, pieces), { laid: 0, refused: pieces.length });
+  });
+
+  it("carries a new line on from the open end of a placed one of the same kind", () => {
+    const s = fresh();
+    const first = sectionLine("wall", [tileWorld(70, 60), tileWorld(82, 60)], QUARTER_TURN);
+    assert.deepEqual(laySections(s, first), { laid: first.length, refused: 0 });
+    const tip = tileWorld(81, 60);
+    const end = sectionEndAt(s, "wall", tip.x, tip.y);
+    assert.ok(end, "the east end is open");
+    assert.equal(end.turn, first[first.length - 1]!.turn);
+    assert.equal(sectionEndAt(s, "sandbags", tip.x, tip.y), null, "a sandbag line does not carry on a wall");
+    const mid = tileWorld(76, 60);
+    assert.equal(sectionEndAt(s, "wall", mid.x, mid.y), null, "the middle is joined at both ends");
+    // Round a corner to the south, from the open end.
+    const more = sectionLine("wall", [{ x: end.x, y: end.y }, { x: end.x, y: end.y + 10 * TILE_SIZE }], end.turn, end.lead);
+    assert.ok(more.length >= 3);
+    assert.ok(more.every((f) => f.turn !== first[0]!.turn), "the corner leg runs the other way");
+    assert.deepEqual(laySections(s, more), { laid: more.length, refused: 0 }, "nothing overlaps the standing end");
+    assert.equal(sectionEndAt(s, "wall", tip.x, tip.y), null, "that end is joined now");
+    // A line drawn from open ground to the west end, at an angle that does not snap onto it,
+    // is laid back from that end: flush there, the slack at the free start.
+    const west = tileWorld(70, 60);
+    const open = sectionEndAt(s, "wall", west.x, west.y);
+    assert.ok(open);
+    const joining = sectionLine("wall", [{ x: open.x, y: open.y }, tileWorld(40, 77)], open.turn, open.lead);
+    assert.deepEqual(laySections(s, joining), { laid: joining.length, refused: 0 });
+    assert.equal(sectionEndAt(s, "wall", west.x, west.y), null, "joined flush");
   });
 
   it("lays a bridge brick by brick like a wall, across any width of water, and saves it", () => {

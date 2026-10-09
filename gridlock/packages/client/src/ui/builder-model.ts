@@ -43,9 +43,12 @@ import {
   featureContains,
   featureOnPad,
   featuresOverlap,
+  featureAngle,
   fieldCornerStart,
+  fieldEndAt,
   fieldPath,
   fieldSpan,
+  type FieldEnd,
   fieldTurn,
   bridgeBrickProblem,
   bridgePath,
@@ -902,17 +905,22 @@ export function tileWorld(tx: number, ty: number): { x: number; y: number } {
 /**
  * The corners of a line with every leg turned to the nearest 15°. Each leg is
  * measured from where the last one really ends, the way `fieldPath` lays it,
- * so every section of the line stands on a whole turn step.
+ * so every section of the line stands on a whole turn step. With `lead` the line carries on
+ * from a standing one, so the first leg turns off it in a mitre like any other corner.
  */
-export function snapLegs(type: MapSectionType, points: readonly { x: number; y: number }[]): { x: number; y: number }[] {
+export function snapLegs(
+  type: MapSectionType,
+  points: readonly { x: number; y: number }[],
+  lead?: { x: number; y: number } | null,
+): { x: number; y: number }[] {
   const span = fieldSpan(type);
   const first = points[0];
   if (!span || !first) return [];
   const out = [{ ...first }];
   let sx = first.x;
   let sy = first.y;
-  let ux: number | null = null;
-  let uy = 0;
+  let ux: number | null = lead ? lead.x : null;
+  let uy = lead ? lead.y : 0;
   for (let i = 1; i < points.length; i++) {
     const p = points[i]!;
     const dist = Math.hypot(p.x - sx, p.y - sy);
@@ -949,13 +957,32 @@ export function snapLegs(type: MapSectionType, points: readonly { x: number; y: 
 /**
  * The sections a line through these world points lays, as map features. `turn` faces a
  * lone section and picks which flank of a longer line is its front, like the wheel in a match.
+ * With `lead` the line carries on from a standing section ending at the first point (see
+ * `fieldPath`); `turn` is then that section's, so the front holds round the join.
  */
-export function sectionLine(type: MapSectionType, points: readonly { x: number; y: number }[], turn: number): MapFeature[] {
+export function sectionLine(
+  type: MapSectionType,
+  points: readonly { x: number; y: number }[],
+  turn: number,
+  lead?: { x: number; y: number } | null,
+): MapFeature[] {
   const at = (v: number): number => Math.round((v / TILE_SIZE - 0.5) * TILE_SIZE) / TILE_SIZE;
-  return fieldPath(type, snapLegs(type, points), wrapTurn(turn) * BUILDING_TURN_STEP).map((p) => {
+  return fieldPath(type, snapLegs(type, points, lead), wrapTurn(turn) * BUILDING_TURN_STEP, lead).map((p) => {
     const t = wrapTurn(p.facing / BUILDING_TURN_STEP);
     return { type, x: at(p.x), y: at(p.y), facing: turnQuarter(t), turn: t };
   });
+}
+
+/**
+ * The open end of a placed `type` section under world point (wx, wy), for a new line to carry
+ * on from or join onto. Any section touching an end closes it. `turn` is the section's own.
+ */
+export function sectionEndAt(s: Sheet, type: MapSectionType, wx: number, wy: number): (FieldEnd & { turn: number }) | null {
+  const pieces = s.features
+    .filter((f) => isMapSection(f.type))
+    .map((f) => ({ type: f.type, x: (f.x + 0.5) * TILE_SIZE, y: (f.y + 0.5) * TILE_SIZE, facing: featureAngle(f) }));
+  const end = fieldEndAt(type, pieces, wx, wy);
+  return end ? { ...end, turn: wrapTurn(Math.round(end.facing / BUILDING_TURN_STEP)) } : null;
 }
 
 /**

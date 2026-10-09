@@ -306,7 +306,7 @@ const collapsed = loadCollapsed();
  * A sandbag, wall, or road line being drawn, as in a match: the press sets its start, each
  * click pins a corner, Enter lays it. World points on fine-tile centres.
  */
-const line: { points: Pt[]; press: Pt | null } = { points: [], press: null };
+const line: { points: Pt[]; press: Pt | null; from: { lead: Pt; turn: number } | null } = { points: [], press: null, from: null };
 /** Trackpad wheel travel toward the next 15° notch. */
 let wheelCarry = 0;
 const view = { zoom: 0, px: 0, py: 0 };
@@ -724,6 +724,53 @@ function linePending(): boolean {
 function dropLine(): void {
   line.points = [];
   line.press = null;
+  line.from = null;
+}
+
+/** The open end of a placed section of the armed type under the cursor: a line can start or finish there. */
+function sectionEndHere(): ReturnType<typeof M.sectionEndAt> {
+  const s = sheet;
+  if (!s || !hover.inside || tool.id !== "defence" || !isMapSection(tool.defence)) return null;
+  const w = M.tileWorld(hover.x, hover.y);
+  return M.sectionEndAt(s, tool.defence, w.x, w.y);
+}
+
+/** The standing section the line carries on from: the one its press took, or before a press the one under the cursor. */
+function lineFrom(): { at: Pt; lead: Pt; turn: number } | null {
+  const start = line.points[0] ?? line.press;
+  if (start) return line.from ? { at: start, ...line.from } : null;
+  const end = sectionEndHere();
+  return end ? { at: { x: end.x, y: end.y }, lead: end.lead, turn: end.turn } : null;
+}
+
+/** Where the line starts, or would start on a click. */
+function lineStartPoint(): Pt | null {
+  return line.points[0] ?? line.press ?? lineFrom()?.at ?? null;
+}
+
+/** The open end of a like section the live leg finishes on, or null. Never the end the line set off from. */
+function lineJoin(): ReturnType<typeof M.sectionEndAt> {
+  const start = line.points[0] ?? line.press;
+  if (!start) return null;
+  const end = sectionEndHere();
+  return end && Math.hypot(end.x - start.x, end.y - start.y) >= 1 ? end : null;
+}
+
+/** Where the live leg ends: the cursor, or the open end of a like section it joins onto. */
+function lineCursor(): Pt {
+  const start = line.points[0] ?? line.press;
+  const end = start ? lineJoin() : sectionEndHere();
+  return end ? { x: end.x, y: end.y } : M.tileWorld(hover.x, hover.y);
+}
+
+/**
+ * The sections a sandbag or wall line through `points` lays. Carried on from a standing
+ * section it is laid from that end; finishing on one (`join`) and not started from one, it
+ * is laid back from the end it joins, so the join is flush and any slack falls at the free start.
+ */
+function sectionPieces(type: MapSectionType, points: readonly Pt[], from: { lead: Pt; turn: number } | null, join: { lead: Pt; turn: number } | null): MapFeature[] {
+  if (join && !from && points.length >= 2) return M.sectionLine(type, [...points].reverse(), join.turn, join.lead);
+  return M.sectionLine(type, points, from?.turn ?? tool.turn, from?.lead);
 }
 
 /** Degrees a 15° turn reads as: 0 east, 90 south. */
@@ -742,9 +789,13 @@ function lineGhost(): MapFeature[] {
   const bridge = tool.id === "bridge";
   if (!bridge && (tool.id !== "defence" || !isMapSection(tool.defence))) return [];
   if (!hover.inside && line.points.length === 0 && !line.press) return [];
-  const pts = fieldPointsWithCursor(line.points, line.press, M.tileWorld(hover.x, hover.y));
-  if (bridge) return M.bridgeLine(tool.bridge, pts, tool.turn, M.deckAt(sheet!, pts[0]!));
-  return M.sectionLine(tool.defence as MapSectionType, pts, tool.turn);
+  if (bridge) {
+    const pts = fieldPointsWithCursor(line.points, line.press, M.tileWorld(hover.x, hover.y));
+    return M.bridgeLine(tool.bridge, pts, tool.turn, M.deckAt(sheet!, pts[0]!));
+  }
+  const from = lineFrom();
+  const pts = fieldPointsWithCursor(line.points, line.press, lineCursor());
+  return sectionPieces(tool.defence as MapSectionType, pts, from, lineJoin());
 }
 
 /** The centreline the drawn road would lay, its live leg running to the cursor. */
@@ -1011,7 +1062,7 @@ function drawPlanView(c: CanvasRenderingContext2D, s: M.Sheet, w: number, h: num
       drawHouse(f, bad ? "rgba(255,90,74,0.45)" : "rgba(125,255,106,0.45)", bad ? "#ff5a4a" : "#7dff6a");
     }
     // The start of the line, as the match marks it.
-    const start = line.points[0] ?? line.press;
+    const start = lineStartPoint();
     if (start) {
       const x = sx(start.x / TILE_SIZE);
       const y = sy(start.y / TILE_SIZE);
@@ -1184,7 +1235,10 @@ function drawTurnHint(c: CanvasRenderingContext2D, ax: number, ay: number, secti
   } else if (tool.id === "bridge") {
     if (line.points.length > 0) lines.push(`${sections} brick${sections === 1 ? "" : "s"} · Enter lays the bridge · click adds a leg · right-click takes one back`);
     else lines.push("Click on one shore to start · Enter lays one brick");
-  } else if (line.points.length > 0) lines.push(`${sections} section${sections === 1 ? "" : "s"} · Enter places · click adds a leg · right-click takes one back`);
+  } else if (line.points.length > 0) {
+    lines.push(`${sections} section${sections === 1 ? "" : "s"} · Enter places · click adds a leg · right-click takes one back`);
+    if (lineJoin()) lines.push("Click joins it to this line and places it");
+  } else if (lineTool() && lineFrom()) lines.push("Click to carry on this line");
   else if (lineTool()) lines.push("Click to start a line · Enter places one section");
   c.font = "11px 'Share Tech Mono', monospace";
   c.textAlign = "left";
@@ -1232,7 +1286,7 @@ function drawGameView(c: CanvasRenderingContext2D, s: M.Sheet, w: number, h: num
             : -1,
     selectedSpawn: selected?.kind === "spawn" ? selected.id : 0,
     ghosts,
-    lineStart: pieces.length > 0 || road.length > 0 ? (line.points[0] ?? line.press) : null,
+    lineStart: pieces.length > 0 || road.length > 0 ? lineStartPoint() : null,
     road: M.roadQuads(road, tool.roadWidth),
     spawnGhost,
     brush: pointerOver && isBrush(tool.id) && brushReaches(hover.x, hover.y) ? { x: hover.x, y: hover.y, r: tool.brush } : null,
@@ -1800,13 +1854,13 @@ function commitBridge(): void {
   finishStroke();
 }
 
-/** Lay the drawn sandbag or wall line, the way Enter confirms one in a match. */
-function commitLine(): void {
+/** Lay the drawn sandbag or wall line, the way Enter confirms one in a match. `join`: it finishes on that open end. */
+function commitLine(join: { lead: Pt; turn: number } | null = null): void {
   const s = sheet;
   if (tool.id === "road") return commitRoad();
   if (tool.id === "bridge") return commitBridge();
   if (!s || !lineTool() || !isMapSection(tool.defence) || line.points.length === 0) return;
-  const pieces = M.sectionLine(tool.defence, line.points, tool.turn);
+  const pieces = sectionPieces(tool.defence, line.points, line.from, join);
   dropLine();
   pushUndo();
   const { laid, refused } = M.laySections(s, pieces);
@@ -1825,6 +1879,7 @@ function commitLine(): void {
 function undoLinePoint(): void {
   line.points = undoFieldPoint(line.points);
   line.press = null;
+  if (line.points.length === 0) line.from = null;
   say(line.points.length > 0 ? "" : "Line cleared.");
   queueDraw();
 }
@@ -1921,6 +1976,12 @@ function onDown(e: PointerEvent): void {
   if (lineTool()) {
     // As in a match: the press sets the start, each release pins a corner, Enter lays the line.
     line.press = M.tileWorld(t.x, t.y);
+    if (line.points.length === 0) {
+      // Pressed on the open end of a like section: the new line carries on from it.
+      const from = lineFrom();
+      line.from = from ? { lead: from.lead, turn: from.turn } : null;
+      if (from) line.press = from.at;
+    }
     drag = { kind: "line" };
     queueDraw();
     return;
@@ -2064,6 +2125,8 @@ function onUp(): void {
     finishStroke();
   } else if (d.kind === "line") {
     const press = line.press;
+    const join = lineJoin();
+    const release = lineCursor();
     line.press = null;
     if (!press || !lineTool()) return;
     const len =
@@ -2072,7 +2135,9 @@ function onUp(): void {
         : tool.id === "bridge"
           ? bridgeBrickLength(tool.bridge)
           : (isMapSection(tool.defence) && fieldSpan(tool.defence)?.length) || 24;
-    line.points = pinFieldPoint(line.points, press, M.tileWorld(hover.x, hover.y), len * 0.5);
+    line.points = pinFieldPoint(line.points, press, release, len * 0.5);
+    // Released on the open end of a like line: the two are joined, and the line goes down.
+    if (join && line.points.length >= 2) commitLine(join);
     queueDraw();
   } else if (d.kind === "pan") {
     // A still right-click takes back a line's last corner; with nothing left to take back it puts the placing tool down, as Esc does.

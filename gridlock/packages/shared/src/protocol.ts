@@ -906,6 +906,11 @@ export type ClientMessage =
        * and the drag end; pieces follow every leg and turn at each corner.
        */
       path?: { x: number; y: number }[];
+      /**
+       * With `path`: the line carries on from a standing one ending at its first corner, which
+       * runs into it along this direction; `facing` is then that end piece's, so the front holds.
+       */
+      lead?: { x: number; y: number };
     }
   /** Selected engineers walk to the tile and raise this base building there. A Smelter on distant scrap. */
   | { type: "cmd.construct"; ids: number[]; building: BuildingType; tx: number; ty: number }

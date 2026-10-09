@@ -313,8 +313,17 @@ export function fieldCornerStart(
  * `facing`. The first leg faces whichever flank is closer to `facing`, and every later
  * leg faces the same flank, so the front of the line stays the front round every corner.
  * A leg shorter than half a piece, or one folded back past FIELD_TURN_MAX, is skipped.
+ *
+ * With `lead`, the line carries on from a standing one whose end is the first point: `lead`
+ * is the way that line runs into it and `facing` is its end piece's. The first leg turns off
+ * it in a mitre like any corner and keeps its front, and a lone point is one more piece along it.
  */
-export function fieldPath(type: FieldStructureType, points: readonly { x: number; y: number }[], facing: number): FieldPiece[] {
+export function fieldPath(
+  type: FieldStructureType,
+  points: readonly { x: number; y: number }[],
+  facing: number,
+  lead?: { x: number; y: number } | null,
+): FieldPiece[] {
   const span = fieldSpan(type);
   if (!span || points.length === 0) return [];
   const first = points[0]!;
@@ -325,6 +334,12 @@ export function fieldPath(type: FieldStructureType, points: readonly { x: number
   let uy = 0;
   // Which flank the front is on: 1 right of the direction of travel, -1 left. Set by the first leg.
   let side = 0;
+  const leadLen = lead ? Math.hypot(lead.x, lead.y) : 0;
+  if (lead && leadLen > 1e-6) {
+    ux = lead.x / leadLen;
+    uy = lead.y / leadLen;
+    side = Math.cos(Math.atan2(-ux, uy) - facing) < 0 ? -1 : 1;
+  }
   for (let i = 1; i < points.length && out.length < FIELD_PIECES_MAX; i++) {
     const target = points[i]!;
     const dx = target.x - sx;
@@ -357,8 +372,104 @@ export function fieldPath(type: FieldStructureType, points: readonly { x: number
     ux = vx;
     uy = vy;
   }
+  if (out.length === 0 && ux != null && side !== 0) {
+    // Carrying on from a standing line with nowhere drawn yet: one more piece straight on.
+    const right = Math.atan2(-ux, uy);
+    const half = span.length / 2;
+    return [{ x: first.x + ux * half, y: first.y + uy * half, facing: side > 0 ? right : right + Math.PI }];
+  }
   if (out.length === 0) return [{ x: first.x, y: first.y, facing }];
   return out;
+}
+
+/** A standing piece a new line can carry on from: one of its open ends, and how its line runs into it. */
+export interface FieldEnd {
+  /** World point of the open end. */
+  x: number;
+  y: number;
+  /** Unit direction from the piece's middle out through that end. */
+  lead: { x: number; y: number };
+  /** The piece's own facing, so the new line keeps its front. */
+  facing: number;
+}
+
+/** The two ends of a field piece along its run. */
+export function fieldPieceEnds(type: FieldStructureType, x: number, y: number, facing: number): [{ x: number; y: number }, { x: number; y: number }] | null {
+  const span = fieldSpan(type);
+  if (!span) return null;
+  const { tx, ty } = wallAxes(facing);
+  const half = span.length / 2;
+  return [
+    { x: x - tx * half, y: y - ty * half },
+    { x: x + tx * half, y: y + ty * half },
+  ];
+}
+
+/**
+ * The open end of the `type` piece under world point (px, py) a new line can carry on from, or null.
+ * An end is open when no other piece in `pieces` (any field type) touches it; a piece with both
+ * ends open gives the one nearer the point. The middle of a line, joined at both ends, gives null.
+ * `mine` limits which pieces a line may carry on from; every piece still closes the ends it touches.
+ */
+export function fieldEndAt<P extends { type: string; x: number; y: number; facing: number }>(
+  type: FieldStructureType,
+  pieces: Iterable<P>,
+  px: number,
+  py: number,
+  mine?: (p: P) => boolean,
+): FieldEnd | null {
+  const span = fieldSpan(type);
+  if (!span || type === "gate") return null;
+  const all: { type: FieldStructureType; x: number; y: number; facing: number; mine: boolean }[] = [];
+  for (const p of pieces) {
+    const t = p.type as EntityType;
+    if (isFieldStructure(t) && fieldSpan(t)) all.push({ type: t, x: p.x, y: p.y, facing: p.facing, mine: !mine || mine(p) });
+  }
+  let hit: (typeof all)[number] | null = null;
+  let best = Infinity;
+  for (const p of all) {
+    if (p.type !== type || !p.mine) continue;
+    const { fx, fy, tx, ty } = wallAxes(p.facing);
+    const dx = px - p.x;
+    const dy = py - p.y;
+    const along = Math.abs(dx * tx + dy * ty);
+    const across = Math.abs(dx * fx + dy * fy);
+    if (along > span.length / 2 + 2 || across > span.thick / 2 + 6) continue;
+    const d = Math.hypot(dx, dy);
+    if (d < best) {
+      best = d;
+      hit = p;
+    }
+  }
+  if (!hit) return null;
+  const ends = fieldPieceEnds(type, hit.x, hit.y, hit.facing)!;
+  // Something touches an end when that end lies on its centreline run, within its half-thickness.
+  const touched = (e: { x: number; y: number }): boolean =>
+    all.some((o) => {
+      if (o === hit) return false;
+      const os = fieldSpan(o.type)!;
+      const { fx, fy, tx, ty } = wallAxes(o.facing);
+      const dx = e.x - o.x;
+      const dy = e.y - o.y;
+      const along = Math.max(0, Math.abs(dx * tx + dy * ty) - os.length / 2);
+      const across = Math.max(0, Math.abs(dx * fx + dy * fy) - os.thick / 2);
+      return Math.hypot(along, across) <= Math.max(span.thick, os.thick) * 0.6 + 1.5;
+    });
+  let pick: { x: number; y: number } | null = null;
+  let pickD = Infinity;
+  for (const e of ends) {
+    if (touched(e)) continue;
+    const d = Math.hypot(px - e.x, py - e.y);
+    if (d < pickD) {
+      pickD = d;
+      pick = e;
+    }
+  }
+  if (!pick) return null;
+  const lx = pick.x - hit.x;
+  const ly = pick.y - hit.y;
+  const len = Math.hypot(lx, ly) || 1;
+  return { x: pick.x, y: pick.y, lead: { x: lx / len, y: ly / len }, facing: hit.facing };
 }
 
 /** The pieces an order describes: a polyline, a drag, or one piece. */
@@ -370,11 +481,12 @@ export function fieldPiecesFor(
   x2?: number,
   y2?: number,
   path?: readonly { x: number; y: number }[],
+  lead?: { x: number; y: number } | null,
 ): FieldPiece[] {
   if (path && path.length > 0) {
     const pts = path.filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
     if (pts.length === 0) return [];
-    return fieldPath(type, pts, facing);
+    return fieldPath(type, pts, facing, lead);
   }
   const line = x2 != null && y2 != null && Number.isFinite(x2) && Number.isFinite(y2);
   return line ? fieldLine(type, x, y, x2, y2, facing) : [{ x, y, facing }];
@@ -439,12 +551,13 @@ export function orderFieldBuild(
   x2?: number,
   y2?: number,
   path?: readonly { x: number; y: number }[],
+  lead?: { x: number; y: number },
 ): string | null {
   const crew = engineers.filter((e) => e.type === "engineer" && e.hp > 0 && !e.wreck);
   if (crew.length === 0) return "Select an engineer.";
   if (structure === "gate") return "Build a gate from the Defences tab.";
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(facing)) return "Cannot place there.";
-  const pieces = fieldPiecesFor(structure, x, y, facing, x2, y2, path).filter((p) => pieceBuildable(state, structure, p, crew[0]!.ownerId));
+  const pieces = fieldPiecesFor(structure, x, y, facing, x2, y2, path, lead).filter((p) => pieceBuildable(state, structure, p, crew[0]!.ownerId));
   if (pieces.length === 0) return "Cannot place there.";
   const workers = crew.slice(0, pieces.length);
   const ux = pieces.length > 1 ? pieces[pieces.length - 1]!.x - pieces[0]!.x : 0;
