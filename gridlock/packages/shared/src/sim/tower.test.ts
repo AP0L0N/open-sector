@@ -12,6 +12,7 @@ import {
   TOWER_GARRISON_HP_MUL,
   TOWER_REACH_BONUS,
   TOWER_SIGHT_BONUS,
+  SLIT_BULLET_WOUND_MUL,
   TOWER_WOUND_MUL,
   TICK_DT,
   catalog,
@@ -117,6 +118,25 @@ describe("watch tower", () => {
       assert.ok(took >= 1 && took <= Math.ceil(50 * TOWER_WOUND_MUL * 1.1), `took ${took}`);
       inf.hp = inf.hpMax;
     }
+  });
+
+  it("stops two thirds of the bullets its cab walls let through", () => {
+    const { state, a } = twoPlayerMatch();
+    const tower = structureAt(state, "tower", a);
+    const inf = trooper(state, "rifleman", a);
+    assert.equal(enterGarrison(state, inf, tower), true);
+    assert.equal(catalog("tower").garrisonBulletMul, SLIT_BULLET_WOUND_MUL);
+    const sum = (bullet: boolean): number => {
+      let total = 0;
+      for (let i = 0; i < 400; i++) {
+        inf.hp = inf.hpMax;
+        woundGarrison(state, tower, 120, 7.92, false, bullet);
+        total += inf.hpMax - inf.hp;
+      }
+      return total;
+    };
+    const ratio = sum(true) / sum(false);
+    assert.ok(ratio > 0.28 && ratio < 0.4, `bullet share ${ratio.toFixed(3)}`);
   });
 
   it("sees far farther than a house window, but its rifles reach only a house window farther", () => {

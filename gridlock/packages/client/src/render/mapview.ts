@@ -9903,7 +9903,7 @@ export class MapView {
     // Cyborg contacts: orange for heat, cyan for a hull on the APS radar.
     for (const c of this.curr.thermal ?? []) {
       ctx.fillStyle = c.armored ? "#78e1ff" : "#e0781a";
-      ctx.fillRect((c.x / ts) * scale - 1.5, (c.y / ts) * scale - 1.5, 3, 3);
+      ctx.fillRect((c.x / ts) * scale - 1, (c.y / ts) * scale - 1, 2, 2);
     }
   }
 }

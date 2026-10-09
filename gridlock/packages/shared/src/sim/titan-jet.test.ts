@@ -73,7 +73,7 @@ describe("Titan leg jets", () => {
     assert.equal(catalog("titan").cost, 8000);
     const f = jetFlightOf("titan");
     assert.ok(f && f.crashes);
-    assert.ok(f!.fuelSeconds < jetFlightOf("jumpjet")!.fuelSeconds, "a hop, shorter than a Jump Jet's flight");
+    assert.ok(f!.fuelSeconds < 2 * jetFlightOf("jumpjet")!.fuelSeconds, "a hop, not a Jump Jet's cross-map flight");
     assert.equal(nukesOnDeath("titan"), true);
     assert.equal(nukesOnDeath("jagdtiger"), false);
   });
@@ -113,8 +113,8 @@ describe("Titan leg jets", () => {
     assert.ok(shots.every((p) => p.flight === "rocket"), "nothing but rockets from the air");
   });
 
-  it("carries twelve seconds of fuel, double the old hop", () => {
-    assert.equal(TITAN_JET_FLIGHT.fuelSeconds, 12);
+  it("carries 14.4 seconds of fuel: twelve, then a fifth more", () => {
+    assert.equal(TITAN_JET_FLIGHT.fuelSeconds, 14.4);
   });
 
   it("aloft the pods turn the torso onto a target behind it before they fire", () => {

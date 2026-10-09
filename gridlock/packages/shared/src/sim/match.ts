@@ -42,6 +42,7 @@ import { tickSmoke } from "./smoke.js";
 import { maybeCookOff, tickFires } from "./flame.js";
 import { tickBipod, tickStance } from "./stance.js";
 import { tickCollision, wasFlattened } from "./collision.js";
+import { tickThermal } from "./thermal.js";
 import { tickDeploy } from "./deploy.js";
 import { tickSmelters } from "./smelter.js";
 import { tickConstructs } from "./construct.js";
@@ -370,6 +371,7 @@ function stepHeld(state: MatchState, dt: number): void {
   state.phaseRev++;
   tickCollision(state, dt);
   syncTowedGuns(state);
+  tickThermal(state);
   state.phaseRev++;
   tickMines(state, dt);
   tickCrates(state, dt);

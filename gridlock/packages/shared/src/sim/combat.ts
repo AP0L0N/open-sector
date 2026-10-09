@@ -217,6 +217,7 @@ import {
   garrisonLooksOccupied,
   livingGarrison,
   garrisonMuzzleToward,
+  isBulletRound,
   woundDeckGunners,
   syncHullGarrisons,
   wallsShieldGarrison,
@@ -244,6 +245,7 @@ import { fireLaser } from "./laser.js";
 import { distToRoute } from "./patrol.js";
 import { activateSpatial, anyHostileNear, clearSpatial, queryCapsules, queryCircle, querySegment, spatialGrid, type SpatialGrid } from "./spatial.js";
 import { canSeeEntity, visionMask } from "./vision.js";
+import { canEngage } from "./thermal.js";
 import { hideScout, woundScout } from "./scout.js";
 import { twinCiwsMountPoint } from "./twin-ciws.js";
 import { escorting, reversing, stepTurn, turnToward, turnTurretTo, turnTurretToward } from "./orders.js";
@@ -1471,10 +1473,11 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
 
   // Auto-fire, attack-move, and guard drop a target the side cannot see.
   // A planted mortar still lobs past its own eyes when a teammate has the target.
+  // A Cyborg set to engage contacts keeps one his side's thermal or APS still reads.
   if (
     target &&
     e.order?.kind !== "forceattack" &&
-    !canSeeEntity(state, e.ownerId, target)
+    !canEngage(state, e, target)
   ) {
     if (e.order?.auto) {
       e.order = null;
@@ -3298,7 +3301,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       if (isConcreteLine(blocker.e.type)) {
         // A shell chips the concrete. Any round that stops on a manned Large wall reaches the slits.
         if (isTankShell(p)) takeDamage(blocker.e, Math.max(1, Math.round(p.damage)), state.tick);
-        if (wallsShieldGarrison(state, blocker.e)) woundGarrison(state, blocker.e, p.damage, p.caliber, false);
+        if (wallsShieldGarrison(state, blocker.e)) woundGarrison(state, blocker.e, p.damage, p.caliber, false, isBulletRound(p));
         pushImpact(state, p, "hit", blocker.x, blocker.y);
         continue;
       }
@@ -3461,7 +3464,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       }
       hideScout(state, e);
     }
-    if (occupied) woundGarrison(state, e, res.damage, p.caliber, !!p.plunging);
+    if (occupied) woundGarrison(state, e, res.damage, p.caliber, !!p.plunging, isBulletRound(p));
     else woundDeckGunners(state, e, p.damage);
     // A bullet that meets the body can smash the lamps, even when it only sparks.
     if (e.hp > 0 && !e.wreck) rollLamp(e, lampShotOf(p), rand);
@@ -3812,7 +3815,7 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     if (e.type === "artillery" && d < (ARTILLERY_MIN_RANGE_TILES * state.tileSize) ** 2) continue;
     if (isBattleship(e.type) && d < (BATTLESHIP_MIN_RANGE_TILES * state.tileSize) ** 2) continue;
     if (coneOnly && !inGuardCone(e, o)) continue;
-    if (!canSeeEntity(state, e.ownerId, o)) continue;
+    if (!canEngage(state, e, o)) continue;
     if (!canAimWeapon(state, e, o.x, o.y, o)) continue;
     if ((isInfantryType(e.type) || twinCiwsOf(e.type)) && !infantryRoundCanHarm(state, e, o)) continue;
     near.push({ o, d, i: near.length });

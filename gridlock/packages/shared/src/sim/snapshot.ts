@@ -489,6 +489,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       clip: friendly && (isInfantryType(e.type) || beltOf(e.type)) ? e.clip : undefined,
       guns: friendly && e.type === "walker" ? walkerGunsOf(e) : undefined,
       fieldDivert: friendly && e.hp > 0 ? e.fieldDivert : undefined,
+      engageContacts: friendly && e.hp > 0 ? e.engageContacts : undefined,
       selfDestruct: friendly && e.type === "walker" && !e.wreck ? !e.selfDestructOff : undefined,
       charging: e.type === "walker" && e.charging ? true : undefined,
       gatling: gatlingView(state, e),
