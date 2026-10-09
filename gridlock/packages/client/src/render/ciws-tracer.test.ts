@@ -15,9 +15,9 @@ const ground = () => 0;
 
 describe("CIWS tracers", () => {
   it("lights one round in CIWS_TRACER_EVERY", () => {
-    const impacts = Array.from({ length: 30 }, (_, k) => ({ id: 500 + k, x: 300, y: 100 + k }));
+    const impacts = Array.from({ length: CIWS_TRACER_EVERY * 4 }, (_, k) => ({ id: 500 + k, x: 300, y: 100 + k }));
     const streaks = ciwsTracers(muzzle, impacts, ground, 0, 32);
-    assert.equal(streaks.length, 30 / CIWS_TRACER_EVERY);
+    assert.equal(streaks.length, 4);
     assert.ok(streaks.every((s) => isTracerRound(s.id)));
   });
 
@@ -25,8 +25,8 @@ describe("CIWS tracers", () => {
     const [up, down] = ciwsTracers(
       muzzle,
       [
-        { id: 600, x: 400, y: 100, airZ: 40 },
-        { id: 603, x: 200, y: 140 },
+        { id: CIWS_TRACER_EVERY * 70, x: 400, y: 100, airZ: 40 },
+        { id: CIWS_TRACER_EVERY * 71, x: 200, y: 140 },
       ],
       () => 1.5,
       0,
@@ -38,7 +38,7 @@ describe("CIWS tracers", () => {
   });
 
   it("spreads one snapshot's rounds into a stream, oldest first", () => {
-    const impacts = Array.from({ length: 9 }, (_, k) => ({ id: 900 - k * 3, x: 300, y: 100 }));
+    const impacts = Array.from({ length: 9 }, (_, k) => ({ id: 900 - k * CIWS_TRACER_EVERY, x: 300, y: 100 }));
     const streaks = ciwsTracers(muzzle, impacts, ground, 1000, 32);
     const ats = streaks.map((s) => s.at);
     assert.deepEqual(ats, [...ats].sort((a, b) => a - b));
