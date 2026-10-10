@@ -1,4 +1,4 @@
-import { shieldSweep } from "./energy-shield.js";
+import { shieldSweep, type ShieldHit } from "./energy-shield.js";
 import {
   COMMANDER_HP_REGEN_PER_SEC,
   FORCE_FIELD_DELAY,
@@ -101,6 +101,25 @@ export function fireLaser(
   const bearing = Math.atan2(aimY - e.y, aimX - e.x);
   if (target && !isInfantryType(target.type)) {
     const dist = Math.hypot(target.x - e.x, target.y - e.y);
+    // An enemy energy wall in the way is the one thing a beam glances off: it stops there and drains the wall.
+    const guard = shieldSweep(state, e.ownerId, e.x, e.y, target.x, target.y);
+    if (guard) {
+      const len = dist * guard.t;
+      e.laser = {
+        a0: bearing,
+        a1: bearing,
+        startTick: state.tick,
+        endTick: state.tick + secondsToTicks(LASER_LINE_SECONDS),
+        lens: [len],
+        line: true,
+        swept: 1,
+        hit: [],
+      };
+      burnTreesAlong(state, e, bearing, len);
+      burnSoldiersAlong(state, e, bearing, len, target.id);
+      glanceOffShield(state, e, guard, bearing);
+      return;
+    }
     e.laser = {
       a0: bearing,
       a1: bearing,
@@ -280,6 +299,25 @@ function burnSoldier(state: MatchState, e: Entity, o: Entity, ux: number, uy: nu
     y: o.y,
     vx: ux,
     vy: uy,
+    fromId: e.id,
+    caliber: LASER.caliber,
+    laser: true,
+  });
+}
+
+/** The beam meets an enemy energy wall: the wall loses what the beam would cut from a hull, and the beam glances off. */
+function glanceOffShield(state: MatchState, e: Entity, guard: ShieldHit, bearing: number): void {
+  const s = guard.s;
+  s.hp = Math.max(0, s.hp - factionDamage(e.type, LASER_ARMOR_DAMAGE));
+  s.hitTick = state.tick;
+  state.impacts.push({
+    id: state.nextId++,
+    ownerId: e.ownerId,
+    kind: "ricochet",
+    x: guard.x,
+    y: guard.y,
+    vx: -Math.cos(bearing),
+    vy: -Math.sin(bearing),
     fromId: e.id,
     caliber: LASER.caliber,
     laser: true,

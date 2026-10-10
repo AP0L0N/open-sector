@@ -5,8 +5,10 @@ Same file set and JSON schema as render_ww2_guns.py, so the client draws them as
   <id>.png            the static base (pad, roots / spire), with its cast shadow
   <id>.json           pad metrics + rows, crewCols, order, gunZ, muzzleReach, pivotX/pivotY, cell
   <id>-cameo.png      base + head laid row 14 (south-east)
-  <id>-gun.png        16 rows x 1 column: the traversing head. Crewless, so crewCols is 1 and
-                      column 0 (nobody at the gun) is the only one. Every cell is the size and
+  <id>-gun.png        16 rows x crewCols columns: the traversing head. Crewless, so the columns are
+                      recoil frames instead: column 0 at rest, then one per barrel with that barrel
+                      slid back (the Spine Turret's left then right, the Pulse Spire's emitter).
+                      The client steps through them after each shot. Every cell is the size and
                       anchor of <id>.png.
   <id>/00..23.png     the base turned in 15 degree steps, <id>/faces.json (turn_faces.py), so the
                       player can turn it before placing, as the WW2 guns.
@@ -81,6 +83,7 @@ def claw_root(L: LM, a: float, r0: float, z0: float, r1: float, r2: float, rad: 
 
 ST_Z = 11.0  # bore height
 ST_MUZZLE = 14.2
+ST_RECOIL = 1.8  # how far a needle barrel slides back when it fires
 
 
 def spineturret_base(ground: bool = True) -> ra.Mesh:
@@ -116,16 +119,18 @@ def spineturret_gun(L: LM, crew: int) -> None:
     L.cyl((2.6, 0, z - 1.8), (3.6, 0, z - 1.8), 1.3, 1.1, "steel_dark", n=10)
     L.cyl((3.6, 0, z - 1.8), (3.9, 0, z - 1.8), 0.9, 0.9, "core", n=10, part=False)
     # Twin needle gatlings: a housing, a glow collar, a cluster of three needles, a muzzle ring.
-    for s in (-1, 1):
+    # Column 1 has the left barrel slid back into its housing, column 2 the right (the recoil frames).
+    for i, s in enumerate((-1, 1)):
         y = s * 2.1
         L.cyl((0.4, y, z), (4.4, y, z), 1.5, 1.35, "steel_dark", n=10)
-        L.cyl((4.4, y, z), (5.2, y, z), 1.45, 1.45, "glow", n=10)
+        b = -ST_RECOIL if crew == i + 1 else 0.0
+        L.cyl((4.4 + b, y, z), (5.2 + b, y, z), 1.45, 1.45, "glow", n=10)
         for k in range(3):
             a = 2 * math.pi * k / 3 + 0.5
             dy, dz = 0.62 * math.cos(a), 0.62 * math.sin(a)
-            L.cyl((5.2, y + dy, z + dz), (ST_MUZZLE - 0.6, y + dy, z + dz), 0.4, 0.32, "spine", n=5)
-        L.cyl((ST_MUZZLE - 1.3, y, z), (ST_MUZZLE - 0.6, y, z), 1.05, 1.05, "steel_dark", n=10)
-        L.cyl((ST_MUZZLE - 0.6, y, z), (ST_MUZZLE, y, z), 0.8, 0.8, "core", n=10, part=False)
+            L.cyl((5.2 + b, y + dy, z + dz), (ST_MUZZLE - 0.6 + b, y + dy, z + dz), 0.4, 0.32, "spine", n=5)
+        L.cyl((ST_MUZZLE - 1.3 + b, y, z), (ST_MUZZLE - 0.6 + b, y, z), 1.05, 1.05, "steel_dark", n=10)
+        L.cyl((ST_MUZZLE - 0.6 + b, y, z), (ST_MUZZLE + b, y, z), 0.8, 0.8, "core", n=10, part=False)
 
 
 # ---------------------------------------------------------------- Pulse Spire, t(1) x t(1)
@@ -133,6 +138,7 @@ def spineturret_gun(L: LM, crew: int) -> None:
 PS_TOP = 22.0  # the spire's head plate
 PS_Z = 25.2  # bore height
 PS_MUZZLE = 17.5
+PS_RECOIL = 2.4  # how far the emitter slides back into the pod when it fires
 
 
 def pulsespire_base(ground: bool = True) -> ra.Mesh:
@@ -178,21 +184,66 @@ def pulsespire_gun(L: LM, crew: int) -> None:
     for s in (-1, 1):
         L.cyl((-5.0, s * 1.0, z + 1.0), (-9.0, s * 2.0, z + 3.2), 0.7, 0.1, "spine", n=5)
     # The long emitter barrel, stepped thinner, a field ring round it, and the lit focusing tip.
-    L.cyl((2.4, 0, z), (6.0, 0, z), 1.3, 1.1, "steel", n=12)
-    L.cyl((6.0, 0, z), (PS_MUZZLE - 1.2, 0, z), 1.0, 0.85, "steel", n=12)
+    # Column 1 is the recoil frame: the whole emitter slid back into the pod.
+    b = -PS_RECOIL if crew == 1 else 0.0
+    L.cyl((2.4 + b, 0, z), (6.0 + b, 0, z), 1.3, 1.1, "steel", n=12)
+    L.cyl((6.0 + b, 0, z), (PS_MUZZLE - 1.2 + b, 0, z), 1.0, 0.85, "steel", n=12)
     for x in (7.4, 11.6):
-        L.cyl((x - 0.4, 0, z), (x + 0.4, 0, z), 1.2, 1.2, "steel_dark", n=12)
-    ltorus(L, 9.5, z, 2.6, 0.42, "glow", segs=16)
-    ltorus(L, 13.6, z, 1.8, 0.34, "glow", segs=14)
-    L.cyl((PS_MUZZLE - 1.2, 0, z), (PS_MUZZLE - 0.4, 0, z), 1.2, 1.0, "steel_dark", n=12)
-    L.cyl((PS_MUZZLE - 0.4, 0, z), (PS_MUZZLE, 0, z), 0.75, 0.75, "core", n=12, part=False)
+        L.cyl((x - 0.4 + b, 0, z), (x + 0.4 + b, 0, z), 1.2, 1.2, "steel_dark", n=12)
+    ltorus(L, 9.5 + b, z, 2.6, 0.42, "glow", segs=16)
+    ltorus(L, 13.6 + b, z, 1.8, 0.34, "glow", segs=14)
+    L.cyl((PS_MUZZLE - 1.2 + b, 0, z), (PS_MUZZLE - 0.4 + b, 0, z), 1.2, 1.0, "steel_dark", n=12)
+    L.cyl((PS_MUZZLE - 0.4 + b, 0, z), (PS_MUZZLE + b, 0, z), 0.75, 0.75, "core", n=12, part=False)
+
+
+# ---------------------------------------------------------------- Laser Fence post, 2x2 sub-tiles (half a cell)
+
+LF_C = 8.0  # footprint centre
+LF_LOW = 5.6  # lower emitter collar: where the low beam leaves
+LF_HIGH = 11.6  # upper emitter collar: where the high beam leaves
+LF_TOP = 15.0  # the pylon's head
+
+
+def laserfence_base(ground: bool = True) -> ra.Mesh:
+    bb.RIB_C = (LF_C, LF_C)
+    m = ra.Mesh()
+    L = LM(m, cx=LF_C, cy=LF_C)
+    if ground:
+        L.box((-LF_C + 0.5, -LF_C + 0.5, 0.0), (LF_C - 0.5, LF_C - 0.5, 1.0), "slab")
+    # Footing, a glow seam, and three short clawed roots.
+    L.cyl((0, 0, 1.0), (0, 0, 2.0), 4.6, 4.0, "steel_dark", n=12)
+    L.cyl((0, 0, 2.0), (0, 0, 2.3), 3.9, 3.9, "glow", n=12, caps=False)
+    for k in range(3):
+        claw_root(L, 2 * math.pi * k / 3 + 0.5, 2.6, 2.0, 4.4, 6.6, 0.75)
+    # The ribbed pylon, tapering, with an emitter collar at each beam height.
+    L.cyl((0, 0, 2.3), (0, 0, LF_TOP), 2.0, 1.2, "ribbed", n=12)
+    for z in (LF_LOW, LF_HIGH):
+        L.cyl((0, 0, z - 0.9), (0, 0, z - 0.5), 2.3, 2.3, "steel_dark", n=12)
+        L.cyl((0, 0, z - 0.5), (0, 0, z + 0.5), 2.2, 2.2, "core", n=12, caps=False)
+        L.cyl((0, 0, z + 0.5), (0, 0, z + 0.9), 2.3, 2.1, "steel_dark", n=12)
+    return m
+
+
+def laserfence_gun(L: LM, crew: int) -> None:
+    # The head: a cap and three spines raking up and out. It has no traverse to speak of.
+    L.cyl((0, 0, LF_TOP), (0, 0, LF_TOP + 0.8), 1.6, 1.4, "steel_dark", n=10)
+    lball(L, (0, 0, LF_TOP + 1.0), 1.2, "glow", rings=4, n=10)
+    for k in range(3):
+        a = 2 * math.pi * k / 3 + 0.2
+        c, s = math.cos(a), math.sin(a)
+        L.cyl((0.6 * c, 0.6 * s, LF_TOP + 0.6), (2.0 * c, 2.0 * s, LF_TOP + 3.4), 0.5, 0.08, "spine", n=5)
 
 
 # ---------------------------------------------------------------- render
 
 GUNS = {
-    "spineturret": wg.Gun("spineturret", 32.0, (4, 4), 18.0, 10.0, 0, spineturret_base, spineturret_gun, ST_Z, ST_MUZZLE),
-    "pulsespire": wg.Gun("pulsespire", 32.0, (4, 4), 26.0, 12.0, 0, pulsespire_base, pulsespire_gun, PS_Z, PS_MUZZLE),
+    # The `crew` count is the number of recoil frames: crewCols = rest + one per barrel.
+    "spineturret": wg.Gun("spineturret", 32.0, (4, 4), 18.0, 10.0, 2, spineturret_base, spineturret_gun, ST_Z, ST_MUZZLE, cameo_col=0),
+    "pulsespire": wg.Gun("pulsespire", 32.0, (4, 4), 26.0, 12.0, 1, pulsespire_base, pulsespire_gun, PS_Z, PS_MUZZLE, cameo_col=0),
+    # Not turned before placing: the client links the posts' beams at beamZ (low, high).
+    "laserfence": wg.Gun(
+        "laserfence", 16.0, (2, 2), 22.0, 14.0, 0, laserfence_base, laserfence_gun, LF_TOP, 1.0, extra={"beamZ": [LF_LOW, LF_HIGH]}
+    ),
 }
 
 

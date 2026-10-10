@@ -25,6 +25,8 @@ import {
 
 export const AMMO_PRIMARY_FILL = "rgba(226, 190, 72, 0.95)";
 export const AMMO_SECONDARY_FILL = "rgba(178, 176, 168, 0.9)";
+/** A plasma cannon's energy cell: the hive keeps its rack full, the cell sets how fast it fires. */
+export const ENERGY_FILL = "rgba(96, 226, 214, 0.95)";
 
 function fraction(left: number, full: number): number {
   return Math.max(0, Math.min(1, left / full));
@@ -51,7 +53,7 @@ const SHIP_ROUNDS = BATTLESHIP_CIWS_AT.length * BATTLESHIP_CIWS_BELT;
 
 /** Main store first (the yellow bar), then the secondary store. At most two. Empty when nothing is finite or the view is not allied. */
 export function ammoBarRatios(
-  e: Pick<EntityView, "type" | "ammo" | "mgAmmo" | "clip" | "rockets" | "heavy" | "wreck" | "supply" | "jet" | "ship">,
+  e: Pick<EntityView, "type" | "ammo" | "mgAmmo" | "clip" | "rockets" | "heavy" | "wreck" | "supply" | "jet" | "ship" | "energy">,
 ): number[] {
   if (e.wreck) return [];
   if (isSupplyCarrier(e.type)) return e.supply != null ? [fraction(e.supply, SUPPLY_CARGO)] : [];
@@ -66,6 +68,8 @@ export function ammoBarRatios(
     const full = e.jet?.fuelMax ?? 0;
     return fuel != null && full > 0 ? [fraction(fuel, full)] : [];
   }
+  // A plasma cannon: the cell is the only store that runs low.
+  if (e.energy != null) return [fraction(e.energy, 1)];
   const def = catalog(e.type);
   const primary: number[] = [];
   const secondary: number[] = [];

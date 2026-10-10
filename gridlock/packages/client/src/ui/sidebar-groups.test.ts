@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { BUILDING_TYPES, SHARED_TYPES, TRAIN_TYPES, YARD_FIELD_TYPES, catalog, factionOf, isHiddenField } from "@gridlock/shared";
+import { BUILDING_TYPES, SHARED_TYPES, TRAIN_TYPES, YARD_FIELD_TYPES, catalog, costFor, factionOf, isHiddenField } from "@gridlock/shared";
 import { groupEntries, groupState, sidebarGroupOf, type CameoFlags } from "./sidebar-groups.js";
 
 const idle: CameoFlags = { disabled: false, ready: false, working: false, paused: false };
@@ -28,7 +28,7 @@ describe("sidebarGroupOf", () => {
   it("gives the Xenomorphs their base, defences, cyborgs, and heavy assimilators, and nothing of the Alliance's but the Central", () => {
     const g = groupEntries("xeno");
     assert.deepEqual(g.structures.map((e) => e.type).sort(), ["aerie", "assimilator", "cyborgcentral", "forge", "fusionnode", "nexus", "spawnpool"]);
-    assert.deepEqual(g.defences.map((e) => e.type).sort(), ["pulsespire", "spineturret"]);
+    assert.deepEqual(g.defences.map((e) => e.type).sort(), ["laserfence", "pulsespire", "spineturret"]);
     assert.deepEqual(g.infantry.map((e) => e.type).sort(), ["lancer", "shade", "simunit2", "spitter", "thrall", "weaver", "xenodrone"]);
     assert.deepEqual(g.tanks.map((e) => e.type).sort(), ["behemoth", "broodmother", "juggernaut", "mawcaster", "ravager", "siphon", "stalker"]);
     assert.deepEqual(g.naval.map((e) => e.type).sort(), ["leech", "lurker"]);
@@ -83,6 +83,27 @@ describe("sidebarGroupOf", () => {
     }
     assert.deepEqual(g.aircraft.map((e) => e.type), ["fw190", "stuka", "horten", "he111", "bv222"]);
     assert.deepEqual(g.naval.map((e) => e.type), ["gunboat", "supplyboat", "submarine", "destroyer", "lst", "battleship"]);
+  });
+
+  it("lays the Xenomorph base out as the Alliance's: power, scrap, barracks, factory, air, sea, tech", () => {
+    const xeno = groupEntries("xeno").structures.map((e) => e.type);
+    assert.deepEqual(xeno, ["fusionnode", "assimilator", "cyborgcentral", "forge", "aerie", "spawnpool", "nexus"]);
+    const alliance = groupEntries().structures.map((e) => e.type);
+    assert.deepEqual(alliance.slice(0, 4), ["dynamo", "smelter", "muster", "armory"]);
+  });
+
+  it("prices each Xenomorph structure as its Alliance counterpart", () => {
+    const pairs = [
+      ["fusionnode", "dynamo"],
+      ["assimilator", "smelter"],
+      ["forge", "armory"],
+      ["aerie", "airfield"],
+      ["spawnpool", "dock"],
+      ["nexus", "research"],
+    ] as const;
+    for (const [x, a] of pairs) assert.equal(catalog(x).cost, catalog(a).cost, x);
+    assert.equal(costFor("cyborgcentral", "xeno"), catalog("muster").cost);
+    assert.equal(costFor("cyborgcentral", "alliance"), catalog("cyborgcentral").cost);
   });
 });
 

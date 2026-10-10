@@ -588,6 +588,8 @@ export interface Entity {
   dormant?: true;
   /** Sim Unit II: the tick his blink drive is charged again. Unset or past means ready. */
   blinkReady?: number;
+  /** Plasma cannon: shots of energy left in its cell (sim/hive-ammo.ts), fractional while it regrows. Unset means full. */
+  energy?: number;
   /** Behemoth, Drone, Lancer: the tick it may raise its next energy wall (sim/energy-shield.ts). Unset means ready. */
   shieldReady?: number;
   /** Behemoth in the air on a lunge (sim/lunge.ts): from, to, and the ticks it left and lands. */

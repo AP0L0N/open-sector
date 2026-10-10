@@ -19,7 +19,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 137;
+export const PROTOCOL_VERSION = 138;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -175,6 +175,8 @@ export interface EntityView {
   laser?: { a0: number; a1: number; u: number; dur: number; lens: number[]; line?: true };
   /** Allied ammo rack. Omitted for enemies and unarmed types. */
   ammo?: Partial<Record<ShellType, number>>;
+  /** Allied plasma cannon: share of its energy cell charged, 0–1. Omitted for enemies and every other gun. */
+  energy?: number;
   /** Loaded shell. Allied guns only. */
   shell?: ShellType;
   /** Allied coaxial MG belt. Omitted when the type has no MG. */

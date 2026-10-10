@@ -3,6 +3,7 @@ import {
   TRAIN_TYPES,
   YARD_FIELD_TYPES,
   catalog,
+  costFor,
   inFaction,
   isAircraftType,
   isDefenceStructure,
@@ -72,6 +73,12 @@ export interface GroupEntry {
 /** Groups whose cameos run cheapest first; ties keep catalog order. */
 const PRICE_SORTED_GROUPS: readonly SidebarGroup[] = ["defences", "infantry", "tanks", "naval", "aircraft"];
 
+/**
+ * The Xenomorph base laid out as the Alliance's reads: power, scrap, foot soldiers, hulls, air, sea,
+ * then tech. The Cyborg Central is their barracks, so it comes third, not last as for the Alliance.
+ */
+const XENO_STRUCTURE_ORDER: readonly BuildingType[] = ["fusionnode", "assimilator", "cyborgcentral", "forge", "aerie", "spawnpool", "nexus"];
+
 /** The faction's cameos in each group, in catalog order (price order for `PRICE_SORTED_GROUPS`). */
 export function groupEntries(faction: Faction = "alliance"): Record<SidebarGroup, GroupEntry[]> {
   const out: Record<SidebarGroup, GroupEntry[]> = { structures: [], defences: [], infantry: [], tanks: [], naval: [], aircraft: [] };
@@ -84,7 +91,14 @@ export function groupEntries(faction: Faction = "alliance"): Record<SidebarGroup
   for (const type of TRAIN_TYPES) {
     if (inFaction(type, faction)) out[sidebarGroupOf(type)].push({ id: "train-" + type, type });
   }
-  for (const g of PRICE_SORTED_GROUPS) out[g].sort((a, b) => catalog(a.type).cost - catalog(b.type).cost);
+  for (const g of PRICE_SORTED_GROUPS) out[g].sort((a, b) => costFor(a.type, faction) - costFor(b.type, faction));
+  if (faction === "xeno") {
+    const rank = (t: GroupEntry["type"]) => {
+      const i = XENO_STRUCTURE_ORDER.indexOf(t as BuildingType);
+      return i < 0 ? XENO_STRUCTURE_ORDER.length : i;
+    };
+    out.structures.sort((a, b) => rank(a.type) - rank(b.type));
+  }
   return out;
 }
 

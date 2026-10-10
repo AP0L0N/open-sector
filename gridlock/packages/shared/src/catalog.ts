@@ -644,6 +644,7 @@ export type EntityType =
   | "nexus"
   | "spineturret"
   | "pulsespire"
+  | "laserfence"
   | "spawnpool"
   | "aerie"
   | "broodheart"
@@ -722,6 +723,7 @@ export type BuildingType =
   | "nexus"
   | "spineturret"
   | "pulsespire"
+  | "laserfence"
   | "spawnpool"
   | "aerie"
   | "lumenbulb"
@@ -910,6 +912,7 @@ export const BUILDING_TYPES: readonly BuildingType[] = [
   "nexus",
   "spineturret",
   "pulsespire",
+  "laserfence",
   "spawnpool",
   "aerie",
   "lumenbulb",
@@ -1085,6 +1088,7 @@ export const XENO_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([
   "nexus",
   "spineturret",
   "pulsespire",
+  "laserfence",
   "spawnpool",
   "aerie",
   "leech",
@@ -1148,6 +1152,17 @@ export const SHARED_TYPES: ReadonlySet<EntityType> = new Set<EntityType>(["cybor
 export function factionOf(type: string): Faction {
   if (XENO_TYPES.has(type as EntityType)) return "xeno";
   return BLOOM_TYPES.has(type as EntityType) ? "bloom" : "alliance";
+}
+/**
+ * A shared building's price for one faction, where it plays a different part: the Cyborg Central is
+ * the Alliance's late cyborg works but the Xenomorphs' only barracks, so the hive pays a Barracks' price.
+ */
+const FACTION_COST: Partial<Record<EntityType, Partial<Record<Faction, number>>>> = {
+  cyborgcentral: { xeno: 500 },
+};
+/** Scrap `type` costs a player of `faction`. */
+export function costFor(type: EntityType, faction: Faction): number {
+  return FACTION_COST[type]?.[faction] ?? catalog(type).cost;
 }
 /** May a player of `faction` queue, place, or train `type`? */
 export function inFaction(type: string, faction: Faction): boolean {
@@ -1246,6 +1261,15 @@ export const BLOOM_GESTATOR = "gestator";
  * lands XENO_DAMAGE_MUL of what the same round, beam, or blade would do from anyone else.
  */
 export const XENO_DAMAGE_MUL = 0.8;
+/** A plasma cannon's energy cell: how many shots it holds full, and the seconds to regrow one. */
+export interface PlasmaCellDef {
+  shots: number;
+  rechargeSeconds: number;
+}
+/** The energy cell on `type`'s main gun, or undefined when the gun is not a plasma cannon. */
+export function plasmaCellOf(type: string): PlasmaCellDef | undefined {
+  return catalog(type as EntityType).plasmaCell;
+}
 /**
  * Never runs out of shells, rockets, belts, charges, bombs, or fuel for its weapons: everything
  * the Xenomorphs field (the hive feeds it), and everything the Bloom field (spines, acid, and spores
@@ -1476,6 +1500,11 @@ export interface CatalogEntry {
    * like a turret, needs nobody at it, and falls silent while its owner is short on power.
    */
   poweredGun?: boolean;
+  /**
+   * A Xenomorph plasma cannon's energy cell (sim/hive-ammo.ts): every round the main gun fires draws
+   * one shot of energy, and the cell regrows one shot each `rechargeSeconds`. Empty, the gun waits.
+   */
+  plasmaCell?: PlasmaCellDef;
   /**
    * A radar-laid 20mm mount on the turret roof (the Apocalypse). It traverses and
    * picks targets on its own, apart from the main gun. Incoming missiles come
@@ -2078,6 +2107,17 @@ export const LASER_SWEEP_SECONDS = 1.2;
 export const LASER_SWEEP_CYBORG_DAMAGE = 90;
 /** World px either side of the beam that still counts as passed through. */
 export const LASER_BEAM_HALF_WIDTH = 2;
+/**
+ * The Xenomorph Laser Fence (sim/laser-fence.ts): a post links to its nearest post of the same owner
+ * up to LASER_FENCE_REACH_TILES away, and to the nearest on its far side. Two beams hold between them.
+ * A ground unit that is not the hive's burns while it touches one: LASER_FENCE_BURN_SHARE of its full
+ * body a second, never under LASER_FENCE_BURN_MIN points a second. Rounds and the hive pass freely.
+ */
+export const LASER_FENCE_REACH_TILES = t(6);
+export const LASER_FENCE_BURN_SHARE = 0.6;
+export const LASER_FENCE_BURN_MIN = 60;
+/** World px either side of a fence beam that a body still touches. */
+export const LASER_FENCE_BEAM_HALF_WIDTH = 2;
 /**
  * The laser on anything else (a hull, a building, a wreck): one straight beam
  * onto the target for LASER_LINE_SECONDS. It cuts through any plate from any
@@ -4428,7 +4468,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "building",
     name: "Fusion Node",
     letter: "F",
-    cost: 550,
+    cost: 500,
     buildSeconds: 12,
     hp: 650,
     power: 110,
@@ -6029,6 +6069,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rangeTiles: t(13),
     sightTiles: t(8),
     cooldown: 6.5,
+    plasmaCell: { shots: 4, rechargeSeconds: 12 },
     damage: 55,
     projectileSpeed: TANK_SHELL_SPEED,
     turnInPlace: true,
@@ -6043,7 +6084,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     defaultShell: "ap",
     leavesWreck: true,
     wreckHp: 35,
-    blurb: "Heavy assimilator on four long legs, a domed turret on its back. The disruptor throws a piercing plasma bolt about as hard as a Tiger's shell, or a scattering burst for soldiers, from a little less reach. Thinner in front than a Tiger, but its legs turn it quicker. No tracks to lose. Burrow digs it in where it stands: under the ground no enemy sees it or can pick it, but it neither moves nor fires; it rises with its gun laid and fires at once. It draws its bolts from the hive and never runs dry.",
+    blurb: "Heavy assimilator on four long legs, a domed turret on its back. The disruptor throws a piercing plasma bolt about as hard as a Tiger's shell, or a scattering burst for soldiers, from a little less reach. Thinner in front than a Tiger, but its legs turn it quicker. No tracks to lose. Burrow digs it in where it stands: under the ground no enemy sees it or can pick it, but it neither moves nor fires; it rises with its gun laid and fires at once. Each bolt draws on an energy cell that holds 4 and regrows one every 12 seconds: a short burst, then it waits on the cell.",
   },
   /** Xenomorph heavy assimilator: fast raptor hull, spine gatling turret, nanite flamer in the jaw. */
   ravager: {
@@ -6098,6 +6139,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rangeTiles: t(15),
     sightTiles: t(9),
     cooldown: 8.5,
+    plasmaCell: { shots: 6, rechargeSeconds: 9 },
     damage: APOCALYPSE_SHELLS.ap.damage,
     projectileSpeed: TANK_SHELL_SPEED,
     turnInPlace: true,
@@ -6115,7 +6157,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     shellResist: BEHEMOTH_SHELL_RESIST,
     leavesWreck: true,
     wreckHp: 60,
-    blurb: `The largest of the heavy assimilators: a carapace on six legs with twin plasma disruptors on one turret. They fire one after the other, a short gap and then a long reload, through a Tiger's front plate, from farther than any tank but the Jagdtiger. The layered carapace sheds part of every shell that hits it (it takes ${Math.round(BEHEMOTH_SHELL_RESIST * 100)}% of the damage). Slow on its legs and slow on the turret, but Lunge throws it up and forward up to ${BEHEMOTH_LUNGE_RANGE_TILES / TILE_SUBDIV} cells; where it lands, ${BEHEMOTH_RING_SWEEPS} green laser sweeps lash out round it, burning enemy soldiers and setting the ground alight. The legs need ${BEHEMOTH_LUNGE_RECHARGE_SECONDS} seconds before the next. In a fight it throws a curved energy wall across its front, ${BEHEMOTH_SHIELD.hp} points strong: the wall stays where it went up, stops every enemy round and beam that meets it, and no enemy walks through it, while the Behemoth walks and fires through as if it were not there. It stands ${BEHEMOTH_SHIELD.seconds} seconds unless shot down; ${BEHEMOTH_SHIELD.rechargeSeconds} seconds after it falls, the next. Its rack refills near a powered Nanite Forge of yours. Needs a Neural Nexus.`,
+    blurb: `The largest of the heavy assimilators: a carapace on six legs with twin plasma disruptors on one turret. They fire one after the other, a short gap and then a long reload, through a Tiger's front plate, from farther than any tank but the Jagdtiger. The layered carapace sheds part of every shell that hits it (it takes ${Math.round(BEHEMOTH_SHELL_RESIST * 100)}% of the damage). Slow on its legs and slow on the turret, but Lunge throws it up and forward up to ${BEHEMOTH_LUNGE_RANGE_TILES / TILE_SUBDIV} cells; where it lands, ${BEHEMOTH_RING_SWEEPS} green laser sweeps lash out round it, burning enemy soldiers and setting the ground alight. The legs need ${BEHEMOTH_LUNGE_RECHARGE_SECONDS} seconds before the next. In a fight it throws a curved energy wall across its front, ${BEHEMOTH_SHIELD.hp} points strong: the wall stays where it went up, stops every enemy round and beam that meets it, and no enemy walks through it, while the Behemoth walks and fires through as if it were not there. It stands ${BEHEMOTH_SHIELD.seconds} seconds unless shot down; ${BEHEMOTH_SHIELD.rechargeSeconds} seconds after it falls, the next. Each barrel's bolt draws on an energy cell that holds 6 and regrows one every 9 seconds. Needs a Neural Nexus.`,
   },
   /** Xenomorph heavy assimilator: a giant on two legs with a two-handed hammer. Melee only. */
   juggernaut: {
@@ -6167,6 +6209,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rangeTiles: t(11),
     sightTiles: t(8),
     cooldown: 3.4,
+    plasmaCell: { shots: 6, rechargeSeconds: 7 },
     damage: 34,
     projectileSpeed: TANK_SHELL_SPEED,
     turnInPlace: true,
@@ -6181,7 +6224,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     defaultShell: "ap",
     leavesWreck: true,
     wreckHp: 32,
-    blurb: `Heavy assimilator on four legs with a forked drain emitter on a quick turret. Its bolt is lighter than a Stalker's and bites only medium plate from the front, but it fires twice as often, from a little less reach. What the bolt takes off an enemy unit flows back: ${Math.round(SIPHON_DRAIN * 100)}% of every hit mends its own body. A building or a wreck gives nothing back. Thinner in front than a Stalker. It draws its bolts from the hive and never runs dry.`,
+    blurb: `Heavy assimilator on four legs with a forked drain emitter on a quick turret. Its bolt is lighter than a Stalker's and bites only medium plate from the front, but it fires twice as often, from a little less reach. What the bolt takes off an enemy unit flows back: ${Math.round(SIPHON_DRAIN * 100)}% of every hit mends its own body. A building or a wreck gives nothing back. Thinner in front than a Stalker. Each bolt draws on an energy cell that holds 6 and regrows one every 7 seconds.`,
   },
   /** Xenomorph heavy assimilator: a brood sac on six legs that births Thralls. Unarmed. */
   broodmother: {
@@ -6256,7 +6299,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "building",
     name: "Nanite Forge",
     letter: "N",
-    cost: 900,
+    cost: 800,
     buildSeconds: 20,
     hp: 1000,
     power: -35,
@@ -6279,7 +6322,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "building",
     name: "Neural Nexus",
     letter: "X",
-    cost: 4500,
+    cost: 5000,
     buildSeconds: 26,
     hp: 900,
     power: -70,
@@ -6328,6 +6371,30 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     capturable: false,
     blurb: "A chitin bulb rooted in the ground with a twin pulse repeater for a head. Nobody works it: it lays itself all the way round and cuts down soldiers at an MG42's pace from a little short of an MG Nest's reach, and draws its charge from the hive, so it never runs dry. Tank plate turns them, and they do not bring a building down. Short on power, it falls silent. Cannot move.",
   },
+  /** Xenomorph fence post: links to the posts beside it with two laser beams (sim/laser-fence.ts). */
+  laserfence: {
+    type: "laserfence",
+    kind: "building",
+    name: "Laser Fence",
+    letter: "f",
+    cost: 150,
+    buildSeconds: 6,
+    hp: 300,
+    power: -8,
+    tileW: 2,
+    tileH: 2,
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    capturable: false,
+    blurb: `A chitin post with two emitters. Set posts in a row: each links to the nearest post of yours up to ${LASER_FENCE_REACH_TILES / TILE_SUBDIV} cells away, and to the next one on its far side, with two laser beams between them. The beams stop nothing: soldiers and hulls walk through, and rounds fly through. Any ground unit that is not the hive's burns while it touches a beam: soldiers fall almost at once, a tank loses most of its hull crossing. Your own units pass unharmed. Short on power, the beams go dark. Shoot a post down to open the fence. Cannot move.`,
+  },
   /** Xenomorph anti-armor gun: crewless, runs on base power. */
   pulsespire: {
     type: "pulsespire",
@@ -6347,6 +6414,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rangeTiles: t(15),
     sightTiles: INFANTRY_SIGHT_TILES,
     cooldown: 3,
+    plasmaCell: { shots: 8, rechargeSeconds: 6 },
     damage: PULSE_SPIRE_SHELLS.ap.damage,
     projectileSpeed: TANK_SHELL_SPEED,
     armorFront: 0,
@@ -6361,7 +6429,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     armorFirst: true,
     poweredGun: true,
     capturable: false,
-    blurb: `A tall spire with a long emitter and a ring of green fire. Nobody works it: it turns all the way round, slowly, and throws a piercing energy pulse through a Tiger's front plate from farther than a Pak 36 reaches. Tanks first. It draws its charge from the hive and never runs dry. Short on power, it falls silent. Needs a Neural Nexus. Cannot move.`,
+    blurb: `A tall spire with a long emitter and a ring of green fire. Nobody works it: it turns all the way round, slowly, and throws a piercing energy pulse through a Tiger's front plate from farther than a Pak 36 reaches. Tanks first. Each pulse draws on an energy cell that holds 8 and regrows one every 6 seconds. Short on power, it falls silent. Needs a Neural Nexus. Cannot move.`,
   },
   /** Xenomorph shipyard: grows the Leech and the Lurker. Stands on open water like a Marine Base. */
   spawnpool: {
@@ -6393,7 +6461,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "building",
     name: "Aerie",
     letter: "E",
-    cost: 2800,
+    cost: 3000,
     buildSeconds: 26,
     hp: 1100,
     power: -45,
@@ -6431,6 +6499,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rangeTiles: GUNBOAT_RANGE_TILES,
     sightTiles: t(18),
     cooldown: 0.45,
+    plasmaCell: { shots: 20, rechargeSeconds: 1 },
     damage: 13,
     projectileSpeed: SMALL_ARMS_SPEED,
     armorFront: 14,
@@ -6442,7 +6511,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     naval: true,
     leavesWreck: true,
     wreckHp: 14,
-    blurb: "A low chitin hull that skims the water on a glowing belly, a small plasma cannon on its back. Water only: it never comes ashore. It fires on boats and on anything within reach of the bank, a little faster and harder than the Attack Boat. Thin shell: an anti-tank rifle or a tank shell goes straight through. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.",
+    blurb: "A low chitin hull that skims the water on a glowing belly, a small plasma cannon on its back. Water only: it never comes ashore. It fires on boats and on anything within reach of the bank, a little faster and harder than the Attack Boat, until its energy cell (20 bolts, one regrown every second) runs low. Thin shell: an anti-tank rifle or a tank shell goes straight through. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.",
   },
   /** Xenomorph sea beast: hunts under the water and bites. No gun. */
   lurker: {
@@ -8508,6 +8577,8 @@ export function onLineLane(type: string): boolean {
  */
 export function isDefenceStructure(type: string): boolean {
   if (isYardField(type)) return true;
+  // The Laser Fence has no gun: its beams are its weapon.
+  if (type === "laserfence") return true;
   return isBuildingType(type) && (catalog(type).rangeTiles > 0 || isGarrisonable(type));
 }
 

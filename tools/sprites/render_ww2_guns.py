@@ -419,6 +419,9 @@ class Gun:
     reach: float
     k: float = 1.0
     extra: dict | None = None
+    # Column baked into the cameo. Default the last (the full crew). A crewless gun whose columns
+    # are recoil frames (render_xeno_guns.py) shows its column 0, at rest.
+    cameo_col: int | None = None
 
 
 # Crew figures are the same world size on every gun, whatever the gun's own scale.
@@ -522,7 +525,7 @@ def render_gun(out_dir: Path, g: Gun, turned: bool = True) -> dict:
     both = base.copy()
     # The Spotlight's lamp is drawn by the client; its cameo gets one baked on (crew 2 is the lamp pass).
     lamp = gun_layer(g, gun_mesh(g, yaw_for_row(14), 2), cv) if g.name == "spotlight" else None
-    both.alpha_composite(lamp or cells[14][cols - 1])
+    both.alpha_composite(lamp or cells[14][cols - 1 if g.cameo_col is None else g.cameo_col])
     wf.cameo(both, out_dir / f"{g.name}-cameo.png", wf.solid_box(both))
     wf.on_grass(both).save(wf.PREVIEW / f"{g.name}.png")
 

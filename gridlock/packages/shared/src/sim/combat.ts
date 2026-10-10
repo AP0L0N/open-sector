@@ -222,6 +222,7 @@ import {
   worldTileHeight,
 } from "./elevation.js";
 import { absorbRound, shieldSweep } from "./energy-shield.js";
+import { drawPlasma, plasmaShots } from "./hive-ammo.js";
 import {
   ownerless,
   allies,
@@ -2004,6 +2005,8 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   const shell = hasAmmo(e.type) ? pickLoadedShell(e.ammo, e.shell) : null;
   if (hasAmmo(e.type) && !shell) return;
   if (isSmokeShell(shell) && !mayFireSmoke(e)) return;
+  // A plasma cannon with its cell drained waits for the next shot to regrow.
+  if (plasmaShots(e) < 1) return;
   if (shell) e.shell = shell;
   const gun = fireStats(e);
   // A twin mount fires one barrel, then the other after a short gap. Smoke is one round.
@@ -2036,8 +2039,9 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
       if (e.clip <= 0) beginReload(e, infantryGun);
       break;
     }
-    // The second barrel only fires while the rack still holds that shell.
+    // The second barrel only fires while the rack still holds that shell, and the cell a shot.
     if (shell && (e.ammo[shell] ?? 0) <= 0) break;
+    if (plasmaShots(e) < 1) break;
     fireRound(
       state,
       e,
@@ -2064,6 +2068,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     fired++;
     if (armGatling) heatGatling(e, 1);
     if (shell) e.ammo[shell] = Math.max(0, (e.ammo[shell] ?? 0) - 1);
+    drawPlasma(e);
     if (infantryGun || belt) {
       e.clip = Math.max(0, e.clip - 1);
       if (e.clip <= 0) {
@@ -2074,7 +2079,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     }
   }
   if (fired > 0) {
-    const follow = twin && !second && !!shell && (e.ammo[shell] ?? 0) > 0;
+    const follow = twin && !second && !!shell && (e.ammo[shell] ?? 0) > 0 && plasmaShots(e) >= 1;
     if (follow) {
       e.twinUntil = state.tick + Math.round(APOCALYPSE_TWIN_WINDOW / TICK_DT);
       e.cooldown = APOCALYPSE_TWIN_GAP;
@@ -3562,7 +3567,9 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       const face = hitFace(e.facing, p.vx, p.vy);
       const dmg = Math.max(1, Math.round(p.damage * (0.9 + rand() * 0.2)));
       const crewHit = bulletOnGun(state, e, face, dmg);
-      pushImpact(state, p, crewHit ? "hit" : "ricochet", struck.x, struck.y, -p.vx * 0.2, -p.vy * 0.2);
+      // Plasma does not ring off: it spends itself on the shield.
+      if (crewHit || energyRound(state, p.ownerId)) pushImpact(state, p, "hit", struck.x, struck.y);
+      else pushImpact(state, p, "ricochet", struck.x, struck.y, -p.vx * 0.2, -p.vy * 0.2);
       continue;
     }
     // A Spitter's coat thins every plate the round can meet.
@@ -3679,7 +3686,9 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     }
     if (e.type === "artillery" && !e.wreck) blastOnGun(state, e, dealt);
     const lethal = e.hp <= 0 && res.kind !== "ricochet";
-    let kind: ImpactKind = lethal ? "kill" : res.kind;
+    // Plasma never bounces: a bolt the plate turns spends itself on it. Only an energy wall turns one back.
+    const bounces = res.kind === "ricochet" && !energyRound(state, p.ownerId);
+    let kind: ImpactKind = lethal ? "kill" : res.kind === "ricochet" && !bounces ? "hit" : res.kind;
     if (!chipWalls && kind === "kill") kind = "hit";
     const blast = lethal && !e.wreck && (e.kind === "building" || leavesWreck(e.type));
     const hit = impactPoint(e, targetDef, struck.x, struck.y, blast, rand);
@@ -3689,11 +3698,11 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       kind,
       hit.x,
       hit.y,
-      res.kind === "ricochet" ? res.bounceVx : p.vx,
-      res.kind === "ricochet" ? res.bounceVy : p.vy,
+      bounces ? res.bounceVx : p.vx,
+      bounces ? res.bounceVy : p.vy,
       blast,
     );
-    if (res.kind !== "ricochet" || heBursts(p) || p.acid) continue;
+    if (!bounces || heBursts(p) || p.acid) continue;
     if (p.caliber === PTRD_CALIBER) p.penetration = 0;
     p.vx = res.bounceVx;
     p.vy = res.bounceVy;

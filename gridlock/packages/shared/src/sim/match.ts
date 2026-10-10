@@ -72,6 +72,7 @@ import type { BlinkView } from "../protocol.js";
 import { syncTowedGuns, tickArtillery } from "./artillery.js";
 import { tickShipRearm } from "./battleship.js";
 import { tickHiveAmmo } from "./hive-ammo.js";
+import { tickLaserFences } from "./laser-fence.js";
 import { tickMovement, repathIfBlocked } from "./orders.js";
 import { tickWalkerCharge } from "./walker-charge.js";
 import { tickOrderQueue } from "./commands.js";
@@ -425,6 +426,7 @@ function stepHeld(state: MatchState, dt: number): void {
   tickShades(state);
   tickCombat(state, dt);
   tickLasers(state);
+  tickLaserFences(state, dt);
   state.phaseRev++;
   tickProjectiles(state, dt);
   syncTorpedoes(state);

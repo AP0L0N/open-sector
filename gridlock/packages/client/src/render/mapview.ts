@@ -5,7 +5,10 @@ import {
   BEHEMOTH_LUNGE_RANGE_TILES,
   isDockType,
   WEAVER_REACH_TILES,
+  LASER_FENCE_REACH_TILES,
+  costFor,
   factionOf,
+  laserFenceLinks,
   AIRFIELD_BACK_DEPTH,
   BUILDING_TURN_STEP,
   buildingRect,
@@ -332,7 +335,9 @@ import {
   type ShipWakePatch,
 } from "./ship-wake.js";
 import { followCart, type CartPose } from "./mauler-cart.js";
-import { AMMO_PRIMARY_FILL, AMMO_SECONDARY_FILL, ammoBarRatios, outOfAmmo } from "./ammo-bars.js";
+import { AMMO_PRIMARY_FILL, AMMO_SECONDARY_FILL, ENERGY_FILL, ammoBarRatios, outOfAmmo } from "./ammo-bars.js";
+import { hiveRecoilColumn, noteHiveGunShots, type HiveGunRecoil } from "./hive-gun-recoil.js";
+import { drawFenceBeam } from "./laser-fence-beam.js";
 import { OUT_OF_AMMO_SIZE, drawOutOfAmmo } from "./out-of-ammo.js";
 import {
   backtrackPoints,
@@ -721,6 +726,7 @@ const EXTRUDE: Record<EntityType, number> = {
   nexus: 58,
   spineturret: 14,
   pulsespire: 30,
+  laserfence: 20,
   armory: 54,
   muster: 38,
   dynamo: 30,
@@ -1116,6 +1122,8 @@ export class MapView {
   private infantryShotAt = new Map<number, number>();
   /** Fw 190 barrage streaks in flight, with the gun and impact heights (absolute elevation). */
   private tracers: (BarrageTracer & { z0: number; z1: number; energy?: true; heavy?: boolean })[] = [];
+  /** Spine Turret and Pulse Spire: which barrel last kicked back, and when (hive-gun-recoil.ts). */
+  private hiveGunRecoil = new Map<number, HiveGunRecoil>();
   /** Mount id and tick of each rocket burst already given its fan of tracers. */
   private ciwsBurstSeen = new Set<string>();
   /** Impact id -> wall-clock ms its barrage streak lands. The impact waits for it. */
@@ -2011,6 +2019,10 @@ export class MapView {
         const shots = byGun.get(e.id)?.filter((i) => !i.rocket && !i.laser && !i.torpedo && !i.mortar && !i.bite && !i.downLaser && i.kind !== "crush" && (i.caliber ?? 0) > 0);
         if (!shots?.length || e.type === "simunit2" || e.type === "thrall" || e.type === "cyborgcommander" || e.type === "juggernaut") continue;
         const muzzle = this.energyMuzzleWorld(e, shots[0]!);
+        const layer = e.kind === "building" ? gunLayerFor(e.type) : undefined;
+        if (layer && layer.cols > 1 && catalog(e.type).poweredGun) {
+          this.hiveGunRecoil.set(e.id, noteHiveGunShots(this.hiveGunRecoil.get(e.id), shots.length, now, layer.cols - 1));
+        }
         for (const bolt of energyBolts(muzzle, shots, ground, now, ts)) {
           this.tracers.push(bolt);
           this.barrageLandAt.set(bolt.id, tracerLandsAt(bolt));
@@ -2182,7 +2194,9 @@ export class MapView {
       const gun = gunLayerFor(e.type);
       const reach = gun?.muzzleReach ?? 10;
       const facing = e.turretFacing ?? aim;
-      return { x: e.x + Math.cos(facing) * reach, y: e.y + Math.sin(facing) * reach, z: ground + (gun ? gun.gunZ * 2 : 16) / ISO_ELEVATION };
+      // The art's bore height, laid on the pad the way the Pak's muzzle flash is.
+      const lift = gun ? this.buildingArtLift(e, ground, gun.muzzleZ, gun) : 16;
+      return { x: e.x + Math.cos(facing) * reach, y: e.y + Math.sin(facing) * reach, z: ground + lift / ISO_ELEVATION };
     }
     const size = this.spriteOf(e)?.drawSize ?? 40;
     const r = catalog(e.type).radius;
@@ -3301,7 +3315,8 @@ export class MapView {
   sellSelected(): void {
     const list = this.ownSellable();
     if (list.length === 0) return;
-    const refund = list.reduce((sum, e) => sum + (e.ruined ? 0 : Math.floor(catalog(e.type).cost * SELL_REFUND)), 0);
+    const faction = this.curr.players.find((p) => p.playerId === this.curr.youPlayerId)?.faction ?? "alliance";
+    const refund = list.reduce((sum, e) => sum + (e.ruined ? 0 : Math.floor(costFor(e.type, faction) * SELL_REFUND)), 0);
     const ids = list.map((e) => e.id);
     showConfirm({
       title: list.length === 1 ? `Sell ${catalog(list[0]!.type).name}?` : `Sell ${list.length} structures?`,
@@ -6655,6 +6670,9 @@ export class MapView {
     for (const id of [...this.gunRecoil.keys()]) {
       if (!live.has(id)) this.gunRecoil.delete(id);
     }
+    for (const id of [...this.hiveGunRecoil.keys()]) {
+      if (!live.has(id)) this.hiveGunRecoil.delete(id);
+    }
     if (this.muzzleSmokes.length > 360) {
       this.muzzleSmokes.splice(0, this.muzzleSmokes.length - 360);
     }
@@ -7037,7 +7055,15 @@ export class MapView {
           else if (e.type === "ram") this.drawCiwsGun(base, pad.x, pad.y, pad.w, 1, aim, undefined, RAM_TURRET_SHEET);
           else if (gun) {
             // One column per man at the gun: an empty gun shows nobody behind the shield.
-            const crew = ghost ? gun.cols - 1 : Math.min(gun.cols - 1, e.garrison?.count ?? 0);
+            // A crewless hive gun's columns are its recoil frames instead.
+            const crewless = !!catalog(e.type).poweredGun;
+            const crew = crewless
+              ? ghost
+                ? 0
+                : hiveRecoilColumn(this.hiveGunRecoil.get(e.id), performance.now())
+              : ghost
+                ? gun.cols - 1
+                : Math.min(gun.cols - 1, e.garrison?.count ?? 0);
             // The MG nest flashes at its muzzle while it fires, like a gatling.
             this.drawCiwsGun(base, pad.x, pad.y, pad.w, 1, aim, ghost ? undefined : e, gun.sheet, crew, gun.cols, gun);
             if (gun.lampZ != null) this.drawTowerLamp(e, pad.x, pad.y, pad.w, ghost, gun);
@@ -8843,7 +8869,41 @@ export class MapView {
       const from = { x: s.x + lens.x, y: s.y + unitGroundSink(size) + lens.y };
       drawLaserBeam(ctx, from, this.toScreen(end.x, end.y), now, e.id);
     }
+    this.drawLaserFences(now);
     this.drawUplinks(now);
+  }
+
+  /** Lit Laser Fence posts and the two beams between each linked pair, by the sim's own link rule. */
+  private drawLaserFences(now: number): void {
+    const posts = this.curr.entities.filter((e) => e.type === "laserfence" && !e.wreck && !e.ruined && !e.unpowered && e.hp > 0);
+    if (posts.length < 2) return;
+    const ts = this.ts();
+    const layer = gunLayerFor("laserfence");
+    const heights = layer?.beamZ ?? [5.6, 11.6];
+    const byId = new Map(posts.map((e) => [e.id, e]));
+    for (const link of laserFenceLinks(posts, LASER_FENCE_REACH_TILES * ts)) {
+      const a = byId.get(link.a)!;
+      const b = byId.get(link.b)!;
+      const ea = this.elevAt(a.x, a.y);
+      const eb = this.elevAt(b.x, b.y);
+      const sa = this.toScreen(a.x, a.y, ea);
+      const sb = this.toScreen(b.x, b.y, eb);
+      heights.forEach((z, k) => {
+        const la = layer ? this.buildingArtLift(a, ea, z, layer) : z * 2;
+        const lb = layer ? this.buildingArtLift(b, eb, z, layer) : z * 2;
+        drawFenceBeam(this.ctx, { x: sa.x, y: sa.y - la }, { x: sb.x, y: sb.y - lb }, now, link.a * 7 + link.b * 3 + k);
+      });
+    }
+  }
+
+  /** Screen px above the ground that a height `z` of a building's art sits, at CIWS_SOURCE_ZOOM source px a unit, laid on its pad. */
+  private buildingArtLift(e: Pick<EntityView, "type" | "x" | "y">, ground: number, z: number, layer: GunLayer): number {
+    const def = catalog(e.type);
+    const ts = this.ts();
+    const padW =
+      this.toScreen(e.x + (def.tileW * ts) / 2, e.y - (def.tileH * ts) / 2, ground).x -
+      this.toScreen(e.x - (def.tileW * ts) / 2, e.y + (def.tileH * ts) / 2, ground).x;
+    return z * CIWS_SOURCE_ZOOM * (padW / layer.pad.padWidth);
   }
 
   /** A Cyborg Commander's uplink to the shut-down Cyborg he is taking over, with its progress ring. */
@@ -9803,7 +9863,7 @@ export class MapView {
       ctx.fillStyle = "rgba(8, 6, 4, 0.72)";
       ctx.fillRect(x, by, w, h);
       ctx.globalAlpha = alpha;
-      ctx.fillStyle = i === 0 ? AMMO_PRIMARY_FILL : AMMO_SECONDARY_FILL;
+      ctx.fillStyle = i === 0 ? (e.energy != null ? ENERGY_FILL : AMMO_PRIMARY_FILL) : AMMO_SECONDARY_FILL;
       ctx.fillRect(x, by, w * ratios[i]!, h);
     }
   }
@@ -9872,7 +9932,7 @@ export class MapView {
         const base = unturnedBuildingSprite(type) ?? spr;
         if (type === "ciws") this.drawCiwsGun(base, pad.x, pad.y, pad.w, 0.55, facing);
         else if (type === "ram") this.drawCiwsGun(base, pad.x, pad.y, pad.w, 0.55, facing, undefined, RAM_TURRET_SHEET);
-        else if (gun) this.drawCiwsGun(base, pad.x, pad.y, pad.w, 0.55, facing, undefined, gun.sheet, gun.cols - 1, gun.cols);
+        else if (gun) this.drawCiwsGun(base, pad.x, pad.y, pad.w, 0.55, facing, undefined, gun.sheet, catalog(type).poweredGun ? 0 : gun.cols - 1, gun.cols);
         if (gun?.lampZ != null) {
           // The pole lamp starts out the way the post is turned.
           ctx.save();

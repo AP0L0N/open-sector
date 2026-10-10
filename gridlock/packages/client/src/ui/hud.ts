@@ -1,6 +1,7 @@
 import {
   canLunge,
   canBurrow,
+  costFor,
   isAirfieldType,
   BUILDING_TYPES,
   YARD_FIELD_TYPES,
@@ -243,7 +244,9 @@ export function mountBattlefield(
     for (const { id, type } of entries[g.id]) {
       const c = catalog(type);
       grid.append(
-        c.kind === "building" ? cameoButton(id, c.name, c.cost, c.power, true) : cameoButton(id, c.name, c.cost, 0, false, true),
+        c.kind === "building"
+          ? cameoButton(id, c.name, costFor(type, hudFaction), c.power, true)
+          : cameoButton(id, c.name, c.cost, 0, false, true),
       );
     }
     panels.append(grid);

@@ -2234,6 +2234,8 @@ interface PadInfo {
   muzzleZ?: number;
   /** The Spotlight post: height of the pole's head plate, where the client draws the lamp. */
   lampZ?: number;
+  /** The Laser Fence post: heights of its emitter collars, low then high, where its beams leave. */
+  beamZ?: number[];
 }
 
 const padManifests = import.meta.glob("../assets/buildings/*.json", { eager: true, import: "default" }) as Record<string, PadInfo>;
@@ -2243,7 +2245,7 @@ const buildingUrls = import.meta.glob("../assets/buildings/*.png", { eager: true
  * The WW2 forts and crewed guns (tools/sprites/render_ww2_*.py): each <type>.png with its pad
  * metrics in <type>.json beside it, picked up by name.
  */
-const FORT_TYPES: readonly EntityType[] = ["tobruk", "casemate", "hochstand", "leitturm", "spotlight", "mgnest", "pak36", "pak43", "flak", "spineturret", "pulsespire", "thornspitter", "bilelance", "puffcap", "eyestalk", "husk"];
+const FORT_TYPES: readonly EntityType[] = ["tobruk", "casemate", "hochstand", "leitturm", "spotlight", "mgnest", "pak36", "pak43", "flak", "spineturret", "pulsespire", "laserfence", "thornspitter", "bilelance", "puffcap", "eyestalk", "husk"];
 for (const type of FORT_TYPES) {
   const info = padManifests[`../assets/buildings/${type}.json`];
   const url = buildingUrls[`../assets/buildings/${type}.png`];
@@ -2263,6 +2265,8 @@ export interface GunLayer {
   muzzleZ: number;
   /** A lamp on a pole (the Spotlight post): its head-plate height, mesh units. The sheet is the pole and its man. */
   lampZ?: number;
+  /** The Laser Fence post's beam heights, low then high, world px of the art like muzzleZ. */
+  beamZ?: number[];
 }
 
 const GUN_LAYERS: Partial<Record<EntityType, GunLayer>> = {};
@@ -2280,6 +2284,7 @@ for (const type of FORT_TYPES) {
     gunZ: info.gunZ ?? 6,
     muzzleZ: info.muzzleZ ?? info.gunZ ?? 6,
     lampZ: info.lampZ,
+    beamZ: info.beamZ,
   };
 }
 

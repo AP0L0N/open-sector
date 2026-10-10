@@ -52,6 +52,7 @@ import { bridgeOrderSpan } from "./bridge.js";
 import { artilleryCanLay, gunCrewOf } from "./artillery.js";
 import { crateViews, mineViews, payloadOf, planeRiders } from "./airdrop.js";
 import { cyborgShielded } from "./crits.js";
+import { plasmaCharge } from "./hive-ammo.js";
 import { laserProgress } from "./laser.js";
 import { garrisonBars, garrisonOwner } from "./garrison.js";
 import { deckLoad } from "./lst.js";
@@ -523,6 +524,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
             }
           : undefined,
       ammo: friendly && Object.keys(e.ammo).length > 0 ? { ...e.ammo } : undefined,
+      energy: friendly ? plasmaCharge(e) : undefined,
       shell: friendly && e.shell ? e.shell : undefined,
       mgAmmo: friendly && hasMg(e.type) ? e.mgAmmo : undefined,
       mgHeat: friendly && (hasMg(e.type) || !!gatlingHeatOf(e.type)) ? e.mgHeat : undefined,

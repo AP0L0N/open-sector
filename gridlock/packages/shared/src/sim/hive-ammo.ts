@@ -1,4 +1,4 @@
-import { airLoadoutOf, endlessAmmo, supplyShortOf } from "../catalog.js";
+import { airLoadoutOf, endlessAmmo, plasmaCellOf, supplyShortOf, TICK_DT } from "../catalog.js";
 import { transferOnce } from "./supply.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -10,12 +10,36 @@ const TOP_UP_CAP = 4000;
  * gets back whatever it spent: shells, rockets, a belt, a drum, a jet's fuel, a plane's bomb
  * and rounds. So none of them ever runs dry, and none needs a truck, a pad, or a pool.
  * A magazine that reloads by itself still reloads: that is the gun's pace, not its stock.
+ * A plasma cannon is the exception: its cell holds a few shots and regrows them one at a time,
+ * so it fires a burst and then only as fast as the cell refills.
  */
 export function tickHiveAmmo(state: MatchState): void {
   for (const e of state.entities.values()) {
-    if (e.hp <= 0 || e.wreck || !endlessAmmo(e.type)) continue;
+    if (e.hp <= 0 || e.wreck) continue;
+    const cell = plasmaCellOf(e.type);
+    if (cell) e.energy = Math.min(cell.shots, (e.energy ?? cell.shots) + TICK_DT / cell.rechargeSeconds);
+    if (!endlessAmmo(e.type)) continue;
     topUp(e);
   }
+}
+
+/** Shots of energy left in `e`'s plasma cell. Infinity when its gun has no cell. */
+export function plasmaShots(e: Entity): number {
+  const cell = plasmaCellOf(e.type);
+  return cell ? (e.energy ?? cell.shots) : Infinity;
+}
+
+/** Share of `e`'s plasma cell charged, 0–1 to the hundredth. Undefined when its gun has no cell. */
+export function plasmaCharge(e: Entity): number | undefined {
+  const cell = plasmaCellOf(e.type);
+  if (!cell || e.hp <= 0 || e.wreck) return undefined;
+  return Math.round(((e.energy ?? cell.shots) / cell.shots) * 100) / 100;
+}
+
+/** The plasma cannon on `e` fired one round: draw a shot from its cell. */
+export function drawPlasma(e: Entity): void {
+  const cell = plasmaCellOf(e.type);
+  if (cell) e.energy = Math.max(0, (e.energy ?? cell.shots) - 1);
 }
 
 /** Fill every finite store `e` carries to the catalog's full load. */

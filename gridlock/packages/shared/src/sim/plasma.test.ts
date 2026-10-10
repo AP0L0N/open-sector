@@ -1,0 +1,162 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
+import { TICK_DT, TILE_SUBDIV, catalog, isCivilianType, plasmaCellOf, secondsToTicks, type EntityType } from "../catalog.js";
+import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
+import { applyCommand } from "./commands.js";
+import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
+import { createMatch, step } from "./match.js";
+import { snapshotFor } from "./snapshot.js";
+import { fireLaser } from "./laser.js";
+import type { EnergyShield, Entity, MatchState } from "./types.js";
+
+/** A is Alliance, B the Xenomorphs, on bare flat ground, nothing but what a test places. */
+function field(): MatchState {
+  const r = createRoom({ id: "PLS", hostId: "A", hostName: "Alpha", mapId: "yard-64", maxSlots: 8 });
+  if (!r.ok) throw new Error(r.message);
+  const room = r.value;
+  assert.equal(joinRoom(room, "B", "Bravo").ok, true);
+  updateSelf(room, "A", { ready: true, spawnId: 1 });
+  updateSelf(room, "B", { ready: true, spawnId: 4, faction: "xeno" });
+  const started = startMatch(room, "A", () => 0);
+  if (!started.ok) throw new Error(started.message);
+  const state = createMatch(room, started.value);
+  state.heights.fill(0);
+  state.occupy.fill(0);
+  for (let i = 0; i < state.terrain.length; i++) {
+    const t = state.terrain[i];
+    if (t === TILE_TREE || t === TILE_BLOCKED) state.terrain[i] = TILE_EMPTY;
+  }
+  state.blocked.fill(0);
+  for (const e of [...state.entities.values()]) if (isCivilianType(e.type)) destroyEntity(state, e);
+  return state;
+}
+
+function ticks(state: MatchState, n: number, each?: () => void): void {
+  for (let i = 0; i < n; i++) {
+    step(state, TICK_DT);
+    each?.();
+  }
+}
+
+function at(state: MatchState, type: EntityType, owner: string, cx: number, cy: number): Entity {
+  const ts = state.tileSize;
+  return makeEntity(state, type, owner, tileCenter(Math.round(cx * TILE_SUBDIV), ts), tileCenter(Math.round(cy * TILE_SUBDIV), ts));
+}
+
+function still(e: Entity): Entity {
+  e.holdPosition = true;
+  e.cooldown = 1e9;
+  return e;
+}
+
+describe("plasma cannon energy cell", () => {
+  it("every Xenomorph plasma cannon carries a cell", () => {
+    for (const t of ["stalker", "siphon", "behemoth", "pulsespire", "leech"] as const) {
+      const cell = plasmaCellOf(t);
+      assert.ok(cell && cell.shots >= 1 && cell.rechargeSeconds > 0, t);
+    }
+    assert.equal(plasmaCellOf("warden"), undefined);
+  });
+
+  /** A Siphon laying fire on bare ground six cells off. Counts the shots the cell gives up. */
+  function firing(): { state: MatchState; s: Entity; shots: () => number } {
+    const state = field();
+    const s = at(state, "siphon", "B", 20, 30);
+    const aim = at(state, "rifleman", "B", 26, 30);
+    const x = aim.x;
+    const y = aim.y;
+    destroyEntity(state, aim);
+    assert.equal(applyCommand(state, "B", { type: "cmd.forceattack", ids: [s.id], x, y }).ok, true);
+    const full = plasmaCellOf("siphon")!.shots;
+    let n = 0;
+    const shots = () => {
+      const before = s.energy ?? full;
+      step(state, TICK_DT);
+      if ((s.energy ?? full) < before) n++;
+      return n;
+    };
+    return { state, s, shots };
+  }
+
+  it("waits on an empty cell, and fires again once a shot regrows", () => {
+    const { s, shots } = firing();
+    const cell = plasmaCellOf("siphon")!;
+    s.energy = 0;
+    for (let i = 0; i < secondsToTicks(cell.rechargeSeconds * 0.8); i++) shots();
+    assert.equal(shots(), 0, "no bolt on an empty cell");
+    for (let i = 0; i < secondsToTicks(cell.rechargeSeconds * 0.4); i++) shots();
+    assert.equal(shots(), 1, "one bolt on the regrown shot");
+    assert.ok((s.energy ?? cell.shots) < 1, `the bolt drew it (${s.energy})`);
+  });
+
+  it("a full cell fires at the gun's cadence until it runs low, then at the cell's pace", () => {
+    const { s, shots } = firing();
+    const cell = plasmaCellOf("siphon")!;
+    const cd = catalog("siphon").cooldown;
+    const span = 60;
+    for (let i = 0; i < secondsToTicks(span); i++) shots();
+    const n = shots();
+    // Endless at the gun's pace would be span/cd; the cell holds it to its stock plus what regrows.
+    assert.ok(n < span / cd - 2, `${n} bolts in ${span}s`);
+    assert.ok(n >= Math.floor(span / cell.rechargeSeconds), `${n} bolts in ${span}s`);
+    assert.ok((s.energy ?? cell.shots) < 2, `cell drawn down (${s.energy})`);
+  });
+
+  it("regrows to full and no further", () => {
+    const state = field();
+    const s = still(at(state, "stalker", "B", 20, 30));
+    s.energy = 0;
+    const cell = plasmaCellOf("stalker")!;
+    ticks(state, secondsToTicks(cell.rechargeSeconds * (cell.shots + 2)));
+    assert.equal(s.energy, cell.shots);
+  });
+
+  it("shows the charge to its owner only", () => {
+    const state = field();
+    const s = at(state, "stalker", "B", 20, 30);
+    s.energy = 2;
+    const own = snapshotFor(state, "B").entities.find((e) => e.id === s.id);
+    assert.equal(own?.energy, 0.5);
+    const foe = snapshotFor(state, "A").entities.find((e) => e.id === s.id);
+    assert.equal(foe?.energy, undefined);
+  });
+});
+
+describe("plasma and lasers do not ricochet", () => {
+  it("a Xenomorph bolt the plate turns spends itself on it", () => {
+    const state = field();
+    const r = at(state, "ravager", "B", 20, 30);
+    const tank = still(at(state, "jagdtiger", "A", 25, 30));
+    tank.facing = Math.PI;
+    assert.equal(applyCommand(state, "B", { type: "cmd.attack", ids: [r.id], targetId: tank.id }).ok, true);
+    let ricochets = 0;
+    let hits = 0;
+    for (let i = 0; i < secondsToTicks(6); i++) {
+      step(state, TICK_DT);
+      assert.ok(!state.projectiles.some((p) => p.bounced), "no bolt flies on after the plate");
+      for (const imp of state.impacts) {
+        if (imp.fromId !== r.id) continue;
+        if (imp.kind === "ricochet") ricochets++;
+        else hits++;
+      }
+      state.impacts.length = 0;
+    }
+    assert.equal(ricochets, 0);
+    assert.ok(hits > 0, "the bolts did reach the plate");
+  });
+
+  it("a straight laser beam glances off an enemy energy wall and spares the hull behind it", () => {
+    const state = field();
+    const cmdr = at(state, "cyborgcommander", "A", 20, 30);
+    const tank = still(at(state, "stalker", "B", 28, 30));
+    const hp = tank.hp;
+    const wall: EnergyShield = { id: state.nextId++, ownerId: "B", fromId: tank.id, x: tank.x, y: tank.y, angle: Math.PI, half: 0.8, r: state.tileSize * 4, hp: 400, hpMax: 400, life: 10 };
+    state.energyShields = [wall];
+    fireLaser(state, cmdr, tank.x, tank.y, state.tileSize * 40, tank);
+    assert.equal(tank.hp, hp, "the hull behind the wall is untouched");
+    assert.ok(wall.hp < 400, "the wall took the beam");
+    assert.ok(state.impacts.some((i) => i.laser && i.kind === "ricochet"), "it glances off");
+    assert.ok((cmdr.laser?.lens[0] ?? 0) < Math.hypot(tank.x - cmdr.x, tank.y - cmdr.y), "the beam stops at the wall");
+  });
+});

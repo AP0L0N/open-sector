@@ -95,6 +95,7 @@ describe("factions in the catalog", () => {
         "hivecore",
         "juggernaut",
         "lancer",
+        "laserfence",
         "leech",
         "lurker",
         "mawcaster",

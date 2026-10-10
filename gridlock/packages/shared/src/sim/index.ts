@@ -158,3 +158,5 @@ export {
 } from "./field.js";
 export { bridgeBrickProblemFor, bridgeSpanOf, bridgeTilesOf, restampBridges } from "./bridge.js";
 export type { FieldEnd, GateSite, WallTopSample } from "./field.js";
+export { laserFenceLinks } from "./laser-fence.js";
+export type { FenceLink, FencePost } from "./laser-fence.js";

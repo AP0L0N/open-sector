@@ -2,6 +2,7 @@ import {
   BUILD_REQUIRES,
   buildRadiusOf,
   catalog,
+  costFor,
   isCivilianType,
   isConcreteLine,
   isDefenceStructure,
@@ -174,10 +175,10 @@ function advanceStructure(state: MatchState, p: SimPlayer, job: StructureJob | n
     finishYardField(state, p, job);
     return;
   }
-  const def = catalog(job.type);
+  const cost = costFor(job.type, p.faction ?? "alliance");
   const pow = powerOf(state, p.playerId);
-  advancePaidJob(p, job, def.cost, productionSpeed(pow.provided, pow.used));
-  if (jobFullyPaid(job, def.cost)) {
+  advancePaidJob(p, job, cost, productionSpeed(pow.provided, pow.used));
+  if (jobFullyPaid(job, cost)) {
     job.ready = true;
     job.progressTicks = job.totalTicks;
     // A ready defence is placed from its own queue, so it does not steal the base ghost.
@@ -417,8 +418,8 @@ export function sellBuilding(state: MatchState, playerId: string, id: number): s
   if (isCivilianType(e.type)) return "Cannot sell that.";
   // Sold with men inside: they walk out unhurt.
   if (e.garrison.length) spillGarrison(state, e, { damage: false });
-  const refund = e.ruined ? 0 : Math.floor(catalog(e.type).cost * SELL_REFUND);
   const p = state.players.get(playerId);
+  const refund = e.ruined ? 0 : Math.floor(costFor(e.type, p?.faction ?? "alliance") * SELL_REFUND);
   if (p) p.scrap += refund;
   destroyEntity(state, e);
   if (isFieldStructure(e.type)) restampForts(state);
