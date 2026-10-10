@@ -217,6 +217,7 @@ import {
   lampSprite,
   STUMP_FACES,
   CRATER_FACES,
+  SCORCH_FACES,
   CIWS_TURRET_SHEET,
   RAM_TURRET_SHEET,
   gunLayerFor,
@@ -382,6 +383,7 @@ import { roofCiwsMuzzle } from "./roof-ciws.js";
 import { CIWS_INTERCEPT_LIFT, CIWS_MUZZLE_REACH, CIWS_SOURCE_ZOOM, ciwsMuzzleLift, ciwsTurretCell, ciwsTurretRow } from "./ciws.js";
 import { ciwsBurstTracers, ciwsTracers } from "./ciws-tracer.js";
 import { drawEnergyBolt, drawEnergyBurst, drawEnergyMuzzle, drawPlasmaOrb, energyBolts, energyBurstMs } from "./energy-fx.js";
+import { SCORCH_GLOW_MS, SCORCH_SMOKE_RADIUS, drawPlasmaSteam, drawScorchFallback, drawScorchGlow, plasmaSteamMs } from "./plasma-ground.js";
 import { PTRD_MUZZLE_LIFT, ptrdTracers } from "./ptrd-tracer.js";
 import { ROOF_CIWS_LIFT } from "./roof-ciws.js";
 
@@ -8089,9 +8091,11 @@ export class MapView {
   private drawHole(hole: ShellHoleView, alpha: number): void {
     const c = this.toScreen(hole.x, hole.y);
     const rx = this.groundSpan(hole.x, hole.y, hole.radius);
-    const face = CRATER_FACES[(hole.seed >>> 0) % CRATER_FACES.length];
+    // A Borg plasma round charred the ground instead: the scorch art, sized so its ring spans the radius.
+    const faces = hole.scorch ? SCORCH_FACES : CRATER_FACES;
+    const face = faces[(hole.seed >>> 0) % faces.length];
     const sprite = face && face.image.naturalWidth > 0 && face.bowl > 0 ? face : null;
-    const drawH = sprite ? (sprite.image.naturalHeight * rx * 2.05) / sprite.bowl : 0;
+    const drawH = sprite ? (sprite.image.naturalHeight * rx * (hole.scorch ? 2 : 2.05)) / sprite.bowl : 0;
     const fallback = fallbackHoleRect(c.x, c.y, rx, rx * 0.5);
     const dest = sprite
       ? unionRect(
@@ -8119,6 +8123,10 @@ export class MapView {
         const drew = drawPropSprite(ctx, sprite, c.x, c.y, drawH, false);
         ctx.restore();
         if (drew) return;
+      }
+      if (hole.scorch) {
+        drawScorchFallback(ctx, c.x, c.y, rx, alpha);
+        return;
       }
       const tip = this.toScreen(hole.x + Math.cos(hole.ang), hole.y + Math.sin(hole.ang));
       const ang = hole.round ? 0 : Math.atan2(tip.y - c.y, tip.x - c.x);
@@ -9074,6 +9082,20 @@ export class MapView {
     const ctx = this.ctx;
     const keep: typeof this.fx = [];
     for (const f of this.fx) {
+      // A Borg round into water throws no column: it flashes, boils the surface, and hisses off steam.
+      if (f.energy && f.splash && !f.death && !f.torpedo && (f.kind === "miss" || f.kind === "puff")) {
+        const life = plasmaSteamMs(f.caliber);
+        const age = now - f.at;
+        if (age > life) {
+          this.fxIds.delete(f.id);
+          continue;
+        }
+        keep.push(f);
+        if (age < 0) continue;
+        const s = this.toScreen(f.x, f.y);
+        drawPlasmaSteam(ctx, s.x, s.y, age / life, f.id, f.caliber);
+        continue;
+      }
       // A Borg hit is light, not metal: a green burst in place of dirt, sparks, and fireball.
       const energyHit = !!f.energy && !f.death && !f.intercept && f.kind !== "muzzle" && f.kind !== "kill" && !f.splash;
       if (energyHit || (f.energy && f.kind === "muzzle")) {
@@ -9192,7 +9214,7 @@ export class MapView {
     this.drawSmoulders(now);
   }
 
-  /** Thin smoke off craters struck while you watched. */
+  /** Thin smoke off craters struck while you watched, and the cooling glow of a fresh plasma scorch. */
   private drawSmoulders(now: number): void {
     const holes = this.curr.holes ?? [];
     if (holes.length === 0) return;
@@ -9209,7 +9231,13 @@ export class MapView {
       if (!(age < SMOULDER_MS)) continue;
       if (!this.lit(worldToTile(hole.x, ts), worldToTile(hole.y, ts))) continue;
       const c = this.toScreen(hole.x, hole.y);
-      drawSmoulder(this.ctx, c.x, c.y, age, hole.seed, this.groundSpan(hole.x, hole.y, hole.radius));
+      const rx = this.groundSpan(hole.x, hole.y, hole.radius);
+      if (hole.scorch) {
+        if (age < SCORCH_GLOW_MS) drawScorchGlow(this.ctx, c.x, c.y, rx, age, hole.seed);
+        // A rifle bolt's dot only glows; a shell-sized scorch smokes too.
+        if (hole.radius < SCORCH_SMOKE_RADIUS) continue;
+      }
+      drawSmoulder(this.ctx, c.x, c.y, age, hole.seed, rx);
     }
     if (this.holeBorn.size > holes.length + 64) {
       const live = new Set(holes.map((h) => h.id));

@@ -159,6 +159,10 @@ import crater3Url from "../assets/terrain/crater-3.png";
 import crater4Url from "../assets/terrain/crater-4.png";
 import crater5Url from "../assets/terrain/crater-5.png";
 import crater6Url from "../assets/terrain/crater-6.png";
+import scorch1Url from "../assets/terrain/scorch-1.png";
+import scorch2Url from "../assets/terrain/scorch-2.png";
+import scorch3Url from "../assets/terrain/scorch-3.png";
+import scorch4Url from "../assets/terrain/scorch-4.png";
 import bush1Url from "../assets/terrain/bush-1.png";
 import bush2Url from "../assets/terrain/bush-2.png";
 import bush3Url from "../assets/terrain/bush-3.png";
@@ -2557,6 +2561,14 @@ export const CRATER_FACES: CraterSprite[] = [
   crater(crater4Url, 270, 135, 240),
   crater(crater5Url, 270, 135, 240),
   crater(crater6Url, 270, 135, 240),
+];
+/** Plasma scorch from a Borg energy round. `bowl` is the charred ring's width in source pixels. */
+export const SCORCH_FACES: CraterSprite[] = [
+  // tools/sprites/render_scorch.py prints these.
+  crater(scorch1Url, 190, 95, 200),
+  crater(scorch2Url, 190, 95, 200),
+  crater(scorch3Url, 190, 95, 200),
+  crater(scorch4Url, 190, 95, 200),
 ];
 /** Rail runs down-right (world +x). Contact is midway between the post bases. */
 export const FENCE_X = prop(fenceXUrl, 300, 525);
