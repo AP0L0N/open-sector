@@ -1,4 +1,7 @@
 import {
+  BEHEMOTH_AUTO_LUNGE_MAX_TILES,
+  BEHEMOTH_AUTO_LUNGE_MIN_TILES,
+  BEHEMOTH_AUTO_LUNGE_SHORT_TILES,
   BEHEMOTH_LUNGE_APEX,
   BEHEMOTH_LUNGE_RANGE_TILES,
   BEHEMOTH_LUNGE_RECHARGE_SECONDS,
@@ -10,8 +13,9 @@ import {
   canLunge,
   secondsToTicks,
 } from "../catalog.js";
-import { clearOrder, inBounds, tileCenter, walkable, worldToTile } from "./geo.js";
+import { allies, clearOrder, inBounds, tileCenter, walkable, worldToTile } from "./geo.js";
 import { fireSweep } from "./laser.js";
+import { setPath } from "./path.js";
 import { nextRand } from "./rng.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -21,6 +25,7 @@ import type { Entity, MatchState } from "./types.js";
  * steers nor fires. Where it lands it lets go BEHEMOTH_RING_SWEEPS short green laser sweeps at
  * random bearings, one after another: each burns the enemy soldiers it passes and sets the ground
  * along its tip on fire. Then the legs need BEHEMOTH_LUNGE_RECHARGE_SECONDS before the next.
+ * With the legs charged it also lunges by itself at the enemy unit it is fighting (autoLunge).
  * Runs before movement, beside the jets.
  */
 
@@ -67,8 +72,11 @@ function landing(state: MatchState, e: Entity, x: number, y: number): { x: numbe
   return null;
 }
 
-/** Throw it toward (x, y): short of it when the point is past its reach. */
-export function startLunge(state: MatchState, e: Entity, x: number, y: number): string | null {
+/**
+ * Throw it toward (x, y): short of it when the point is past its reach. A player's lunge drops
+ * what it was doing; `keepOrder` (its own jump into a fight) keeps the order and the target.
+ */
+export function startLunge(state: MatchState, e: Entity, x: number, y: number, keepOrder = false): string | null {
   const why = lungeDenied(state, e);
   if (why) return why;
   const reach = BEHEMOTH_LUNGE_RANGE_TILES * state.tileSize;
@@ -82,9 +90,11 @@ export function startLunge(state: MatchState, e: Entity, x: number, y: number): 
   }
   const spot = landing(state, e, e.x + dx, e.y + dy);
   if (!spot) return "Nowhere to land there.";
-  clearOrder(e);
-  e.orderQueue = undefined;
-  e.holdPosition = false;
+  if (!keepOrder) {
+    clearOrder(e);
+    e.orderQueue = undefined;
+    e.holdPosition = false;
+  }
   e.facing = Math.atan2(spot.y - e.y, spot.x - e.x);
   e.lunge = { x0: e.x, y0: e.y, x1: spot.x, y1: spot.y, t0: state.tick, t1: state.tick + secondsToTicks(BEHEMOTH_LUNGE_SECONDS) };
   e.lungeReady = state.tick + secondsToTicks(BEHEMOTH_LUNGE_SECONDS + BEHEMOTH_LUNGE_RECHARGE_SECONDS);
@@ -109,9 +119,13 @@ export function tickLunges(state: MatchState): void {
       if (state.tick >= l.t1) {
         e.lunge = undefined;
         e.lungeRing = BEHEMOTH_RING_SWEEPS;
+        // An attack-move it jumped out of goes on from where it came down.
+        const o = e.order;
+        if (o?.kind === "attackmove" && o.x != null && o.y != null) setPath(state, e, o.x, o.y);
       }
       continue;
     }
+    autoLunge(state, e);
     // Down: one sweep after another, each on its own random bearing, until the ring is spent.
     if ((e.lungeRing ?? 0) > 0 && !e.laser) {
       const bearing = nextRand(state) * Math.PI * 2;
@@ -120,4 +134,28 @@ export function tickLunges(state: MatchState): void {
       if (e.lungeRing <= 0) e.lungeRing = undefined;
     }
   }
+}
+
+/** Orders it may jump out of by itself: none, an attack, or an attack-move. Never a plain move. */
+function mayAutoLunge(e: Entity): boolean {
+  const o = e.order;
+  return !o || o.kind === "attack" || o.kind === "attackmove";
+}
+
+/**
+ * Its own jump into a fight: legs charged, fighting an enemy unit on the ground between
+ * BEHEMOTH_AUTO_LUNGE_MIN_TILES and BEHEMOTH_AUTO_LUNGE_MAX_TILES off, it lunges at it and comes
+ * down BEHEMOTH_AUTO_LUNGE_SHORT_TILES short, so the landing sweeps catch it. Not on hold position.
+ */
+export function autoLunge(state: MatchState, e: Entity): boolean {
+  if (!canLunge(e.type) || e.lunge || e.lungeRing || e.holdPosition || !mayAutoLunge(e)) return false;
+  if (e.attackTarget == null || lungeDenied(state, e)) return false;
+  const t = state.entities.get(e.attackTarget);
+  if (!t || t.kind !== "unit" || t.hp <= 0 || t.wreck || t.air || t.garrisonedIn != null) return false;
+  if (t.ownerId && allies(state, e.ownerId, t.ownerId)) return false;
+  const ts = state.tileSize;
+  const d = Math.hypot(t.x - e.x, t.y - e.y);
+  if (d < BEHEMOTH_AUTO_LUNGE_MIN_TILES * ts || d > BEHEMOTH_AUTO_LUNGE_MAX_TILES * ts) return false;
+  const go = (d - BEHEMOTH_AUTO_LUNGE_SHORT_TILES * ts) / d;
+  return startLunge(state, e, e.x + (t.x - e.x) * go, e.y + (t.y - e.y) * go, true) == null;
 }

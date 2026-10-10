@@ -630,6 +630,8 @@ export interface Entity {
   field?: number;
   /** Cyborg Commander only: weapons power diverted to the field. The laser is dark; he does not fire. */
   fieldDivert?: true;
+  /** Behemoth only: Light Pulse, quick light bolts. Unset is High Pulse. */
+  lightPulse?: true;
   /** Cyborg Commander only: tick of the last hit on him, field or body. The recharge waits on it. */
   fieldHitTick?: number;
   /** Cyborg Commander only: the laser beam he is cutting with now. */

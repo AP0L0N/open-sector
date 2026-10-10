@@ -95,6 +95,9 @@ import {
   FW190_SPLASH_TILES,
   isMotorVehicle,
   catalog,
+  behemothPulseOf,
+  BEHEMOTH_PULSE_FAR_MUL,
+  BEHEMOTH_PULSE_NEAR_MUL,
   isLightHull,
   gunArcDegOf,
   GARRISON_STRUCTURAL_CALIBER,
@@ -2011,8 +2014,10 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   const shell = hasAmmo(e.type) ? pickLoadedShell(e.ammo, e.shell) : null;
   if (hasAmmo(e.type) && !shell) return;
   if (isSmokeShell(shell) && !mayFireSmoke(e)) return;
-  // A plasma cannon with its cell drained waits for the next shot to regrow.
-  if (plasmaShots(e) < 1) return;
+  // A plasma cannon with its cell drained waits for the next shot to regrow. A Light Pulse bolt needs less.
+  const pulse = behemothPulseOf(e);
+  const boltCost = pulse?.energy ?? 1;
+  if (plasmaShots(e) < boltCost) return;
   if (shell) e.shell = shell;
   const gun = fireStats(e);
   // A twin mount fires one barrel, then the other after a short gap. Smoke is one round.
@@ -2047,14 +2052,14 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     }
     // The second barrel only fires while the rack still holds that shell, and the cell a shot.
     if (shell && (e.ammo[shell] ?? 0) <= 0) break;
-    if (plasmaShots(e) < 1) break;
+    if (plasmaShots(e) < boltCost) break;
     fireRound(
       state,
       e,
       aimX,
       aimY,
       {
-        damage: gun.damage,
+        damage: pulse ? gun.damage * pulseBoltMul(pulse.damageMul, dist, range) : gun.damage,
         penetration: gun.penetration,
         caliber: gun.caliber,
         spreadDeg: gun.spreadDeg,
@@ -2074,7 +2079,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     fired++;
     if (armGatling) heatGatling(e, 1);
     if (shell) e.ammo[shell] = Math.max(0, (e.ammo[shell] ?? 0) - 1);
-    drawPlasma(e);
+    drawPlasma(e, boltCost);
     if (infantryGun || belt) {
       e.clip = Math.max(0, e.clip - 1);
       if (e.clip <= 0) {
@@ -2085,18 +2090,27 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     }
   }
   if (fired > 0) {
-    const follow = twin && !second && !!shell && (e.ammo[shell] ?? 0) > 0 && plasmaShots(e) >= 1;
+    const follow = twin && !second && !!shell && (e.ammo[shell] ?? 0) > 0 && plasmaShots(e) >= boltCost;
     if (follow) {
       e.twinUntil = state.tick + Math.round(APOCALYPSE_TWIN_WINDOW / TICK_DT);
       e.cooldown = APOCALYPSE_TWIN_GAP;
     } else {
       e.twinUntil = undefined;
-      e.cooldown = gun.cooldown * crewPace(e);
+      e.cooldown = gun.cooldown * crewPace(e) * (pulse?.cooldownMul ?? 1);
     }
   }
   // The MG nest's tripod gun flashes like a gatling while it works the belt.
   if (fired > 0 && crewGunOf(e.type) && belt) e.gatlingFire = { tick: state.tick, arms: 1 };
   if (fired > 0 && e.order?.once) clearOrder(e);
+}
+
+/**
+ * A Behemoth plasma bolt's damage, times: its pulse setting's share, and more the nearer it is
+ * fired, BEHEMOTH_PULSE_NEAR_MUL at the muzzle down in a line to BEHEMOTH_PULSE_FAR_MUL at full range.
+ */
+export function pulseBoltMul(damageMul: number, dist: number, range: number): number {
+  const f = Math.max(0, Math.min(1, dist / Math.max(1, range)));
+  return damageMul * (BEHEMOTH_PULSE_NEAR_MUL + (BEHEMOTH_PULSE_FAR_MUL - BEHEMOTH_PULSE_NEAR_MUL) * f);
 }
 
 /** World px a second the flying body is making good, for the Flak to lead it. Zero when it hangs still. */

@@ -5663,7 +5663,11 @@ export class MapView {
     ctx.restore();
   }
 
-  /** Lunge armed: a dashed green ring of the legs' reach round each selected Behemoth. */
+  /**
+   * Lunge armed: a dashed green ring of the legs' reach round each selected Behemoth. With no
+   * Sim Unit selected the blink cursor never draws, so the lunge draws its own crosshair here:
+   * the armed mode hides the system cursor.
+   */
   private drawLungeReach(): void {
     const units = this.ownLungerIds()
       .map((id) => this.currById.get(id))
@@ -5685,6 +5689,37 @@ export class MapView {
       }
       ctx.stroke();
     }
+    ctx.restore();
+    if (this.ownSimUnitIds().length === 0) this.drawLungeCursor(units);
+  }
+
+  /** The lunge's crosshair and word at the mouse: green in reach, orange where it comes down short. */
+  private drawLungeCursor(units: EntityView[]): void {
+    if (this.overControl || this.mouseX < 0 || this.mouseY < 0) return;
+    const reach = BEHEMOTH_LUNGE_RANGE_TILES * this.ts();
+    const w = this.screenToWorld(this.mouseX, this.mouseY);
+    const inReach = units.some((e) => Math.hypot(w.x - e.x, w.y - e.y) <= reach);
+    const charged = units.some((e) => (e.lungeCharge ?? 1) >= 1);
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.setLineDash([]);
+    ctx.font = "11px 'Share Tech Mono', monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    const word = !charged ? "LUNGE (CHARGING)" : inReach ? "LUNGE" : "LUNGE (SHORT)";
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#140e0a";
+    ctx.fillStyle = inReach && charged ? "#6effb4" : "#dc7850";
+    ctx.strokeText(word, this.mouseX + 12, this.mouseY + 8);
+    ctx.fillText(word, this.mouseX + 12, this.mouseY + 8);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = ctx.fillStyle;
+    ctx.beginPath();
+    ctx.moveTo(this.mouseX, this.mouseY - 8);
+    ctx.lineTo(this.mouseX, this.mouseY + 8);
+    ctx.moveTo(this.mouseX - 8, this.mouseY);
+    ctx.lineTo(this.mouseX + 8, this.mouseY);
+    ctx.stroke();
     ctx.restore();
   }
 

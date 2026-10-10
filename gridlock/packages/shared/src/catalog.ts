@@ -1947,6 +1947,58 @@ export const BEHEMOTH_RING_RANGE_TILES = t(5);
 export const BEHEMOTH_RING_HALF_DEG = 28;
 /** Seconds each landing sweep takes to cut its arc. */
 export const BEHEMOTH_RING_SWEEP_SECONDS = 0.3;
+/** Behemoth jumps by itself at an enemy unit it is fighting no nearer than this, cells. */
+export const BEHEMOTH_AUTO_LUNGE_MIN_TILES = t(4);
+/** …and no farther than this: past its legs' reach by about half a landing sweep. */
+export const BEHEMOTH_AUTO_LUNGE_MAX_TILES = BEHEMOTH_LUNGE_RANGE_TILES + t(2.5);
+/** It comes down this short of the enemy, so the landing sweeps reach it. */
+export const BEHEMOTH_AUTO_LUNGE_SHORT_TILES = t(2);
+/** Behemoth plasma bolt damage at the muzzle, times the bolt's load. Falls off in a line to… */
+export const BEHEMOTH_PULSE_NEAR_MUL = 1.5;
+/** …this at full range. */
+export const BEHEMOTH_PULSE_FAR_MUL = 0.6;
+
+/** Behemoth pulse settings: one heavy bolt a barrel, or a stream of light ones. */
+export type BehemothPulse = "high" | "light";
+export const BEHEMOTH_PULSE_MODES: readonly {
+  id: BehemothPulse;
+  name: string;
+  blurb: string;
+  /** Times the bolt's damage. */
+  damageMul: number;
+  /** Times the gun's reload. */
+  cooldownMul: number;
+  /** Shots of the energy cell one bolt draws. */
+  energy: number;
+}[] = [
+  {
+    id: "high",
+    name: "High Pulse",
+    blurb: "Full-power bolts: one a barrel, then the long reload. Goes through a Tiger's front plate; hits hardest up close.",
+    damageMul: 1,
+    cooldownMul: 1,
+    energy: 1,
+  },
+  {
+    id: "light",
+    name: "Light Pulse",
+    blurb: "Light bolts in quick succession: about four times the rate of fire, under a third of the damage each, and a quarter of the cell a bolt.",
+    damageMul: 0.3,
+    cooldownMul: 0.25,
+    energy: 0.25,
+  },
+];
+
+/** The pulse setting on `e`, or undefined when its gun has none. */
+export function behemothPulseOf(e: { type: EntityType; lightPulse?: true }): (typeof BEHEMOTH_PULSE_MODES)[number] | undefined {
+  if (!hasPulseModes(e.type)) return undefined;
+  return BEHEMOTH_PULSE_MODES[e.lightPulse ? 1 : 0];
+}
+
+/** Its plasma gun switches between High and Light Pulse: the Behemoth. */
+export function hasPulseModes(type: EntityType): boolean {
+  return type === "behemoth";
+}
 /** Stalker: seconds to dig in, in plain sight. */
 export const STALKER_BURROW_SECONDS = 1.6;
 /** Stalker: seconds to break back out; it comes up with its gun laid. */
@@ -4198,6 +4250,19 @@ export const APOCALYPSE_SHELLS: Record<ShellType, ShellDef> = {
   },
 };
 
+/**
+ * Behemoth twin disruptors: one plasma load, the Apocalypse's AP punch. High or Light Pulse
+ * (BEHEMOTH_PULSE_MODES) sets how hard and how fast it fires, not the rack.
+ */
+export const BEHEMOTH_SHELLS: Record<ShellType, ShellDef> = {
+  ...APOCALYPSE_SHELLS,
+  ap: {
+    ...APOCALYPSE_SHELLS.ap,
+    name: "Plasma",
+    blurb: "Plasma bolt. The second barrel follows a moment later. Hits hardest up close.",
+  },
+};
+
 const UNARMED = {
   armorFront: 0,
   armorSide: 0,
@@ -6284,14 +6349,14 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: APOCALYPSE_SHELLS.ap.penetration,
     caliber: APOCALYPSE_SHELLS.ap.caliber,
     spreadDeg: APOCALYPSE_SHELLS.ap.spreadDeg,
-    shells: APOCALYPSE_SHELLS,
+    shells: BEHEMOTH_SHELLS,
     twinGuns: true,
-    ammo: { ap: 16, he: 8 },
+    ammo: { ap: 24 },
     defaultShell: "ap",
     shellResist: BEHEMOTH_SHELL_RESIST,
     leavesWreck: true,
     wreckHp: 60,
-    blurb: `The largest of the heavy assimilators: a carapace on six legs with twin plasma disruptors on one turret. They fire one after the other, a short gap and then a long reload, through a Tiger's front plate, from farther than any tank but the Jagdtiger. The layered carapace sheds part of every shell that hits it (it takes ${Math.round(BEHEMOTH_SHELL_RESIST * 100)}% of the damage). Slow on its legs and slow on the turret, it walks straight through woods, felling every tree it brushes. Lunge throws it up and forward up to ${BEHEMOTH_LUNGE_RANGE_TILES / TILE_SUBDIV} cells; where it lands, ${BEHEMOTH_RING_SWEEPS} green laser sweeps lash out round it, burning enemy soldiers and setting the ground alight. The legs need ${BEHEMOTH_LUNGE_RECHARGE_SECONDS} seconds before the next. In a fight it throws a curved energy wall across its front, ${BEHEMOTH_SHIELD.hp} points strong: the wall stays where it went up, stops every enemy round and beam that meets it, and no enemy walks through it, while the Behemoth walks and fires through as if it were not there. It stands ${BEHEMOTH_SHIELD.seconds} seconds unless shot down; ${BEHEMOTH_SHIELD.rechargeSeconds} seconds after it falls, the next. Each barrel's bolt draws on an energy cell that holds 6 and regrows one every 9 seconds. Needs a Neural Nexus.`,
+    blurb: `The largest of the heavy assimilators: a carapace on six legs with twin plasma disruptors on one turret. They fire one after the other, a short gap and then a long reload, through a Tiger's front plate, from farther than any tank but the Jagdtiger. A bolt hits hardest up close: ${BEHEMOTH_PULSE_NEAR_MUL}× at the muzzle, falling to ${BEHEMOTH_PULSE_FAR_MUL}× at full range. High Pulse fires full bolts; Light Pulse fires about four times as fast for under a third of the damage a bolt. The layered carapace sheds part of every shell that hits it (it takes ${Math.round(BEHEMOTH_SHELL_RESIST * 100)}% of the damage). Slow on its legs and slow on the turret, it walks straight through woods, felling every tree it brushes. Lunge throws it up and forward up to ${BEHEMOTH_LUNGE_RANGE_TILES / TILE_SUBDIV} cells; where it lands, ${BEHEMOTH_RING_SWEEPS} green laser sweeps lash out round it, burning enemy soldiers and setting the ground alight. The legs need ${BEHEMOTH_LUNGE_RECHARGE_SECONDS} seconds before the next. With the legs charged it lunges by itself at an enemy unit it is fighting ${BEHEMOTH_AUTO_LUNGE_MIN_TILES / TILE_SUBDIV} cells off or more, unless told to hold position. In a fight it throws a curved energy wall across its front, ${BEHEMOTH_SHIELD.hp} points strong: the wall stays where it went up, stops every enemy round and beam that meets it, and no enemy walks through it, while the Behemoth walks and fires through as if it were not there. It stands ${BEHEMOTH_SHIELD.seconds} seconds unless shot down; ${BEHEMOTH_SHIELD.rechargeSeconds} seconds after it falls, the next. Each barrel's bolt draws on an energy cell that holds 6 and regrows one every 9 seconds. Needs a Neural Nexus.`,
   },
   /** Xenomorph heavy assimilator: a giant on two legs with a two-handed hammer. Melee only. */
   juggernaut: {

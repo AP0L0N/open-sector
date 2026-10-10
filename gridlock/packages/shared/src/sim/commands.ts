@@ -1,5 +1,6 @@
 import {
   canLunge,
+  hasPulseModes,
   canBurrow,
   isAirfieldType,
   carriesShell,
@@ -177,6 +178,9 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
     case "cmd.lunge":
       if (!Array.isArray(msg.ids) || typeof msg.x !== "number" || typeof msg.y !== "number") return fail("bad_payload", "Bad lunge order.");
       return cmdLunge(state, playerId, msg.ids, msg.x, msg.y);
+    case "cmd.pulse":
+      if (!Array.isArray(msg.ids) || typeof msg.light !== "boolean") return fail("bad_payload", "Unknown pulse setting.");
+      return cmdPulse(state, playerId, msg.ids, msg.light);
     case "cmd.burrow":
       if (!Array.isArray(msg.ids) || typeof msg.on !== "boolean") return fail("bad_payload", "Bad burrow order.");
       return cmdBurrow(state, playerId, msg.ids, msg.on);
@@ -1533,6 +1537,14 @@ function cmdLunge(state: MatchState, playerId: string, ids: number[], x: number,
     else n++;
   }
   return n > 0 ? ok() : fail("busy", why ?? "It cannot lunge now.");
+}
+
+/** Behemoth: High Pulse (full bolts) or Light Pulse (quick, light ones). The reload already running stands. */
+function cmdPulse(state: MatchState, playerId: string, ids: number[], light: boolean): CmdResult {
+  const units = owned(state, playerId, ids).filter((e) => hasPulseModes(e.type));
+  if (units.length === 0) return fail("not_yours", "Select a Behemoth.");
+  for (const e of units) e.lightPulse = light ? true : undefined;
+  return ok();
 }
 
 /** Stalker: dig in, or break back out. A burrowed Stalker still answers this order. */

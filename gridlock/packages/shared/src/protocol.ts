@@ -196,6 +196,8 @@ export interface EntityView {
   selfDestruct?: boolean;
   /** Own Cyborg Commander with the laser's power in his force field. Omitted otherwise. */
   fieldDivert?: true;
+  /** Own Behemoth on Light Pulse. Omitted otherwise (High Pulse). */
+  lightPulse?: true;
   /** Own Cyborg or Cyborg Commander set to fire on thermal and APS contacts out of sight. Omitted otherwise. */
   engageContacts?: true;
   /** Walker is charging to detonate. Anyone who can see him sees it. */
@@ -895,6 +897,8 @@ export type ClientMessage =
   | { type: "cmd.powerdown"; ids: number[]; on: boolean }
   /** Behemoth: lunge at (x, y), short of it when the point is past its reach. */
   | { type: "cmd.lunge"; ids: number[]; x: number; y: number }
+  /** Behemoth: `light` sets Light Pulse (quick, light bolts); false is High Pulse. */
+  | { type: "cmd.pulse"; ids: number[]; light: boolean }
   /** Stalker: dig in under the ground (`on`), or break back out. */
   | { type: "cmd.burrow"; ids: number[]; on: boolean }
   /** Sim Unit II: blink to (x, y). Past his reach he walks until it is in reach, then blinks. */
