@@ -68,12 +68,12 @@ export function fenceLineEnergy(state: MatchState, playerId: string, sites: read
   return sites.length * energyOf("laserfence") + fenceEnergyToAdd(state, playerId, sites);
 }
 
-/** Energy each living unit and defence of `playerId` takes, oldest first. A Broodmother's brood is hers: it takes none. */
+/** Energy each living unit and defence of `playerId` takes, oldest first. An Assembler's Thralls are its: they take none. */
 function consumers(state: MatchState, playerId: string): { e: Entity; energy: number }[] {
   const links = linkEnergyByPost(state, fencePosts(state, playerId));
   const out: { e: Entity; energy: number }[] = [];
   for (const e of state.entities.values()) {
-    if (e.ownerId !== playerId || !live(e) || e.ruined || e.broodOf != null) continue;
+    if (e.ownerId !== playerId || !live(e) || e.ruined || e.assembledBy != null) continue;
     const energy = energyOf(e.type) + (links.get(e.id) ?? 0);
     if (energy > 0) out.push({ e, energy });
   }

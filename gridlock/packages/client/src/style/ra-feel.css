@@ -636,8 +636,8 @@ input[type="range"] { padding: 0; }
 .prod-job[data-type="siphon"] {
   background-image: url("../assets/units/siphon-cameo.png");
 }
-.prod-job[data-type="broodmother"] {
-  background-image: url("../assets/units/broodmother-cameo.png");
+.prod-job[data-type="assembler"] {
+  background-image: url("../assets/units/assembler-cameo.png");
 }
 .prod-job[data-type="mawcaster"] {
   background-image: url("../assets/units/mawcaster-cameo.png");
@@ -974,7 +974,7 @@ input[type="range"] { padding: 0; }
 #train-stalker,
 #train-ravager,
 #train-siphon,
-#train-broodmother,
+#train-assembler,
 #train-mawcaster,
 #train-behemoth,
 #train-juggernaut,
@@ -1173,10 +1173,10 @@ input[type="range"] { padding: 0; }
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/siphon-cameo.png");
 }
-#train-broodmother {
+#train-assembler {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
-    url("../assets/units/broodmother-cameo.png");
+    url("../assets/units/assembler-cameo.png");
 }
 #train-mawcaster {
   background-image:
@@ -1757,7 +1757,7 @@ input[type="range"] { padding: 0; }
 .config-type[data-type="weaver"] { background-image: url("../assets/units/weaver-cameo.png"); }
 .config-type[data-type="shade"] { background-image: url("../assets/units/shade-cameo.png"); }
 .config-type[data-type="siphon"] { background-image: url("../assets/units/siphon-cameo.png"); }
-.config-type[data-type="broodmother"] { background-image: url("../assets/units/broodmother-cameo.png"); }
+.config-type[data-type="assembler"] { background-image: url("../assets/units/assembler-cameo.png"); }
 .config-type[data-type="mawcaster"] { background-image: url("../assets/units/mawcaster-cameo.png"); }
 .config-type[data-type="behemoth"] { background-image: url("../assets/units/behemoth-cameo.png"); }
 .config-type[data-type="juggernaut"] { background-image: url("../assets/units/juggernaut-cameo.png"); }

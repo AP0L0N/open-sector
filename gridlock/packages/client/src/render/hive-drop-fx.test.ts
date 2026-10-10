@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { cometLift, drawDeploymentGrid, drawHiveComet, drawHiveImpact, gridBreath, gridSweep } from "./hive-drop-fx.js";
+import {
+  cometLift,
+  drawDeploymentGrid,
+  drawHiveComet,
+  drawHiveImpact,
+  gridBreath,
+  gridSweep,
+  HIVE_SHAKE_MS,
+  hiveShake,
+} from "./hive-drop-fx.js";
 
 /** A canvas stand-in that records every fill and stroke, and every point a path passes. */
 function recorder() {
@@ -22,6 +31,7 @@ function recorder() {
     },
     ellipse() {},
     arc() {},
+    quadraticCurveTo() {},
     fillRect() {},
     createLinearGradient: () => grad,
     createRadialGradient: () => grad,
@@ -73,8 +83,21 @@ describe("Deployment grid", () => {
 });
 
 describe("Hive Core drop", () => {
-  it("falls from high up, faster near the ground, and lands at zero height", () => {
-    assert.ok(cometLift(0, 10) > 100);
+  it("shakes the view hard on landing and settles", () => {
+    const mag = (s: { x: number; y: number }) => Math.hypot(s.x, s.y);
+    let early = 0;
+    let late = 0;
+    for (let t = 0; t < 200; t += 7) {
+      early = Math.max(early, mag(hiveShake(40, t)));
+      late = Math.max(late, mag(hiveShake(HIVE_SHAKE_MS - 60, t)));
+    }
+    assert.ok(early > 5 && late < early / 4);
+    assert.equal(mag(hiveShake(HIVE_SHAKE_MS, 123)), 0);
+  });
+
+  it("falls from far off the screen, faster near the ground, and lands at zero height", () => {
+    // Two dozen tiles' worth of sky: past the top of the view.
+    assert.ok(cometLift(0, 32) > 700);
     assert.equal(cometLift(1, 10), 0);
     const early = cometLift(0, 10) - cometLift(0.2, 10);
     const late = cometLift(0.8, 10) - cometLift(1, 10);

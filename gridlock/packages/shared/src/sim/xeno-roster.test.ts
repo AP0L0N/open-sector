@@ -4,8 +4,8 @@ import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
   AIR_CRUISE_ALT,
   XENO_DAMAGE_MUL,
-  BROOD_FIRST_SECONDS,
-  BROOD_MAX,
+  ASSEMBLER_SPEEDUP,
+  ASSEMBLER_THRALLS,
   INFANTRY_SIGHT_TILES,
   MAWCASTER_AIR_BALL,
   MAWCASTER_AIR_SALVO,
@@ -97,7 +97,7 @@ function uplink(state: MatchState): void {
 }
 
 const CYBORGS = ["spitter", "weaver", "shade"] as const;
-const HEAVIES = ["siphon", "broodmother", "mawcaster"] as const;
+const HEAVIES = ["siphon", "assembler", "mawcaster"] as const;
 
 describe("new Xenomorph roster", () => {
   it("trains the three cyborgs at the Conversion Chamber and the three heavies at the Forge", () => {
@@ -115,7 +115,7 @@ describe("new Xenomorph roster", () => {
       assert.ok(catalog(t).armorFront > 0 && catalog(t).leavesWreck, t);
     }
     assert.ok(techNeeds("shade").includes("nexus"));
-    assert.ok(techNeeds("broodmother").includes("nexus"));
+    assert.ok(techNeeds("assembler").includes("nexus"));
   });
 
   it("prices hit points inside the band the existing Xenomorph roster already spans", () => {
@@ -335,28 +335,41 @@ describe("Siphon", () => {
   });
 });
 
-describe("Broodmother", () => {
-  it("births a Thrall behind her after a while, then more, up to her brood", () => {
+describe("Assembler", () => {
+  it("builds a Thrall behind it three times as fast as the Forge, spending a tenth of its energy each", () => {
     const state = field();
     uplink(state);
-    const m = still(at(state, "broodmother", "B", 30, 30));
-    const brood = () => [...state.entities.values()].filter((e) => e.broodOf === m.id && e.hp > 0);
-    ticks(state, secondsToTicks(BROOD_FIRST_SECONDS) - 2);
-    assert.equal(brood().length, 0);
+    const a = still(at(state, "assembler", "B", 30, 30));
+    const built = () => [...state.entities.values()].filter((e) => e.assembledBy === a.id && e.hp > 0);
+    const each = secondsToTicks(catalog("thrall").buildSeconds / ASSEMBLER_SPEEDUP);
+    assert.equal(ASSEMBLER_SPEEDUP, 3);
+    ticks(state, each - 1);
+    assert.equal(built().length, 0);
     ticks(state, 3);
-    assert.equal(brood().length, 1);
-    const t = brood()[0]!;
+    assert.equal(built().length, 1);
+    const t = built()[0]!;
     assert.equal(t.type, "thrall");
     assert.equal(t.ownerId, "B");
-    for (let i = 0; i < BROOD_MAX + 2; i++) {
-      m.broodNext = state.tick;
+    assert.equal(snapshotFor(state, "B").entities.find((e) => e.id === a.id)?.energy, 1 - 1 / ASSEMBLER_THRALLS, "its owner sees the energy");
+    assert.equal(snapshotFor(state, "A").entities.find((e) => e.id === a.id)?.energy, undefined, "the enemy does not");
+  });
+
+  it("builds ten Thralls and then no more, a lost one is not replaced", () => {
+    const state = field();
+    uplink(state);
+    const a = still(at(state, "assembler", "B", 30, 30));
+    const built = () => [...state.entities.values()].filter((e) => e.assembledBy === a.id && e.hp > 0);
+    for (let i = 0; i < ASSEMBLER_THRALLS + 3; i++) {
+      a.assemblyDone = state.tick;
       ticks(state, 1);
     }
-    assert.equal(brood().length, BROOD_MAX, "no more than her brood");
-    destroyEntity(state, t);
-    m.broodNext = state.tick;
-    ticks(state, 1);
-    assert.equal(brood().length, BROOD_MAX, "a lost Thrall is replaced");
+    assert.equal(built().length, ASSEMBLER_THRALLS);
+    assert.equal(a.energy, 0);
+    assert.equal(snapshotFor(state, "B").entities.find((e) => e.id === a.id)?.energy, 0);
+    destroyEntity(state, built()[0]!);
+    a.assemblyDone = state.tick;
+    ticks(state, secondsToTicks(10));
+    assert.equal(built().length, ASSEMBLER_THRALLS - 1, "empty, it builds no more");
   });
 });
 

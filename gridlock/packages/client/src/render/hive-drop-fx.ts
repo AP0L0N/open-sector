@@ -13,8 +13,6 @@ export type Project = (wx: number, wy: number) => { x: number; y: number };
 export const GRID_BREATH_MS = 3200;
 /** A bright ring runs out from the middle once per GRID_SWEEP_MS. */
 export const GRID_SWEEP_MS = 2600;
-/** How long the landing flash and shockwave last. */
-export const HIVE_IMPACT_MS = 1400;
 
 const RINGS = 4;
 const SPOKES = 12;
@@ -90,17 +88,38 @@ export function drawDeploymentGrid(
   ctx.restore();
 }
 
-/** Height of the falling Hive Core over its landing spot, screen px per `unit`, at fall share `u` 0–1. */
+/** How long the landing flash, shockwaves, and thrown debris last. */
+export const HIVE_IMPACT_MS = 2400;
+/** The camera shakes for this long after a landing. */
+export const HIVE_SHAKE_MS = 700;
+
+/** Height the Hive Core starts its fall from, in `unit`s: far off the top of the screen. */
+const FALL_UNITS = 24;
+/** Screen px it drifts sideways per px it falls: it comes in steep from the upper left. */
+const SLANT = 0.28;
+
+/**
+ * Height of the falling Hive Core over its landing spot, screen px, at fall
+ * share `u` 0–1. It is already moving fast when it starts and is still
+ * speeding up when it hits.
+ */
 export function cometLift(u: number, unit: number): number {
   const t = Math.max(0, Math.min(1, u));
-  // It speeds up all the way down.
-  return (1 - t * t) * unit * 14;
+  return (1 - t) * (1 + 0.5 * t) * unit * FALL_UNITS;
+}
+
+/** Fixed per-index jitter, 0–1. */
+function hash(i: number, k: number): number {
+  const s = Math.sin(i * 127.1 + k * 311.7) * 43758.5453;
+  return s - Math.floor(s);
 }
 
 /**
- * The Hive Core coming down: a burning head over its landing spot (gx, gy,
- * screen px), a long trail back up the sky, and its shadow swelling on the
- * ground. `u` is the share of the fall done, 0–1.
+ * The Hive Core hurling down out of space onto its landing spot (gx, gy,
+ * screen px): a massive burning head with a bow shock on its leading face,
+ * a trail streaming far back up the sky, sparks and slag torn off it, and
+ * the ground under it lighting up as it closes. `u` is the share of the fall
+ * done, 0–1.
  */
 export function drawHiveComet(
   ctx: CanvasRenderingContext2D,
@@ -110,64 +129,136 @@ export function drawHiveComet(
 ): void {
   const u = Math.max(0, Math.min(1, opts.u));
   const unit = opts.unit;
+  const now = opts.nowMs;
   const lift = cometLift(u, unit);
-  // It comes in steep from the upper left.
-  const hx = gx - lift * 0.35;
+  const hx = gx - lift * SLANT;
   const hy = gy - lift;
-  const head = unit * (0.5 + 0.3 * u);
+  // Unit vector of travel (down and to the right), and its normal.
+  const len = Math.hypot(SLANT, 1);
+  const fx = SLANT / len;
+  const fy = 1 / len;
+  const nx = -fy;
+  const ny = fx;
+  const flicker = 1 + 0.06 * Math.sin(now / 23) + 0.04 * Math.sin(now / 9.7);
+  const head = unit * (1.05 + 0.35 * u);
   ctx.save();
-  // Shadow on the landing spot.
-  ctx.fillStyle = `rgba(10, 20, 30, ${(0.1 + 0.4 * u).toFixed(3)})`;
-  ctx.beginPath();
-  ctx.ellipse(gx, gy, unit * (0.4 + 1.1 * u), unit * (0.2 + 0.55 * u), 0, 0, Math.PI * 2);
-  ctx.fill();
-  // The trail: back along the line it came down, widest at the head.
-  const tail = unit * (6 + 4 * u);
-  const dx = 0.35;
-  const len = Math.hypot(dx, 1);
-  const tx = hx - (dx / len) * tail;
-  const ty = hy - (1 / len) * tail;
-  const grad = ctx.createLinearGradient(hx, hy, tx, ty);
-  grad.addColorStop(0, "rgba(200, 245, 255, 0.85)");
-  grad.addColorStop(0.25, "rgba(90, 200, 240, 0.55)");
-  grad.addColorStop(1, "rgba(60, 120, 200, 0)");
-  const nx = 1 / len;
-  const ny = -dx / len;
-  ctx.fillStyle = grad;
-  ctx.beginPath();
-  ctx.moveTo(hx + nx * head, hy + ny * head);
-  ctx.lineTo(tx, ty);
-  ctx.lineTo(hx - nx * head, hy - ny * head);
-  ctx.closePath();
-  ctx.fill();
-  // Sparks shed off the trail, flickering.
-  for (let i = 0; i < 6; i++) {
-    const f = ((opts.nowMs / 90 + i * 37) % 10) / 10;
-    const sx = hx - (dx / len) * tail * f + Math.sin(i * 12.9 + opts.nowMs / 70) * head * 0.8;
-    const sy = hy - (1 / len) * tail * f;
-    ctx.fillStyle = `rgba(220, 250, 255, ${(0.7 * (1 - f)).toFixed(3)})`;
-    ctx.fillRect(sx, sy, 2, 2);
+
+  // The ground lights up under it as it closes, cyan going white.
+  const near = Math.max(0, (u - 0.45) / 0.55);
+  if (near > 0) {
+    const r = unit * (2 + 6 * near);
+    const g = ctx.createRadialGradient(gx, gy, 0, gx, gy, r);
+    g.addColorStop(0, `rgba(225, 250, 255, ${(0.55 * near * near).toFixed(3)})`);
+    g.addColorStop(0.4, `rgba(110, 215, 250, ${(0.3 * near).toFixed(3)})`);
+    g.addColorStop(1, "rgba(60, 140, 220, 0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(gx, gy, r, r / 2, 0, 0, Math.PI * 2);
+    ctx.fill();
   }
-  // The burning head: a halo, the hot core, and the dark hive shell inside it.
-  const halo = ctx.createRadialGradient(hx, hy, 0, hx, hy, head * 2.4);
-  halo.addColorStop(0, "rgba(230, 252, 255, 0.95)");
-  halo.addColorStop(0.35, "rgba(110, 220, 250, 0.6)");
+
+  // Trail: a wide outer glow, then a hot inner core, both streaming back up the sky.
+  const streak = (length: number, width: number, stops: [number, string][]): void => {
+    const tx = hx - fx * length;
+    const ty = hy - fy * length;
+    const grad = ctx.createLinearGradient(hx + fx * width * 0.5, hy + fy * width * 0.5, tx, ty);
+    for (const [at, c] of stops) grad.addColorStop(at, c);
+    ctx.fillStyle = grad;
+    // Round nose round the head, flanks swelling out a little way back, then tapering to a point.
+    const sw = hx - fx * length * 0.12;
+    const sh = hy - fy * length * 0.12;
+    ctx.beginPath();
+    ctx.moveTo(hx + nx * width * 0.55, hy + ny * width * 0.55);
+    ctx.quadraticCurveTo(sw + nx * width, sh + ny * width, tx, ty);
+    ctx.quadraticCurveTo(sw - nx * width, sh - ny * width, hx - nx * width * 0.55, hy - ny * width * 0.55);
+    ctx.quadraticCurveTo(hx + fx * width * 0.7, hy + fy * width * 0.7, hx + nx * width * 0.55, hy + ny * width * 0.55);
+    ctx.closePath();
+    ctx.fill();
+  };
+  streak(unit * 34, head * 1.9 * flicker, [
+    [0, "rgba(120, 220, 255, 0.55)"],
+    [0.3, "rgba(70, 150, 230, 0.28)"],
+    [1, "rgba(40, 80, 160, 0)"],
+  ]);
+  streak(unit * 18, head * 1.05, [
+    [0, "rgba(245, 254, 255, 0.95)"],
+    [0.2, "rgba(150, 235, 255, 0.7)"],
+    [1, "rgba(80, 170, 240, 0)"],
+  ]);
+
+  // Sparks and burning slag torn off the head, streaming back along the trail.
+  for (let i = 0; i < 26; i++) {
+    const f = (now / 260 + hash(i, 1)) % 1;
+    const back = f * unit * (10 + 12 * hash(i, 2));
+    const side = (hash(i, 3) - 0.5) * head * (1.4 + 2.2 * f);
+    const sx = hx - fx * back + nx * side;
+    const sy = hy - fy * back + ny * side;
+    const big = hash(i, 4) > 0.75;
+    const a = (1 - f) * (big ? 0.85 : 0.75);
+    ctx.fillStyle = big ? `rgba(255, 236, 200, ${a.toFixed(3)})` : `rgba(210, 248, 255, ${a.toFixed(3)})`;
+    const s = big ? 3 + 2 * (1 - f) : 2;
+    ctx.fillRect(sx - s / 2, sy - s / 2, s, s);
+  }
+
+  // Plasma halo round the head.
+  const haloR = head * 3.2 * flicker;
+  const halo = ctx.createRadialGradient(hx, hy, head * 0.4, hx, hy, haloR);
+  halo.addColorStop(0, "rgba(240, 253, 255, 0.95)");
+  halo.addColorStop(0.3, "rgba(140, 228, 255, 0.6)");
   halo.addColorStop(1, "rgba(60, 140, 220, 0)");
   ctx.fillStyle = halo;
   ctx.beginPath();
-  ctx.arc(hx, hy, head * 2.4, 0, Math.PI * 2);
+  ctx.arc(hx, hy, haloR, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = "#34485e";
+
+  // Bow shock: a white-hot crescent pressed onto the leading face.
+  const lead = Math.atan2(fy, fx);
+  ctx.lineCap = "round";
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.75)";
+  ctx.lineWidth = Math.max(2, head * 0.14);
   ctx.beginPath();
-  ctx.arc(hx, hy, head * 0.7, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = "rgba(95, 232, 240, 0.9)";
-  ctx.lineWidth = 1.5;
+  ctx.arc(hx - fx * head * 0.1, hy - fy * head * 0.1, head * 1.0, lead - 1.0, lead + 1.0);
   ctx.stroke();
+  ctx.strokeStyle = "rgba(170, 240, 255, 0.3)";
+  ctx.lineWidth = Math.max(2, head * 0.22);
+  ctx.beginPath();
+  ctx.arc(hx - fx * head * 0.2, hy - fy * head * 0.2, head * 1.35, lead - 0.8, lead + 0.8);
+  ctx.stroke();
+
+  // The hive itself inside the fire: a dark shell, seams glowing through.
+  const body = ctx.createRadialGradient(hx + fx * head * 0.45, hy + fy * head * 0.45, head * 0.05, hx, hy, head * 0.85);
+  body.addColorStop(0, "rgba(255, 255, 255, 1)");
+  body.addColorStop(0.3, "rgba(150, 230, 250, 1)");
+  body.addColorStop(0.65, "#2f4152");
+  body.addColorStop(1, "#1a232d");
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  for (let i = 0; i <= 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    const rr = head * (0.68 + 0.12 * hash(i % 12, 11));
+    const px = hx + Math.cos(a) * rr;
+    const py = hy + Math.sin(a) * rr * 0.92;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.fill();
   ctx.restore();
 }
 
-/** The landing: a white flash, a shockwave ring on the ground, and dust thrown out. `age` 0–1 of HIVE_IMPACT_MS. */
+/** Camera shake after a landing `ageMs` ago, screen px: hard at first, gone by HIVE_SHAKE_MS. */
+export function hiveShake(ageMs: number, nowMs: number): { x: number; y: number } {
+  if (ageMs < 0 || ageMs >= HIVE_SHAKE_MS) return { x: 0, y: 0 };
+  const k = 1 - ageMs / HIVE_SHAKE_MS;
+  const amp = 14 * k * k;
+  return { x: Math.sin(nowMs * 0.091) * amp, y: Math.cos(nowMs * 0.117) * amp * 0.7 };
+}
+
+/**
+ * The landing: a blinding flash, a fast bright shockwave and a slower one of
+ * dust along the ground, a dust cloud, slag and rock thrown out on arcs, and
+ * a glowing rim round the hive's foot that cools last. `age` 0–1 of HIVE_IMPACT_MS.
+ */
 export function drawHiveImpact(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -178,29 +269,74 @@ export function drawHiveImpact(
   if (a >= 1) return;
   const unit = opts.unit;
   ctx.save();
-  // Flash: gone in the first fifth.
-  const flash = Math.max(0, 1 - a * 5);
+  // Flash: blinding, gone in the first sixth.
+  const flash = Math.max(0, 1 - a * 6);
   if (flash > 0) {
-    const g = ctx.createRadialGradient(x, y - unit * 0.5, 0, x, y - unit * 0.5, unit * 3.5);
-    g.addColorStop(0, `rgba(240, 253, 255, ${(0.9 * flash).toFixed(3)})`);
+    const r = unit * 10;
+    const g = ctx.createRadialGradient(x, y - unit, 0, x, y - unit, r);
+    g.addColorStop(0, `rgba(255, 255, 255, ${flash.toFixed(3)})`);
+    g.addColorStop(0.35, `rgba(190, 245, 255, ${(0.7 * flash).toFixed(3)})`);
     g.addColorStop(1, "rgba(120, 225, 255, 0)");
     ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.arc(x, y - unit * 0.5, unit * 3.5, 0, Math.PI * 2);
+    ctx.arc(x, y - unit, r, 0, Math.PI * 2);
     ctx.fill();
   }
-  // Dust thrown out round the foot of the hive.
-  const dust = unit * (1.6 + 2.6 * Math.sqrt(a));
-  ctx.fillStyle = `rgba(120, 100, 78, ${(0.45 * (1 - a)).toFixed(3)})`;
+  // Dust cloud rolling out round the foot of the hive.
+  const dust = unit * (2 + 4.5 * Math.sqrt(a));
+  ctx.fillStyle = `rgba(115, 96, 74, ${(0.55 * (1 - a)).toFixed(3)})`;
   ctx.beginPath();
   ctx.ellipse(x, y, dust, dust / 2, 0, 0, Math.PI * 2);
   ctx.fill();
-  // Shockwave ring, 2:1 on the ground.
-  const wave = unit * (1 + 6 * a);
-  ctx.strokeStyle = `rgba(160, 235, 255, ${(0.8 * (1 - a)).toFixed(3)})`;
-  ctx.lineWidth = 2.5 * (1 - a) + 0.5;
+  // A column of dust and steam punched up off the ground, spreading and settling.
+  if (a < 0.75) {
+    const c = a / 0.75;
+    const ch = unit * (2 + 5 * Math.sqrt(c));
+    const g = ctx.createRadialGradient(x, y - ch * 0.6, 0, x, y - ch * 0.6, ch);
+    g.addColorStop(0, `rgba(170, 160, 145, ${(0.6 * (1 - c)).toFixed(3)})`);
+    g.addColorStop(1, "rgba(120, 104, 84, 0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(x, y - ch * 0.55, unit * (1.4 + 2.2 * c), ch * 0.75, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Slow shockwave: a thick ring of dust along the ground.
+  const slow = unit * (1.5 + 9 * Math.sqrt(a));
+  ctx.strokeStyle = `rgba(150, 128, 100, ${(0.6 * (1 - a)).toFixed(3)})`;
+  ctx.lineWidth = unit * 0.5 * (1 - a) + 1;
   ctx.beginPath();
-  ctx.ellipse(x, y, wave, wave / 2, 0, 0, Math.PI * 2);
+  ctx.ellipse(x, y, slow, slow / 2, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  // Fast shockwave: a bright ring racing out, gone by halfway.
+  const fastA = Math.min(1, a * 2);
+  if (fastA < 1) {
+    const fast = unit * (2 + 18 * fastA);
+    ctx.strokeStyle = `rgba(200, 245, 255, ${(0.9 * (1 - fastA)).toFixed(3)})`;
+    ctx.lineWidth = 4 * (1 - fastA) + 1;
+    ctx.beginPath();
+    ctx.ellipse(x, y, fast, fast / 2, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  // Slag and rock thrown out on arcs, landing by 60%.
+  const t = a / 0.6;
+  if (t < 1) {
+    for (let i = 0; i < 18; i++) {
+      const ang = (i / 18) * Math.PI * 2 + hash(i, 5) * 0.4;
+      const reach = unit * (3 + 5 * hash(i, 6)) * t;
+      const up = unit * (2 + 4 * hash(i, 7)) * 4 * t * (1 - t);
+      const px = x + Math.cos(ang) * reach;
+      const py = y + Math.sin(ang) * reach * 0.5 - up;
+      const s = unit * (0.1 + 0.16 * hash(i, 8));
+      ctx.fillStyle = hash(i, 9) > 0.5 ? `rgba(255, 225, 180, ${(1 - t).toFixed(3)})` : `rgba(48, 44, 40, ${(1 - t * 0.6).toFixed(3)})`;
+      ctx.fillRect(px - s / 2, py - s / 2, s, s);
+    }
+  }
+  // Glowing rim round the hive's foot, cooling last.
+  const rim = unit * 1.7;
+  ctx.strokeStyle = `rgba(110, 230, 255, ${(0.7 * (1 - a) * (1 - a)).toFixed(3)})`;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.ellipse(x, y, rim, rim / 2, 0, 0, Math.PI * 2);
   ctx.stroke();
   ctx.restore();
 }

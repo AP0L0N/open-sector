@@ -215,8 +215,8 @@
     "clipped_dirs": []
   },
   {
-    "type": "broodmother",
-    "out": "gridlock/packages/client/src/assets/units/wrecks/broodmother.png",
+    "type": "assembler",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/assembler.png",
     "cell": 128,
     "rows": 16,
     "frames": 1,
