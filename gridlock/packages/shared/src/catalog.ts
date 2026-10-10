@@ -562,6 +562,7 @@ export type EntityType =
   | "cyborgcommander"
   | "simunit2"
   | "borgdrone"
+  | "thrall"
   | "lancer"
   | "stalker"
   | "ravager"
@@ -571,6 +572,7 @@ export type EntityType =
   | "lurker"
   | "wasp"
   | "scourge"
+  | "gnat"
   | "titan"
   | "mammoth"
   | "nebelwerfer"
@@ -801,7 +803,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "shed",
   "boiler",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "simunit2" | "borgdrone" | "lancer" | "stalker" | "ravager" | "behemoth" | "juggernaut" | "leech" | "lurker" | "wasp" | "scourge" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "horten" | "droneop" | "jumpjet";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "simunit2" | "borgdrone" | "thrall" | "lancer" | "stalker" | "ravager" | "behemoth" | "juggernaut" | "leech" | "lurker" | "wasp" | "scourge" | "gnat" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "horten" | "droneop" | "jumpjet";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -912,7 +914,7 @@ export const BUILDING_FACINGS = 24;
 export function isRotatableBuilding(type: string): type is BuildingType {
   return (ROTATABLE_BUILDINGS as readonly string[]).includes(type);
 }
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "simunit2", "borgdrone", "lancer", "stalker", "ravager", "behemoth", "juggernaut", "leech", "lurker", "wasp", "scourge", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "horten", "droneop", "jumpjet"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "simunit2", "borgdrone", "thrall", "lancer", "stalker", "ravager", "behemoth", "juggernaut", "leech", "lurker", "wasp", "scourge", "gnat", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "horten", "droneop", "jumpjet"];
 
 /**
  * A player fields only one of each of these at a time. While it lives, another
@@ -941,6 +943,7 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly Bu
   cyborgcommander: "cyborgcentral",
   simunit2: "cyborgcentral",
   borgdrone: "cyborgcentral",
+  thrall: "cyborgcentral",
   lancer: "cyborgcentral",
   behemoth: "nexus",
   juggernaut: "nexus",
@@ -988,6 +991,7 @@ export const BORG_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([
   "cyborgcommander",
   "simunit2",
   "borgdrone",
+  "thrall",
   "lancer",
   "stalker",
   "ravager",
@@ -1003,6 +1007,7 @@ export const BORG_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([
   "lurker",
   "wasp",
   "scourge",
+  "gnat",
 ]);
 /** The faction that fields `type`. Neutral structures and civilian buildings read as Earth United. */
 export function factionOf(type: string): Faction {
@@ -1365,8 +1370,8 @@ export interface ShellDef {
 }
 
 /** Infantry small-arm. CatalogEntry still holds the unit; this is the gun. */
-export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar" | "ptrd" | "gatling" | "launcher" | "flamer" | "assault" | "penetrator" | "laser" | "daggers" | "deckmg";
-export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar", "ptrd", "gatling", "launcher", "flamer", "assault", "penetrator", "laser", "daggers", "deckmg"];
+export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar" | "ptrd" | "gatling" | "launcher" | "flamer" | "assault" | "penetrator" | "laser" | "daggers" | "fists" | "deckmg";
+export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar", "ptrd", "gatling", "launcher", "flamer", "assault", "penetrator", "laser", "daggers", "fists", "deckmg"];
 export interface InfantryGun {
   id: InfantryWeaponId;
   name: string;
@@ -1741,6 +1746,59 @@ export const DAGGERS = {
   reload: 0,
   rangeTiles: SIMUNIT_REACH_TILES,
 } as const satisfies InfantryGun;
+
+/**
+ * Thrall. The hive's cheap brawler: a taken body on a heavy frame that runs
+ * everywhere and fights with its two armoured fists. A soldier it reaches is
+ * pummelled, one fist then the other, THRALL_PUNCH_DAMAGE a blow. An armored
+ * hull it reaches, it does not punch: it detonates against the plate
+ * (THRALL_BLAST_*), and nothing is left of it. It vaults sandbags and walls.
+ * A bullet now and then catches a shoulder and staggers it: the run slows to
+ * THRALL_STAGGER_SPEED for THRALL_STAGGER_SECONDS.
+ */
+/** One blow of a fist on a soldier. A rifleman is down in four. */
+export const THRALL_PUNCH_DAMAGE = 12;
+/** Seconds between blows, one hand then the other. */
+export const THRALL_PUNCH_SECONDS = 0.25;
+/** Arm's reach, like the Sim Unit's blades: from its centre to the target's body or wall. */
+export const THRALL_REACH_TILES = SIMUNIT_REACH_TILES;
+/** Share of a blow a wall or a building takes. */
+export const THRALL_BUILDING_MUL = 0.15;
+/** Blast radius when it detonates on a hull, in gameplay tiles. */
+export const THRALL_BLAST_TILES = t(1.25);
+/** HP at the centre against a hull heavier than light plate. */
+export const THRALL_BLAST_HEAVY = 35;
+/** HP at the centre against soldiers, light hulls, buildings, and everything else. */
+export const THRALL_BLAST_SOFT = 55;
+/** Chance a bullet that lands staggers it. Not every round: now and then. */
+export const THRALL_STAGGER_CHANCE = 0.2;
+/** How long a stagger slows it, seconds. */
+export const THRALL_STAGGER_SECONDS = 0.6;
+/** Its speed while staggered, as a share of the sprint. */
+export const THRALL_STAGGER_SPEED = 0.55;
+/** After a stagger ends, this long before the next can land, seconds. A hail of fire does not pin it. */
+export const THRALL_STAGGER_GUARD_SECONDS = 0.6;
+/** Rounds of this caliber or under are bullets: they can stagger it. */
+export const THRALL_STAGGER_MAX_CALIBER = 13;
+
+export const FISTS = {
+  id: "fists" as const,
+  name: "Armoured fists",
+  blurb: "Two heavy fists, fast blows one after the other at arm's reach. A soldier goes down in a few; a wall takes little. An armored hull it does not hit: it detonates against it. Never needs a truck.",
+  damage: THRALL_PUNCH_DAMAGE,
+  penetration: 0,
+  caliber: 8,
+  spreadDeg: 0,
+  cooldown: THRALL_PUNCH_SECONDS,
+  clip: 1,
+  reload: 0,
+  rangeTiles: THRALL_REACH_TILES,
+} as const satisfies InfantryGun;
+
+/** Jumps sandbags and walls (fortBlock 1) where every other unit walks round: the Thrall. */
+export function vaultsWalls(type: EntityType): boolean {
+  return type === "thrall";
+}
 
 export const COMMANDER_FIELD_MODES = [
   {
@@ -3319,6 +3377,7 @@ export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
   flamer: FLAMER,
   laser: LASER,
   daggers: DAGGERS,
+  fists: FISTS,
   deckmg: DECK_MG,
 };
 
@@ -5432,6 +5491,31 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: RIFLE.spreadDeg,
     blurb: "The hive's line soldier: a body taken and fitted with a pulse carbine in place of a forearm. It shoots like a rifle, a clip and then a short recharge. Several times a soldier's hit points for a few riflemen's price, but slower on its feet. No stance orders; it fights standing. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It runs on your Cyborg Central's uplink or a living Cyborg Commander, like the Cyborg, and shuts down without them.",
   },
+  thrall: {
+    type: "thrall",
+    kind: "unit",
+    name: "Thrall",
+    letter: "a",
+    cost: 250,
+    buildSeconds: 6,
+    hp: 200,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: paced(2.8 * INFANTRY_PACE),
+    turnDegPerSec: 1200,
+    rangeTiles: THRALL_REACH_TILES,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: FISTS.cooldown,
+    damage: FISTS.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    ...UNARMED,
+    penetration: FISTS.penetration,
+    caliber: FISTS.caliber,
+    spreadDeg: FISTS.spreadDeg,
+    blurb: "The hive's cheap brawler, quick off the line: a taken body on a heavy frame. It always runs, and it fights with two armoured fists: a soldier it reaches is pummelled down in a few fast blows. An armored hull it reaches, it does not punch: it detonates against the plate and is gone. Sandbags and walls do not stop it; it vaults them. Bullets do little to its plating, but now and then one catches a shoulder and staggers it for a moment. No stance orders. Near death its legs are torn off and it crawls on, still swinging. Medics heal it, engineers repair it. It runs on your Cyborg Central's uplink or a living Cyborg Commander, and shuts down without them.",
+  },
   lancer: {
     type: "lancer",
     kind: "unit",
@@ -5752,7 +5836,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `A long spine of fused chitin with four landing nests beside it. Grows the Wasp and, with a Neural Nexus standing, the Scourge, and keeps up to ${AIRFIELD_PADS} of them. They come back to their nests to recharge, rearm, and mend.`,
+    blurb: `A long spine of fused chitin with four landing nests beside it. Grows the Wasp, the Gnat, and, with a Neural Nexus standing, the Scourge, and keeps up to ${AIRFIELD_PADS} of them. They come back to their nests to recharge, rearm, and mend.`,
   },
   /** Borg fast attack boat: a skimming chitin hull with a plasma cannon. */
   leech: {
@@ -5881,6 +5965,32 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     aircraft: true,
     wreckHp: 23,
     blurb: "Dive bomber with a beetle's carapace. One plasma bomb per sortie, slung in a glowing pod, and two pulse guns for soft targets. Flies over everything; only rifles, machine guns, the Walker, and the Titan's rockets can reach it in the air. Lands in an Aerie nest to recharge and rearm. A hit that tears a wing brings it down at once. Needs a Neural Nexus.",
+  },
+  /** Borg spy drone: a tiny fly with one big sensor eye. Lives in an Aerie nest. */
+  gnat: {
+    type: "gnat",
+    kind: "unit",
+    name: "Gnat",
+    letter: "q",
+    cost: 350,
+    buildSeconds: 6,
+    hp: 22,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 6,
+    moveTilesPerSec: paced(8),
+    turnDegPerSec: 200,
+    rangeTiles: 0,
+    sightTiles: t(11),
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    aircraft: true,
+    recon: true,
+    wreckHp: 6,
+    blurb: `A spy fly the size of a man, grown in an Aerie nest in a few seconds and for a handful of scrap. No weapon: one great sensor eye. It flies as high as the Horten VII and sees almost as far from up there, ${(t(11) + HORTEN_FLYING_SIGHT_BONUS) / TILE_SUBDIV} tiles around it. Only anti-air guns and a fighter that climbs after it can reach it, but its shell is paper: one burst brings it down. Its charge holds ${HORTEN_FUEL_SECONDS} seconds of flight. Send it at a point or a unit and it flies over and circles there; on guard or patrol it keeps watching the area. It comes home to its nest to recharge when it runs low.`,
   },
   titan: {
     type: "titan",
@@ -6879,7 +6989,7 @@ export function armorLabel(type: EntityType): string | null {
   return `F${d.armorFront} / S${d.armorSide} / R${d.armorRear}`;
 }
 
-const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "cyborg", "cyborgcommander", "simunit2", "borgdrone", "lancer", "droneop", "jumpjet"];
+const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "cyborg", "cyborgcommander", "simunit2", "borgdrone", "thrall", "lancer", "droneop", "jumpjet"];
 
 /** Soldier with a jet pack: the Jump Jet. */
 export function isJumpJetType(type: EntityType): boolean {
@@ -6963,7 +7073,7 @@ export function isInfantryType(type: EntityType): boolean {
  * no random limb hits, legs tied to HP.
  */
 export function isCyborg(type: EntityType): boolean {
-  return type === "cyborg" || type === "cyborgcommander" || isSimUnit(type) || type === "borgdrone" || type === "lancer";
+  return type === "cyborg" || type === "cyborgcommander" || isSimUnit(type) || type === "borgdrone" || type === "thrall" || type === "lancer";
 }
 
 /**
@@ -6988,9 +7098,9 @@ export function canPowerDown(type: EntityType): boolean {
   return onUplink(type);
 }
 
-/** Fights at arm's reach: Sim Unit II's daggers, the Juggernaut's hammer and fists. */
+/** Fights at arm's reach: the Sim Unit II's daggers, the Thrall's fists, the Juggernaut's hammer and fists. */
 export function meleeOf(type: EntityType): boolean {
-  return isSimUnit(type) || isJuggernaut(type);
+  return isSimUnit(type) || type === "thrall" || isJuggernaut(type);
 }
 
 /** The lighter hulls, guns, and trucks the Apocalypse rolls flat. */
@@ -7056,6 +7166,7 @@ export function primaryInfantryGun(type: EntityType): InfantryGun | null {
   if (type === "cyborgcommander") return LASER;
   if (type === "simunit2") return DAGGERS;
   if (type === "borgdrone") return RIFLE;
+  if (type === "thrall") return FISTS;
   if (type === "lancer") return LAUNCHER;
   if (type === "jumpjet") return ASSAULT;
   return null;
@@ -7074,6 +7185,7 @@ export function infantryLoadout(type: EntityType): readonly InfantryGun[] {
   if (type === "cyborgcommander") return [LASER];
   if (type === "simunit2") return [DAGGERS];
   if (type === "borgdrone") return [RIFLE];
+  if (type === "thrall") return [FISTS];
   if (type === "lancer") return [LAUNCHER];
   if (type === "jumpjet") return [ASSAULT, HANDGUN];
   return [];

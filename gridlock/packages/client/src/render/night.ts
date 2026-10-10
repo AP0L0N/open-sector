@@ -254,3 +254,31 @@ export function spotBeamGround(
   const s = Math.sin(facing);
   return beamBlobs(reach, halfRad, { count: 24, widen: 1.15 }).map((b) => ({ x: x + c * b.d, y: y + s * b.d, r: b.r, a: b.a }));
 }
+
+/** The xenomorphs' own light: a cold blue glow off every live Borg unit and structure, in place of lamps. */
+export const XENO_GLOW_RGB = "70, 140, 255";
+/** Glow radius against a unit's body radius, and against half a structure's footprint. */
+export const XENO_GLOW_UNIT_SCALE = 3.5;
+export const XENO_GLOW_BUILDING_SCALE = 2;
+
+/**
+ * Radius of a Borg glow on the ground, world px, by the size of what gives it
+ * off: a unit by its body radius, a structure by its footprint (fine tiles of
+ * `tile` px). Never smaller than one fine tile.
+ */
+export function xenoGlowRadius(
+  e: { kind: string; tileW: number; tileH: number },
+  unitRadius: number,
+  tile: number,
+): number {
+  const r =
+    e.kind === "building"
+      ? (Math.max(e.tileW, e.tileH) * tile * XENO_GLOW_BUILDING_SCALE) / 2
+      : unitRadius * XENO_GLOW_UNIT_SCALE;
+  return Math.max(tile, r);
+}
+
+/** A slow breath on the glow, 0.88..1, each one on its own beat. */
+export function xenoGlowPulse(id: number, nowSec: number): number {
+  return 0.94 + 0.06 * Math.sin(nowSec * 1.3 + (id % 4096) * 0.61);
+}

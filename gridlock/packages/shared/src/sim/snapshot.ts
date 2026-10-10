@@ -66,7 +66,8 @@ import { cyborgShutdownIn } from "./cyborg-link.js";
 import { blinkCharge, purgeProgress } from "./simunit.js";
 import { lungeAlt, lungeCharge } from "./lunge.js";
 import { hiddenBurrowed } from "./burrow.js";
-import { isSimUnit, onUplink } from "../catalog.js";
+import { isSimUnit, onUplink, vaultsWalls } from "../catalog.js";
+import { onFortTop } from "./thrall.js";
 import { aswDeckView, sonarContacts } from "./destroyer.js";
 import { scrapCap } from "./smelter.js";
 import { thermalContacts } from "./thermal.js";
@@ -526,6 +527,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       engageContacts: friendly && e.hp > 0 ? e.engageContacts : undefined,
       selfDestruct: friendly && e.type === "walker" && !e.wreck ? !e.selfDestructOff : undefined,
       charging: e.type === "walker" && e.charging ? true : undefined,
+      stagger: e.staggered,
+      vault: vaultsWalls(e.type) && !e.wreck && e.garrisonedIn == null && onFortTop(state, e) ? true : undefined,
       gatling: gatlingView(state, e),
       ciws: ciwsView(state, e),
       mounts: twinCiwsView(state, e, friendly),

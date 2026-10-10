@@ -1196,6 +1196,7 @@ const TYPE_ORDER: EntityType[] = [
   "stuka",
   "wasp",
   "scourge",
+  "gnat",
   "drone",
   "aswheli",
   "warden",
@@ -1210,6 +1211,7 @@ const TYPE_ORDER: EntityType[] = [
   "ravager",
   "cyborg",
   "borgdrone",
+  "thrall",
   "lancer",
   "cyborgcommander",
   "simunit2",
@@ -1658,6 +1660,8 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
                 ? "Stands under fire — no crouch, no prone. Near death the legs tear off and he drags himself on, still firing. A medic or an engineer brings the legs back. Only a supply truck refills the drum. He shells a structure; he does not capture it."
               : focus.type === "simunit2"
                 ? "Stands under fire — no crouch, no prone. A dagger in each hand: one slash kills a soldier at arm's reach, and he blinks onto the one he goes for when the charge is up; a Walker or a truck takes a slit, a tank or a wall almost nothing. Blink throws him across the ground on one charge that comes back by itself. Right-click a structure or hull with enemy soldiers inside and he blinks in, kills every soldier aboard in a couple of seconds, and blinks out. Shut down and he stands dark as no one's machine until you power him up. Near death the legs tear off and he drags himself on, still cutting. He shells nothing and captures nothing."
+              : focus.type === "thrall"
+                ? "Stands under fire — no crouch, no prone, and it always runs. Two armoured fists: a soldier at arm's reach is pummelled down in a few fast blows; a wall takes little. An armored hull it reaches, it detonates against and is gone. It vaults sandbags and walls. A bullet now and then catches its shoulder and staggers it for a moment. Near death the legs tear off and it drags itself on, still swinging. It shells nothing and captures nothing."
               : focus.type === "cyborgcommander"
                 ? "Stands under fire — no crouch, no prone. The blue bar is his force field: it takes every hit first and comes back on after a while out of the fire. Power: Shield puts the laser's power into it, five times the points and five times the recharge, but he cannot attack. His plating mends itself, very slowly. The laser always cuts to full reach: a sweep across soldiers burns every man it passes, yours too, and one beam cuts a hull and anyone in front of it. Trees in the path burn down. Near death the legs tear off and he drags himself on, still firing. He shells a structure; he does not capture it."
               : "Capture player structures at point-blank. Civilian houses are garrisoned, not captured.",

@@ -285,7 +285,7 @@ export function playSoundEvents(events: readonly SoundEvent[], mixAt: (x: number
         const url = pick(unitFolder(ev.type), `sfx-${ev.cue}`);
         const mix = url ? mixAt(ev.x, ev.y) : null;
         // A hull crumpling under the Apocalypse and a Stuka's siren are heard over the fight around them; a Cyborg link cue sits between.
-        const loud = ev.cue === "crush" || ev.cue === "dive" || ev.cue === "lunge" || ev.cue === "smash" || ev.cue === "throw_land";
+        const loud = ev.cue === "crush" || ev.cue === "dive" || ev.cue === "lunge" || ev.cue === "detonate" || ev.cue === "smash" || ev.cue === "throw_land";
         const volume = loud ? 0.9 : ev.cue === "special" ? 0.6 : 0.75;
         if (url && mix) playSample(url, mix, { volume, maxVoices: 2, jitter: ev.cue === "special" ? undefined : 0.04 });
         break;

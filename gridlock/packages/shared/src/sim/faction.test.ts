@@ -88,6 +88,7 @@ describe("factions in the catalog", () => {
         "cyborgcommander",
         "forge",
         "fusionnode",
+        "gnat",
         "hivecore",
         "juggernaut",
         "lancer",
@@ -102,6 +103,7 @@ describe("factions in the catalog", () => {
         "spawnpool",
         "spineturret",
         "stalker",
+        "thrall",
         "wasp",
       ],
     );
@@ -113,7 +115,7 @@ describe("factions in the catalog", () => {
       assert.equal(producerType(t), want, t);
     }
     for (const t of ["stalker", "ravager", "behemoth", "juggernaut"] as const) assert.equal(producerType(t), "forge");
-    for (const t of ["borgdrone", "lancer"] as const) assert.ok(isCyborg(t) && onUplink(t) && isInfantryType(t), t);
+    for (const t of ["borgdrone", "thrall", "lancer"] as const) assert.ok(isCyborg(t) && onUplink(t) && isInfantryType(t), t);
     assert.ok(!onUplink("cyborgcommander"));
   });
 
@@ -312,6 +314,7 @@ describe("a Borg seat", () => {
     assert.equal(producerType("lurker"), "spawnpool");
     assert.equal(producerType("wasp"), "aerie");
     assert.equal(producerType("scourge"), "aerie");
+    assert.equal(producerType("gnat"), "aerie");
     assert.equal(producerType("gunboat"), "dock");
     assert.equal(producerType("fw190"), "airfield");
     const state = openField();

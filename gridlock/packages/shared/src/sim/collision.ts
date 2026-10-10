@@ -4,6 +4,7 @@ import {
   hasTurret,
   isArmoredType,
   isInfantryType,
+  vaultsWalls,
   isNavalType,
   isTorpedoBody,
   wadesOf,
@@ -88,7 +89,7 @@ function tileFree(state: MatchState, e: Entity, x: number, y: number): boolean {
   const fort = state.fortBlock[idx] ?? 0;
   // An unlocked gate lifts for its owner's side; anyone else stops at the boom.
   const shutGate = fort === 3 && !allies(state, e.ownerId, state.fortOwner.get(idx) ?? "");
-  if (fort === 1 || (fort === 2 && !isInfantryType(e.type)) || (fort === 4 && isInfantryType(e.type)) || shutGate) {
+  if ((fort === 1 && !vaultsWalls(e.type)) || (fort === 2 && !isInfantryType(e.type)) || (fort === 4 && isInfantryType(e.type)) || shutGate) {
     const cx = worldToTile(e.x, ts);
     const cy = worldToTile(e.y, ts);
     if (tx !== cx || ty !== cy) return false;
