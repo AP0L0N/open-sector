@@ -40,6 +40,8 @@ function standoff(): { state: MatchState; b: Entity; tiger: Entity } {
   const b = makeEntity(state, "behemoth", "B", tileCenter(100, ts), tileCenter(120, ts));
   const tiger = makeEntity(state, "ss3", "A", b.x + 32 * ts, b.y);
   b.attackTarget = tiger.id;
+  // Held, so it stands and fights instead of lunging at the tank.
+  b.holdPosition = true;
   return { state, b, tiger };
 }
 

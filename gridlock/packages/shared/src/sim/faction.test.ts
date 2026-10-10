@@ -18,6 +18,7 @@ import {
   TICK_DT,
   TRAIN_TYPES,
   catalog,
+  energySupplyOf,
   DEPLOYMENT_LEASH_TILES,
   HIVE_DROP_SECONDS,
   factionOf,
@@ -145,7 +146,7 @@ describe("factions in the catalog", () => {
     assert.deepEqual(HQ_OF.xeno, { rig: "seed", core: "hivecore" });
     assert.ok(isHqRig("seed") && isHqBuilding("hivecore") && isHq("seed") && isHq("core"));
     assert.ok(isSmelterType("assimilator") && isSmelterType("smelter") && !isSmelterType("dynamo"));
-    assert.ok(catalog("fusionnode").power > 0);
+    assert.ok(energySupplyOf("fusionnode") > 0 && catalog("fusionnode").power === 0, "feeds the hive energy, not power");
     assert.equal(catalog("assimilator").tileW, catalog("smelter").tileW);
     assert.equal(yardBuildSeconds("assimilator"), yardBuildSeconds("smelter"));
   });
@@ -340,11 +341,13 @@ describe("a Xenomorph seat", () => {
     assert.equal(radarOnline(state, "B"), true);
   });
 
-  it("fires a crewless Spine Turret while power holds, and silences it when power runs short", () => {
+  it("fires a crewless Spine Turret while the hive has energy for it, and silences it when the hive runs short", () => {
     const fight = (powered: boolean): number => {
       const state = openField();
       const ts = state.tileSize;
-      if (powered) makeEntity(state, "fusionnode", "B", tileCenter(100, ts), tileCenter(100, ts), { tileX: 100, tileY: 100 });
+      makeEntity(state, "fusionnode", "B", tileCenter(100, ts), tileCenter(100, ts), { tileX: 100, tileY: 100 });
+      // Short: older units already take all 500 of the Fusion Node's energy.
+      if (!powered) for (const t of ["behemoth", "behemoth", "lancer", "lancer"] as const) makeEntity(state, t, "B", tileCenter(10, ts), tileCenter(10, ts));
       makeEntity(state, "spineturret", "B", tileCenter(120, ts), tileCenter(120, ts), { tileX: 120, tileY: 120 });
       const target = makeEntity(state, "rifleman", "A", tileCenter(120, ts), tileCenter(128, ts));
       for (let i = 0; i < 60; i++) step(state, TICK_DT);

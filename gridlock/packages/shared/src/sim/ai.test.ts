@@ -1462,18 +1462,11 @@ describe("Xenomorph CPU", () => {
     assert.ok(hiveOf(state, aiId));
   });
 
-  it("raises a Fusion Node, then an Assimilator", () => {
+  it("raises a Fusion Node, then the Conversion Chamber, and never an Assimilator", () => {
     const { state, aiId } = humanVsXeno();
     waitCore(state, aiId);
     assert.equal(nextStructure(state, aiId), "fusionnode");
     standBy(state, aiId, ["fusionnode"]);
-    assert.equal(nextStructure(state, aiId), "assimilator");
-  });
-
-  it("raises the Conversion Chamber once power and an Assimilator stand", () => {
-    const { state, aiId } = humanVsXeno();
-    waitCore(state, aiId);
-    standBy(state, aiId, ["fusionnode", "assimilator"]);
     assert.equal(nextStructure(state, aiId), "conversion");
   });
 

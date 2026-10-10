@@ -1,5 +1,6 @@
 import {
   canLunge,
+  hasPulseModes,
   canBurrow,
   isAirfieldType,
   carriesShell,
@@ -8,6 +9,7 @@ import {
   radarLaidOf,
   aimsOwnGun,
   mountArcDegOf,
+  airRackOf,
   rocketsOf,
   hasCrit,
   hasScout,
@@ -152,6 +154,9 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
     case "cmd.rockets":
       if (typeof msg.on !== "boolean") return fail("bad_payload", "Unknown rocket setting.");
       return cmdRockets(state, playerId, msg.ids, msg.on);
+    case "cmd.airmode":
+      if (typeof msg.air !== "boolean") return fail("bad_payload", "Unknown attack mode.");
+      return cmdAirMode(state, playerId, msg.ids, msg.air);
     case "cmd.reach":
       if (typeof msg.max !== "boolean") return fail("bad_payload", "Unknown reach setting.");
       return cmdReach(state, playerId, msg.ids, msg.max);
@@ -173,6 +178,9 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
     case "cmd.lunge":
       if (!Array.isArray(msg.ids) || typeof msg.x !== "number" || typeof msg.y !== "number") return fail("bad_payload", "Bad lunge order.");
       return cmdLunge(state, playerId, msg.ids, msg.x, msg.y);
+    case "cmd.pulse":
+      if (!Array.isArray(msg.ids) || typeof msg.light !== "boolean") return fail("bad_payload", "Unknown pulse setting.");
+      return cmdPulse(state, playerId, msg.ids, msg.light);
     case "cmd.burrow":
       if (!Array.isArray(msg.ids) || typeof msg.on !== "boolean") return fail("bad_payload", "Bad burrow order.");
       return cmdBurrow(state, playerId, msg.ids, msg.on);
@@ -1444,6 +1452,23 @@ function cmdRockets(state: MatchState, playerId: string, ids: number[], on: bool
   return ok();
 }
 
+/**
+ * Mawcaster: Ground attacks or Air attacks. The switch drops the salvo under way and the
+ * target it was on, so the maw picks again on the new rack's terms.
+ */
+function cmdAirMode(state: MatchState, playerId: string, ids: number[], air: boolean): CmdResult {
+  const units = owned(state, playerId, ids).filter((e) => airRackOf(e.type) != null);
+  if (units.length === 0) return fail("not_yours", "Select a Mawcaster.");
+  for (const e of units) {
+    if (!!e.airMode === air) continue;
+    e.airMode = air ? true : undefined;
+    e.rocketSalvo = 0;
+    e.rocketTarget = null;
+    e.attackTarget = null;
+  }
+  return ok();
+}
+
 function cmdReach(state: MatchState, playerId: string, ids: number[], max: boolean): CmdResult {
   const mounts = ownedMounts(state, playerId, ids).filter((e) => radarLaidOf(e.type));
   if (mounts.length === 0) return fail("not_yours", "Select a CIWS or a RAM.");
@@ -1512,6 +1537,14 @@ function cmdLunge(state: MatchState, playerId: string, ids: number[], x: number,
     else n++;
   }
   return n > 0 ? ok() : fail("busy", why ?? "It cannot lunge now.");
+}
+
+/** Behemoth: High Pulse (full bolts) or Light Pulse (quick, light ones). The reload already running stands. */
+function cmdPulse(state: MatchState, playerId: string, ids: number[], light: boolean): CmdResult {
+  const units = owned(state, playerId, ids).filter((e) => hasPulseModes(e.type));
+  if (units.length === 0) return fail("not_yours", "Select a Behemoth.");
+  for (const e of units) e.lightPulse = light ? true : undefined;
+  return ok();
 }
 
 /** Stalker: dig in, or break back out. A burrowed Stalker still answers this order. */

@@ -441,6 +441,12 @@ export interface RocketRackDef {
    * Omit for a rocket that bursts in the air regardless.
    */
   missCoastTiles?: number;
+  /** Reach of this rack, gameplay tiles, in place of the carrier's own rangeTiles. */
+  rangeTiles?: number;
+  /** Lays only on what flies (the Mawcaster's Air attacks): ground targets and ground aim points are left alone. */
+  airOnly?: boolean;
+  /** A laid rack fires once the frame is this close to the bearing, degrees, in place of the carrier's gunArcDeg. */
+  arcDeg?: number;
 }
 
 export const TITAN_ROCKET_RACK: RocketRackDef = {
@@ -1159,12 +1165,37 @@ export function factionOf(type: string): Faction {
 }
 /** A shared building's price for one faction, where it plays a different part there. */
 const FACTION_COST: Partial<Record<EntityType, Partial<Record<Faction, number>>>> = {};
+/**
+ * Fielded by a faction but off its build menu for now: the Xenomorphs pay no scrap, so the
+ * Assimilator has nothing to pour into.
+ */
+const SHELVED_TYPES: ReadonlySet<EntityType> = new Set<EntityType>(["assimilator"]);
+/**
+ * Hive energy (sim/hive-energy.ts): the Xenomorphs pay no scrap and draw no power. Their Hive Core
+ * holds HIVE_CORE_ENERGY and each Fusion Node FUSION_NODE_ENERGY more; every unit and defence takes
+ * its catalog `energy` while it lives. Asked for more than the hive holds, the newest go offline.
+ */
+export const HIVE_CORE_ENERGY = 200;
+export const FUSION_NODE_ENERGY = 500;
+/** Does `faction` run on hive energy instead of scrap and power? */
+export function usesHiveEnergy(faction: Faction | undefined): boolean {
+  return faction === "xeno";
+}
+/** Hive energy `type` takes while it lives: 0 for everything but Xenomorph units and defences. */
+export function energyOf(type: string): number {
+  return catalog(type as EntityType).energy ?? 0;
+}
+/** Hive energy `type` adds to the hive's store while it stands. */
+export function energySupplyOf(type: string): number {
+  return type === "hivecore" ? HIVE_CORE_ENERGY : type === "fusionnode" ? FUSION_NODE_ENERGY : 0;
+}
 /** Scrap `type` costs a player of `faction`. */
 export function costFor(type: EntityType, faction: Faction): number {
   return FACTION_COST[type]?.[faction] ?? catalog(type).cost;
 }
 /** May a player of `faction` queue, place, or train `type`? */
 export function inFaction(type: string, faction: Faction): boolean {
+  if (SHELVED_TYPES.has(type as EntityType)) return false;
   if (SHARED_TYPES.has(type as EntityType)) return faction !== "bloom";
   return factionOf(type) === faction;
 }
@@ -1484,7 +1515,12 @@ export interface CatalogEntry {
   rocketAmmo?: number;
   /** How the rockets fly and burst. Default TITAN_ROCKET_RACK. */
   rocketRack?: RocketRackDef;
-  /** Flies. Parks on an Airfield pad, ignores ground collision and paths. */
+  /**
+   * A second rack the player switches to with Air attacks (Entity.airMode). Ground attacks
+   * is rocketRack. Only the Mawcaster has one.
+   */
+  airRack?: RocketRackDef;
+  /** Flies.Parks on an Airfield pad, ignores ground collision and paths. */
   aircraft?: boolean;
   /** A fighter like the Fw 190: barrages on each pass, and hunts planes in the air. */
   fighter?: boolean;
@@ -1514,6 +1550,11 @@ export interface CatalogEntry {
    * one shot of energy, and the cell regrows one shot each `rechargeSeconds`. Empty, the gun waits.
    */
   plasmaCell?: PlasmaCellDef;
+  /**
+   * Hive energy this Xenomorph unit or defence holds while it lives (sim/hive-energy.ts). The
+   * Xenomorphs pay no scrap: each one takes a share of the Hive Core's and Fusion Nodes' energy.
+   */
+  energy?: number;
   /**
    * A radar-laid 20mm mount on the turret roof (the Apocalypse). It traverses and
    * picks targets on its own, apart from the main gun. Incoming missiles come
@@ -1627,8 +1668,8 @@ export interface ShellDef {
 }
 
 /** Infantry small-arm. CatalogEntry still holds the unit; this is the gun. */
-export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar" | "ptrd" | "gatling" | "launcher" | "flamer" | "assault" | "penetrator" | "laser" | "daggers" | "fists" | "deckmg" | "acid";
-export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar", "ptrd", "gatling", "launcher", "flamer", "assault", "penetrator", "laser", "daggers", "fists", "deckmg", "acid"];
+export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar" | "ptrd" | "gatling" | "launcher" | "flamer" | "assault" | "penetrator" | "laser" | "daggers" | "fists" | "deckmg";
+export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar", "ptrd", "gatling", "launcher", "flamer", "assault", "penetrator", "laser", "daggers", "fists", "deckmg"];
 export interface InfantryGun {
   id: InfantryWeaponId;
   name: string;
@@ -1936,6 +1977,58 @@ export const BEHEMOTH_RING_RANGE_TILES = t(5);
 export const BEHEMOTH_RING_HALF_DEG = 28;
 /** Seconds each landing sweep takes to cut its arc. */
 export const BEHEMOTH_RING_SWEEP_SECONDS = 0.3;
+/** Behemoth jumps by itself at an enemy unit it is fighting no nearer than this, cells. */
+export const BEHEMOTH_AUTO_LUNGE_MIN_TILES = t(4);
+/** …and no farther than this: past its legs' reach by about half a landing sweep. */
+export const BEHEMOTH_AUTO_LUNGE_MAX_TILES = BEHEMOTH_LUNGE_RANGE_TILES + t(2.5);
+/** It comes down this short of the enemy, so the landing sweeps reach it. */
+export const BEHEMOTH_AUTO_LUNGE_SHORT_TILES = t(2);
+/** Behemoth plasma bolt damage at the muzzle, times the bolt's load. Falls off in a line to… */
+export const BEHEMOTH_PULSE_NEAR_MUL = 1.5;
+/** …this at full range. */
+export const BEHEMOTH_PULSE_FAR_MUL = 0.6;
+
+/** Behemoth pulse settings: one heavy bolt a barrel, or a stream of light ones. */
+export type BehemothPulse = "high" | "light";
+export const BEHEMOTH_PULSE_MODES: readonly {
+  id: BehemothPulse;
+  name: string;
+  blurb: string;
+  /** Times the bolt's damage. */
+  damageMul: number;
+  /** Times the gun's reload. */
+  cooldownMul: number;
+  /** Shots of the energy cell one bolt draws. */
+  energy: number;
+}[] = [
+  {
+    id: "high",
+    name: "High Pulse",
+    blurb: "Full-power bolts: one a barrel, then the long reload. Goes through a Tiger's front plate; hits hardest up close.",
+    damageMul: 1,
+    cooldownMul: 1,
+    energy: 1,
+  },
+  {
+    id: "light",
+    name: "Light Pulse",
+    blurb: "Light bolts in quick succession: about four times the rate of fire, under a third of the damage each, and a quarter of the cell a bolt.",
+    damageMul: 0.3,
+    cooldownMul: 0.25,
+    energy: 0.25,
+  },
+];
+
+/** The pulse setting on `e`, or undefined when its gun has none. */
+export function behemothPulseOf(e: { type: EntityType; lightPulse?: true }): (typeof BEHEMOTH_PULSE_MODES)[number] | undefined {
+  if (!hasPulseModes(e.type)) return undefined;
+  return BEHEMOTH_PULSE_MODES[e.lightPulse ? 1 : 0];
+}
+
+/** Its plasma gun switches between High and Light Pulse: the Behemoth. */
+export function hasPulseModes(type: EntityType): boolean {
+  return type === "behemoth";
+}
 /** Stalker: seconds to dig in, in plain sight. */
 export const STALKER_BURROW_SECONDS = 1.6;
 /** Stalker: seconds to break back out; it comes up with its gun laid. */
@@ -2135,6 +2228,13 @@ export const LASER_BEAM_HALF_WIDTH = 2;
 export const LASER_FENCE_REACH_TILES = t(6);
 export const LASER_FENCE_BURN_SHARE = 0.6;
 export const LASER_FENCE_BURN_MIN = 60;
+/**
+ * The Spine Turret's cell: it fires at an MG42's pace (20 rounds a second), so 60 rounds is a
+ * 3-second burst, and it regrows 10 rounds a second: held on a target, it settles at half pace.
+ */
+export const SPINE_TURRET_CELL = { shots: 60, rechargeSeconds: 0.1 };
+/** Hive energy a fence link holds per cell of its length, on top of each post's own (sim/hive-energy.ts). */
+export const LASER_FENCE_ENERGY_PER_CELL = 5;
 /** World px either side of a fence beam that a body still touches. */
 export const LASER_FENCE_BEAM_HALF_WIDTH = 2;
 /**
@@ -3702,31 +3802,6 @@ export const DECK_MG: InfantryGun = {
 };
 
 /**
- * The Spitter's acid. A glob does a rifle round's work on a soldier, but on a hull it does not
- * need to get through: it coats the plate and eats it (sim/acid.ts). Each glob that lands on an
- * armored hull, whatever the face and whether or not it bites, takes ACID_CORRODE_MM off every
- * face, up to ACID_CORRODE_MAX_SHARE of the plate. Shells, bolts, and rounds that hit the hull
- * meet the thinner plate. The coat dries ACID_CORRODE_SECONDS after the last glob, all at once.
- */
-export const ACID_RANGE_TILES = t(8);
-export const ACID_CORRODE_MM = 6;
-export const ACID_CORRODE_MAX_SHARE = 0.5;
-export const ACID_CORRODE_SECONDS = 10;
-export const ACID = {
-  id: "acid" as const,
-  name: "Acid spit",
-  blurb: "A glob of corrosive bile from the throat sac. A soldier takes a rifle round's worth. On a hull it does not have to get through: it eats the plate, every face of it, for a while.",
-  damage: 14,
-  penetration: 4,
-  caliber: 11,
-  spreadDeg: 3,
-  cooldown: 1.3,
-  clip: 4,
-  reload: 3,
-  rangeTiles: ACID_RANGE_TILES,
-} as const satisfies InfantryGun;
-
-/**
  * The Weaver's mend (sim/weaver.ts). Every WEAVER_PULSE_SECONDS each hive unit of its side within
  * WEAVER_REACH_TILES gets HP back: a cyborg WEAVER_MEND_CYBORG, a heavy assimilator or any other
  * Xenomorph body WEAVER_MEND_HEAVY. Weavers do not stack: a unit in reach of two mends once. A Weaver
@@ -3800,6 +3875,65 @@ export const MAWCASTER_POD: RocketRackDef = {
   laid: true,
 };
 
+/**
+ * The Mawcaster's Air attacks: the maw spits small plasma balls straight up at what flies,
+ * quick and many, from less reach. It lays on planes, Jump Jets aloft, and low drones only;
+ * ground targets are left alone. A ball is fused at the flier's height and bursts beside it.
+ */
+export const MAWCASTER_AIR_RANGE_TILES = t(13);
+export const MAWCASTER_AIR_SALVO = 4;
+export const MAWCASTER_AIR_BALL: RocketRackDef = {
+  salvo: MAWCASTER_AIR_SALVO,
+  interval: 0.2,
+  reload: 2.5,
+  scatterNearTiles: t(0.15),
+  scatterFarTiles: t(0.6),
+  splashTiles: t(0.9),
+  speed: t(22) * TILE_SIZE,
+  podLift: 5,
+  damage: 14,
+  armorDamage: 0,
+  airMul: 2.2,
+  penetration: 8,
+  caliber: 20,
+  antiAir: true,
+  laid: true,
+  rangeTiles: MAWCASTER_AIR_RANGE_TILES,
+  airOnly: true,
+  // Thrown up at the flier, the balls need the maw only roughly on it: a plane outruns a narrow lay.
+  arcDeg: 30,
+};
+/** The Mawcaster's energy cell: every ball, either rack, draws one shot. */
+export const MAWCASTER_CELL: PlasmaCellDef = { shots: 24, rechargeSeconds: 2 };
+
+/**
+ * Spitter: the Mawcaster on two legs. The throat sac lobs one plasma ball at a time on a high
+ * arc over its own line, from long reach, and must stand and face the target to spit. It will
+ * not spit inside SPITTER_MIN_RANGE_TILES. One ball, then the sac refills.
+ */
+export const SPITTER_RANGE_TILES = t(15);
+export const SPITTER_MIN_RANGE_TILES = t(3);
+export const SPITTER_BALL: RocketRackDef = {
+  salvo: 1,
+  interval: 0,
+  reload: 4,
+  scatterNearTiles: t(0.4),
+  scatterFarTiles: t(2),
+  splashTiles: t(1.1),
+  speed: t(11) * TILE_SIZE,
+  podLift: 3,
+  damage: 30,
+  armorDamage: 6,
+  airMul: 0,
+  penetration: 20,
+  caliber: 60,
+  antiAir: false,
+  apexNear: 20,
+  apexFar: 40,
+  minRangeTiles: SPITTER_MIN_RANGE_TILES,
+  laid: true,
+};
+
 export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
   rifle: RIFLE,
   assault: ASSAULT,
@@ -3816,7 +3950,6 @@ export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
   daggers: DAGGERS,
   fists: FISTS,
   deckmg: DECK_MG,
-  acid: ACID,
 };
 
 /**
@@ -4128,6 +4261,19 @@ export const APOCALYPSE_SHELLS: Record<ShellType, ShellDef> = {
     penetration: 0,
     caliber: 105,
     spreadDeg: 6,
+  },
+};
+
+/**
+ * Behemoth twin disruptors: one plasma load, the Apocalypse's AP punch. High or Light Pulse
+ * (BEHEMOTH_PULSE_MODES) sets how hard and how fast it fires, not the rack.
+ */
+export const BEHEMOTH_SHELLS: Record<ShellType, ShellDef> = {
+  ...APOCALYPSE_SHELLS,
+  ap: {
+    ...APOCALYPSE_SHELLS.ap,
+    name: "Plasma",
+    blurb: "Plasma bolt. The second barrel follows a moment later. Hits hardest up close.",
   },
 };
 
@@ -4449,7 +4595,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     cost: 0,
     buildSeconds: DEPLOY_SECONDS,
     hp: 2500,
-    power: 50,
+    power: 0,
     tileW: t(3),
     tileH: t(3),
     radius: 0,
@@ -4533,10 +4679,10 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "building",
     name: "Fusion Node",
     letter: "F",
-    cost: 500,
+    cost: 0,
     buildSeconds: 12,
     hp: 650,
-    power: 110,
+    power: 0,
     tileW: t(2),
     tileH: t(2),
     radius: 0,
@@ -4548,17 +4694,17 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "Twin coils around a caged plasma core. Powers the hive: a little more than a Power Plant gives, on a thinner shell.",
+    blurb: `Twin coils around a caged plasma core. Feeds the hive: each Fusion Node adds ${FUSION_NODE_ENERGY} energy to the store your Hive Core starts with. Every Xenomorph unit and defence takes a share while it lives; asked for more than the hive holds, the newest go offline until there is room again. Costs nothing to grow.`,
   },
   assimilator: {
     type: "assimilator",
     kind: "building",
     name: "Assimilator",
     letter: "A",
-    cost: 1600,
+    cost: 0,
     buildSeconds: 24,
     hp: 1200,
-    power: -40,
+    power: 0,
     tileW: t(3),
     tileH: t(3),
     radius: 0,
@@ -5945,7 +6091,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Sim Unit II",
     letter: "I",
-    cost: 1400,
+    cost: 0,
+    energy: 60,
     buildSeconds: 14,
     hp: 220,
     power: 0,
@@ -5970,7 +6117,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Drone",
     letter: "o",
-    cost: 350,
+    cost: 0,
+    energy: 25,
     buildSeconds: 10,
     hp: 150,
     power: 0,
@@ -5995,7 +6143,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Thrall",
     letter: "a",
-    cost: 250,
+    cost: 0,
+    energy: 20,
     buildSeconds: 6,
     hp: 200,
     power: 0,
@@ -6020,7 +6169,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Lancer",
     letter: "j",
-    cost: 900,
+    cost: 0,
+    energy: 50,
     buildSeconds: 14,
     hp: 240,
     power: 0,
@@ -6040,13 +6190,14 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: LAUNCHER.spreadDeg,
     blurb: `Anti-armor cyborg. A plasma lance rides its shoulder and throws a burning bolt like a rocket: loose at full reach, tighter up close, a burst among soldiers that dents a tank. The capacitor on its back recharges the lance between shots. Heavy plating keeps it standing where a Rocketer would fall. In a fight it raises the Drone's small energy wall in front of it (${INFANTRY_SHIELD.hp} points). No stance orders. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
   },
-  /** Xenomorph cyborg: acid spitter whose globs eat tank plate. */
+  /** Xenomorph cyborg: the Mawcaster on two legs, lobbing one plasma ball at a time. */
   spitter: {
     type: "spitter",
     kind: "unit",
     name: "Spitter",
     letter: "i",
-    cost: 550,
+    cost: 0,
+    energy: 35,
     buildSeconds: 11,
     hp: 170,
     power: 0,
@@ -6055,16 +6206,16 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     radius: 7,
     moveTilesPerSec: paced(1.7 * INFANTRY_PACE),
     turnDegPerSec: 1100,
-    rangeTiles: ACID_RANGE_TILES,
+    rangeTiles: SPITTER_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
-    cooldown: ACID.cooldown,
-    damage: ACID.damage,
-    projectileSpeed: SMALL_ARMS_SPEED,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
     ...UNARMED,
-    penetration: ACID.penetration,
-    caliber: ACID.caliber,
-    spreadDeg: ACID.spreadDeg,
-    blurb: `A taken body with a swollen throat sac. It rears back and spits globs of corrosive bile, four and then a short refill from the bladder on its back: about a rifle round on a soldier, from a little less reach. On a tank the glob does not have to get through. It eats the plate: every glob that lands takes ${ACID_CORRODE_MM} mm off every face, up to half the plate, and the coat dries ${ACID_CORRODE_SECONDS} seconds after the last one. Spit a Tiger down and let the Stalkers and Lancers finish it. No stance orders. Near death its legs are torn off and it crawls on, still spitting. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
+    rockets: true,
+    rocketAmmo: 5,
+    rocketRack: SPITTER_BALL,
+    blurb: `A taken body with a swollen throat sac: the Mawcaster on two legs. It stands, rears back, and lobs one plasma ball at a time on a high arc over your own line, from long reach, then waits ${SPITTER_BALL.reload} seconds while the sac refills. Force attack sends the ball anywhere in that reach, seen or not. It will not spit inside ${SPITTER_MIN_RANGE_TILES / TILE_SUBDIV} cells, and must stop and face the target first. The ball scatters at full reach and bursts among soldiers; armor only dents. No stance orders. Near death its legs are torn off and it crawls on, still spitting. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
   },
   /** Xenomorph cyborg: unarmed support, shields friends under fire and mends hive units. */
   weaver: {
@@ -6072,7 +6223,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Weaver",
     letter: "w",
-    cost: 600,
+    cost: 0,
+    energy: 35,
     buildSeconds: 11,
     hp: 160,
     power: 0,
@@ -6096,7 +6248,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Shade",
     letter: "h",
-    cost: 750,
+    cost: 0,
+    energy: 40,
     buildSeconds: 12,
     hp: 110,
     power: 0,
@@ -6123,7 +6276,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Stalker",
     letter: "y",
-    cost: 650,
+    cost: 0,
+    energy: 60,
     buildSeconds: 15,
     hp: 135,
     power: 0,
@@ -6158,7 +6312,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Ravager",
     letter: "v",
-    cost: 500,
+    cost: 0,
+    energy: 50,
     buildSeconds: 13,
     hp: 115,
     power: 0,
@@ -6194,7 +6349,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Behemoth",
     letter: "b",
-    cost: 4000,
+    cost: 0,
+    energy: 200,
     buildSeconds: 26,
     hp: 240,
     power: 0,
@@ -6217,14 +6373,14 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: APOCALYPSE_SHELLS.ap.penetration,
     caliber: APOCALYPSE_SHELLS.ap.caliber,
     spreadDeg: APOCALYPSE_SHELLS.ap.spreadDeg,
-    shells: APOCALYPSE_SHELLS,
+    shells: BEHEMOTH_SHELLS,
     twinGuns: true,
-    ammo: { ap: 16, he: 8 },
+    ammo: { ap: 24 },
     defaultShell: "ap",
     shellResist: BEHEMOTH_SHELL_RESIST,
     leavesWreck: true,
     wreckHp: 60,
-    blurb: `The largest of the heavy assimilators: a carapace on six legs with twin plasma disruptors on one turret. They fire one after the other, a short gap and then a long reload, through a Tiger's front plate, from farther than any tank but the Jagdtiger. The layered carapace sheds part of every shell that hits it (it takes ${Math.round(BEHEMOTH_SHELL_RESIST * 100)}% of the damage). Slow on its legs and slow on the turret, it walks straight through woods, felling every tree it brushes. Lunge throws it up and forward up to ${BEHEMOTH_LUNGE_RANGE_TILES / TILE_SUBDIV} cells; where it lands, ${BEHEMOTH_RING_SWEEPS} green laser sweeps lash out round it, burning enemy soldiers and setting the ground alight. The legs need ${BEHEMOTH_LUNGE_RECHARGE_SECONDS} seconds before the next. In a fight it throws a curved energy wall across its front, ${BEHEMOTH_SHIELD.hp} points strong: the wall stays where it went up, stops every enemy round and beam that meets it, and no enemy walks through it, while the Behemoth walks and fires through as if it were not there. It stands ${BEHEMOTH_SHIELD.seconds} seconds unless shot down; ${BEHEMOTH_SHIELD.rechargeSeconds} seconds after it falls, the next. Each barrel's bolt draws on an energy cell that holds 6 and regrows one every 9 seconds. Needs a Neural Nexus.`,
+    blurb: `The largest of the heavy assimilators: a carapace on six legs with twin plasma disruptors on one turret. They fire one after the other, a short gap and then a long reload, through a Tiger's front plate, from farther than any tank but the Jagdtiger. A bolt hits hardest up close: ${BEHEMOTH_PULSE_NEAR_MUL}× at the muzzle, falling to ${BEHEMOTH_PULSE_FAR_MUL}× at full range. High Pulse fires full bolts; Light Pulse fires about four times as fast for under a third of the damage a bolt. The layered carapace sheds part of every shell that hits it (it takes ${Math.round(BEHEMOTH_SHELL_RESIST * 100)}% of the damage). Slow on its legs and slow on the turret, it walks straight through woods, felling every tree it brushes. Lunge throws it up and forward up to ${BEHEMOTH_LUNGE_RANGE_TILES / TILE_SUBDIV} cells; where it lands, ${BEHEMOTH_RING_SWEEPS} green laser sweeps lash out round it, burning enemy soldiers and setting the ground alight. The legs need ${BEHEMOTH_LUNGE_RECHARGE_SECONDS} seconds before the next. With the legs charged it lunges by itself at an enemy unit it is fighting ${BEHEMOTH_AUTO_LUNGE_MIN_TILES / TILE_SUBDIV} cells off or more, unless told to hold position. In a fight it throws a curved energy wall across its front, ${BEHEMOTH_SHIELD.hp} points strong: the wall stays where it went up, stops every enemy round and beam that meets it, and no enemy walks through it, while the Behemoth walks and fires through as if it were not there. It stands ${BEHEMOTH_SHIELD.seconds} seconds unless shot down; ${BEHEMOTH_SHIELD.rechargeSeconds} seconds after it falls, the next. Each barrel's bolt draws on an energy cell that holds 6 and regrows one every 9 seconds. Needs a Neural Nexus.`,
   },
   /** Xenomorph heavy assimilator: a giant on two legs with a two-handed hammer. Melee only. */
   juggernaut: {
@@ -6232,7 +6388,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Juggernaut",
     letter: "z",
-    cost: 2800,
+    cost: 0,
+    energy: 150,
     buildSeconds: 24,
     hp: 4200,
     power: 0,
@@ -6267,7 +6424,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Siphon",
     letter: "s",
-    cost: 850,
+    cost: 0,
+    energy: 70,
     buildSeconds: 16,
     hp: 140,
     power: 0,
@@ -6302,7 +6460,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Assembler",
     letter: "m",
-    cost: 1800,
+    cost: 0,
+    energy: 120,
     buildSeconds: 22,
     hp: 300,
     power: 0,
@@ -6333,7 +6492,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Mawcaster",
     letter: "c",
-    cost: 1500,
+    cost: 0,
+    energy: 80,
     buildSeconds: 18,
     hp: 100,
     power: 0,
@@ -6361,7 +6521,9 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rockets: true,
     rocketAmmo: MAWCASTER_SALVO * 5,
     rocketRack: MAWCASTER_POD,
-    blurb: `Spore artillery on four legs. A maw of ${MAWCASTER_SALVO} launch tubes throws its pods on a high arc over your own troops, from nearly the Nebelwerfer's reach: half its salvo, but it draws its pods from the hive and never needs a truck. Force attack sends them anywhere in that reach, seen or not. It will not fire inside ${MAWCASTER_MIN_RANGE_TILES / TILE_SUBDIV} cells, and must stop and swing the maw onto the target first. Pods scatter wide at full reach: a salvo blankets an area and shreds soldiers in the open; armor only dents. Now and then a pod leaves burning bile on the ground. Thin hide and short eyes — keep it behind the line.`,
+    airRack: MAWCASTER_AIR_BALL,
+    plasmaCell: MAWCASTER_CELL,
+    blurb: `Plasma artillery on four legs. Ground attacks: the maw throws ${MAWCASTER_SALVO} plasma balls a salvo on a high arc over your own troops, from nearly the Nebelwerfer's reach. Force attack sends them anywhere in that reach, seen or not. It will not fire inside ${MAWCASTER_MIN_RANGE_TILES / TILE_SUBDIV} cells, and must stop and swing the maw onto the target first. The balls scatter wide at full reach: a salvo blankets an area and shreds soldiers in the open; armor only dents. Now and then one leaves burning bile on the ground. Air attacks: it leaves the ground alone and spits smaller balls, ${MAWCASTER_AIR_SALVO} at a time and quick, straight at planes, Jump Jets, and low drones within ${MAWCASTER_AIR_RANGE_TILES / TILE_SUBDIV} cells; each bursts at the flier's height. Every ball draws on an energy cell that holds ${MAWCASTER_CELL.shots} and regrows one every ${MAWCASTER_CELL.rechargeSeconds} seconds. Thin hide and short eyes — keep it behind the line.`,
   },
   /** Xenomorph infantry: the hive's barracks, and the synapse link its foot soldiers run on. */
   conversion: {
@@ -6369,10 +6531,10 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "building",
     name: "Conversion Chamber",
     letter: "C",
-    cost: 500,
+    cost: 0,
     buildSeconds: 16,
     hp: 900,
-    power: -30,
+    power: 0,
     tileW: t(2),
     tileH: t(2),
     radius: 0,
@@ -6384,7 +6546,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `A low chitin dome ringed with glowing conversion pods, under a synapse spire. Taken bodies go into the pods and walk out as the hive's foot soldiers: the Drone, the Thrall, the Lancer, the Spitter, the Weaver, the Sim Unit II, and, with a Neural Nexus standing, the Shade. They hear the hive through its spire: if it falls or your power runs short, ${CYBORG_SHUTDOWN_SECONDS} seconds later every one of them on the field goes dark: still yours, but dead still and silent. Raise the link again (a new Chamber, or the power) and they wake up, unless an enemy Cyborg Commander took them first.`,
+    blurb: `A low chitin dome ringed with glowing conversion pods, under a synapse spire. Taken bodies go into the pods and walk out as the hive's foot soldiers: the Drone, the Thrall, the Lancer, the Spitter, the Weaver, the Sim Unit II, and, with a Neural Nexus standing, the Shade. They hear the hive through its spire: if it falls, ${CYBORG_SHUTDOWN_SECONDS} seconds later every one of them on the field goes dark: still yours, but dead still and silent. Raise a new Chamber and they wake up, unless an enemy Cyborg Commander took them first.`,
   },
   /** Xenomorph vehicle factory. */
   forge: {
@@ -6392,10 +6554,10 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "building",
     name: "Nanite Forge",
     letter: "N",
-    cost: 800,
+    cost: 0,
     buildSeconds: 20,
     hp: 1000,
-    power: -35,
+    power: 0,
     tileW: t(3),
     tileH: t(3),
     radius: 0,
@@ -6415,10 +6577,10 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "building",
     name: "Neural Nexus",
     letter: "X",
-    cost: 5000,
+    cost: 0,
     buildSeconds: 26,
     hp: 900,
-    power: -70,
+    power: 0,
     tileW: t(2),
     tileH: t(2),
     radius: 0,
@@ -6430,7 +6592,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "A neural core in a cage of ribs under a crown of sensor spines: the hive thinks here. It unlocks the Behemoth and the Pulse Spire, and it lights the radar panel like a Radar Station: an enemy plane or drone nobody can see shows as a blinking contact on the panel. Costs about what a Research Facility does, and draws more power.",
+    blurb: "A neural core in a cage of ribs under a crown of sensor spines: the hive thinks here. It unlocks the Behemoth and the Pulse Spire, and it lights the radar panel like a Radar Station: an enemy plane or drone nobody can see shows as a blinking contact on the panel. Costs nothing to grow.",
   },
   /** Xenomorph anti-infantry gun: crewless, runs on base power. */
   spineturret: {
@@ -6438,10 +6600,11 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "building",
     name: "Spine Turret",
     letter: "s",
-    cost: 500,
+    cost: 0,
+    energy: 40,
     buildSeconds: 9,
     hp: 500,
-    power: -15,
+    power: 0,
     tileW: t(1),
     tileH: t(1),
     radius: 0,
@@ -6460,9 +6623,10 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     caliber: MG42.caliber,
     spreadDeg: 3,
     shotsPerTick: MG42.shotsPerTick,
+    plasmaCell: SPINE_TURRET_CELL,
     poweredGun: true,
     capturable: false,
-    blurb: "A chitin bulb rooted in the ground with a twin pulse repeater for a head. Nobody works it: it lays itself all the way round and cuts down soldiers at an MG42's pace from a little short of an MG Nest's reach, and draws its charge from the hive, so it never runs dry. Tank plate turns them, and they do not bring a building down. Short on power, it falls silent. Cannot move.",
+    blurb: "A chitin bulb rooted in the ground with a twin pulse repeater for a head. Nobody works it: it lays itself all the way round and cuts down soldiers at an MG42's pace from a little short of an MG Nest's reach, and draws its charge from the hive: a cell that holds 3 seconds of fire and regrows at half the pace it fires, so a long burst slows to a stutter. Tank plate turns them, and they do not bring a building down. Takes hive energy while it stands; offline, it falls silent. Cannot move.",
   },
   /** Xenomorph fence post: links to the posts beside it with two laser beams (sim/laser-fence.ts). */
   laserfence: {
@@ -6470,10 +6634,11 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "building",
     name: "Laser Fence",
     letter: "f",
-    cost: 150,
+    cost: 0,
+    energy: 10,
     buildSeconds: 6,
     hp: 300,
-    power: -8,
+    power: 0,
     tileW: 2,
     tileH: 2,
     radius: 0,
@@ -6486,7 +6651,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     capturable: false,
-    blurb: `A chitin post with two emitters. Set posts in a row: each links to the nearest post of yours up to ${LASER_FENCE_REACH_TILES / TILE_SUBDIV} cells away, and to the next one on its far side, with two laser beams between them. The beams stop nothing: soldiers and hulls walk through, and rounds fly through. Any ground unit that is not the hive's burns while it touches a beam: soldiers fall almost at once, a tank loses most of its hull crossing. Your own units pass unharmed. Short on power, the beams go dark. Shoot a post down to open the fence. Cannot move.`,
+    blurb: `A chitin post with two emitters. Set posts in a row: each links to the nearest post of yours up to ${LASER_FENCE_REACH_TILES / TILE_SUBDIV} cells away, and to the next one on its far side, with two laser beams between them. The beams stop nothing: soldiers and hulls walk through, and rounds fly through. Any ground unit that is not the hive's burns while it touches a beam: soldiers fall almost at once, a tank loses most of its hull crossing. Your own units pass unharmed. Each post takes a little hive energy, and each link more the longer it reaches; offline, a post's beams go dark. Shoot a post down to open the fence. Cannot move.`,
   },
   /** Xenomorph anti-armor gun: crewless, runs on base power. */
   pulsespire: {
@@ -6494,10 +6659,11 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "building",
     name: "Pulse Spire",
     letter: "q",
-    cost: 1600,
+    cost: 0,
+    energy: 100,
     buildSeconds: 14,
     hp: 800,
-    power: -30,
+    power: 0,
     tileW: t(1),
     tileH: t(1),
     radius: 0,
@@ -6522,7 +6688,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     armorFirst: true,
     poweredGun: true,
     capturable: false,
-    blurb: `A tall spire with a long emitter and a ring of green fire. Nobody works it: it turns all the way round, slowly, and throws a piercing energy pulse through a Tiger's front plate from farther than a Pak 36 reaches. Tanks first. Each pulse draws on an energy cell that holds 8 and regrows one every 6 seconds. Short on power, it falls silent. Needs a Neural Nexus. Cannot move.`,
+    blurb: `A tall spire with a long emitter and a ring of green fire. Nobody works it: it turns all the way round, slowly, and throws a piercing energy pulse through a Tiger's front plate from farther than a Pak 36 reaches. Tanks first. Each pulse draws on an energy cell that holds 8 and regrows one every 6 seconds. Takes hive energy while it stands; offline, it falls silent. Needs a Neural Nexus. Cannot move.`,
   },
   /** Xenomorph shipyard: grows the Leech and the Lurker. Stands on open water like a Marine Base. */
   spawnpool: {
@@ -6530,10 +6696,10 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "building",
     name: "Spawning Pool",
     letter: "W",
-    cost: 1200,
+    cost: 0,
     buildSeconds: 20,
     hp: 1000,
-    power: -35,
+    power: 0,
     tileW: t(2.5),
     tileH: t(2.5),
     radius: 0,
@@ -6554,10 +6720,10 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "building",
     name: "Aerie",
     letter: "E",
-    cost: 3000,
+    cost: 0,
     buildSeconds: 26,
     hp: 1100,
-    power: -45,
+    power: 0,
     tileW: t(3),
     tileH: t(3),
     radius: 0,
@@ -6577,7 +6743,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Leech",
     letter: "h",
-    cost: 500,
+    cost: 0,
+    energy: 45,
     buildSeconds: 10,
     hp: 75,
     power: 0,
@@ -6612,7 +6779,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Lurker",
     letter: "k",
-    cost: 1000,
+    cost: 0,
+    energy: 80,
     buildSeconds: 16,
     hp: 160,
     power: 0,
@@ -6648,7 +6816,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Wasp",
     letter: "w",
-    cost: 900,
+    cost: 0,
+    energy: 60,
     buildSeconds: 22,
     hp: 90,
     power: 0,
@@ -6678,7 +6847,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Scourge",
     letter: "g",
-    cost: 2000,
+    cost: 0,
+    energy: 100,
     buildSeconds: 20,
     hp: 115,
     power: 0,
@@ -6707,7 +6877,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Overseer",
     letter: "z",
-    cost: 1800,
+    cost: 0,
+    energy: 90,
     buildSeconds: 22,
     hp: 130,
     power: 0,
@@ -6735,7 +6906,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Gnat",
     letter: "q",
-    cost: 350,
+    cost: 0,
+    energy: 15,
     buildSeconds: 6,
     hp: 22,
     power: 0,
@@ -6753,7 +6925,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     aircraft: true,
     recon: true,
     wreckHp: 6,
-    blurb: `A spy fly the size of a man on buzzing wings, grown in the Aerie in a few seconds and for a handful of scrap. No weapon: one great sensor eye. It flies as high as the Horten VII and sees almost as far from up there, ${(t(11) + HORTEN_FLYING_SIGHT_BONUS) / TILE_SUBDIV} tiles around it. Only anti-air guns and a fighter that climbs after it can reach it, but its shell is paper: one burst brings it down. It never lands and never tires. Send it at a point or a unit and it flies straight over and hangs there, following a unit it can see; on guard or patrol it keeps watching the area.`,
+    blurb: `A spy fly the size of a man on buzzing wings, grown in the Aerie in a few seconds for a sliver of hive energy. No weapon: one great sensor eye. It flies as high as the Horten VII and sees almost as far from up there, ${(t(11) + HORTEN_FLYING_SIGHT_BONUS) / TILE_SUBDIV} tiles around it. Only anti-air guns and a fighter that climbs after it can reach it, but its shell is paper: one burst brings it down. It never lands and never tires. Send it at a point or a unit and it flies straight over and hangs there, following a unit it can see; on guard or patrol it keeps watching the area.`,
   },
   // ── The Bloom ───────────────────────────────────────────────────────────────────────────
   /** Bloom HQ on the move: a fat seed-pod on root legs. */
@@ -9010,7 +9182,6 @@ export function primaryInfantryGun(type: EntityType): InfantryGun | null {
   if (type === "xenodrone") return RIFLE;
   if (type === "thrall") return FISTS;
   if (type === "lancer") return LAUNCHER;
-  if (type === "spitter") return ACID;
   if (type === "shade") return SCOPED;
   if (type === "spawnling") return DAGGERS;
   if (type === "gobber") return RIFLE;
@@ -9036,7 +9207,6 @@ export function infantryLoadout(type: EntityType): readonly InfantryGun[] {
   if (type === "xenodrone") return [RIFLE];
   if (type === "thrall") return [FISTS];
   if (type === "lancer") return [LAUNCHER];
-  if (type === "spitter") return [ACID];
   if (type === "shade") return [SCOPED];
   if (type === "spawnling") return [DAGGERS];
   if (type === "gobber") return [RIFLE];
@@ -9573,6 +9743,16 @@ export function rocketsOf(type: EntityType): boolean {
 /** How this type's rockets fly and burst. The Titan's pods unless the catalog says otherwise. */
 export function rocketRackOf(type: EntityType): RocketRackDef {
   return catalog(type).rocketRack ?? TITAN_ROCKET_RACK;
+}
+
+/** The rack Air attacks switches this type to, or undefined when it has only the one. */
+export function airRackOf(type: EntityType): RocketRackDef | undefined {
+  return catalog(type).airRack;
+}
+
+/** The rack `e` fires now: its air rack while set to Air attacks, else its own. */
+export function rocketRackFor(e: { type: EntityType; airMode?: boolean }): RocketRackDef {
+  return (e.airMode && airRackOf(e.type)) || rocketRackOf(e.type);
 }
 
 /** Rockets are this type's only weapon, on a frame that must bear (the Nebelwerfer). */

@@ -19,7 +19,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 143;
+export const PROTOCOL_VERSION = 144;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -159,8 +159,6 @@ export interface EntityView {
   sprint?: true;
   /** Shade with its skin settled, own side only: enemies cannot see it. */
   cloaked?: true;
-  /** Armored hull under a Spitter's acid coat: mm off every face. */
-  acid?: number;
   /** Juggernaut has thrown its hammer and fights with its fists. */
   fists?: true;
   /** Stalker digging in, under the ground (own side only), or rising. */
@@ -198,6 +196,8 @@ export interface EntityView {
   selfDestruct?: boolean;
   /** Own Cyborg Commander with the laser's power in his force field. Omitted otherwise. */
   fieldDivert?: true;
+  /** Own Behemoth on Light Pulse. Omitted otherwise (High Pulse). */
+  lightPulse?: true;
   /** Own Cyborg or Cyborg Commander set to fire on thermal and APS contacts out of sight. Omitted otherwise. */
   engageContacts?: true;
   /** Walker is charging to detonate. Anyone who can see him sees it. */
@@ -289,6 +289,8 @@ export interface EntityView {
   unpowered?: boolean;
   /** Titan pods switched off. Friendly snapshots; omitted while on. */
   rocketsOff?: boolean;
+  /** Mawcaster set to Air attacks. Friendly snapshots; omitted on Ground attacks. */
+  airMode?: true;
   /** Stay put: no chase, no withdraw. Friendly snapshots. */
   holdPosition?: boolean;
   /** Overwatch heading in world radians. Friendly snapshots while guarding. */
@@ -435,6 +437,12 @@ export interface YouState {
   provided: number;
   used: number;
   lowPower: boolean;
+  /**
+   * Xenomorph hive energy (sim/hive-energy.ts), shown where scrap is for the other sides: what the
+   * Hive Core and Fusion Nodes hold, what units, defences, and jobs take, and how many sit offline.
+   * Omitted for sides that pay scrap.
+   */
+  energy?: { cap: number; used: number; offline: number };
   structureQueue: StructureQueueView | null;
   /** Guns and garrisons build beside `structureQueue`. Null when that lane is idle. */
   defenceQueue: StructureQueueView | null;
@@ -507,8 +515,6 @@ export interface ProjectileView {
   vy: number;
   /** Fired by the Xenomorphs: drawn and heard as an energy bolt, pulse, or plasma shot. The sim treats it as its round kind. */
   energy?: true;
-  /** A Spitter's acid glob. */
-  acid?: true;
   /** A Siphon's draining bolt. */
   drain?: true;
   caliber: number;
@@ -895,6 +901,8 @@ export type ClientMessage =
   | { type: "cmd.powerdown"; ids: number[]; on: boolean }
   /** Behemoth: lunge at (x, y), short of it when the point is past its reach. */
   | { type: "cmd.lunge"; ids: number[]; x: number; y: number }
+  /** Behemoth: `light` sets Light Pulse (quick, light bolts); false is High Pulse. */
+  | { type: "cmd.pulse"; ids: number[]; light: boolean }
   /** Stalker: dig in under the ground (`on`), or break back out. */
   | { type: "cmd.burrow"; ids: number[]; on: boolean }
   /** Sim Unit II: blink to (x, y). Past his reach he walks until it is in reach, then blinks. */
@@ -902,6 +910,8 @@ export type ClientMessage =
   /** Sim Unit II: blink into a hostile garrison (`targetId`), kill every soldier aboard, and blink back out. */
   | { type: "cmd.purge"; ids: number[]; targetId: number; queue?: boolean }
   | { type: "cmd.rockets"; ids: number[]; on: boolean }
+  /** Mawcaster: `air` true for Air attacks (fliers only, small quick balls), false for Ground attacks. */
+  | { type: "cmd.airmode"; ids: number[]; air: boolean }
   | { type: "cmd.reach"; ids: number[]; max: boolean }
   | { type: "cmd.build"; building: BuildingType | YardFieldType }
   /**

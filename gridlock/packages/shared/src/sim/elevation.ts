@@ -42,6 +42,8 @@ import {
   isNavalType,
   radarLaidOf,
   launcherOnlyOf,
+  rocketRackFor,
+  rocketsOf,
   LOW_POWER_SIGHT_MUL,
   sightBonusTilesOf,
   neverSurfacesOf,
@@ -308,7 +310,8 @@ export function weaponRangeWorld(state: MatchState, e: Entity): number {
   const inHouse = !!host && host.type !== "supply";
   if (inHouse && host.garrisonHide) return GARRISON_HIDE_SIGHT * state.tileSize;
   const gun = infantryGunFor(e);
-  const base = gun?.rangeTiles ?? catalog(e.type).rangeTiles;
+  // A rack with its own reach (the Mawcaster's Air attacks) sets it.
+  const base = gun?.rangeTiles ?? (rocketsOf(e.type) ? rocketRackFor(e).rangeTiles : undefined) ?? catalog(e.type).rangeTiles;
   if (base <= 0) return 0;
   // A blade reaches an arm, on a hill or off it.
   if (meleeOf(e.type)) return base * state.tileSize;
