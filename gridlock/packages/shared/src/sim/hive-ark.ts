@@ -30,7 +30,7 @@ import { canSeeEntity } from "./vision.js";
 /** A fresh Ark: both cells full, both Wasps on their pods. */
 export function newArkState(facing: number): ArkState {
   return {
-    cannons: ARK_CANNON_AT.map(() => ({ facing, energy: ARK_CANNON_CELL, cooldown: 0, drained: false })),
+    cannons: ARK_CANNON_AT.map(() => ({ facing, energy: ARK_CANNON_CELL, cooldown: 0, charge: 0, drained: false })),
     pods: [0, 1].map(() => ({ waspId: null, regrow: 0 })),
     calm: 0,
   };

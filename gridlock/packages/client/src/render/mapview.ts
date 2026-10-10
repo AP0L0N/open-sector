@@ -375,7 +375,7 @@ import {
 import { bumpTilt, crushBump } from "./crush-bump.js";
 import { drawFieldGunSmoke, fieldGunSmokePose, spawnFieldGunSmoke, type FieldGunSmokePuff } from "./field-gun-smoke.js";
 import { emplacementShotLook, facingConeDegOf, PAK43_FX_CALIBER_MUL } from "./emplacement-fx.js";
-import { drawArkPlasmaBall, hiveArkLayers, hiveArkMuzzle } from "./hive-ark.js";
+import { drawArkCharge, drawArkPlasmaBall, hiveArkLayers, hiveArkMuzzle } from "./hive-ark.js";
 import {
   BATTLESHIP_WORLD_PER_UNIT,
   battleshipLayers,
@@ -8325,6 +8325,10 @@ export class MapView {
         if (!spriteReady(HIVEARK_CANNON)) continue;
         const cell = HIVEARK_CANNON.frameSize;
         ctx.drawImage(HIVEARK_CANNON.image, 0, l.row * cell, cell, cell, left + l.dx, top + l.dy, size, size);
+        const charge = e.wreck ? 0 : (ark.cannons[l.index]?.charge ?? 0);
+        if (charge > 0 && l.mx != null && l.my != null) {
+          drawArkCharge(ctx, ox + l.mx, oy + l.my, charge, performance.now(), e.id + l.index * 2.1, size / HIVEARK_SPRITE.drawSize);
+        }
         continue;
       }
       if (!spriteReady(wasp)) continue;

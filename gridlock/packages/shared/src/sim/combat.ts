@@ -22,6 +22,7 @@ import {
   BATTLESHIP_HALF_LENGTH,
   BATTLESHIP_MIN_RANGE_TILES,
   BATTLESHIP_SHELL,
+  ARK_CANNON_CHARGE_SECONDS,
   ARK_CANNON_RELOAD,
   ARK_MIN_RANGE_TILES,
   ARK_PLASMA_BALL,
@@ -1092,8 +1093,8 @@ function fireShip(state: MatchState, e: Entity, dt: number): void {
 
 /** A Hive Ark cannon lets go once it is laid within this of the aim. */
 const ARK_CANNON_LAY_DEG = 4;
-/** Barrel tip ahead of the cannon's pivot, world px. Matches the cannon art (render_hive_ark.py). */
-export const ARK_MUZZLE_REACH = 28;
+/** Barrel tip ahead of the cannon's pivot, world px: the raised barrel's reach over the deck (render_hive_ark.py). */
+export const ARK_MUZZLE_REACH = 18;
 
 /**
  * The Hive Ark's two plasma cannons. Each trains on its own toward the target (or the
@@ -1128,16 +1129,22 @@ function fireArk(state: MatchState, e: Entity, dt: number): void {
     return (Math.abs(d) - Math.min(step, Math.abs(d))) * (180 / Math.PI);
   });
   e.turretFacing = ark.cannons[0]!.facing;
+  const engaged = !!lay && dist <= range && !(e.waypoints.length > 0 && !travelFights(e) && !backingHop(e));
+  // A cannon with a shot to make glows up over the end of its reload; idle, the glow fades.
+  for (const c of ark.cannons) {
+    const charging = engaged && !c.drained && c.energy >= 1 && c.cooldown < ARK_CANNON_CHARGE_SECONDS + dt / 2;
+    c.charge = charging ? Math.min(ARK_CANNON_CHARGE_SECONDS, c.charge + dt) : Math.max(0, c.charge - 2 * dt);
+  }
   if (!lay) {
     if (tooClose && e.order?.kind !== "attack" && e.order?.kind !== "forceattack") e.attackTarget = null;
     return;
   }
   e.state = "attack";
-  if (dist > range) return;
-  if (e.waypoints.length > 0 && !travelFights(e) && !backingHop(e)) return;
+  if (!engaged) return;
   let fired = false;
   ark.cannons.forEach((c, i) => {
     if (left[i]! > ARK_CANNON_LAY_DEG || c.cooldown > 0 || c.drained || c.energy < 1) return;
+    if (c.charge < ARK_CANNON_CHARGE_SECONDS - dt / 2) return;
     const at = arkCannonPoint(e, i);
     const muzzle: Entity = { ...e, x: at.x + Math.cos(c.facing) * ARK_MUZZLE_REACH, y: at.y + Math.sin(c.facing) * ARK_MUZZLE_REACH };
     launchMortar(state, muzzle, lay.x, lay.y, range, Math.hypot(lay.x - muzzle.x, lay.y - muzzle.y), target, ARK_PLASMA_BALL);
@@ -1149,6 +1156,7 @@ function fireArk(state: MatchState, e: Entity, dt: number): void {
     c.energy -= 1;
     if (c.energy < 1) c.drained = true;
     c.cooldown = ARK_CANNON_RELOAD;
+    c.charge = 0;
     c.firedTick = state.tick;
     fired = true;
   });

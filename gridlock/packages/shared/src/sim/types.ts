@@ -735,6 +735,8 @@ export interface ArkCannon {
   energy: number;
   /** Seconds until the next ball is charged. */
   cooldown: number;
+  /** Seconds it has glowed up toward the next shot (ARK_CANNON_CHARGE_SECONDS fires). */
+  charge: number;
   /** Its cell ran dry: it holds fire until the cell is full again. */
   drained: boolean;
   /** Sim tick it last fired. Missing until it first does. */
