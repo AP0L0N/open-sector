@@ -3895,7 +3895,7 @@ export const SHADE_SPOT_TILES = t(2);
  */
 export const ASSEMBLER_THRALLS = 10;
 export const ASSEMBLER_SPEEDUP = 3;
-export const ASSEMBLER_REGEN_SECONDS = 10;
+export const ASSEMBLER_REGEN_SECONDS = 5;
 
 /**
  * Mawcaster: the hive's answer to the Nebelwerfer. Six spore pods per salvo on a high arc, half
