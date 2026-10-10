@@ -1458,10 +1458,12 @@ export interface CatalogEntry {
   coverHeight?: number;
   /** Hatch scout: pop the cupola for infantry sight. Tanks only. */
   hasScout?: boolean;
-  /** Walks through water tiles like a swimmer, and like a swimmer cannot fire from one. */
+  /** Walks through water tiles like a swimmer, and like a swimmer cannot fire from one (unless fightsWading). */
   wades?: boolean;
   /** Move-speed share while wading. Omit and the hull uses TITAN_WADE_SPEED. */
   wadeSpeed?: number;
+  /** A wader that keeps fighting from the water, and goes into it after what it hunts. The Juggernaut. */
+  fightsWading?: boolean;
   /** Deploy braces the unit in place: stationary, hull locked, max HP × this. */
   bracedHpMul?: number;
   /**
@@ -3009,6 +3011,8 @@ export const MAMMOTH_MG_ARC = 25;
 export const MAMMOTH_MG_RANGE_TILES = t(8);
 /** Move-speed share while the Mammoth is wading. Thirty percent slower than dry ground. */
 export const MAMMOTH_WADE_SPEED = 0.7;
+/** Move-speed share while the Juggernaut wades, thigh-deep. */
+export const JUGGERNAUT_WADE_SPEED = 0.7;
 /**
  * Mine launcher on the rear deck. Each pack is one canister lobbed onto the
  * ground, where it bursts into the same field a BV 222 drops (CLUSTER_MINES).
@@ -6157,7 +6161,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     shellResist: BEHEMOTH_SHELL_RESIST,
     leavesWreck: true,
     wreckHp: 60,
-    blurb: `The largest of the heavy assimilators: a carapace on six legs with twin plasma disruptors on one turret. They fire one after the other, a short gap and then a long reload, through a Tiger's front plate, from farther than any tank but the Jagdtiger. The layered carapace sheds part of every shell that hits it (it takes ${Math.round(BEHEMOTH_SHELL_RESIST * 100)}% of the damage). Slow on its legs and slow on the turret, but Lunge throws it up and forward up to ${BEHEMOTH_LUNGE_RANGE_TILES / TILE_SUBDIV} cells; where it lands, ${BEHEMOTH_RING_SWEEPS} green laser sweeps lash out round it, burning enemy soldiers and setting the ground alight. The legs need ${BEHEMOTH_LUNGE_RECHARGE_SECONDS} seconds before the next. In a fight it throws a curved energy wall across its front, ${BEHEMOTH_SHIELD.hp} points strong: the wall stays where it went up, stops every enemy round and beam that meets it, and no enemy walks through it, while the Behemoth walks and fires through as if it were not there. It stands ${BEHEMOTH_SHIELD.seconds} seconds unless shot down; ${BEHEMOTH_SHIELD.rechargeSeconds} seconds after it falls, the next. Each barrel's bolt draws on an energy cell that holds 6 and regrows one every 9 seconds. Needs a Neural Nexus.`,
+    blurb: `The largest of the heavy assimilators: a carapace on six legs with twin plasma disruptors on one turret. They fire one after the other, a short gap and then a long reload, through a Tiger's front plate, from farther than any tank but the Jagdtiger. The layered carapace sheds part of every shell that hits it (it takes ${Math.round(BEHEMOTH_SHELL_RESIST * 100)}% of the damage). Slow on its legs and slow on the turret, it walks straight through woods, felling every tree it brushes. Lunge throws it up and forward up to ${BEHEMOTH_LUNGE_RANGE_TILES / TILE_SUBDIV} cells; where it lands, ${BEHEMOTH_RING_SWEEPS} green laser sweeps lash out round it, burning enemy soldiers and setting the ground alight. The legs need ${BEHEMOTH_LUNGE_RECHARGE_SECONDS} seconds before the next. In a fight it throws a curved energy wall across its front, ${BEHEMOTH_SHIELD.hp} points strong: the wall stays where it went up, stops every enemy round and beam that meets it, and no enemy walks through it, while the Behemoth walks and fires through as if it were not there. It stands ${BEHEMOTH_SHIELD.seconds} seconds unless shot down; ${BEHEMOTH_SHIELD.rechargeSeconds} seconds after it falls, the next. Each barrel's bolt draws on an energy cell that holds 6 and regrows one every 9 seconds. Needs a Neural Nexus.`,
   },
   /** Xenomorph heavy assimilator: a giant on two legs with a two-handed hammer. Melee only. */
   juggernaut: {
@@ -6189,7 +6193,10 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: 0,
     leavesWreck: true,
     wreckHp: 50,
-    blurb: `A giant of the hive on two legs, swinging a two-handed hammer. It fights only at arm's reach, and runs at what it goes for at ${JUGGERNAUT_SPRINT_MUL} times its walk. Every blow lands in an area: it kills a soldier outright, staves in a tank's plate whatever its armor, and knocks whole walls out of a building. Only its own side is spared. Plated like a light tank and slow to fall. Brought down to ${Math.round(JUGGERNAUT_RAGE_HP * 100)}% it hurls the hammer at the strongest enemy within ${JUGGERNAUT_THROW_RANGE_TILES / TILE_SUBDIV} cells, a heavy blast where it lands, then fights on with its fists: lighter blows, three for every swing of the hammer, and it moves faster. Needs a Neural Nexus.`,
+    wades: true,
+    wadeSpeed: JUGGERNAUT_WADE_SPEED,
+    fightsWading: true,
+    blurb: `A giant of the hive on two legs, swinging a two-handed hammer. It fights only at arm's reach, and runs at what it goes for at ${JUGGERNAUT_SPRINT_MUL} times its walk. It strides straight through woods, felling every tree it brushes, and wades through water thigh-deep, slower, still swinging: from there it hammers a boat on the surface, but not a submarine running below. Every blow lands in an area: it kills a soldier outright, staves in a tank's plate whatever its armor, and knocks whole walls out of a building. Only its own side is spared. Plated like a light tank and slow to fall. Brought down to ${Math.round(JUGGERNAUT_RAGE_HP * 100)}% it hurls the hammer at the strongest enemy within ${JUGGERNAUT_THROW_RANGE_TILES / TILE_SUBDIV} cells, a heavy blast where it lands, then fights on with its fists: lighter blows, three for every swing of the hammer, and it moves faster. Needs a Neural Nexus.`,
   },
   /** Xenomorph heavy assimilator: four legs and a draining disruptor that feeds its own body. */
   siphon: {
@@ -8834,9 +8841,12 @@ export function crushes(mover: EntityType, victim: EntityType): boolean {
   return mover === "apocalypse" && APOCALYPSE_CRUSHES.includes(victim);
 }
 
-/** A hull heavy enough to go straight through woods, not only over a lone tree: the Apocalypse, and the Titan on its legs. */
+/**
+ * A hull heavy enough to go straight through woods, not only over a lone tree: the Apocalypse,
+ * the Titan on its legs, and the hive's Behemoth and Juggernaut.
+ */
 export function rollsThroughWoods(type: EntityType): boolean {
-  return type === "apocalypse" || type === "titan";
+  return type === "apocalypse" || type === "titan" || type === "behemoth" || type === "juggernaut";
 }
 
 /**
@@ -9350,6 +9360,11 @@ export function specialLabel(type: EntityType, braced = false): string | null {
 /** Walks through water. Infantry swim; this is the vehicle flag. */
 export function wadesOf(type: EntityType): boolean {
   return catalog(type).wades === true;
+}
+
+/** A wader that fights from the water. See CatalogEntry.fightsWading. */
+export function fightsWadingOf(type: EntityType): boolean {
+  return catalog(type).fightsWading === true;
 }
 
 /** Share of dry-ground speed while wading. A wader that omits wadeSpeed keeps the Titan's pace. */

@@ -7,6 +7,7 @@ import {
   JUGGERNAUT_HAMMER_SECONDS,
   JUGGERNAUT_RAGE_HP,
   JUGGERNAUT_SPRINT_MUL,
+  JUGGERNAUT_WADE_SPEED,
   TICK_DT,
   TILE_SUBDIV,
   catalog,
@@ -14,10 +15,10 @@ import {
   meleeOf,
   secondsToTicks,
 } from "../catalog.js";
-import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
+import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE, TILE_WATER } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { moveSpeedMul } from "./crits.js";
-import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
+import { destroyEntity, isTree, makeEntity, tileCenter, unitInWater, worldToTile } from "./geo.js";
 import { juggernautBlowSeconds } from "./juggernaut.js";
 import { createMatch, step } from "./match.js";
 import { reversing } from "./orders.js";
@@ -163,5 +164,82 @@ describe("Juggernaut", () => {
     ticks(state, 3);
     assert.equal(j.fists, undefined);
     assert.equal(state.projectiles.some((p) => p.hammer), false);
+  });
+});
+
+/** Fills cells [cx0, cx1] × [cy0, cy1] (whole cells) with one terrain tile. */
+function paint(state: MatchState, tile: number, cx0: number, cy0: number, cx1: number, cy1: number): void {
+  for (let y = cy0 * TILE_SUBDIV; y < (cy1 + 1) * TILE_SUBDIV; y++) {
+    for (let x = cx0 * TILE_SUBDIV; x < (cx1 + 1) * TILE_SUBDIV; x++) {
+      const i = y * state.width + x;
+      state.terrain[i] = tile;
+      if (tile === TILE_WATER) state.blocked[i] = 1;
+    }
+  }
+  state.visionTick = -1;
+}
+
+describe("Behemoth and Juggernaut in the woods", () => {
+  for (const type of ["juggernaut", "behemoth"] as const) {
+    it(`the ${type} walks straight through a wood, felling the trees it brushes`, () => {
+      const state = field();
+      paint(state, TILE_TREE, 24, 26, 27, 34);
+      const ts = state.tileSize;
+      const e = at(state, type, "B", 20, 30);
+      const tx = tileCenter(32 * TILE_SUBDIV, ts);
+      assert.equal(applyCommand(state, "B", { type: "cmd.move", ids: [e.id], x: tx, y: e.y }).ok, true);
+      ticks(state, secondsToTicks(40));
+      assert.ok(Math.abs(e.x - tx) < ts * TILE_SUBDIV, `${type} came through the wood, x=${e.x} want ${tx}`);
+      const row = worldToTile(e.y, ts);
+      for (let x = 25 * TILE_SUBDIV; x < 27 * TILE_SUBDIV; x++) assert.equal(isTree(state, x, row), false, `tree left at ${x},${row}`);
+      assert.ok(state.clearedTrees.length > 0);
+    });
+  }
+});
+
+describe("Juggernaut in the water", () => {
+  it("wades across a river, slower, and shows wading", () => {
+    const state = field();
+    // Bank to bank across the whole map: no way round.
+    paint(state, TILE_WATER, 24, 0, 30, state.height / TILE_SUBDIV - 1);
+    const ts = state.tileSize;
+    const j = at(state, "juggernaut", "B", 20, 30);
+    const tx = tileCenter(34 * TILE_SUBDIV, ts);
+    assert.equal(applyCommand(state, "B", { type: "cmd.move", ids: [j.id], x: tx, y: j.y }).ok, true);
+    for (let i = 0; i < secondsToTicks(60) && !unitInWater(state, j); i++) step(state, TICK_DT);
+    assert.equal(unitInWater(state, j), true, "it walked into the water");
+    assert.equal(moveSpeedMul(j, true), JUGGERNAUT_WADE_SPEED);
+    assert.equal(snapshotFor(state, "B").entities.find((e) => e.id === j.id)?.wading, true);
+    ticks(state, secondsToTicks(60));
+    assert.ok(Math.abs(j.x - tx) < ts * TILE_SUBDIV, `came out the far side, x=${j.x} want ${tx}`);
+  });
+
+  it("hammers a boat on the surface from the water", () => {
+    const state = field();
+    paint(state, TILE_WATER, 24, 24, 40, 36);
+    const j = at(state, "juggernaut", "B", 29, 30);
+    const boat = at(state, "supplyboat", "A", 31, 30);
+    const hp = boat.hp;
+    assert.equal(unitInWater(state, j), true);
+    assert.equal(applyCommand(state, "B", { type: "cmd.attack", ids: [j.id], targetId: boat.id }).ok, true);
+    ticks(state, secondsToTicks(4));
+    assert.ok(boat.hp < hp, `the boat took the hammer, ${boat.hp} of ${hp}`);
+  });
+
+  it("leaves a submarine running below alone, and hammers it once it is up", () => {
+    const state = field();
+    paint(state, TILE_WATER, 24, 24, 40, 36);
+    const j = at(state, "juggernaut", "B", 29, 30);
+    const sub = at(state, "submarine", "A", 30.5, 30);
+    sub.dive = { down: true, air: 1e6 };
+    const hp = sub.hp;
+    applyCommand(state, "B", { type: "cmd.attack", ids: [j.id], targetId: sub.id });
+    ticks(state, secondsToTicks(4));
+    assert.equal(sub.hp, hp, "nothing reaches it below");
+    sub.dive = { down: false, air: 1e6 };
+    sub.cooldown = 1e6;
+    assert.equal(applyCommand(state, "B", { type: "cmd.attack", ids: [j.id], targetId: sub.id }).ok, true);
+    ticks(state, secondsToTicks(4));
+    assert.ok(sub.hp < hp, `surfaced, it took the hammer, ${sub.hp} of ${hp}`);
   });
 });

@@ -475,7 +475,18 @@ import { drawShutdownMark, drawUplink, SHUTDOWN_UNIT_FILTER } from "./cyborg-lin
 import { BLINK_FX_MS, drawBlinkFx, drawPurgeMark } from "./blink-fx.js";
 import { BITE_FX_MS, DOWN_BEAM_MS, drawBite, drawDownBeam } from "./hive-fx.js";
 import { SIMUNIT2_CRAWL_FIRE_SPRITE, SIMUNIT2_CRAWL_SPRITE, SIMUNIT2_DIE_SPRITE, SIMUNIT2_FIRE_SPRITE, SIMUNIT2_SPRITE, UNIT_SPRITE_DRAW_SIZE } from "./sprites.js";
-import { JUGGERNAUT_FISTS_SPRITE, JUGGERNAUT_PUNCH_SPRITE, JUGGERNAUT_SPRITE, JUGGERNAUT_SWING_SPRITE, JUGGERNAUT_THROW_SPRITE } from "./sprites.js";
+import {
+  JUGGERNAUT_FISTS_SPRITE,
+  JUGGERNAUT_FISTS_WADE_SPRITE,
+  JUGGERNAUT_PUNCH_SPRITE,
+  JUGGERNAUT_PUNCH_WADE_SPRITE,
+  JUGGERNAUT_SPRITE,
+  JUGGERNAUT_SWING_SPRITE,
+  JUGGERNAUT_SWING_WADE_SPRITE,
+  JUGGERNAUT_THROW_SPRITE,
+  JUGGERNAUT_THROW_WADE_SPRITE,
+  JUGGERNAUT_WALK_WADE_SPRITE,
+} from "./sprites.js";
 import { drawThrownHammer, pickJuggernautPose, JUGGERNAUT_STRIDE_WORLD, type JuggernautSheet } from "./juggernaut-fx.js";
 import {
   THRALL_CRAWL_FIRE_SPRITE,
@@ -7344,15 +7355,26 @@ export class MapView {
   }
 
   /** Stance sheet, or the pistol / rifle-recoil / corpse sheet when that pose is showing. */
-  /** The Juggernaut's sheet now, and its frame when a blow or the throw sets it (else it strides). */
+  /**
+   * The Juggernaut's sheet now, and its frame when a blow or the throw sets it (else it strides).
+   * In water every pose has its wading twin: same cell and contact, sunk to mid-thigh.
+   */
   private juggernautPose(e: EntityView): { def: UnitSpriteDef; frame?: number } {
-    const sheets: Record<JuggernautSheet, UnitSpriteDef> = {
-      walk: JUGGERNAUT_SPRITE,
-      swing: JUGGERNAUT_SWING_SPRITE,
-      fists: JUGGERNAUT_FISTS_SPRITE,
-      punch: JUGGERNAUT_PUNCH_SPRITE,
-      throw: JUGGERNAUT_THROW_SPRITE,
-    };
+    const sheets: Record<JuggernautSheet, UnitSpriteDef> = e.wading
+      ? {
+          walk: JUGGERNAUT_WALK_WADE_SPRITE,
+          swing: JUGGERNAUT_SWING_WADE_SPRITE,
+          fists: JUGGERNAUT_FISTS_WADE_SPRITE,
+          punch: JUGGERNAUT_PUNCH_WADE_SPRITE,
+          throw: JUGGERNAUT_THROW_WADE_SPRITE,
+        }
+      : {
+          walk: JUGGERNAUT_SPRITE,
+          swing: JUGGERNAUT_SWING_SPRITE,
+          fists: JUGGERNAUT_FISTS_SPRITE,
+          punch: JUGGERNAUT_PUNCH_SPRITE,
+          throw: JUGGERNAUT_THROW_SPRITE,
+        };
     if (e.wreck) return { def: JUGGERNAUT_SPRITE };
     const blow = this.juggBlows.get(e.id);
     const pose = pickJuggernautPose({
