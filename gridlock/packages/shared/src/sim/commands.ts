@@ -8,6 +8,7 @@ import {
   radarLaidOf,
   aimsOwnGun,
   mountArcDegOf,
+  airRackOf,
   rocketsOf,
   hasCrit,
   hasScout,
@@ -152,6 +153,9 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
     case "cmd.rockets":
       if (typeof msg.on !== "boolean") return fail("bad_payload", "Unknown rocket setting.");
       return cmdRockets(state, playerId, msg.ids, msg.on);
+    case "cmd.airmode":
+      if (typeof msg.air !== "boolean") return fail("bad_payload", "Unknown attack mode.");
+      return cmdAirMode(state, playerId, msg.ids, msg.air);
     case "cmd.reach":
       if (typeof msg.max !== "boolean") return fail("bad_payload", "Unknown reach setting.");
       return cmdReach(state, playerId, msg.ids, msg.max);
@@ -1440,6 +1444,23 @@ function cmdRockets(state: MatchState, playerId: string, ids: number[], on: bool
     e.rocketsOff = on ? undefined : true;
     // Switching off mid-salvo holds the rest in the rack.
     if (!on) e.rocketSalvo = 0;
+  }
+  return ok();
+}
+
+/**
+ * Mawcaster: Ground attacks or Air attacks. The switch drops the salvo under way and the
+ * target it was on, so the maw picks again on the new rack's terms.
+ */
+function cmdAirMode(state: MatchState, playerId: string, ids: number[], air: boolean): CmdResult {
+  const units = owned(state, playerId, ids).filter((e) => airRackOf(e.type) != null);
+  if (units.length === 0) return fail("not_yours", "Select a Mawcaster.");
+  for (const e of units) {
+    if (!!e.airMode === air) continue;
+    e.airMode = air ? true : undefined;
+    e.rocketSalvo = 0;
+    e.rocketTarget = null;
+    e.attackTarget = null;
   }
   return ok();
 }

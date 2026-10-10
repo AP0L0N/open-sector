@@ -159,8 +159,6 @@ export interface EntityView {
   sprint?: true;
   /** Shade with its skin settled, own side only: enemies cannot see it. */
   cloaked?: true;
-  /** Armored hull under a Spitter's acid coat: mm off every face. */
-  acid?: number;
   /** Juggernaut has thrown its hammer and fights with its fists. */
   fists?: true;
   /** Stalker digging in, under the ground (own side only), or rising. */
@@ -289,6 +287,8 @@ export interface EntityView {
   unpowered?: boolean;
   /** Titan pods switched off. Friendly snapshots; omitted while on. */
   rocketsOff?: boolean;
+  /** Mawcaster set to Air attacks. Friendly snapshots; omitted on Ground attacks. */
+  airMode?: true;
   /** Stay put: no chase, no withdraw. Friendly snapshots. */
   holdPosition?: boolean;
   /** Overwatch heading in world radians. Friendly snapshots while guarding. */
@@ -513,8 +513,6 @@ export interface ProjectileView {
   vy: number;
   /** Fired by the Xenomorphs: drawn and heard as an energy bolt, pulse, or plasma shot. The sim treats it as its round kind. */
   energy?: true;
-  /** A Spitter's acid glob. */
-  acid?: true;
   /** A Siphon's draining bolt. */
   drain?: true;
   caliber: number;
@@ -908,6 +906,8 @@ export type ClientMessage =
   /** Sim Unit II: blink into a hostile garrison (`targetId`), kill every soldier aboard, and blink back out. */
   | { type: "cmd.purge"; ids: number[]; targetId: number; queue?: boolean }
   | { type: "cmd.rockets"; ids: number[]; on: boolean }
+  /** Mawcaster: `air` true for Air attacks (fliers only, small quick balls), false for Ground attacks. */
+  | { type: "cmd.airmode"; ids: number[]; air: boolean }
   | { type: "cmd.reach"; ids: number[]; max: boolean }
   | { type: "cmd.build"; building: BuildingType | YardFieldType }
   /**
