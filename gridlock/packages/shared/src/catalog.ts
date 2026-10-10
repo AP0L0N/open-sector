@@ -4287,15 +4287,30 @@ export const OVERSEER_BUILDING_MUL = 0.4;
 export const OVERSEER_LIFT_PER_SEC = 5;
 /**
  * The hovering Xenomorph fliers (staysAloft) on station. A Wasp hangs HIVE_WASP_STANDOFF_TILES
- * off its target and lays a barrage whenever its cannon are clear; a Scourge hangs
- * HIVE_SCOURGE_STANDOFF_TILES off and lobs a bomb every HIVE_BOMB_SECONDS, its pulse guns firing
- * a burst of one tick every HIVE_GUN_BURST_SECONDS at soft targets. They lift and sink at
- * OVERSEER_LIFT_PER_SEC.
+ * off its target, still in the air, and looses a burst of energy bolts whenever its cell has a
+ * burst in it (see WASP_BURST_BOLTS); a Scourge hangs HIVE_SCOURGE_STANDOFF_TILES off and lobs a
+ * bomb every HIVE_BOMB_SECONDS, its pulse guns firing a burst of one tick every
+ * HIVE_GUN_BURST_SECONDS at soft targets. They lift and sink at OVERSEER_LIFT_PER_SEC.
  */
-export const HIVE_WASP_STANDOFF_TILES = t(3);
+export const HIVE_WASP_STANDOFF_TILES = t(7);
 export const HIVE_SCOURGE_STANDOFF_TILES = t(2);
 export const HIVE_BOMB_SECONDS = 5;
 export const HIVE_GUN_BURST_SECONDS = 0.5;
+/**
+ * Wasp energy burst: WASP_BURST_BOLTS laser bolts at once from both wing emitters, each coming down
+ * on its own random spot within WASP_BURST_SCATTER_TILES of the point laid on. Long reach, poor
+ * aim: a burst blankets the spot rather than threading one hull. It fires within WASP_BURST_TILES
+ * and WASP_BURST_ARC_DEG of the nose, no sooner than WASP_BURST_COOLDOWN after the last, and each
+ * burst draws one charge from its cell (catalog plasmaCell).
+ */
+export const WASP_BURST_TILES = t(9);
+export const WASP_BURST_BOLTS = 14;
+export const WASP_BURST_SCATTER_TILES = t(1.6);
+export const WASP_BURST_ARC_DEG = 15;
+export const WASP_BURST_COOLDOWN = 1.2;
+export const WASP_BOLT = { damage: 26, penetration: 35, caliber: 20 } as const;
+/** A Scourge's bomb draws this much from its energy cell; a gun burst draws one. */
+export const HIVE_BOMB_ENERGY = 4;
 /** Seconds of flight in a full tank: it hangs in the air longer than a plane flies. */
 export const OVERSEER_FUEL_SECONDS = 140;
 
@@ -6620,7 +6635,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "A ribbed chitin hive where the fliers are grown. Grows the Wasp, the Gnat, and, with a Neural Nexus standing, the Scourge and the Overseer. They lift straight up out of it and never come down: no runway, no fuel, nothing to rearm. A Weaver mends them in the air.",
+    blurb: "A ribbed chitin hive where the fliers are grown. Grows the Wasp, the Gnat, and, with a Neural Nexus standing, the Scourge and the Overseer. They lift straight up out of it and never come down: no runway and no fuel. Their weapons run on energy cells that drain as they fire and charge again by themselves. A Weaver mends them in the air.",
   },
   /** Xenomorph fast attack boat: a skimming chitin hull with a plasma cannon. */
   leech: {
@@ -6708,19 +6723,20 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     radius: 11,
     moveTilesPerSec: paced(6.8),
     turnDegPerSec: 160,
-    rangeTiles: FW190_BARRAGE_TILES,
-    sightTiles: t(10),
-    cooldown: FW190_BARRAGE_COOLDOWN,
-    damage: FW190_CANNON.damage,
+    rangeTiles: WASP_BURST_TILES,
+    sightTiles: t(11),
+    cooldown: WASP_BURST_COOLDOWN,
+    damage: WASP_BOLT.damage,
     projectileSpeed: SMALL_ARMS_SPEED,
     ...UNARMED,
-    penetration: FW190_CANNON.penetration,
-    caliber: FW190_CANNON.caliber,
-    spreadDeg: FW190_CANNON.spreadDeg,
+    penetration: WASP_BOLT.penetration,
+    caliber: WASP_BOLT.caliber,
+    spreadDeg: 0,
     aircraft: true,
     fighter: true,
     wreckHp: 20,
-    blurb: `Insect fighter on buzzing green-veined wings, a pulse cannon under each. It never lands and never runs dry. It hovers: sent at something it flies straight there, hangs a few cells off it, turns on it, and lays two straight lines of pulses through it, coming down through a tank's thin roof. It chases enemy planes out of the sky the same way. A hit that tears a wing brings it down at once.`,
+    plasmaCell: { shots: 4, rechargeSeconds: 8 },
+    blurb: `Insect gunship on buzzing green-veined wings, a laser emitter under each. It never lands. Sent at something it flies straight at it, stops ${HIVE_WASP_STANDOFF_TILES / TILE_SUBDIV} tiles short, hangs still in the air, and looses a storm of ${WASP_BURST_BOLTS} energy bolts at the spot: long reach, poor aim, a burst blankets a patch of ground ${(2 * WASP_BURST_SCATTER_TILES) / TILE_SUBDIV} tiles across and comes down through a tank's thin roof. Its cell holds four bursts and grows one back every eight seconds; drained, it hangs there waiting for the charge. It fires on enemy planes the same way. A hit that tears a wing brings it down at once.`,
   },
   /** Xenomorph dive bomber: beetle carapace and a plasma bomb pod. Lives in an Aerie nest. */
   scourge: {
@@ -6748,7 +6764,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: STUKA_MG.spreadDeg,
     aircraft: true,
     wreckHp: 23,
-    blurb: `Hovering bomber with a beetle's carapace and buzzing wings. A plasma bomb in a glowing pod that grows the next one ${HIVE_BOMB_SECONDS} seconds after the last falls, and two pulse guns for soft targets. It never lands and never runs dry: sent at something it hangs just off it, lobbing bomb after bomb and raking it in bursts. Flies over everything; only rifles, machine guns, the Walker, and the Titan's rockets can reach it in the air. A hit that tears a wing brings it down at once. Needs a Neural Nexus.`,
+    plasmaCell: { shots: 16, rechargeSeconds: 1 },
+    blurb: `Hovering bomber with a beetle's carapace and buzzing wings. A plasma bomb in a glowing pod that grows the next one ${HIVE_BOMB_SECONDS} seconds after the last falls, and two pulse guns for soft targets. It never lands: sent at something it hangs just off it, lobbing bomb after bomb and raking it in bursts. Bombs and guns draw on one energy cell that regrows by itself; a bomb takes ${HIVE_BOMB_ENERGY} times a gun burst, and a drained cell holds both back until it charges. Flies over everything; only rifles, machine guns, the Walker, and the Titan's rockets can reach it in the air. A hit that tears a wing brings it down at once. Needs a Neural Nexus.`,
   },
   /** Xenomorph hover craft: hangs over its target and burns straight down. Lives in an Aerie nest. */
   overseer: {
@@ -6775,7 +6792,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     aircraft: true,
     hovers: true,
     wreckHp: 20,
-    blurb: `A floating hive eye: a spinning bell of chitin on a ring of humming vanes, glowing membrane round its rim and a cluster of emitters under its belly. It lifts straight out of the Aerie, never lands, and flies slowly. Sent at something on the ground it stops right over it and hangs there, burning straight down with a green laser pulse every ${OVERSEER_PULSE_SECONDS} seconds, and follows it as it moves. Every enemy soldier in the beam's spot burns; a tank's thin roof gives under it slowly, a building slower still. It never runs dry. It cannot touch a plane, and it hovers low: rifles, machine guns, and anti-air reach it. Needs a Neural Nexus.`,
+    plasmaCell: { shots: 15, rechargeSeconds: 0.6 },
+    blurb: `A floating hive eye: a spinning bell of chitin on a ring of humming vanes, glowing membrane round its rim and a cluster of emitters under its belly. It lifts straight out of the Aerie, never lands, and flies slowly. Sent at something on the ground it stops right over it and hangs there, burning straight down with a green laser pulse every ${OVERSEER_PULSE_SECONDS} seconds, and follows it as it moves. Every enemy soldier in the beam's spot burns; a tank's thin roof gives under it slowly, a building slower still. Each pulse draws on its energy cell: a full cell burns for about nine seconds, then the beam slows to the pace the cell regrows. It cannot touch a plane, and it hovers low: rifles, machine guns, and anti-air reach it. Needs a Neural Nexus.`,
   },
   /** Xenomorph spy drone: a tiny fly with one big sensor eye. Lives in an Aerie nest. */
   gnat: {
