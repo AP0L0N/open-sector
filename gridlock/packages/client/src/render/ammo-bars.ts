@@ -53,9 +53,14 @@ const SHIP_ROUNDS = BATTLESHIP_CIWS_AT.length * BATTLESHIP_CIWS_BELT;
 
 /** Main store first (the yellow bar), then the secondary store. At most two. Empty when nothing is finite or the view is not allied. */
 export function ammoBarRatios(
-  e: Pick<EntityView, "type" | "ammo" | "mgAmmo" | "clip" | "rockets" | "heavy" | "wreck" | "supply" | "jet" | "ship" | "energy">,
+  e: Pick<EntityView, "type" | "ammo" | "mgAmmo" | "clip" | "rockets" | "heavy" | "wreck" | "supply" | "jet" | "ship" | "energy"> & { ark?: EntityView["ark"] },
 ): number[] {
   if (e.wreck) return [];
+  // The Hive Ark: each cannon's own energy cell, fore then aft. Enemies get no charge, so no strip.
+  if (e.ark) {
+    const cells = e.ark.cannons.map((c) => c.energy);
+    return cells.every((c) => c != null) ? cells.map((c) => fraction(c!, 1)) : [];
+  }
   if (isSupplyCarrier(e.type)) return e.supply != null ? [fraction(e.supply, SUPPLY_CARGO)] : [];
   // The Battle Ship: main-battery shells yellow, the CIWS belts gray.
   if (e.type === "battleship") {

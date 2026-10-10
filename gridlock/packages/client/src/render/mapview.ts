@@ -251,6 +251,8 @@ import {
   spriteReady,
   BATTLESHIP_LAYERS,
   BATTLESHIP_SPRITE,
+  HIVEARK_CANNON,
+  HIVEARK_SPRITE,
   FEUERWIRBEL_CIWS_SHEET,
   FEUERWIRBEL_SPRITE,
   unitSpritePaintRect,
@@ -373,6 +375,7 @@ import {
 import { bumpTilt, crushBump } from "./crush-bump.js";
 import { drawFieldGunSmoke, fieldGunSmokePose, spawnFieldGunSmoke, type FieldGunSmokePuff } from "./field-gun-smoke.js";
 import { emplacementShotLook, facingConeDegOf, PAK43_FX_CALIBER_MUL } from "./emplacement-fx.js";
+import { drawArkPlasmaBall, hiveArkLayers, hiveArkMuzzle } from "./hive-ark.js";
 import {
   BATTLESHIP_WORLD_PER_UNIT,
   battleshipLayers,
@@ -492,6 +495,10 @@ import {
   JUGGERNAUT_FISTS_WADE_SPRITE,
   JUGGERNAUT_PUNCH_SPRITE,
   JUGGERNAUT_PUNCH_WADE_SPRITE,
+  JUGGERNAUT_RAM_FISTS_SPRITE,
+  JUGGERNAUT_RAM_SPRITE,
+  JUGGERNAUT_RAMHIT_FISTS_SPRITE,
+  JUGGERNAUT_RAMHIT_SPRITE,
   JUGGERNAUT_SPRITE,
   JUGGERNAUT_SWING_SPRITE,
   JUGGERNAUT_SWING_WADE_SPRITE,
@@ -499,7 +506,16 @@ import {
   JUGGERNAUT_THROW_WADE_SPRITE,
   JUGGERNAUT_WALK_WADE_SPRITE,
 } from "./sprites.js";
-import { drawThrownHammer, pickJuggernautPose, JUGGERNAUT_STRIDE_WORLD, type JuggernautSheet } from "./juggernaut-fx.js";
+import {
+  drawRamShock,
+  drawRamTrail,
+  drawThrownHammer,
+  pickJuggernautPose,
+  JUGGERNAUT_RAM_STRIDE_WORLD,
+  JUGGERNAUT_STRIDE_WORLD,
+  RAM_SHOCK_MS,
+  type JuggernautSheet,
+} from "./juggernaut-fx.js";
 import {
   THRALL_CRAWL_FIRE_SPRITE,
   THRALL_CRAWL_SPRITE,
@@ -877,6 +893,7 @@ const EXTRUDE: Record<EntityType, number> = {
   supplyboat: 9,
   submarine: 7,
   lurker: 7,
+  hiveark: 20,
   battleship: 20,
   destroyer: 14,
   lst: 16,
@@ -1073,6 +1090,10 @@ export class MapView {
   /** Juggernaut: when the hammer left its hands. */
   private juggThrows = new Map<number, number>();
   private juggSeen = new Set<number>();
+  /** Juggernaut: when its last ram slammed home (performance.now). */
+  private juggRamHits = new Map<number, number>();
+  /** Where rams struck: shock and dust on the ground, along the charge (world). */
+  private ramShocks: { atMs: number; x: number; y: number; vx: number; vy: number; seed: number }[] = [];
   private snapAt = 0;
   /** Top-left of the viewport in isometric space. */
   private camX = 0;
@@ -1709,6 +1730,13 @@ export class MapView {
         const was = this.juggBlows.get(i.fromId);
         this.juggBlows.set(i.fromId, { at: now, n: (was?.n ?? 0) + 1 });
       }
+      // A Juggernaut's ram slammed home, or ran into a wall: the slam plays, the ground shakes.
+      if ((i.ram === "slam" || i.ram === "stop") && i.fromId != null && !this.juggSeen.has(i.id)) {
+        if (this.juggSeen.size > 200) this.juggSeen.clear();
+        this.juggSeen.add(i.id);
+        this.juggRamHits.set(i.fromId, now);
+        if (i.ram === "slam") this.ramShocks.push({ atMs: now, x: i.x, y: i.y, vx: i.vx, vy: i.vy, seed: i.id });
+      }
       if (i.fromId != null && (i.caliber ?? 0) > 0 && (i.caliber ?? 0) < 40 && i.kind !== "crush") {
         const shooter = this.currById.get(i.fromId);
         if (shooter && isInfantryType(shooter.type) && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
@@ -1821,6 +1849,7 @@ export class MapView {
         if (shooter?.type === "mortarman" && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
         if (p.big && shooter?.type === "artillery" && !shooter.wreck) this.noteFieldGunShot(shooter, p, now);
         if (p.shipBarrel != null && shooter?.ship && !shooter.wreck) this.noteShipShot(shooter, p.shipBarrel, p, now);
+        if (p.arkCannon != null && shooter?.ark && !shooter.wreck) this.noteArkShot(shooter, p.arkCannon, p, now);
         continue;
       }
       if (p.rocket) {
@@ -2430,6 +2459,25 @@ export class MapView {
   }
 
   /** Field gun: flash and a big smoke puff at the muzzle, a thick blast cloud behind the shield, and the carriage jumps back. */
+  /** One Hive Ark cannon: a big green flash at its muzzle, no smoke. */
+  private noteArkShot(shooter: EntityView, i: number, shot: { id: number; caliber: number }, now: number): void {
+    const cannon = shooter.ark?.cannons[i];
+    if (!cannon) return;
+    const m = hiveArkMuzzle(shooter, i, cannon.facing, HIVEARK_SPRITE.drawSize);
+    this.addFx({
+      id: shot.id + 8_000_000,
+      kind: "muzzle",
+      energy: true,
+      x: m.x,
+      y: m.y,
+      vx: Math.cos(cannon.facing),
+      vy: Math.sin(cannon.facing),
+      at: now,
+      caliber: shot.caliber,
+      lift: Math.round(m.lift),
+    });
+  }
+
   private noteFieldGunShot(shooter: EntityView, shot: { id: number; caliber: number }, now: number): void {
     const spr = spriteFor(shooter.type);
     // The barrel sits at 45°: the muzzle is short of the axle on the ground and high above it.
@@ -4417,7 +4465,10 @@ export class MapView {
   }
 
   private clickSelect(px: number, py: number, shift: boolean): void {
-    const hit = this.hit(px, py);
+    const picked = this.hit(px, py);
+    // A Wasp off a Hive Ark's pod takes no orders: a click on your own picks its Ark.
+    const ark = picked?.arkOf != null && picked.ownerId === this.curr.youPlayerId ? this.currById.get(picked.arkOf) : undefined;
+    const hit = ark ?? picked;
     const prev = this.lastClick;
     this.lastClick = null;
     if (!hit) {
@@ -4468,7 +4519,8 @@ export class MapView {
       if (e.kind !== "unit" || e.ownerId !== this.curr.youPlayerId || e.wreck || e.garrisonedIn) continue;
       // A shut-down Cyborg takes no orders; a running torpedo is nobody's to command.
       if (e.shutdown) continue;
-      if (isTorpedoBody(e.type)) continue;
+      // Nor is a Wasp off a Hive Ark's pod: the Ark flies it.
+      if (isTorpedoBody(e.type) || e.arkOf != null) continue;
       const p = this.lerpEnt(e);
       const s = this.toScreen(p.x, p.y);
       // Aloft, the box has to take the plane itself, not the shadow under it.
@@ -5013,6 +5065,33 @@ export class MapView {
     this.drawSonarContacts();
     this.drawThermalContacts();
     this.drawHiveDrops();
+    this.drawRamFx();
+  }
+
+  /** Juggernaut rams: dust and speed streaks behind a charge, and the shock where one struck. */
+  private drawRamFx(): void {
+    const now = performance.now();
+    const unit = this.ts() * 2;
+    /** Screen direction of a world heading, unit length. */
+    const screenDir = (x: number, y: number, wx: number, wy: number): { dx: number; dy: number } => {
+      const a = this.toScreen(x, y);
+      const b = this.toScreen(x + wx, y + wy);
+      const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      return { dx: (b.x - a.x) / len, dy: (b.y - a.y) / len };
+    };
+    for (const e of this.curr.entities) {
+      if (e.type !== "juggernaut" || !e.ram || e.wreck) continue;
+      const p = this.lerpEnt(e);
+      const s = this.toScreen(p.x, p.y);
+      const d = screenDir(p.x, p.y, Math.cos(e.facing), Math.sin(e.facing));
+      drawRamTrail(this.ctx, s.x, s.y, { ...d, nowMs: now, id: e.id, unit });
+    }
+    this.ramShocks = this.ramShocks.filter((h) => now - h.atMs < RAM_SHOCK_MS);
+    for (const h of this.ramShocks) {
+      const s = this.toScreen(h.x, h.y);
+      const d = screenDir(h.x, h.y, h.vx, h.vy);
+      drawRamShock(this.ctx, s.x, s.y, { age: (now - h.atMs) / RAM_SHOCK_MS, ...d, unit, seed: h.seed });
+    }
   }
 
   /** The strongest shake of any Hive Core that just landed, iso px. */
@@ -7728,6 +7807,8 @@ export class MapView {
           fists: JUGGERNAUT_FISTS_WADE_SPRITE,
           punch: JUGGERNAUT_PUNCH_WADE_SPRITE,
           throw: JUGGERNAUT_THROW_WADE_SPRITE,
+          ram: e.fists ? JUGGERNAUT_RAM_FISTS_SPRITE : JUGGERNAUT_RAM_SPRITE,
+          ramhit: e.fists ? JUGGERNAUT_RAMHIT_FISTS_SPRITE : JUGGERNAUT_RAMHIT_SPRITE,
         }
       : {
           walk: JUGGERNAUT_SPRITE,
@@ -7735,6 +7816,9 @@ export class MapView {
           fists: JUGGERNAUT_FISTS_SPRITE,
           punch: JUGGERNAUT_PUNCH_SPRITE,
           throw: JUGGERNAUT_THROW_SPRITE,
+          // Without the hammer the charge is a shoulder-down run, the slam a two-fisted blow.
+          ram: e.fists ? JUGGERNAUT_RAM_FISTS_SPRITE : JUGGERNAUT_RAM_SPRITE,
+          ramhit: e.fists ? JUGGERNAUT_RAMHIT_FISTS_SPRITE : JUGGERNAUT_RAMHIT_SPRITE,
         };
     if (e.wreck) return { def: JUGGERNAUT_SPRITE };
     const blow = this.juggBlows.get(e.id);
@@ -7746,6 +7830,8 @@ export class MapView {
       blowAt: blow?.at,
       blows: blow?.n,
       throwAt: this.juggThrows.get(e.id),
+      ramming: !!e.ram,
+      ramHitAt: this.juggRamHits.get(e.id),
     });
     return { def: sheets[pose.sheet], frame: pose.frame };
   }
@@ -8240,6 +8326,40 @@ export class MapView {
     if (!e.wreck) this.drawShipLamp(e, facing, ox, oy, size);
   }
 
+  /**
+   * Hive Ark cannons and the Wasps docked on its pods, over its hull, far first. (ox, oy) is the
+   * model origin on screen. A docked Wasp is the Wasp's own sheet, small, wings folded (frame 0).
+   */
+  private drawArkLayers(e: EntityView, facing: number, ox: number, oy: number, size: number): void {
+    const ark = e.ark;
+    if (!ark) return;
+    const ctx = this.ctx;
+    const layers = hiveArkLayers(
+      facing,
+      ark.cannons.map((c) => c.facing),
+      e.wreck ? [] : ark.pods.map((p) => p.docked),
+      size,
+      this.ts(),
+    );
+    const left = ox - size / 2;
+    const top = oy - size * HIVEARK_SPRITE.contactY;
+    const wasp = WASP_SPRITE;
+    const waspSize = wasp.drawSize * 0.62;
+    for (const l of layers) {
+      if (l.layer === "cannon") {
+        if (!spriteReady(HIVEARK_CANNON)) continue;
+        const cell = HIVEARK_CANNON.frameSize;
+        ctx.drawImage(HIVEARK_CANNON.image, 0, l.row * cell, cell, cell, left + l.dx, top + l.dy, size, size);
+        continue;
+      }
+      if (!spriteReady(wasp)) continue;
+      const cell = wasp.frameSize;
+      const x = ox + l.dx - waspSize / 2;
+      const y = oy + l.dy - waspSize * wasp.contactY;
+      ctx.drawImage(wasp.image, 0, l.row * cell, cell, cell, x, y, waspSize, waspSize);
+    }
+  }
+
   /** The Feuerwirbel's two CIWS mounts, each on its ring and its own facing row, far one first. */
   private drawTwinMounts(mounts: NonNullable<EntityView["mounts"]>, facing: number, ox: number, oy: number, size: number): void {
     const sheet = FEUERWIRBEL_CIWS_SHEET;
@@ -8370,7 +8490,7 @@ export class MapView {
     // A map's neutral unit is grey: no one's colours, everyone's enemy.
     else if (!e.wreck && !e.ownerId) ctx.filter = NEUTRAL_UNIT_FILTER;
     // The ship's mounts are placed on the sim's own spots: no ground sink under the hull.
-    if (e.ship || def === BATTLESHIP_SPRITE) hullShiftY -= unitGroundSink(size);
+    if (e.ship || def === BATTLESHIP_SPRITE || e.ark || def === HIVEARK_SPRITE) hullShiftY -= unitGroundSink(size);
     const stepping = unitStepping({ type: e.type, state: e.state, swimming: e.swimming, prev: this.prevById.get(e.id), curr: e });
     if (e.type === "juggernaut" && !e.wreck) {
       const pose = this.juggernautPose(e);
@@ -8380,7 +8500,8 @@ export class MapView {
         const odo = this.walkerOdo.get(e.id);
         const d = (odo?.d ?? 0) + strideHop(odo, p);
         this.walkerOdo.set(e.id, { x: p.x, y: p.y, d });
-        frameIndex = stepping ? strideFrame(d, JUGGERNAUT_STRIDE_WORLD, sheet.frames, e.id) : 0;
+        const strideWorld = pose.def === JUGGERNAUT_RAM_SPRITE || pose.def === JUGGERNAUT_RAM_FISTS_SPRITE ? JUGGERNAUT_RAM_STRIDE_WORLD : JUGGERNAUT_STRIDE_WORLD;
+        frameIndex = stepping || e.ram ? strideFrame(d, strideWorld, sheet.frames, e.id) : 0;
       }
     }
     if (e.type === "walker" && frameIndex == null) {
@@ -8411,6 +8532,7 @@ export class MapView {
     }
     // A sunk hulk has its superstructure and turrets baked in; the grey stand-in still needs them.
     if (drawn && e.ship && (!e.wreck || sheet === def)) this.drawShipLayers(e, p.facing, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size);
+    if (drawn && e.ark && (!e.wreck || sheet === def)) this.drawArkLayers(e, p.facing, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size);
     // A wrecked Feuerwirbel's mounts are torn off; its hulk sheet shows the empty rings.
     if (drawn && e.mounts && !e.wreck) this.drawTwinMounts(e.mounts, p.facing, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size);
     if (drawn && e.type === "titan" && !e.wreck) this.drawTitanLamp(e, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size, def);
@@ -9153,7 +9275,7 @@ export class MapView {
     const now = performance.now();
     const blend = Math.min(1, (now - this.snapAt) / 100);
     const live = new Set<number>();
-    const heads: { x: number; y: number; dx: number; dy: number; id: number; heavy: boolean; energy: boolean; caliber: number }[] = [];
+    const heads: { x: number; y: number; dx: number; dy: number; id: number; heavy: boolean; energy: boolean; caliber: number; from?: string }[] = [];
     for (const p of this.curr.projectiles) {
       if (!p.rocket) continue;
       live.add(p.id);
@@ -9185,6 +9307,7 @@ export class MapView {
         heavy: !!p.heavy,
         energy: !!p.energy,
         caliber: p.caliber,
+        from: this.currById.get(p.fromId)?.type,
       });
     }
     for (const id of [...this.rocketLast.keys()]) {
@@ -9214,7 +9337,7 @@ export class MapView {
     ctx.restore();
     this.rocketPuffs = keep;
     for (const h of heads) {
-      if (h.energy) drawPlasmaOrb(ctx, h.x, h.y, h.dx, h.dy, h.heavy, plasmaOrbScale(h.caliber));
+      if (h.energy) drawPlasmaOrb(ctx, h.x, h.y, h.dx, h.dy, h.heavy, plasmaOrbScale(h.caliber, h.from));
       else drawRocketHead(ctx, h.x, h.y, h.dx, h.dy, h.id, h.heavy);
     }
   }
@@ -9828,6 +9951,11 @@ export class MapView {
         steps: 18,
       });
       const pts = world.map((pt) => ({ x: pt.x, y: pt.y, z: pt.z, u: pt.u }));
+      // A Hive Ark's plasma ball: no smoke, a big glowing orb with a short tail.
+      if (p.arkCannon != null) {
+        drawArkPlasmaBall(ctx, this.mortarSmokeScreen(pts), now, p.id);
+        continue;
+      }
       // A 16-inch shell drags a much heavier trail than a mortar bomb, and it hangs longer.
       const thick = p.shipBarrel != null ? SHIP_SHELL_SMOKE_THICK : 1;
       drawMortarSmoke(ctx, this.mortarSmokeScreen(pts), p.id, 1, thick);
@@ -10343,7 +10471,8 @@ export class MapView {
       ctx.fillStyle = "rgba(8, 6, 4, 0.72)";
       ctx.fillRect(x, by, w, h);
       ctx.globalAlpha = alpha;
-      ctx.fillStyle = i === 0 ? (e.energy != null ? ENERGY_FILL : AMMO_PRIMARY_FILL) : AMMO_SECONDARY_FILL;
+      // A Hive Ark shows one energy cell per cannon.
+      ctx.fillStyle = e.ark || (i === 0 && e.energy != null) ? ENERGY_FILL : i === 0 ? AMMO_PRIMARY_FILL : AMMO_SECONDARY_FILL;
       ctx.fillRect(x, by, w * ratios[i]!, h);
     }
   }

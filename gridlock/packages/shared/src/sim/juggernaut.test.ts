@@ -6,10 +6,16 @@ import {
   JUGGERNAUT_FIST_SECONDS,
   JUGGERNAUT_HAMMER_SECONDS,
   JUGGERNAUT_RAGE_HP,
+  JUGGERNAUT_RAM_BUILDING,
+  JUGGERNAUT_RAM_HULL,
+  JUGGERNAUT_RAM_RECHARGE_SECONDS,
+  JUGGERNAUT_RAM_SPEED_TILES,
   JUGGERNAUT_SPRINT_MUL,
   JUGGERNAUT_WADE_SPEED,
+  ONE_AT_A_TIME,
   TICK_DT,
   TILE_SUBDIV,
+  XENO_DAMAGE_MUL,
   catalog,
   isCivilianType,
   meleeOf,
@@ -23,6 +29,7 @@ import { juggernautBlowSeconds } from "./juggernaut.js";
 import { createMatch, step } from "./match.js";
 import { reversing } from "./orders.js";
 import { snapshotFor } from "./snapshot.js";
+import { oneAtATimeTaken } from "./train.js";
 import type { Entity, MatchState } from "./types.js";
 
 /** A is Alliance, B the Xenomorphs, on bare flat ground, nothing but what a test places. */
@@ -241,5 +248,130 @@ describe("Juggernaut in the water", () => {
     assert.equal(applyCommand(state, "B", { type: "cmd.attack", ids: [j.id], targetId: sub.id }).ok, true);
     ticks(state, secondsToTicks(4));
     assert.ok(sub.hp < hp, `surfaced, it took the hammer, ${sub.hp} of ${hp}`);
+  });
+
+  it("is one at a time: a second cannot be ordered while the first stands", () => {
+    const state = field();
+    assert.ok(ONE_AT_A_TIME.includes("juggernaut"));
+    const first = at(state, "juggernaut", "B", 20, 30);
+    assert.equal(oneAtATimeTaken(state, "B", "juggernaut"), "alive");
+    const r = applyCommand(state, "B", { type: "cmd.train", unit: "juggernaut" });
+    assert.equal(r.ok, false);
+    if (!r.ok) assert.match(r.message, /still in the field/);
+    first.hp = 0;
+    first.wreck = true;
+    assert.equal(oneAtATimeTaken(state, "B", "juggernaut"), null, "a wreck frees the slot");
+  });
+});
+
+describe("Juggernaut ram", () => {
+  /** Ticks until `f` holds, or the budget runs out. */
+  function until(state: MatchState, seconds: number, f: () => boolean): boolean {
+    for (let i = 0; i < secondsToTicks(seconds); i++) {
+      if (f()) return true;
+      step(state, TICK_DT);
+    }
+    return f();
+  }
+
+  it("charges an armored hull in the band by itself, slams it through its plate and throws it back", () => {
+    const state = field();
+    const j = at(state, "juggernaut", "B", 20, 30);
+    const titan = at(state, "titan", "A", 27, 30);
+    titan.cooldown = 1e6;
+    const hp = titan.hp;
+    assert.ok(until(state, 1, () => !!j.ram), "it breaks into a charge");
+    assert.equal(snapshotFor(state, "B").entities.find((e) => e.id === j.id)?.ram, true);
+    const x0 = titan.x;
+    const startX = j.x;
+    assert.ok(until(state, 3, () => !j.ram), "the charge ends");
+    const slam = state.impacts.find((i) => i.ram === "slam" && i.fromId === j.id);
+    assert.ok(slam, "it slammed");
+    const took = hp - titan.hp;
+    assert.ok(took >= JUGGERNAUT_RAM_HULL * XENO_DAMAGE_MUL * 0.85, `took ${took}`);
+    assert.ok(titan.x > x0 + state.tileSize, `thrown back, ${x0} -> ${titan.x}`);
+    assert.ok(j.x - startX > 3 * TILE_SUBDIV * state.tileSize, "it covered the ground");
+    // Spent: not again until it recharges.
+    const ready = j.ramReady ?? 0;
+    assert.ok(ready - state.tick > secondsToTicks(JUGGERNAUT_RAM_RECHARGE_SECONDS) * 0.8);
+    const own = snapshotFor(state, "B").entities.find((e) => e.id === j.id);
+    assert.ok((own?.ramCharge ?? 1) < 0.3, `charge ${own?.ramCharge}`);
+    assert.equal(snapshotFor(state, "A").entities.find((e) => e.id === j.id)?.ramCharge, undefined, "the enemy does not see the charge");
+  });
+
+  it("is fast: several times its sprint", () => {
+    const state = field();
+    const j = at(state, "juggernaut", "B", 20, 30);
+    const titan = at(state, "titan", "A", 28, 30);
+    titan.cooldown = 1e6;
+    assert.ok(until(state, 1, () => !!j.ram));
+    const x0 = j.x;
+    ticks(state, secondsToTicks(0.5));
+    const pace = (j.x - x0) / 0.5 / state.tileSize;
+    assert.ok(pace > JUGGERNAUT_RAM_SPEED_TILES * 0.9, `ran ${pace} tiles/s`);
+  });
+
+  it("never charges a soldier", () => {
+    const state = field();
+    const j = at(state, "juggernaut", "B", 20, 30);
+    const man = at(state, "rifleman", "A", 26, 30);
+    man.cooldown = 1e6;
+    assert.equal(applyCommand(state, "B", { type: "cmd.attack", ids: [j.id], targetId: man.id }).ok, true);
+    assert.equal(until(state, 2, () => !!j.ram), false);
+  });
+
+  it("runs down the enemies in its path on the way", () => {
+    const state = field();
+    const j = at(state, "juggernaut", "B", 20, 30);
+    const titan = at(state, "titan", "A", 28, 30);
+    titan.cooldown = 1e6;
+    const man = at(state, "rifleman", "A", 24.5, 30);
+    man.cooldown = 1e6;
+    const friend = at(state, "xenodrone", "B", 26, 30.2);
+    const fhp = friend.hp;
+    const hp = man.hp;
+    assert.ok(until(state, 1, () => !!j.ram));
+    assert.ok(until(state, 3, () => !j.ram));
+    assert.ok(man.hp < hp, `the soldier in the way was run down, ${man.hp} of ${hp}`);
+    assert.ok(state.impacts.some((i) => i.ram === "trample") || man.hp <= 0);
+    assert.equal(friend.hp, fhp, "its own side is spared");
+  });
+
+  it("rams the building it is set on, for massive damage", () => {
+    const state = field();
+    const ts = state.tileSize;
+    const j = at(state, "juggernaut", "B", 20, 30);
+    const sx = 27 * TILE_SUBDIV;
+    const house = makeEntity(state, "bunker", "A", tileCenter(sx, ts), tileCenter(sx, ts), { tileX: sx, tileY: 30 * TILE_SUBDIV });
+    house.cooldown = 1e6;
+    const hp = house.hp;
+    assert.equal(applyCommand(state, "B", { type: "cmd.attack", ids: [j.id], targetId: house.id }).ok, true);
+    assert.ok(until(state, 1, () => !!j.ram), "it charges the building");
+    assert.ok(until(state, 3, () => !j.ram));
+    assert.ok(hp - house.hp >= JUGGERNAUT_RAM_BUILDING * XENO_DAMAGE_MUL * 0.85, `building took ${hp - house.hp}`);
+  });
+
+  it("does not charge a building it is not set on", () => {
+    const state = field();
+    const ts = state.tileSize;
+    const j = at(state, "juggernaut", "B", 20, 30);
+    const sx = 26 * TILE_SUBDIV;
+    makeEntity(state, "dynamo", "A", tileCenter(sx, ts), tileCenter(sx, ts), { tileX: sx, tileY: 30 * TILE_SUBDIV });
+    assert.equal(until(state, 2, () => !!j.ram), false);
+  });
+
+  it("does not charge across water, nor on a plain move", () => {
+    const state = field();
+    paint(state, TILE_WATER, 23, 26, 24, 34);
+    const j = at(state, "juggernaut", "B", 20, 30);
+    const titan = at(state, "titan", "A", 27, 30);
+    titan.cooldown = 1e6;
+    assert.equal(until(state, 1, () => !!j.ram), false, "water in the way");
+    const dry = field();
+    const j2 = at(dry, "juggernaut", "B", 20, 30);
+    const t2 = at(dry, "titan", "A", 27, 30);
+    t2.cooldown = 1e6;
+    assert.equal(applyCommand(dry, "B", { type: "cmd.move", ids: [j2.id], x: j2.x, y: j2.y + 8 * TILE_SUBDIV * dry.tileSize }).ok, true);
+    assert.equal(until(dry, 1, () => !!j2.ram), false, "a move order is not interrupted");
   });
 });

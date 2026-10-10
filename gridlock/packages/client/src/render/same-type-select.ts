@@ -33,7 +33,8 @@ export function sameTypeOnScreen(
   const ids: number[] = [];
   for (const e of entities) {
     if (e.kind !== "unit" || e.type !== picked.type || e.ownerId !== youPlayerId) continue;
-    if (e.wreck || e.hp <= 0 || e.garrisonedIn) continue;
+    // A Wasp off a Hive Ark's pod is the Ark's, not yours to command.
+    if (e.wreck || e.hp <= 0 || e.garrisonedIn || e.arkOf != null) continue;
     const s = screenOf(e);
     if (s.x >= 0 && s.x <= view.w && s.y >= 0 && s.y <= view.h) ids.push(e.id);
   }

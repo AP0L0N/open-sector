@@ -6,6 +6,7 @@ import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { tickProjectiles } from "./combat.js";
 import { domeCharge, holdShieldLines, shieldSweep, shieldWatch, tickEnergyShields } from "./energy-shield.js";
+import { fireLaser } from "./laser.js";
 import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
@@ -328,6 +329,61 @@ describe("Siphon energy dome", () => {
     holdShieldLines(state, watch);
     assert.deepEqual({ x: foe.x, y: foe.y }, from, "held outside");
     assert.equal(inside.x, s.x + dome.r + 5, "walked out");
+  });
+});
+
+describe("pulses and lasers on a hive shield", () => {
+  /** A's seat is a second hive, so its rounds are energy bolts. */
+  function hiveFoe(state: MatchState): void {
+    state.players.get("A")!.faction = "xeno";
+  }
+
+  it("a flat pulse bolt turns back off a dome, still live, and the dome pays for it", () => {
+    const { state, s, dome } = siphonUp();
+    hiveFoe(state);
+    const startX = s.x + dome.r + 4;
+    const bolt = round(state, "A", startX, s.y, -1200, 60);
+    tickProjectiles(state, TICK_DT);
+    assert.ok(state.projectiles.includes(bolt), "the bolt flies on");
+    assert.ok(bolt.vx > 0, "back the way it came");
+    assert.ok(bolt.x > s.x + dome.r, "outside the dome");
+    assert.equal(dome.hp, dome.hpMax - 60);
+    assert.equal(s.hp, s.hpMax, "nothing reached the Siphon");
+    assert.ok(state.impacts.some((i) => i.kind === "ricochet"));
+    tickProjectiles(state, TICK_DT);
+    assert.ok(bolt.x > startX, "it keeps going out");
+  });
+
+  it("the first pulse never breaks it, however hard; the next one can", () => {
+    const { state, s, dome } = siphonUp();
+    hiveFoe(state);
+    round(state, "A", s.x + dome.r + 4, s.y, -1200, dome.hpMax * 10);
+    tickProjectiles(state, TICK_DT);
+    assert.equal(dome.hp, 1, "stands on one point");
+    round(state, "A", s.x - dome.r - 4, s.y, 1200, 60);
+    tickProjectiles(state, TICK_DT);
+    assert.equal(dome.hp, 0, "the second breaks it");
+  });
+
+  it("a plain round gets no such grace", () => {
+    const { state, s, dome } = siphonUp();
+    round(state, "A", s.x + dome.r + 4, s.y, -1200, dome.hpMax * 10);
+    tickProjectiles(state, TICK_DT);
+    assert.equal(dome.hp, 0);
+  });
+
+  it("a Commander's beam and his sweep both cost a wall, and the first never breaks it", () => {
+    const { state, b, tiger } = standoff();
+    tickEnergyShields(state, TICK_DT);
+    const w = state.energyShields![0]!;
+    const cmd = makeEntity(state, "cyborgcommander", "A", tiger.x, tiger.y + 3 * state.tileSize);
+    w.hp = 5;
+    fireLaser(state, cmd, b.x, b.y, 40 * state.tileSize, b);
+    assert.equal(w.hp, 1, "the line beam leaves it one point");
+    assert.equal(b.hp, b.hpMax, "the beam stopped on the wall");
+    cmd.laser = undefined;
+    fireLaser(state, cmd, b.x, b.y, 40 * state.tileSize, undefined);
+    assert.equal(w.hp, 0, "the sweep into it breaks it now");
   });
 });
 

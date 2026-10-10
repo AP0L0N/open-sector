@@ -4,6 +4,7 @@ import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
   AIR_CRUISE_ALT,
   XENO_DAMAGE_MUL,
+  ASSEMBLER_REGEN_SECONDS,
   ASSEMBLER_SPEEDUP,
   ASSEMBLER_THRALLS,
   INFANTRY_SIGHT_TILES,
@@ -355,11 +356,11 @@ describe("Assembler", () => {
     assert.equal(snapshotFor(state, "A").entities.find((e) => e.id === a.id)?.energy, undefined, "the enemy does not");
   });
 
-  it("builds ten Thralls and then no more, a lost one is not replaced", () => {
+  it("builds ten Thralls, then waits; a lost Thrall's tenth regrows slowly and a new one follows", () => {
     const state = field();
     uplink(state);
     const a = still(at(state, "assembler", "B", 30, 30));
-    const built = () => [...state.entities.values()].filter((e) => e.assembledBy === a.id && e.hp > 0);
+    const built = () => [...state.entities.values()].filter((e) => e.assembledBy === a.id && e.hp > 0 && !e.wreck);
     for (let i = 0; i < ASSEMBLER_THRALLS + 3; i++) {
       a.assemblyDone = state.tick;
       ticks(state, 1);
@@ -367,10 +368,22 @@ describe("Assembler", () => {
     assert.equal(built().length, ASSEMBLER_THRALLS);
     assert.equal(a.energy, 0);
     assert.equal(snapshotFor(state, "B").entities.find((e) => e.id === a.id)?.energy, 0);
+    ticks(state, secondsToTicks(ASSEMBLER_REGEN_SECONDS * 2));
+    assert.equal(a.energy, 0, "nothing regrows while all ten live");
+    assert.equal(built().length, ASSEMBLER_THRALLS);
+
     destroyEntity(state, built()[0]!);
-    a.assemblyDone = state.tick;
-    ticks(state, secondsToTicks(10));
-    assert.equal(built().length, ASSEMBLER_THRALLS - 1, "empty, it builds no more");
+    destroyEntity(state, built()[0]!);
+    ticks(state, secondsToTicks(ASSEMBLER_REGEN_SECONDS / 2));
+    const half = a.energy!;
+    assert.ok(half > 0.4 && half < 0.6, `half a Thrall's worth after half the time: ${half}`);
+    assert.equal(built().length, ASSEMBLER_THRALLS - 2, "not enough energy yet");
+    // A whole Thrall's worth back, then one build time: one new Thrall.
+    ticks(state, secondsToTicks(ASSEMBLER_REGEN_SECONDS / 2) + secondsToTicks(catalog("thrall").buildSeconds / ASSEMBLER_SPEEDUP) + 2);
+    assert.equal(built().length, ASSEMBLER_THRALLS - 1, "one back");
+    ticks(state, secondsToTicks(ASSEMBLER_REGEN_SECONDS * 3));
+    assert.equal(built().length, ASSEMBLER_THRALLS, "and the second");
+    assert.ok(a.energy! < 0.01, "back to empty with ten alive");
   });
 });
 

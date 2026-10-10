@@ -1,4 +1,4 @@
-import { ASSEMBLER_SPEEDUP, ASSEMBLER_THRALLS, UNIT_CAP, catalog, secondsToTicks } from "../catalog.js";
+import { ASSEMBLER_REGEN_SECONDS, ASSEMBLER_SPEEDUP, ASSEMBLER_THRALLS, TICK_DT, UNIT_CAP, catalog, secondsToTicks } from "../catalog.js";
 import { openSpotNear } from "./formation.js";
 import { makeEntity, ownedUnits, worldToTile } from "./geo.js";
 import type { Entity, MatchState } from "./types.js";
@@ -6,18 +6,20 @@ import type { Entity, MatchState } from "./types.js";
 /**
  * The Assembler: a small walking nanite forge. From the moment it leaves the Forge it builds
  * Thralls on its own, ASSEMBLER_SPEEDUP times as fast as a Forge would, and sets each one down
- * behind it. Every Thrall spends 1 / ASSEMBLER_THRALLS of its energy; empty, it builds no more.
- * Its Thralls are Thralls like any other: its side's, under the unit cap, on the uplink. At the
- * cap the Assembler holds the next one (and its energy) until there is room.
+ * behind it. Every Thrall spends 1 / ASSEMBLER_THRALLS of its energy. When one of its Thralls is
+ * gone, that share flows slowly back (one Thrall's worth every ASSEMBLER_REGEN_SECONDS), and once a
+ * whole Thrall's worth is back it starts building again. So it never holds more energy than its
+ * living Thralls leave room for. Its Thralls are Thralls like any other: its side's, under the unit
+ * cap, on the uplink. At the cap the Assembler holds the next one (and its energy) until there is room.
  *
- * `energy` counts the Thralls it has left to build (undefined = full).
+ * `energy` counts the Thralls it can build, fractional while it regrows (undefined = full).
  */
 
 export function isAssembler(type: string): boolean {
   return type === "assembler";
 }
 
-/** Thralls the Assembler `e` can still build. */
+/** Thralls the Assembler `e` can build now, fractional while its energy regrows. */
 export function assemblerCharges(e: Entity): number {
   return e.energy ?? ASSEMBLER_THRALLS;
 }
@@ -50,10 +52,23 @@ export function assembleThrall(state: MatchState, forge: Entity): Entity {
 
 export function tickAssemblers(state: MatchState): void {
   const forges: Entity[] = [];
+  const alive = new Map<number, number>();
   for (const e of state.entities.values()) {
-    if (isAssembler(e.type) && e.hp > 0 && !e.wreck && assemblerCharges(e) > 0) forges.push(e);
+    if (e.hp <= 0 || e.wreck) continue;
+    if (isAssembler(e.type)) forges.push(e);
+    else if (e.assembledBy != null) alive.set(e.assembledBy, (alive.get(e.assembledBy) ?? 0) + 1);
   }
+  const regen = TICK_DT / ASSEMBLER_REGEN_SECONDS;
   for (const f of forges) {
+    // Each lost Thrall's share flows back, slowly, up to what its living Thralls leave room for.
+    const room = ASSEMBLER_THRALLS - (alive.get(f.id) ?? 0);
+    const charges = assemblerCharges(f);
+    if (charges < room) f.energy = Math.min(room, charges + regen);
+    if (assemblerCharges(f) < 1) {
+      // Not a whole Thrall's worth yet: the bay waits, and starts a fresh Thrall once it is.
+      f.assemblyDone = undefined;
+      continue;
+    }
     if (f.assemblyDone == null) {
       f.assemblyDone = state.tick + assemblyTicks();
       continue;

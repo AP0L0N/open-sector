@@ -961,6 +961,7 @@ input[type="range"] { padding: 0; }
 #train-simunit2,
 #train-leech,
 #train-lurker,
+#train-hiveark,
 #train-wasp,
 #train-scourge,
 #train-overseer,
@@ -1192,6 +1193,11 @@ input[type="range"] { padding: 0; }
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/lurker-cameo.png");
+}
+#train-hiveark {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/hiveark-cameo.png");
 }
 #train-wasp {
   background-image:
@@ -1737,6 +1743,8 @@ input[type="range"] { padding: 0; }
 .prod-job[data-type="leech"] { background-image: url("../assets/units/leech-cameo.png"); }
 .config-type[data-type="lurker"],
 .prod-job[data-type="lurker"] { background-image: url("../assets/units/lurker-cameo.png"); }
+.config-type[data-type="hiveark"],
+.prod-job[data-type="hiveark"] { background-image: url("../assets/units/hiveark-cameo.png"); }
 .config-type[data-type="wasp"],
 .prod-job[data-type="wasp"] { background-image: url("../assets/units/wasp-cameo.png"); }
 .config-type[data-type="scourge"],

@@ -18,6 +18,10 @@ Sheets (frames, what the client does with them):
   fists       8  the hammer gone: a stride with the fists swinging
   punch       8  two blows: the right fist lands on frame 0, the left on frame 4
   throw       4  wound back, the release, empty hands forward, back on guard
+  ram         8  the charge: a long low run, the haft levelled in front, head leading
+  ram-fists   8  the same run without the hammer: forearms locked, left shoulder leading
+  ramhit      4  the slam (flash and dust at the hammer head), rocked back, settling, on guard
+  ramhit-fists 4 the same with the fists
   *-wade      the same five, sunk to mid-thigh in the shared swim pool (derive_swim.py's
               water, foam, and ripple rings); the swing's hit throws up a splash
 Plus the wreck (1 frame, the live cell, contact and scale) at
@@ -83,6 +87,8 @@ R.MATERIALS["flash_core"] = (232, 255, 214)
 for _name, _spec in {
     "foam": ((96, 140, 136), (128, 172, 166), (168, 204, 198)),
     "splash": ((120, 168, 162), (170, 210, 204), (214, 238, 232)),
+    # The ram's slam: dirt thrown up where it strikes.
+    "dust": ((88, 76, 60), (124, 110, 86), (158, 142, 114)),
 }.items():
     R.MATERIALS[_name] = _spec
     if _name not in R.MAT_IDS:
@@ -319,21 +325,21 @@ def hammer(c: Cloud, grip, axis, glow: bool = True) -> None:
 # ---------------------------------------------------------------- poses
 
 
-def legs(c: Cloud, phase: float | None, hz: float, spread: float = 6.4) -> None:
+def legs(c: Cloud, phase: float | None, hz: float, spread: float = 6.4, stride: float = 7.6, step: float = 4.2) -> None:
     for s, off in ((1, 0.0), (-1, 0.5)):
         if phase is None:
             fx, lift = (2.0 if s == 1 else -2.0), 0.0
         else:
             p = (phase + off) % 1.0
-            fx = -7.6 * math.cos(2 * math.pi * p)
-            lift = 4.2 * max(0.0, math.sin(2 * math.pi * p))
+            fx = -stride * math.cos(2 * math.pi * p)
+            lift = step * max(0.0, math.sin(2 * math.pi * p))
         leg(c, np.array([-0.4, s * spread, hz]), np.array([fx, s * (spread + 1.6), lift]))
 
 
-def body(c: Cloud, phase: float | None, lean: float = 0.25, drop: float = 0.0):
+def body(c: Cloud, phase: float | None, lean: float = 0.25, drop: float = 0.0, stride: float = 7.6, step: float = 4.2):
     bob = 0.0 if phase is None else 0.9 * abs(math.sin(2 * math.pi * phase))
     hz = HIP_Z - bob - drop
-    legs(c, phase, hz)
+    legs(c, phase, hz, stride=stride, step=step)
     t = torso(c, hz, lean)
     head(c, t["head"], t["Rm"])
     return t
@@ -460,6 +466,59 @@ def pose_throw(frame: int) -> Cloud:
     return c
 
 
+# The ram: a long, low running stride, the chest thrown far forward over the knees.
+RAM_LEAN = 0.72
+RAM_DROP = 3.4
+RAM_STRIDE = 10.4
+RAM_STEP = 5.6
+# The haft levelled like a battering ram: forward, a touch down and in.
+RAM_AXIS = np.array([1.0, 0.16, -0.12])
+
+
+def ram_arms(c: Cloud, t: dict, reach: float, fists: bool) -> np.ndarray:
+    """Hammer: the haft levelled at the front, head leading, right hand at the hip, left forward on
+    the haft. Fists: both forearms locked in front of the chest, the left shoulder leading. Returns
+    the leading point (the hammer head, or the fists) for the impact flash."""
+    sh_r, sh_l = t["R"], t["L"]
+    if not fists:
+        a = RAM_AXIS / np.linalg.norm(RAM_AXIS)
+        grip = np.array([4.0 + reach, -8.0, sh_r[2] - 15.0])
+        hammer(c, grip, a)
+        arm(c, sh_r, grip + np.array([0, -1.4, 0]), -1, pole=(-0.6, -0.3, -1))
+        arm(c, sh_l, grip + a * 11.0 + np.array([0, 1.4, 0]), 1, pole=(-0.4, 0.5, -1))
+        return grip + a * (HAFT + 4.5)
+    lead = np.array([17.0 + reach, 1.0, sh_l[2] - 7.0])
+    arm(c, sh_l, lead + np.array([0, 3.2, 0]), 1, pole=(-0.4, 0.8, -1))
+    arm(c, sh_r, lead + np.array([-2.0, -3.4, -1.0]), -1, pole=(-0.4, -0.8, -1))
+    return lead + np.array([4.0, 0, 0])
+
+
+def pose_ram(phase: float | None, fists: bool = False) -> Cloud:
+    """Charging: the run, hammer levelled (or fists locked) out in front."""
+    c = Cloud()
+    t = body(c, phase, lean=RAM_LEAN, drop=RAM_DROP, stride=RAM_STRIDE, step=RAM_STEP)
+    ram_arms(c, t, 0.0, fists)
+    return c
+
+
+def pose_ramhit(frame: int, fists: bool = False) -> Cloud:
+    """The slam: 0 the contact (thrown in, a green flash and a burst of dust at the leading point),
+    1 rocked back off it, 2 settling, 3 upright again on guard."""
+    if frame == 3:
+        return pose_fists(None) if fists else pose_walk(None)
+    c = Cloud()
+    lean, reach, drop = {0: (0.86, -1.0, 4.4), 1: (0.38, -4.0, 2.0), 2: (0.3, -2.5, 1.0)}[frame]
+    t = body(c, None, lean=lean, drop=drop)
+    tip = ram_arms(c, t, reach, fists)
+    if frame == 0:
+        ellipsoid(c, tip + np.array([0.6, 0, 0]), (2.4, 8.4, 7.4), "flash")
+        ellipsoid(c, tip + np.array([1.2, 0, 0]), (1.4, 4.4, 4.0), "flash_core")
+        # Dust kicked up under the blow.
+        for dy, h, r in ((0.0, 3.4, 4.4), (6.0, 2.6, 3.4), (-6.0, 2.6, 3.4), (3.0, 4.6, 2.6), (-3.4, 4.2, 2.6)):
+            ellipsoid(c, np.array([tip[0] - 5.0, dy, h]), (r, r, r * 0.8), "dust")
+    return c
+
+
 def pose_wreck() -> Cloud:
     """Face down, arms flung forward, the hammer dark on the dirt beside it."""
     c = Cloud()
@@ -582,6 +641,13 @@ SHEETS = [
     R.SheetSpec("throw", 4, CONTACT_Y, SCALE, lambda i: pose_throw(i)),
     R.SheetSpec("wreck", 1, WRECK_CONTACT_Y, SCALE, lambda i: pose_wreck()),
 ]
+# The ram never runs in water, so it has no wading twins.
+RAM_SHEETS = [
+    R.SheetSpec("ram", 8, CONTACT_Y, SCALE, lambda i: pose_ram(i / 8)),
+    R.SheetSpec("ram-fists", 8, CONTACT_Y, SCALE, lambda i: pose_ram(i / 8, fists=True)),
+    R.SheetSpec("ramhit", 4, CONTACT_Y, SCALE, lambda i: pose_ramhit(i)),
+    R.SheetSpec("ramhit-fists", 4, CONTACT_Y, SCALE, lambda i: pose_ramhit(i, fists=True)),
+]
 # In water: the same poses sunk into the pool, one fit with the dry sheets.
 SHEETS += [
     R.SheetSpec(f"{spec.name}-wade", spec.frames, CONTACT_Y, SCALE, wade(fn), wade_post(spec.frames))
@@ -593,6 +659,7 @@ SHEETS += [
         (SHEETS[4], SHEETS[4].pose),
     )
 ]
+SHEETS += RAM_SHEETS
 
 
 def render_sheet(spec):

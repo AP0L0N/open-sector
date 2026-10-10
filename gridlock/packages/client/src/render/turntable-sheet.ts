@@ -663,6 +663,49 @@ export function bindBattleshipSheets(images: Record<keyof typeof battleshipGlobs
     });
 }
 
+const hivearkGlobs = {
+  hull: import.meta.glob("../assets/units/hiveark/hull/*.png", { eager: true, import: "default" }) as Record<string, string>,
+  cannon: import.meta.glob("../assets/units/hiveark/cannon/*.png", { eager: true, import: "default" }) as Record<string, string>,
+};
+let hivearkPrevious: string[] = [];
+
+/**
+ * Hive Ark: hull and cannon (tools/sprites/render_hive_ark.py), stacked 1:1 into rows like the
+ * Battle Ship's layers, so render/hive-ark.ts can place each cannon by its model position.
+ */
+export function bindHiveArkSheets(images: Record<keyof typeof hivearkGlobs, HTMLImageElement>): void {
+  const names = Object.keys(hivearkGlobs) as (keyof typeof hivearkGlobs)[];
+  let urls: string[][];
+  try {
+    urls = names.map((n) => pickTurntableUrls(hivearkGlobs[n]));
+  } catch (err) {
+    console.error("hiveark turntable", err);
+    return;
+  }
+  void Promise.all(urls.map((list) => Promise.all(list.map(loadImage))))
+    .then(async (layers) => {
+      const sheets = layers.map((frames) => {
+        const cell = frames[0]!.naturalWidth;
+        const sheet = makeSheetCanvas(cell);
+        const g = sheet.getContext("2d");
+        if (!g) throw new Error("2d context");
+        frames.forEach((img, i) => g.drawImage(img, 0, engineRowFromFrame(i + 1) * cell));
+        return sheet;
+      });
+      return Promise.all(sheets.map(canvasPngUrl));
+    })
+    .then((next) => {
+      for (const url of hivearkPrevious) URL.revokeObjectURL(url);
+      hivearkPrevious = next;
+      names.forEach((n, i) => {
+        images[n].src = next[i] ?? "";
+      });
+    })
+    .catch((err) => {
+      console.error("hiveark turntable", err);
+    });
+}
+
 let stukaPrevious: ComposedTurntable | null = null;
 
 /** Stuka drop-ins: one hull sheet and a cameo, same fit rules as the trucks. */
