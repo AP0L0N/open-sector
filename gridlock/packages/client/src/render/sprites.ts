@@ -50,6 +50,7 @@ import hiveCoreUrl from "../assets/buildings/hivecore.png";
 import fusionNodeUrl from "../assets/buildings/fusionnode.png";
 import forgeUrl from "../assets/buildings/forge.png";
 import nexusUrl from "../assets/buildings/nexus.png";
+import conversionUrl from "../assets/buildings/conversion.png";
 import assimilatorUrl from "../assets/buildings/assimilator.png";
 import radarUrl from "../assets/buildings/radar.png";
 import dockUrl from "../assets/buildings/dock.png";
@@ -2212,6 +2213,8 @@ const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   forge: building(forgeUrl, 384, 204, 232.2, 188, 22.2),
   // Neural core in a rib cage under a sensor crown: Xenomorph tech and radar, t(2).
   nexus: building(nexusUrl, 384, 210, 322.9, 210, 19.9),
+  // Chitin dome, a ring of conversion pods, synapse spire: the Xenomorph barracks, t(2) like the Barracks.
+  conversion: building(conversionUrl, 384, 210, 299.2, 216, 8.2),
   // Ops hut, lattice mast, dish. Metrics from tools/sprites/render_radar.py (radar.json); the stack hangs over the dish.
   radar: building(radarUrl, 384, 210, 354, 216, 58),
   // The pier stands in its pond: a hard edge, no blend onto ground that is not there.

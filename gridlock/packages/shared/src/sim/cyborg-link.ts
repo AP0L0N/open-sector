@@ -4,7 +4,8 @@ import { powerOf } from "./power.js";
 import type { Entity, MatchState } from "./types.js";
 
 /**
- * Cyborg link. A side's Cyborgs run on the uplink from its own standing Cyborg Central
+ * Cyborg link. A side's Cyborgs run on the uplink from its own standing Cyborg Central (the
+ * Xenomorphs' foot soldiers on the synapse link from a Conversion Chamber)
  * while its power holds, or on its own living Cyborg Commander. With neither, after
  * CYBORG_SHUTDOWN_SECONDS every Cyborg of that side on the field shuts down: still his
  * side's, but he stops, takes no orders, and fires at nothing. Once that side's link is
@@ -28,11 +29,11 @@ function fieldCyborg(e: Entity): boolean {
   return onUplink(e.type) && e.kind === "unit" && live(e) && e.garrisonedIn == null;
 }
 
-/** This side's Cyborg Central stands and its power is not short. */
+/** This side's Cyborg Central (a Xenomorph's Conversion Chamber) stands and its power is not short. */
 export function cyborgCentralOnline(state: MatchState, playerId: string): boolean {
   let stands = false;
   for (const e of state.entities.values()) {
-    if (e.ownerId === playerId && e.type === "cyborgcentral" && e.kind === "building" && live(e)) {
+    if (e.ownerId === playerId && (e.type === "cyborgcentral" || e.type === "conversion") && e.kind === "building" && live(e)) {
       stands = true;
       break;
     }

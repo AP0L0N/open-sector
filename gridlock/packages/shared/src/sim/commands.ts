@@ -65,7 +65,7 @@ import { cancelStructure, deleteOwn, pauseStructure, placeBaseField, placeBuildi
 import { orderFieldBuild, orderRepair, setGatesLocked } from "./field.js";
 import { orderConstruct } from "./construct.js";
 import { orderBridge } from "./bridge.js";
-import { deployId } from "./deploy.js";
+import { deployId, deploymentLeashGoal } from "./deploy.js";
 import { NOT_YOUR_FACTION, cancelTrain, pauseTrain, setContinuous, setRally, startTrain } from "./train.js";
 import { groupMovePace, groupMoveTargets } from "./formation.js";
 import { escortAnchor } from "./orders.js";
@@ -809,7 +809,9 @@ function cmdMove(
   const dests = groupMoveTargets(state, movers, x, y);
   const pace = groupMovePace(movers);
   for (const e of movers) {
-    const d = dests.get(e.id) ?? { x, y };
+    const want = dests.get(e.id) ?? { x, y };
+    // A Deployment creeps only round its drop zone: past the leash it goes to the edge.
+    const d = e.type === "seed" ? deploymentLeashGoal(state, e, want.x, want.y) : want;
     if (e.garrisonedIn) {
       e.guardFacing = null;
       exitGarrison(state, e, d);

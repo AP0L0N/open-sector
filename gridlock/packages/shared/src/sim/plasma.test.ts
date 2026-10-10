@@ -52,7 +52,7 @@ function still(e: Entity): Entity {
 
 describe("plasma cannon energy cell", () => {
   it("every Xenomorph plasma cannon carries a cell", () => {
-    for (const t of ["stalker", "siphon", "behemoth", "pulsespire", "leech"] as const) {
+    for (const t of ["stalker", "ravager", "siphon", "behemoth", "pulsespire", "leech"] as const) {
       const cell = plasmaCellOf(t);
       assert.ok(cell && cell.shots >= 1 && cell.rechargeSeconds > 0, t);
     }
@@ -101,6 +101,30 @@ describe("plasma cannon energy cell", () => {
     assert.ok(n < span / cd - 2, `${n} bolts in ${span}s`);
     assert.ok(n >= Math.floor(span / cell.rechargeSeconds), `${n} bolts in ${span}s`);
     assert.ok((s.energy ?? cell.shots) < 2, `cell drawn down (${s.energy})`);
+  });
+
+  it("the Ravager's repeater empties its cell, then fires only as fast as it regrows", () => {
+    const state = field();
+    const r = at(state, "ravager", "B", 20, 30);
+    const aim = at(state, "rifleman", "B", 26, 30);
+    const x = aim.x;
+    const y = aim.y;
+    destroyEntity(state, aim);
+    assert.equal(applyCommand(state, "B", { type: "cmd.forceattack", ids: [r.id], x, y }).ok, true);
+    const cell = plasmaCellOf("ravager")!;
+    const span = 20;
+    let bolts = 0;
+    for (let i = 0; i < secondsToTicks(span); i++) {
+      step(state, TICK_DT);
+      // Its bolts are small-arms rounds: they land the tick they fly.
+      for (const imp of state.impacts) if (imp.fromId === r.id) bolts++;
+    }
+    const free = (span / TICK_DT) * (catalog("ravager").shotsPerTick ?? 1);
+    // Endless it would pour out `free` bolts; the cell holds it to its stock plus what regrows.
+    assert.ok(bolts > cell.shots, `${bolts} bolts in ${span}s`);
+    assert.ok(bolts < free / 2, `${bolts} bolts in ${span}s`);
+    assert.ok(bolts <= cell.shots + span / cell.rechargeSeconds + 2, `${bolts} bolts in ${span}s`);
+    assert.ok((r.energy ?? cell.shots) < 2, `cell drawn down (${r.energy})`);
   });
 
   it("regrows to full and no further", () => {

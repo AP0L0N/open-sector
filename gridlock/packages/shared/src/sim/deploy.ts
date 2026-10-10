@@ -1,6 +1,7 @@
 import {
   bracesOf,
   catalog,
+  DEPLOYMENT_LEASH_TILES,
   deploySecondsOf,
   HAULER_SMOKE_CHARGES,
   hpMaxOf,
@@ -59,6 +60,7 @@ export function beginDeploy(state: MatchState, e: Entity): string | null {
     return null;
   }
   if (isHqBuilding(e.type)) {
+    if (!specialOf(e.type)) return `The ${catalog(e.type).name} cannot pack up.`;
     if (e.specialCooldown > 0) return "Special recharging.";
     if (e.state === "deploy" || e.state === "undeploy") return "Already transforming.";
     e.state = "undeploy";
@@ -95,8 +97,43 @@ function setBraced(e: Entity, braced: boolean): void {
   e.waypoints = [];
 }
 
+/** The nearest point to (x, y) a Deployment may stand on: inside its leash round the drop zone. */
+export function deploymentLeashGoal(state: MatchState, e: Entity, x: number, y: number): { x: number; y: number } {
+  const a = e.anchor;
+  if (e.type !== "seed" || !a) return { x, y };
+  const r = DEPLOYMENT_LEASH_TILES * state.tileSize;
+  const d = Math.hypot(x - a.x, y - a.y);
+  if (d <= r) return { x, y };
+  return { x: a.x + ((x - a.x) / d) * r, y: a.y + ((y - a.y) / d) * r };
+}
+
+/**
+ * A Deployment pushed or routed past its leash is held on the edge of it. A move
+ * to a spot inside goes on (its path may graze the edge); any other errand out
+ * past the leash ends there.
+ */
+function holdDeploymentLeash(state: MatchState, e: Entity): void {
+  if (!e.anchor) e.anchor = { x: e.x, y: e.y };
+  const p = deploymentLeashGoal(state, e, e.x, e.y);
+  if (p.x === e.x && p.y === e.y) return;
+  e.x = p.x;
+  e.y = p.y;
+  e.tileX = Math.floor(p.x / state.tileSize);
+  e.tileY = Math.floor(p.y / state.tileSize);
+  const o = e.order;
+  if (o?.kind === "move" && o.x != null && o.y != null) {
+    const g = deploymentLeashGoal(state, e, o.x, o.y);
+    if (Math.hypot(g.x - o.x, g.y - o.y) < 1) return;
+  }
+  if (o || e.state === "move") {
+    clearOrder(e);
+    e.state = "idle";
+  }
+}
+
 export function tickDeploy(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
+    if (e.type === "seed" && e.hp > 0) holdDeploymentLeash(state, e);
     if (e.specialCooldown > 0) e.specialCooldown = Math.max(0, e.specialCooldown - dt);
     if (e.type === "hauler" && e.hp > 0 && !e.wreck && e.smokeCharges <= 0 && e.specialCooldown <= 0) {
       e.smokeCharges = HAULER_SMOKE_CHARGES;

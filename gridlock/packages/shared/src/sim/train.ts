@@ -1,4 +1,4 @@
-import { AIRFIELD_PADS, BLOOM_GESTATOR, BLOOM_NEST, XENO_FACTORY, airfieldOf, canContinuousTrain, catalog, dockOf, isDockType, factionOf, inFaction, isAirfieldType, isAircraftType, isCyborg, isInfantryType, isNavalType, isOneAtATime, secondsToTicks, techNeeds, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, type BuildingType, type TrainType } from "../catalog.js";
+import { AIRFIELD_PADS, BLOOM_GESTATOR, BLOOM_NEST, XENO_BARRACKS, XENO_FACTORY, airfieldOf, canContinuousTrain, catalog, dockOf, isDockType, factionOf, inFaction, isAirfieldType, isAircraftType, isCyborg, isInfantryType, isNavalType, isOneAtATime, secondsToTicks, techNeeds, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, type BuildingType, type TrainType } from "../catalog.js";
 import { airfieldPadWorld, freePad, padsSpoken, parkHeading } from "./air.js";
 import { makeEntity, newAirState, ownedUnits, rallyPoint, worldToTile } from "./geo.js";
 import { openSpotNear, packRadius, packSlots } from "./formation.js";
@@ -11,11 +11,12 @@ import type { Entity, MatchState, TrainJob } from "./types.js";
 export const NOT_YOUR_FACTION = "Not available to your faction.";
 
 /** Every building that trains units. */
-export type ProducerType = "muster" | "armory" | "airfield" | "aerie" | "roost" | "dock" | "spawnpool" | "tidewomb" | "cyborgcentral" | "forge" | "broodnest" | "gestator";
+export type ProducerType = "muster" | "armory" | "airfield" | "aerie" | "roost" | "dock" | "spawnpool" | "tidewomb" | "cyborgcentral" | "conversion" | "forge" | "broodnest" | "gestator";
 
 export function producerType(unit: TrainType): ProducerType {
-  if (isCyborg(unit)) return "cyborgcentral";
   const faction = factionOf(unit);
+  // Xenomorph foot soldiers come out of the Conversion Chamber; the Alliance's cyborgs out of the Cyborg Central.
+  if (isCyborg(unit)) return faction === "xeno" ? XENO_BARRACKS : "cyborgcentral";
   if (isAircraftType(unit)) return airfieldOf(faction);
   if (isNavalType(unit)) return dockOf(faction);
   // Every other Xenomorph unit is a heavy assimilator, grown at the Nanite Forge.
@@ -435,7 +436,7 @@ function packAtDoor(state: MatchState, from: Entity, fresh: Entity, door: { x: n
 }
 
 export function isProducer(e: Entity): boolean {
-  return e.kind === "building" && (e.type === "muster" || e.type === "armory" || isDockType(e.type) || e.type === "cyborgcentral" || e.type === "forge" || e.type === BLOOM_NEST || e.type === BLOOM_GESTATOR);
+  return e.kind === "building" && (e.type === "muster" || e.type === "armory" || isDockType(e.type) || e.type === "cyborgcentral" || e.type === XENO_BARRACKS || e.type === "forge" || e.type === BLOOM_NEST || e.type === BLOOM_GESTATOR);
 }
 
 /** Sets the rally point on every owned producer in `ids`. A point on the building's own footprint clears it. */
