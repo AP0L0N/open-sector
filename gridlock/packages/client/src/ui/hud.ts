@@ -1,7 +1,11 @@
 import {
   canLunge,
   canBurrow,
+  neverSurfacesOf,
   costFor,
+  energyOf,
+  energySupplyOf,
+  usesHiveEnergy,
   isAirfieldType,
   BUILDING_TYPES,
   YARD_FIELD_TYPES,
@@ -78,8 +82,10 @@ import {
   rocketsOf,
   rocketAmmoOf,
   launcherOnlyOf,
+  airRackOf,
   isStance,
   isYardField,
+  isFenceLine,
   onLineLane,
   producerType,
   productionSpeed,
@@ -94,6 +100,9 @@ import {
   WALKER_SELF_DESTRUCT_MODES,
   COMMANDER_FIELD_MODES,
   hasForceField,
+  BEHEMOTH_PULSE_MODES,
+  behemothPulseOf,
+  hasPulseModes,
   type BuildingType,
   type YardFieldType,
   canPowerDown,
@@ -184,7 +193,7 @@ export function mountBattlefield(
   const top = el("div", { class: "topbar", attrs: { id: "topbar" } });
   top.append(
     el("span", { attrs: { id: "hud-scrap" }, html: "SCRAP <b>0</b>" }),
-    el("span", { class: "scrap-toast", attrs: { id: "scrap-toast" }, text: "INSUFFICIENT SCRAP" }),
+    el("span", { class: "scrap-toast", attrs: { id: "scrap-toast" }, text: hiveHud(ctx.match) ? "INSUFFICIENT ENERGY" : "INSUFFICIENT SCRAP" }),
     el("span", { attrs: { id: "hud-power" }, html: "POWER <b>0 / 0</b>" }),
     el("span", { attrs: { id: "hud-speed" }, html: "SPEED <b>×1</b>" }),
     el("span", { class: "tiny", attrs: { id: "hud-map" }, text: getMap(ctx.match.mapId)?.name ?? ctx.match.mapId }),
@@ -244,6 +253,10 @@ export function mountBattlefield(
     const grid = el("div", { class: "cameos", attrs: { id: "cameos-" + g.id, role: "tabpanel" } });
     for (const { id, type } of entries[g.id]) {
       const c = catalog(type);
+      if (usesHiveEnergy(hudFaction)) {
+        grid.append(hiveCameo(id, type, c.kind === "building"));
+        continue;
+      }
       grid.append(
         c.kind === "building"
           ? cameoButton(id, c.name, costFor(type, hudFaction), c.power, true)
@@ -295,7 +308,7 @@ export function mountBattlefield(
       const m = ctx.match;
       const q = laneQueue(m, type);
       const mine = q?.type === type ? q : null;
-      if (isYardField(type)) {
+      if (isYardField(type) || isFenceLine(type)) {
         if (mine && !mine.ready) {
           if ((e.target as HTMLElement | null)?.closest(".cameo-hold, .cameo-paused") || mine.paused) {
             ctx.net.send({ type: "cmd.pause", what: "structure", paused: !mine.paused, building: type });
@@ -303,7 +316,9 @@ export function mountBattlefield(
           return;
         }
         if (q) return;
-        view.armYardField(type);
+        if (m && buildTechNeed(m, type).length > 0) return;
+        if (isFenceLine(type)) view.armFence();
+        else if (isYardField(type)) view.armYardField(type);
         paintBattleHud(ctx);
         return;
       }
@@ -325,10 +340,12 @@ export function mountBattlefield(
     btn?.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       const q = laneQueue(ctx.match, type);
-      if (isYardField(type)) {
+      if (isYardField(type) || isFenceLine(type)) {
         if (q?.type === type) ctx.net.send({ type: "cmd.cancel", what: "structure", building: type });
         else {
           view.yardArm = null;
+          view.fenceArm = false;
+          view.fencePosts = [];
           view.placeMode = false;
           paintBattleHud(ctx);
         }
@@ -387,7 +404,7 @@ export function mountBattlefield(
     });
   }
 
-  bindPress(config, "[data-config-type], [data-shell], [data-weapon], [data-guns], [data-selfdestruct], [data-fielddivert], [data-rockets], [data-reach], [data-payload]", (t) => {
+  bindPress(config, "[data-config-type], [data-shell], [data-weapon], [data-guns], [data-selfdestruct], [data-fielddivert], [data-pulse], [data-rockets], [data-attack], [data-reach], [data-payload]", (t) => {
     runConfigAction(ctx, t);
   });
 
@@ -434,6 +451,25 @@ function structureReady(m: MatchSnapshot | null | undefined, type: BuildingType 
   if (!isDefenceStructure(type) && m.you.placingType === type) return true;
   const q = laneQueue(m, type);
   return q?.ready === true && q.type === type;
+}
+
+/** Does this match's viewer run on hive energy (the Xenomorphs) instead of scrap and power? */
+function hiveHud(m: MatchSnapshot | null | undefined): boolean {
+  return !!m?.you.energy || usesHiveEnergy(m ? viewerFaction(m) : undefined);
+}
+
+/** A Xenomorph cameo: priced in hive energy, not scrap; a Fusion Node shows what it adds. */
+function hiveCameo(id: string, type: BuildingType | TrainType | YardFieldType, building: boolean): HTMLButtonElement {
+  const c = catalog(type);
+  const supply = energySupplyOf(type);
+  const take = energyOf(type);
+  const price = supply > 0 ? `+${supply} EN` : take > 0 ? `${take} EN${type === "laserfence" ? " + link" : ""}` : "FREE";
+  const b = building ? cameoButton(id, c.name, 0, 0, true) : cameoButton(id, c.name, 0, 0, false, true);
+  const meta = b.querySelector(".cameo-meta");
+  if (meta) meta.textContent = price;
+  const deny = b.querySelector(".cameo-deny");
+  if (deny) deny.textContent = "NO ENERGY";
+  return b;
 }
 
 function cameoButton(
@@ -621,11 +657,34 @@ function scrapYieldLookup(cells: readonly ScrapCell[]): (x: number, y: number) =
   return (x, y) => found.get(`${x},${y}`) ?? 0;
 }
 
+/** Nothing left to pay the next step of a job with: scrap, or the hive's free energy. */
+function outOfFunds(m: MatchSnapshot): boolean {
+  const hive = m.you.energy;
+  return hive ? hive.used >= hive.cap : m.you.scrap <= 0;
+}
+
+/** The hive's store as a bar, like a Cyborg Commander's field: what is taken against what the hive holds. */
+function hiveEnergyHtml(hive: { cap: number; used: number; offline: number }): string {
+  const share = hive.cap > 0 ? Math.min(1, hive.used / hive.cap) : 1;
+  const full = hive.used >= hive.cap;
+  const offline = hive.offline > 0 ? ` <b class="cyborg-link">${hive.offline} OFFLINE</b>` : "";
+  return (
+    `ENERGY <span class="energy-bar${full ? " is-full" : ""}" role="meter" aria-valuemin="0" aria-valuemax="${hive.cap}" aria-valuenow="${hive.used}">` +
+    `<i style="width:${Math.round(share * 100)}%"></i></span> <b>${hive.used} / ${hive.cap}</b>${offline}`
+  );
+}
+
 export function paintBattleHud(ctx: Ctx): void {
   const m = ctx.match;
   if (!m) return;
   const scrap = document.getElementById("hud-scrap");
-  if (scrap) {
+  const hive = m.you.energy;
+  if (scrap && hive) {
+    const next = hiveEnergyHtml(hive);
+    if (scrap.innerHTML !== next) scrap.innerHTML = next;
+    scrap.classList.toggle("hive-energy", true);
+    scrap.classList.toggle("low-power", hive.offline > 0);
+  } else if (scrap) {
     const yieldAt = scrapYieldLookup(m.scrap ?? []);
     let rate = 0;
     for (const e of m.entities) {
@@ -638,7 +697,8 @@ export function paintBattleHud(ctx: Ctx): void {
     if (scrap.innerHTML !== next) scrap.innerHTML = next;
   }
   const power = document.getElementById("hud-power");
-  if (power) {
+  power?.classList.toggle("hidden", !!hive);
+  if (power && !hive) {
     const spd = productionSpeed(m.you.provided, m.you.used);
     const slow = m.you.lowPower ? ` · SLOW ×${spd.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}` : "";
     // No powered Cyborg Central (Conversion Chamber) and no Commander: your Cyborgs (hive soldiers) are about to go dark.
@@ -684,8 +744,8 @@ export function paintBattleHud(ctx: Ctx): void {
     } else if (pip) pip.style.width = "0";
     const ready = job?.ready === true;
     const paused = !!job && job.paused && !job.ready;
-    const stalled = !!job && !job.ready && !job.paused && m.you.scrap <= 0;
-    const siting = isYardField(type) && viewRef?.yardArm === type && !!viewRef.placeMode;
+    const stalled = !!job && !job.ready && !job.paused && outOfFunds(m);
+    const siting = ((isYardField(type) && viewRef?.yardArm === type) || (isFenceLine(type) && !!viewRef?.fenceArm)) && !!viewRef?.placeMode;
     btn.classList.toggle("is-ready", ready);
     btn.classList.toggle("is-building", !!job && !ready);
     btn.classList.toggle("is-placing", (ready && !!viewRef?.placeMode && viewRef.placePick === type) || siting);
@@ -736,7 +796,7 @@ export function paintBattleHud(ctx: Ctx): void {
               : canContinuousTrain(unit) && unitJobs.length === 0
                 ? `${name} — Left: train. Right: build continuously.`
                 : btn.dataset.baseTitle;
-    btn.classList.toggle("unaffordable", training && m.you.scrap <= 0);
+    btn.classList.toggle("unaffordable", training && outOfFunds(m));
     btn.classList.toggle("slow-power", m.you.lowPower && training);
     btn.classList.toggle("is-training", unitJobs.length > 0);
     btn.classList.toggle("is-paused", paused);
@@ -904,11 +964,19 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
         ? `  ·  ${gun.name}`
         : `  ·  ${gun.name} ${e.clip}/${gun.clip}`
       : "";
-  const rack =
-    e.ammo && e.shell && !e.wreck ? `  ·  ${e.shell.toUpperCase()} ${ammoOf(e.ammo, e.shell)}` : "";
+  const pulse = behemothPulseOf(e);
+  const rack = pulse
+    ? e.wreck || e.ownerId !== ctx.match.youPlayerId
+      ? ""
+      : `  ·  ${pulse.name}`
+    : e.ammo && e.shell && !e.wreck
+    ? `  ·  ${e.shell.toUpperCase()} ${ammoOf(e.ammo, e.shell)}`
+    : "";
   const rockets =
     rocketsOf(e.type) && !e.wreck && e.ownerId === ctx.match.youPlayerId
-      ? e.rocketsOff
+      ? airRackOf(e.type)
+        ? `  ·  ${e.airMode ? "air" : "ground"} attacks`
+        : e.rocketsOff
         ? `  ·  rockets off ${e.rockets ?? 0}`
         : (e.rockets ?? 0) <= 0
           ? "  ·  rockets EMPTY"
@@ -979,10 +1047,18 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
           : e.arkOf != null
             ? "  ·  off its Hive Ark"
           : e.air
-            ? airLine(e.air, e.type)
+            ? airLine(e.air, e.type, e.energy)
             : "";
   const pads = e.pads ? `  ·  planes ${e.pads.used}/${e.pads.cap}` : "";
-  const depth = e.dive ? diveLine(e.dive, !!e.submerged) : e.asw ? aswLine(e.asw) : e.ark?.cannons[0]?.energy != null ? arkLine(e.ark) : "";
+  const depth = e.dive
+    ? diveLine(e.dive, !!e.submerged)
+    : e.asw
+      ? aswLine(e.asw)
+      : e.ark?.cannons[0]?.energy != null
+        ? arkLine(e.ark)
+        : neverSurfacesOf(e.type) && !e.wreck && e.ownerId === ctx.match.youPlayerId
+          ? `  ·  ${e.submerged ? "submerged" : "surfaced to bite"}`
+          : "";
   box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${field}${plates}${injuries}${posture}${mag}${rack}${rockets}${mg}${flight}${depth}  ·  ${who}${q}${cart}${smoke}${dep}${special}${garrison}${scout}${bed}${pads}${capturing}${holding}${selfDestroy}${tending}`;
   box.style.borderColor = occ ? colorHex(occ.colorId) : "#b08968";
 }
@@ -996,9 +1072,12 @@ const AIR_PHASE_LABEL: Record<NonNullable<EntityView["air"]>["phase"], string> =
 };
 
 /** Phase, and for your own planes fuel, bomb, and belts. A fighter carries no bomb; it counts barrages. */
-function airLine(air: NonNullable<EntityView["air"]>, type: EntityType): string {
-  // A Xenomorph flier runs on the hive: no tank, no rack, no field to go home to.
-  if (staysAloft(type)) return `  ·  ${air.phase === "crash" ? "going down" : air.phase === "takeoff" ? "lifting off" : "hovering"}`;
+function airLine(air: NonNullable<EntityView["air"]>, type: EntityType, energy?: number): string {
+  // A Xenomorph flier runs on the hive: no tank, no rack, no field to go home to. Its weapon's energy cell is all that runs low.
+  if (staysAloft(type)) {
+    const cell = energy != null ? `  ·  energy ${Math.round(energy * 100)}%` : "";
+    return `  ·  ${air.phase === "crash" ? "going down" : air.phase === "takeoff" ? "lifting off" : "hovering"}${cell}`;
+  }
   let s = `  ·  ${AIR_PHASE_LABEL[air.phase]}`;
   if (air.fuel != null && air.fuelMax) s += `  ·  fuel ${Math.round((air.fuel / air.fuelMax) * 100)}%`;
   const load = airLoadoutOf(type);
@@ -1134,6 +1213,30 @@ const LAUNCHER_MODES = [
   { id: "off", name: "Tubes off", blurb: "Hold fire and save the rack." },
 ] as const;
 
+/** Mawcaster attack switch, in place of a tube switch: the maw always fires, on the ground or at what flies. */
+const ATTACK_MODES = [
+  { id: "ground", name: "Ground attacks", blurb: "Lob a salvo of plasma balls on a high arc at ground targets, then reload." },
+  { id: "air", name: "Air attacks", blurb: "Leave the ground alone: small quick plasma balls at planes, Jump Jets, and low drones only." },
+] as const;
+
+function appendAttackModes(body: HTMLElement): void {
+  const rack = el("div", { class: "shell-rack" });
+  for (const mode of ATTACK_MODES) {
+    rack.append(loadoutButton({ attr: "data-attack", id: mode.id, name: mode.name, blurb: mode.blurb, count: "", on: false }));
+  }
+  body.append(el("div", { class: "tiny", text: "Attacks" }), rack);
+}
+
+function updateAttackModes(body: HTMLElement, mine: EntityView[]): void {
+  const air = mine.every((e) => e.airMode);
+  const ground = mine.every((e) => !e.airMode);
+  for (const mode of ATTACK_MODES) {
+    const btn = body.querySelector(`[data-attack="${mode.id}"]`);
+    if (!(btn instanceof HTMLElement)) continue;
+    updateLoadoutButton(btn, { count: "", on: mode.id === "air" ? air : ground });
+  }
+}
+
 function rocketModesFor(type: EntityType): readonly { id: string; name: string; blurb: string }[] {
   return launcherOnlyOf(type) ? LAUNCHER_MODES : ROCKET_MODES;
 }
@@ -1163,7 +1266,7 @@ function updateRocketRack(body: HTMLElement, type: EntityType, mine: EntityView[
 }
 
 function loadoutButton(opts: {
-  attr: "data-shell" | "data-weapon" | "data-guns" | "data-selfdestruct" | "data-fielddivert" | "data-rockets" | "data-reach" | "data-payload";
+  attr: "data-shell" | "data-weapon" | "data-guns" | "data-selfdestruct" | "data-fielddivert" | "data-pulse" | "data-rockets" | "data-attack" | "data-reach" | "data-payload";
   id: string;
   name: string;
   blurb: string;
@@ -1427,6 +1530,7 @@ function configBodyLayout(focus: EntityView, live: EntityView[], wrecks: EntityV
     if (mine.length > 0) parts.push("charge");
   }
   else if (isTransportType(focus.type)) parts.push(mine.length > 0 ? "payload" : "transport");
+  else if (hasPulseModes(focus.type)) parts.push(mine.length > 0 ? "pulse" : "plasma");
   else if (hasAmmo(focus.type)) parts.push("ammo");
   if (rocketsOf(focus.type) && mine.length > 0) parts.push("rockets");
   else if (isInfantryType(focus.type)) {
@@ -1514,6 +1618,14 @@ function buildConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
       body.append(el("div", { class: "tiny", text: "Load (change on the pad)" }), rack);
     }
     body.append(el("p", { class: "tiny", attrs: { "data-field": "cargo" } }));
+  } else if (hasPulseModes(focus.type)) {
+    if (mine.length > 0) {
+      const rack = el("div", { class: "shell-rack" });
+      for (const mode of BEHEMOTH_PULSE_MODES) {
+        rack.append(loadoutButton({ attr: "data-pulse", id: mode.id, name: mode.name, blurb: mode.blurb, count: "", on: false }));
+      }
+      body.append(el("div", { class: "tiny", text: "Pulse" }), rack);
+    }
   } else if (hasAmmo(focus.type)) {
     const rack = el("div", { class: "shell-rack" });
     const table = shellsFor(focus.type);
@@ -1524,8 +1636,12 @@ function buildConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
     }
     body.append(el("div", { class: "tiny", text: "Shell" }), rack);
     if (rocketsOf(focus.type) && mine.length > 0) appendRocketRack(body, focus.type);
-  } else if (launcherOnlyOf(focus.type)) {
-    if (mine.length > 0) appendRocketRack(body, focus.type);
+  } else if (launcherOnlyOf(focus.type) && !isInfantryType(focus.type)) {
+    // A Spitter is a soldier first: its throat sac has no switch, so it keeps the infantry panel.
+    if (mine.length > 0) {
+      if (airRackOf(focus.type)) appendAttackModes(body);
+      else appendRocketRack(body, focus.type);
+    }
   } else if (isInfantryType(focus.type)) {
     const loadout = infantryLoadout(focus.type);
     if (loadout.length > 0 && mine.length > 0) {
@@ -1643,6 +1759,15 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
         ? "Transport"
         : `${[...new Set(lines)].join("  ·  ")}  ·  Force-attack the ground to drop.`,
     );
+  } else if (hasPulseModes(focus.type)) {
+    const mine = live.filter((e) => e.ownerId === you);
+    const light = mine.length > 0 && mine.every((e) => e.lightPulse);
+    const high = mine.length > 0 && mine.every((e) => !e.lightPulse);
+    for (const mode of BEHEMOTH_PULSE_MODES) {
+      const btn = body.querySelector(`[data-pulse="${mode.id}"]`);
+      if (!(btn instanceof HTMLElement)) continue;
+      updateLoadoutButton(btn, { count: "", on: mode.id === "light" ? light : high });
+    }
   } else if (hasAmmo(focus.type)) {
     const shells = live.filter((e) => e.ownerId === you);
     const same = shells.length > 0 && shells.every((e) => e.shell === shells[0]!.shell);
@@ -1657,9 +1782,12 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
       });
     }
     if (rocketsOf(focus.type) && shells.length > 0) updateRocketRack(body, focus.type, shells);
-  } else if (launcherOnlyOf(focus.type)) {
+  } else if (launcherOnlyOf(focus.type) && !isInfantryType(focus.type)) {
     const mine = live.filter((e) => e.ownerId === you);
-    if (mine.length > 0) updateRocketRack(body, focus.type, mine);
+    if (mine.length > 0) {
+      if (airRackOf(focus.type)) updateAttackModes(body, mine);
+      else updateRocketRack(body, focus.type, mine);
+    }
   } else if (isInfantryType(focus.type)) {
     const mine = live.filter((e) => e.ownerId === you);
     const loadout = infantryLoadout(focus.type);
@@ -2716,6 +2844,15 @@ function runConfigAction(ctx: Ctx, t: HTMLElement): void {
     ctx.net.send({ type: "cmd.rockets", ids, on: pods === "on" });
     return;
   }
+  const attack = t.dataset.attack;
+  if (attack === "ground" || attack === "air") {
+    const ids = selectedOfType(ctx, viewRef, configFocus)
+      .filter((ent) => ent.ownerId === ctx.match!.youPlayerId && !ent.wreck && airRackOf(ent.type) != null)
+      .map((ent) => ent.id);
+    if (ids.length === 0) return;
+    ctx.net.send({ type: "cmd.airmode", ids, air: attack === "air" });
+    return;
+  }
   const reach = t.dataset.reach;
   if (reach === "normal" || reach === "max") {
     const ids = selectedOfType(ctx, viewRef, configFocus)
@@ -2741,6 +2878,15 @@ function runConfigAction(ctx: Ctx, t: HTMLElement): void {
       .map((ent) => ent.id);
     if (ids.length === 0) return;
     ctx.net.send({ type: "cmd.selfdestruct", ids, on: charge === "on" });
+    return;
+  }
+  const pulse = t.dataset.pulse;
+  if (pulse === "high" || pulse === "light") {
+    const ids = selectedOfType(ctx, viewRef, configFocus)
+      .filter((ent) => ent.ownerId === ctx.match!.youPlayerId && !ent.wreck && hasPulseModes(ent.type))
+      .map((ent) => ent.id);
+    if (ids.length === 0) return;
+    ctx.net.send({ type: "cmd.pulse", ids, light: pulse === "light" });
     return;
   }
   const divert = t.dataset.fielddivert;

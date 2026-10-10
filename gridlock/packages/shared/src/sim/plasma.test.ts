@@ -8,6 +8,7 @@ import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
 import { fireLaser } from "./laser.js";
+import { drawPlasma, plasmaShots, resumeShots } from "./hive-ammo.js";
 import type { EnergyShield, Entity, MatchState } from "./types.js";
 
 /** A is Alliance, B the Xenomorphs, on bare flat ground, nothing but what a test places. */
@@ -52,23 +53,23 @@ function still(e: Entity): Entity {
 
 describe("plasma cannon energy cell", () => {
   it("every Xenomorph plasma cannon carries a cell", () => {
-    for (const t of ["stalker", "ravager", "siphon", "behemoth", "pulsespire", "leech"] as const) {
+    for (const t of ["stalker", "ravager", "behemoth", "pulsespire", "leech"] as const) {
       const cell = plasmaCellOf(t);
       assert.ok(cell && cell.shots >= 1 && cell.rechargeSeconds > 0, t);
     }
     assert.equal(plasmaCellOf("warden"), undefined);
   });
 
-  /** A Siphon laying fire on bare ground six cells off. Counts the shots the cell gives up. */
+  /** A Leech laying fire on bare ground six cells off. Counts the shots the cell gives up. */
   function firing(): { state: MatchState; s: Entity; shots: () => number } {
     const state = field();
-    const s = at(state, "siphon", "B", 20, 30);
+    const s = at(state, "leech", "B", 20, 30);
     const aim = at(state, "rifleman", "B", 26, 30);
     const x = aim.x;
     const y = aim.y;
     destroyEntity(state, aim);
     assert.equal(applyCommand(state, "B", { type: "cmd.forceattack", ids: [s.id], x, y }).ok, true);
-    const full = plasmaCellOf("siphon")!.shots;
+    const full = plasmaCellOf("leech")!.shots;
     let n = 0;
     const shots = () => {
       const before = s.energy ?? full;
@@ -81,7 +82,7 @@ describe("plasma cannon energy cell", () => {
 
   it("waits on an empty cell, and fires again once a shot regrows", () => {
     const { s, shots } = firing();
-    const cell = plasmaCellOf("siphon")!;
+    const cell = plasmaCellOf("leech")!;
     s.energy = 0;
     for (let i = 0; i < secondsToTicks(cell.rechargeSeconds * 0.8); i++) shots();
     assert.equal(shots(), 0, "no bolt on an empty cell");
@@ -92,8 +93,8 @@ describe("plasma cannon energy cell", () => {
 
   it("a full cell fires at the gun's cadence until it runs low, then at the cell's pace", () => {
     const { s, shots } = firing();
-    const cell = plasmaCellOf("siphon")!;
-    const cd = catalog("siphon").cooldown;
+    const cell = plasmaCellOf("leech")!;
+    const cd = catalog("leech").cooldown;
     const span = 60;
     for (let i = 0; i < secondsToTicks(span); i++) shots();
     const n = shots();
@@ -124,7 +125,43 @@ describe("plasma cannon energy cell", () => {
     assert.ok(bolts > cell.shots, `${bolts} bolts in ${span}s`);
     assert.ok(bolts < free / 2, `${bolts} bolts in ${span}s`);
     assert.ok(bolts <= cell.shots + span / cell.rechargeSeconds + 2, `${bolts} bolts in ${span}s`);
-    assert.ok((r.energy ?? cell.shots) < 2, `cell drawn down (${r.energy})`);
+    // Run dry, it waits for a tenth of the cell, so it swings between empty and that mark.
+    assert.ok((r.energy ?? cell.shots) < resumeShots(cell.shots) + 1, `cell drawn down (${r.energy})`);
+  });
+
+  it("run dry, it holds fire until a tenth of the cell regrows", () => {
+    const state = field();
+    const r = at(state, "ravager", "B", 20, 30);
+    const aim = at(state, "rifleman", "B", 26, 30);
+    const x = aim.x;
+    const y = aim.y;
+    destroyEntity(state, aim);
+    const cell = plasmaCellOf("ravager")!;
+    r.energy = 1;
+    drawPlasma(r);
+    assert.equal(r.energyDrained, true);
+    assert.equal(plasmaShots(r), 0);
+    assert.equal(applyCommand(state, "B", { type: "cmd.forceattack", ids: [r.id], x, y }).ok, true);
+    const resume = resumeShots(cell.shots);
+    assert.ok(resume > 1, "a tenth of the Ravager's cell is more than one bolt");
+    const bolts = (n: number) => {
+      let b = 0;
+      for (let i = 0; i < n; i++) {
+        step(state, TICK_DT);
+        for (const imp of state.impacts) if (imp.fromId === r.id) b++;
+      }
+      return b;
+    };
+    assert.equal(bolts(secondsToTicks(cell.rechargeSeconds * resume * 0.9)), 0, "no bolt while the cell climbs back");
+    assert.ok((r.energy ?? 0) >= 1, `a bolt's worth regrew meanwhile (${r.energy})`);
+    assert.ok(bolts(secondsToTicks(cell.rechargeSeconds * resume * 0.3)) > 0, "fires again past a tenth");
+  });
+
+  it("every cell needs at least one shot back before it fires again", () => {
+    for (const t of ["stalker", "ravager", "siphon", "behemoth", "pulsespire", "leech", "wasp", "scourge", "overseer", "weaver"] as const) {
+      const cell = plasmaCellOf(t);
+      if (cell) assert.equal(resumeShots(cell.shots), Math.max(1, cell.shots / 10), t);
+    }
   });
 
   it("regrows to full and no further", () => {

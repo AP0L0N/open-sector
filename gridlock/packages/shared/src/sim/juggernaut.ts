@@ -31,8 +31,10 @@ import { takeDamage } from "./crits.js";
 import { wallsShieldGarrison, woundGarrison } from "./garrison.js";
 import { allies, buildingBounds, ownerless, playerTeam } from "./geo.js";
 import { mortarFalloff } from "./mortar.js";
+import { diving } from "./naval.js";
 import { nextRand } from "./rng.js";
 import { gapTo, hiddenFromAuto, inStrikeReach } from "./simunit.js";
+import { domeShelters } from "./energy-shield.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
 import { canSeeEntity } from "./vision.js";
 
@@ -120,12 +122,17 @@ export function hammerBlast(
   const spec = BLOWS[blow];
   const radius = spec.radius * state.tileSize;
   let kind: ImpactKind = "miss";
+  // A blow comes from the arm that swings it; a thrown hammer from where it lands.
+  const src = (blow !== "throw" && state.entities.get(by.id)) || { x, y };
+  const soaked = new Set<number>();
   for (const o of [...state.entities.values()]) {
     if (o.id === by.id || o.hp <= 0 || o.wreck || o.garrisonedIn != null) continue;
-    if (isAirborne(o) || isBridge(o.type) || isRubble(o)) continue;
+    // A submarine running below is under the blow.
+    if (isAirborne(o) || isBridge(o.type) || isRubble(o) || diving(o)) continue;
     if (!harmAllies && allies(state, by.ownerId, o.ownerId)) continue;
     const gap = gapFrom(state, x, y, o);
     if (gap > radius) continue;
+    if (domeShelters(state, by.ownerId, src.x, src.y, o, isInfantryType(o.type) ? spec.soldier : spec.hull, soaked)) continue;
     const fall = mortarFalloff(gap, radius);
     const rand = 0.9 + 0.2 * nextRand(state);
     if (o.kind === "building") {
@@ -194,7 +201,7 @@ function strongestInReach(state: MatchState, e: Entity): Entity | undefined {
   let bestScore = -Infinity;
   for (const o of state.entities.values()) {
     if (o.id === e.id || o.hp <= 0 || o.wreck || o.garrisonedIn != null || hiddenFromAuto(o)) continue;
-    if (ownerless(o) || isAirborne(o) || isBridge(o.type) || isRubble(o)) continue;
+    if (ownerless(o) || isAirborne(o) || isBridge(o.type) || isRubble(o) || diving(o)) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
     if (gapTo(state, e, o) > reach) continue;
     // Units first: a building only scores under every unit.

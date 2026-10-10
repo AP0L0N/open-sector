@@ -65,6 +65,11 @@ import juggernautSwingUrl from "../assets/units/juggernaut-swing.png";
 import juggernautFistsUrl from "../assets/units/juggernaut-fists.png";
 import juggernautPunchUrl from "../assets/units/juggernaut-punch.png";
 import juggernautThrowUrl from "../assets/units/juggernaut-throw.png";
+import juggernautWalkWadeUrl from "../assets/units/juggernaut-walk-wade.png";
+import juggernautSwingWadeUrl from "../assets/units/juggernaut-swing-wade.png";
+import juggernautFistsWadeUrl from "../assets/units/juggernaut-fists-wade.png";
+import juggernautPunchWadeUrl from "../assets/units/juggernaut-punch-wade.png";
+import juggernautThrowWadeUrl from "../assets/units/juggernaut-throw-wade.png";
 import ravagerLegsUrl from "../assets/units/ravager-legs.png";
 import ravagerTurretUrl from "../assets/units/ravager-turret.png";
 import ravagerGunUrl from "../assets/units/ravager-gun.png";
@@ -1396,6 +1401,12 @@ export const JUGGERNAUT_SWING_SPRITE = juggernautSheet(juggernautSwingUrl, 8);
 export const JUGGERNAUT_FISTS_SPRITE = juggernautSheet(juggernautFistsUrl, 8);
 export const JUGGERNAUT_PUNCH_SPRITE = juggernautSheet(juggernautPunchUrl, 8);
 export const JUGGERNAUT_THROW_SPRITE = juggernautSheet(juggernautThrowUrl, 4);
+/** In water: the same five, sunk to mid-thigh in the pool. Same cell, scale, and contact. */
+export const JUGGERNAUT_WALK_WADE_SPRITE = juggernautSheet(juggernautWalkWadeUrl, 8);
+export const JUGGERNAUT_SWING_WADE_SPRITE = juggernautSheet(juggernautSwingWadeUrl, 8);
+export const JUGGERNAUT_FISTS_WADE_SPRITE = juggernautSheet(juggernautFistsWadeUrl, 8);
+export const JUGGERNAUT_PUNCH_WADE_SPRITE = juggernautSheet(juggernautPunchWadeUrl, 8);
+export const JUGGERNAUT_THROW_WADE_SPRITE = juggernautSheet(juggernautThrowWadeUrl, 4);
 
 const ss3Gun: TurretSpriteDef = {
   image: new Image(),

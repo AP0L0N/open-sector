@@ -3,10 +3,10 @@
  * tools/sprites/render_hive_ark.py on one camera and scale, each with the model origin at the
  * same cell point (the Battle Ship's scheme, render/battleship.ts). Each cannon is drawn with
  * its pivot where its barbette projects on the hull face shown; a docked Wasp sits on its pod.
- * The energy dome is drawn here too, as a lit glass bubble over the hull.
+ * The energy dome is the shared dome (render/energy-shield.ts), drawn over any unit that casts one.
  */
 
-import { ARK_CANNON_AT, ARK_HULL_RADIUS, ARK_POD_AT, facingToIso, isoScale } from "@gridlock/shared";
+import { ARK_CANNON_AT, ARK_HULL_RADIUS, ARK_POD_AT, isoScale } from "@gridlock/shared";
 import { rowYaw, shipRow } from "./battleship.js";
 
 /** The render script's numbers (render_hive_ark.py). Model units are 10 m. */
@@ -91,72 +91,6 @@ export function hiveArkMuzzle(
     y: ark.y + Math.sin(ark.facing) * d + Math.sin(cannonFacing) * reach,
     lift: (HIVEARK_MODEL.cannonZ + HIVEARK_MODEL.boreZ) * COS_CAM * screenPerUnit(drawSize),
   };
-}
-
-/** Screen direction of a world facing, unit length. */
-export function isoDir(facing: number, tileSize: number): { x: number; y: number } {
-  const d = facingToIso(facing, tileSize);
-  const len = Math.hypot(d.x, d.y) || 1;
-  return { x: d.x / len, y: d.y / len };
-}
-
-/**
- * The energy dome: a glass bubble over the hull, rim on the water. (cx, cy) is the Ark's screen
- * point, rx the dome's screen half-width (the 2:1 ground ellipse is rx by rx/2), `share` its
- * points left, `hit` a round just struck it. The far half is drawn behind the hull by the caller
- * passing `back`, the near half over it.
- */
-export function drawArkDome(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  rx: number,
-  share: number,
-  hit: boolean,
-  now: number,
-  back: boolean,
-): void {
-  const ry = rx / 2;
-  const h = rx * 0.62;
-  const pulse = 0.5 + 0.5 * Math.sin(now * 0.004);
-  const a = (0.1 + 0.08 * share + (hit ? 0.25 : 0)) * (0.85 + 0.15 * pulse);
-  ctx.save();
-  ctx.lineJoin = "round";
-  if (back) {
-    // The far rim on the water and the back of the bubble.
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, rx, ry, 0, Math.PI, Math.PI * 2);
-    ctx.strokeStyle = `rgba(110, 255, 190, ${0.25 + 0.2 * share})`;
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    ctx.restore();
-    return;
-  }
-  // The bubble: from the rim up to the crown, a soft green fill brighter at the edge.
-  ctx.beginPath();
-  ctx.moveTo(cx - rx, cy);
-  ctx.bezierCurveTo(cx - rx, cy - h * 1.33, cx + rx, cy - h * 1.33, cx + rx, cy);
-  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI);
-  ctx.closePath();
-  const g = ctx.createRadialGradient(cx, cy - h * 0.55, rx * 0.15, cx, cy - h * 0.4, rx * 1.05);
-  g.addColorStop(0, `rgba(120, 255, 200, ${a * 0.35})`);
-  g.addColorStop(0.75, `rgba(90, 240, 170, ${a})`);
-  g.addColorStop(1, `rgba(160, 255, 215, ${a * 1.8})`);
-  ctx.fillStyle = g;
-  ctx.fill();
-  ctx.strokeStyle = hit ? "rgba(220, 255, 235, 0.85)" : `rgba(130, 255, 200, ${0.35 + 0.3 * share})`;
-  ctx.lineWidth = hit ? 2 : 1.25;
-  ctx.stroke();
-  // Hex lattice glints: a few arcs across the crown.
-  ctx.globalAlpha = 0.25 + 0.2 * share;
-  ctx.strokeStyle = "rgba(170, 255, 220, 0.8)";
-  ctx.lineWidth = 0.75;
-  for (const k of [0.35, 0.7]) {
-    ctx.beginPath();
-    ctx.ellipse(cx, cy - h * k, rx * Math.sqrt(1 - k * k), ry * Math.sqrt(1 - k * k), 0, 0, Math.PI);
-    ctx.stroke();
-  }
-  ctx.restore();
 }
 
 /**

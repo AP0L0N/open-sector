@@ -23,6 +23,7 @@ import {
 } from "./geo.js";
 import { mortarFalloff } from "./mortar.js";
 import { setPath } from "./path.js";
+import { domeShelters } from "./energy-shield.js";
 import type { Entity, MatchState } from "./types.js";
 import { hiddenFromAuto } from "./simunit.js";
 import { canSeeEntity } from "./vision.js";
@@ -156,6 +157,7 @@ function distTo(state: MatchState, from: Entity, to: Entity): number {
 
 function detonateWalker(state: MatchState, walker: Entity): void {
   const radius = WALKER_BLAST_TILES * state.tileSize;
+  const soaked = new Set<number>();
   for (const o of [...state.entities.values()]) {
     if (o.id === walker.id || o.hp <= 0 || o.wreck) continue;
     if (isAirborne(o) || o.garrisonedIn != null) continue;
@@ -163,6 +165,7 @@ function detonateWalker(state: MatchState, walker: Entity): void {
     if (dist > radius) continue;
     const heavy = o.kind === "unit" && catalog(o.type).armorFront > PTRD_LIGHT_FRONT;
     const raw = (heavy ? WALKER_BLAST_HEAVY : WALKER_BLAST_SOFT) * mortarFalloff(dist, radius);
+    if (domeShelters(state, walker.ownerId, walker.x, walker.y, o, raw, soaked)) continue;
     takeDamage(o, Math.max(1, Math.round(raw)), state.tick);
   }
   state.impacts.push({

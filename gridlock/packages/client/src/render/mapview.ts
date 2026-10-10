@@ -7,8 +7,12 @@ import {
   WEAVER_REACH_TILES,
   LASER_FENCE_REACH_TILES,
   costFor,
+  energyOf,
   factionOf,
+  fencePostTile,
+  isFenceLine,
   laserFenceLinks,
+  totalFenceLinkEnergy,
   AIRFIELD_BACK_DEPTH,
   BUILDING_TURN_STEP,
   buildingRect,
@@ -146,6 +150,7 @@ import {
   type MapLamp,
   type FieldStructureType,
   type ConcreteLineType,
+  type EnergyShieldView,
   type EntityView,
   type IsoPt,
   type MapDef,
@@ -161,7 +166,7 @@ import {
   SIMUNIT_BLINK_RANGE_TILES,
   isSimUnit,
 } from "@gridlock/shared";
-import { drawShieldPanel, shieldCurve, shieldGlow, shieldHeightElev } from "./energy-shield.js";
+import { WEAVE_THREAD_MS, domeHeightElev, drawDome, drawShieldPanel, drawWeaveThread, shieldCurve, shieldGlow, shieldHeightElev } from "./energy-shield.js";
 import { drawNuke, drawNukeFlash, drawNukeScorch, NUKE_FX_MS, NUKE_SCORCH_MS } from "./nuke-fx.js";
 import { drawTitanThrust } from "./titan-jet-fx.js";
 import {
@@ -310,6 +315,7 @@ import {
   TROOPER_DIE_SPRITE,
   TROOPER_HANDGUN_SPRITE,
   TROOPER_RIFLE_FIRE_SPRITE,
+  buildingSpriteDestRect,
   unitHitsBuildingSprite,
   type BuildingSpriteDef,
   type UnitSpriteDef,
@@ -320,7 +326,7 @@ import { drawTorpedoBody } from "./torpedo-draw.js";
 import { drawRadarContact, drawRadarOffline, radarContactLit } from "./radar-panel.js";
 import { drawSonarContact, drawWaterMine } from "./sonar-fx.js";
 import { drawHeatContact, drawScanContact } from "./thermal-fx.js";
-import { drawDeploymentGrid, drawHiveComet, drawHiveImpact, HIVE_IMPACT_MS } from "./hive-drop-fx.js";
+import { drawDeploymentGrid, drawHiveComet, drawHiveImpact, HIVE_IMPACT_MS, hiveShake } from "./hive-drop-fx.js";
 import {
   drawTrackKick,
   spawnTrackKickPuffs,
@@ -369,7 +375,7 @@ import {
 import { bumpTilt, crushBump } from "./crush-bump.js";
 import { drawFieldGunSmoke, fieldGunSmokePose, spawnFieldGunSmoke, type FieldGunSmokePuff } from "./field-gun-smoke.js";
 import { emplacementShotLook, facingConeDegOf, PAK43_FX_CALIBER_MUL } from "./emplacement-fx.js";
-import { drawArkDome, drawArkPlasmaBall, hiveArkLayers, hiveArkMuzzle } from "./hive-ark.js";
+import { drawArkPlasmaBall, hiveArkLayers, hiveArkMuzzle } from "./hive-ark.js";
 import {
   BATTLESHIP_WORLD_PER_UNIT,
   battleshipLayers,
@@ -398,7 +404,7 @@ import {
 import { roofCiwsMuzzle } from "./roof-ciws.js";
 import { CIWS_INTERCEPT_LIFT, CIWS_MUZZLE_REACH, CIWS_SOURCE_ZOOM, ciwsMuzzleLift, ciwsTurretCell, ciwsTurretRow } from "./ciws.js";
 import { ciwsBurstTracers, ciwsTracers } from "./ciws-tracer.js";
-import { drawEnergyBolt, drawEnergyBurst, drawEnergyMuzzle, drawPlasmaOrb, energyBolts, energyBurstMs } from "./energy-fx.js";
+import { drawEnergyBolt, drawEnergyBurst, drawEnergyMuzzle, drawPlasmaOrb, energyBolts, energyBurstMs, plasmaOrbScale } from "./energy-fx.js";
 import { SCORCH_GLOW_MS, SCORCH_SMOKE_RADIUS, drawPlasmaSteam, drawScorchFallback, drawScorchGlow, plasmaSteamMs } from "./plasma-ground.js";
 import { PTRD_MUZZLE_LIFT, ptrdTracers } from "./ptrd-tracer.js";
 import { ROOF_CIWS_LIFT } from "./roof-ciws.js";
@@ -484,7 +490,18 @@ import { drawShutdownMark, drawUplink, SHUTDOWN_UNIT_FILTER } from "./cyborg-lin
 import { BLINK_FX_MS, drawBlinkFx, drawPurgeMark } from "./blink-fx.js";
 import { BITE_FX_MS, DOWN_BEAM_MS, drawBite, drawDownBeam } from "./hive-fx.js";
 import { SIMUNIT2_CRAWL_FIRE_SPRITE, SIMUNIT2_CRAWL_SPRITE, SIMUNIT2_DIE_SPRITE, SIMUNIT2_FIRE_SPRITE, SIMUNIT2_SPRITE, UNIT_SPRITE_DRAW_SIZE } from "./sprites.js";
-import { JUGGERNAUT_FISTS_SPRITE, JUGGERNAUT_PUNCH_SPRITE, JUGGERNAUT_SPRITE, JUGGERNAUT_SWING_SPRITE, JUGGERNAUT_THROW_SPRITE } from "./sprites.js";
+import {
+  JUGGERNAUT_FISTS_SPRITE,
+  JUGGERNAUT_FISTS_WADE_SPRITE,
+  JUGGERNAUT_PUNCH_SPRITE,
+  JUGGERNAUT_PUNCH_WADE_SPRITE,
+  JUGGERNAUT_SPRITE,
+  JUGGERNAUT_SWING_SPRITE,
+  JUGGERNAUT_SWING_WADE_SPRITE,
+  JUGGERNAUT_THROW_SPRITE,
+  JUGGERNAUT_THROW_WADE_SPRITE,
+  JUGGERNAUT_WALK_WADE_SPRITE,
+} from "./sprites.js";
 import { drawThrownHammer, pickJuggernautPose, JUGGERNAUT_STRIDE_WORLD, type JuggernautSheet } from "./juggernaut-fx.js";
 import {
   THRALL_CRAWL_FIRE_SPRITE,
@@ -525,8 +542,6 @@ import {
 
 /** A cloaked Shade as its own side sees it. */
 const CLOAKED_UNIT_FILTER = "opacity(0.38) saturate(0.5) brightness(1.35)";
-/** An armored hull coated in a Spitter's acid. */
-const ACID_HULL_FILTER = "sepia(0.55) hue-rotate(28deg) saturate(1.7) brightness(0.92)";
 
 /** The hive cyborgs that share the Drone's sheet set: stand, fire, crawl, crawl-fire, die. */
 const HIVE_SHEETS: Partial<Record<string, { stand: UnitSpriteDef; fire: UnitSpriteDef; crawl: UnitSpriteDef; crawlFire: UnitSpriteDef; die: UnitSpriteDef }>> = {
@@ -545,6 +560,8 @@ import { lineFrame, lineProfile, lineShapes, type LineShape } from "./line-bend.
 
 /** Bridges lie on the water: over ground decals, under shadows, corpses, and everything standing. */
 const BRIDGE_DRAW_LAYER = -1.5;
+/** Screen px above a Weaver's feet where its nanite spindle sits: the thread to a wall starts there. */
+const WEAVER_SPINDLE_LIFT_PX = 12;
 
 /** One bridge brick as it is drawn: where it lies, and how it meets its neighbours. */
 interface BridgeLook {
@@ -568,6 +585,7 @@ import {
   HOLE_DRAW_LAYER,
   STANDING_DRAW_LAYER,
 } from "./corpse-depth.js";
+import { FRIENDLY_XRAY_ALPHA, XrayLayer, xrayPairs, type XrayItem } from "./friendly-xray.js";
 import { CLUTTER_BREAK_MS, drawClutterSplinters } from "./clutter-fx.js";
 import { drawTreeFall, TREE_FALL_MS } from "./tree-fall.js";
 import { drawBurnedCorpse, drawBurningTree } from "./burn-draw.js";
@@ -1029,6 +1047,7 @@ export class MapView {
   /** Swapped for a scratch layer while a fogged building draws; see `drawVeiled`. */
   private ctx: CanvasRenderingContext2D;
   private readonly buildingVeil = new BuildingVeil();
+  private readonly xrayLayer = new XrayLayer();
   /** Wall-clock ms a foreign unit first appeared in a snapshot. */
   private unitSeenAt = new Map<number, number>();
   private readonly mctx: CanvasRenderingContext2D;
@@ -1135,6 +1154,10 @@ export class MapView {
   private ruinSmokeAt = new Map<number, number>();
   /** Wall-clock ms of the last small-arms shot from an infantry unit. */
   private infantryShotAt = new Map<number, number>();
+  /** Energy wall id -> when it first showed (performance.now ms); kept for Weaver walls only. */
+  private shieldBorn = new Map<number, number>();
+  /** Weaver id -> until when it holds its working pose for a wall it just threw. */
+  private weaveUntil = new Map<number, number>();
   /** Fw 190 barrage streaks in flight, with the gun and impact heights (absolute elevation). */
   private tracers: (BarrageTracer & { z0: number; z1: number; energy?: true; heavy?: boolean })[] = [];
   /** Spine Turret and Pulse Spire: which barrel last kicked back, and when (hive-gun-recoil.ts). */
@@ -1271,6 +1294,10 @@ export class MapView {
   placePick: BuildingType | null = null;
   /** Defences-tab sandbags or wall, armed before the line is sited. */
   yardArm: YardFieldType | null = null;
+  /** Defences-tab Laser Fence armed: its posts are clicked in, start to end, before the yard builds them. */
+  fenceArm = false;
+  /** The fence posts clicked so far, start first, as top-left tiles. */
+  fencePosts: { tx: number; ty: number }[] = [];
   attackMoveMode = false;
   /** Left click adds a point. Click an earlier point to close a loop. Right click sends, or cancels when none are down. */
   patrolMode = false;
@@ -1882,8 +1909,12 @@ export class MapView {
     if (this.placePick && !this.typeReady(this.placePick)) this.placePick = null;
     if (!this.placeMode) this.yardArm = null;
     if (this.yardArm && this.curr.you.lineQueue) this.yardArm = null;
+    if (!this.placeMode || (this.fenceArm && this.curr.you.lineQueue)) {
+      this.fenceArm = false;
+      this.fencePosts = [];
+    }
     const placing = this.placeMode;
-    if (!this.placingKind() && !this.yardArm) this.placeMode = false;
+    if (!this.placingKind() && !this.yardArm && !this.fenceArm) this.placeMode = false;
     if (this.placeMode !== placing) this.onPlaceMode();
     this.syncAtlases();
     this.revealFrom(match);
@@ -2815,6 +2846,8 @@ export class MapView {
   armPlace(type: BuildingType): void {
     this.placePick = type;
     this.yardArm = null;
+    this.fenceArm = false;
+    this.fencePosts = [];
     this.fieldPlace = null;
     this.constructPlace = null;
     this.bridgePlace = null;
@@ -2850,6 +2883,8 @@ export class MapView {
     this.fieldPath = [];
     this.placePick = null;
     this.yardArm = type;
+    this.fenceArm = false;
+    this.fencePosts = [];
     this.placeMode = true;
     this.attackMoveMode = false;
     this.forceAttackMode = false;
@@ -2859,6 +2894,59 @@ export class MapView {
     this.guardDragging = false;
     this.onAttackMoveMode();
     this.onPlaceMode();
+  }
+
+  /** Armed Defences-tab Laser Fence. The engineer's field button wins when both are on. */
+  private readyFence(): boolean {
+    return this.placeMode && this.fenceArm && !this.fieldPlace;
+  }
+
+  /** Clicking Laser Fence on the Defences tab sites its posts, like a wall, before it builds. */
+  armFence(): void {
+    this.armYardField("wall");
+    this.yardArm = null;
+    this.fenceArm = true;
+    this.onPlaceMode();
+  }
+
+  /**
+   * Where a click would set the next fence post: under the cursor, drawn in along the way to it
+   * when that is past the last post's reach, so every post links to the one before.
+   */
+  private fencePostAt(mx: number, my: number): { tx: number; ty: number } {
+    const at = this.placeSite("laserfence", mx, my);
+    const last = this.fencePosts[this.fencePosts.length - 1];
+    if (!last) return { tx: at.tx, ty: at.ty };
+    const dx = at.tx - last.tx;
+    const dy = at.ty - last.ty;
+    const d = Math.hypot(dx, dy);
+    if (d <= LASER_FENCE_REACH_TILES) return { tx: at.tx, ty: at.ty };
+    const k = LASER_FENCE_REACH_TILES / d;
+    // Truncated toward the last post, so the gap never rounds out past reach.
+    return { tx: last.tx + Math.trunc(dx * k), ty: last.ty + Math.trunc(dy * k) };
+  }
+
+  /** A post may go here: open ground in range of the base, clear of the posts already clicked. */
+  private fencePostOk(post: { tx: number; ty: number }): boolean {
+    const def = catalog("laserfence");
+    if (this.fencePosts.some((p) => Math.abs(p.tx - post.tx) < def.tileW && Math.abs(p.ty - post.ty) < def.tileH)) return false;
+    return previewPlace(this.curr, "laserfence", post.tx, post.ty);
+  }
+
+  /** Click: one post. The first is the fence's start; Confirm takes the last as its end. */
+  private addFencePost(mx: number, my: number): void {
+    const post = this.fencePostAt(mx, my);
+    if (!this.fencePostOk(post)) return;
+    this.fencePosts = [...this.fencePosts, post];
+    this.onPlaceMode();
+  }
+
+  /** The yard pays for every clicked post and raises them together. */
+  private confirmFence(): void {
+    if (this.fencePosts.length === 0) return;
+    this.command({ type: "cmd.fence", posts: this.fencePosts.map((p) => ({ tx: p.tx, ty: p.ty })) });
+    // The fence is placed: the tool is put down, like a wall line after Confirm.
+    this.cancelFieldPlacing();
   }
 
   /** Daylight at the frame's tick: 0 all match on an always-night map. */
@@ -2906,6 +2994,11 @@ export class MapView {
           this.onPlaceMode();
           return;
         }
+        if (this.fencePosts.length > 0 && this.readyFence()) {
+          this.fencePosts = this.fencePosts.slice(0, -1);
+          this.onPlaceMode();
+          return;
+        }
         if (this.attackMoveMode || this.forceAttackMode || this.mineLayMode || this.blinkMode || this.rotateMode || this.guardMode || this.fieldPlace || this.constructPlace || this.bridgePlace) {
           this.setAttackMoveMode(false);
           this.setForceAttackMode(false);
@@ -2943,6 +3036,10 @@ export class MapView {
         }
         if (!this.bridgePlace && !this.fieldPlace && this.readyYardField() === "gate") {
           this.commitGate(mx, my);
+          return;
+        }
+        if (!this.bridgePlace && this.readyFence()) {
+          this.addFencePost(mx, my);
           return;
         }
         if (this.bridgePlace || this.fieldPlace || this.readyYardField()) {
@@ -3729,11 +3826,16 @@ export class MapView {
 
   /** A line is drawn and waits for Confirm. */
   fieldPending(): boolean {
+    if (this.readyFence()) return this.fencePosts.length > 0;
     return this.fieldPath.length > 0 && !!(this.fieldPlace || this.readyYardField() || this.bridgePlace);
   }
 
   /** Lay the drawn line: one order for the selected engineers, or one yard job. Clears the drawing. `join`: it finishes on that open end. */
   confirmField(): void {
+    if (this.readyFence()) {
+      this.confirmFence();
+      return;
+    }
     if (this.bridgePlace) {
       this.confirmBridge();
       return;
@@ -3821,7 +3923,9 @@ export class MapView {
 
   /** Drop the line being drawn and the placing mode with it. True when there was one. */
   cancelFieldPlacing(): boolean {
-    if (!this.fieldPlace && !this.readyYardField() && !this.constructPlace && !this.bridgePlace) return false;
+    if (!this.fieldPlace && !this.readyYardField() && !this.readyFence() && !this.constructPlace && !this.bridgePlace) return false;
+    this.fencePosts = [];
+    this.fenceArm = false;
     this.fieldPath = [];
     this.fieldDrag = null;
     this.fieldPlace = null;
@@ -4385,6 +4489,8 @@ export class MapView {
       }
       this.placeMode = false;
       this.yardArm = null;
+      this.fenceArm = false;
+      this.fencePosts = [];
       this.fieldPlace = null;
       this.constructPlace = null;
       this.bridgePlace = null;
@@ -4555,7 +4661,13 @@ export class MapView {
     }
     this.syncCursor();
     this.poseFrame++;
+    // A Hive Core landing shakes the view for a moment.
+    const shake = this.hiveShakeNow();
+    this.camX += shake.x;
+    this.camY += shake.y;
     this.draw();
+    this.camX -= shake.x;
+    this.camY -= shake.y;
     this.drawMini();
     this.raf = requestAnimationFrame((nt) => this.frame(nt));
   }
@@ -4806,6 +4918,7 @@ export class MapView {
     }
     items.sort(compareDrawOrder);
     for (const it of items) it.run();
+    this.drawFriendlyXray(drawList, liveIds, w, h, now);
     this.flushWorkBars();
     // Over the ground and everything on it; shots and blasts after stay bright in the dark.
     this.drawNight();
@@ -4862,6 +4975,7 @@ export class MapView {
       this.drawBridgeGhost(this.bridgePlace);
     }
     this.drawYardBuild();
+    if (this.readyFence()) this.drawFenceGhost();
     if (this.fieldPlace && this.mouseX >= 0) this.drawFieldGhost(this.fieldPlace, false);
     else if (this.mouseX >= 0) {
       const yard = this.readyYardField();
@@ -4898,6 +5012,17 @@ export class MapView {
     this.drawSonarContacts();
     this.drawThermalContacts();
     this.drawHiveDrops();
+  }
+
+  /** The strongest shake of any Hive Core that just landed, iso px. */
+  private hiveShakeNow(): { x: number; y: number } {
+    const now = performance.now();
+    let best = { x: 0, y: 0 };
+    for (const h of this.hiveImpacts) {
+      const s = hiveShake(now - h.atMs, now);
+      if (Math.hypot(s.x, s.y) > Math.hypot(best.x, best.y)) best = s;
+    }
+    return best;
   }
 
   /** Real ms the Hive Core takes to fall at the current game speed. */
@@ -5585,7 +5710,11 @@ export class MapView {
     ctx.restore();
   }
 
-  /** Lunge armed: a dashed green ring of the legs' reach round each selected Behemoth. */
+  /**
+   * Lunge armed: a dashed green ring of the legs' reach round each selected Behemoth. With no
+   * Sim Unit selected the blink cursor never draws, so the lunge draws its own crosshair here:
+   * the armed mode hides the system cursor.
+   */
   private drawLungeReach(): void {
     const units = this.ownLungerIds()
       .map((id) => this.currById.get(id))
@@ -5607,6 +5736,37 @@ export class MapView {
       }
       ctx.stroke();
     }
+    ctx.restore();
+    if (this.ownSimUnitIds().length === 0) this.drawLungeCursor(units);
+  }
+
+  /** The lunge's crosshair and word at the mouse: green in reach, orange where it comes down short. */
+  private drawLungeCursor(units: EntityView[]): void {
+    if (this.overControl || this.mouseX < 0 || this.mouseY < 0) return;
+    const reach = BEHEMOTH_LUNGE_RANGE_TILES * this.ts();
+    const w = this.screenToWorld(this.mouseX, this.mouseY);
+    const inReach = units.some((e) => Math.hypot(w.x - e.x, w.y - e.y) <= reach);
+    const charged = units.some((e) => (e.lungeCharge ?? 1) >= 1);
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.setLineDash([]);
+    ctx.font = "11px 'Share Tech Mono', monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    const word = !charged ? "LUNGE (CHARGING)" : inReach ? "LUNGE" : "LUNGE (SHORT)";
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#140e0a";
+    ctx.fillStyle = inReach && charged ? "#6effb4" : "#dc7850";
+    ctx.strokeText(word, this.mouseX + 12, this.mouseY + 8);
+    ctx.fillText(word, this.mouseX + 12, this.mouseY + 8);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = ctx.fillStyle;
+    ctx.beginPath();
+    ctx.moveTo(this.mouseX, this.mouseY - 8);
+    ctx.lineTo(this.mouseX, this.mouseY + 8);
+    ctx.moveTo(this.mouseX - 8, this.mouseY);
+    ctx.lineTo(this.mouseX + 8, this.mouseY);
+    ctx.stroke();
     ctx.restore();
   }
 
@@ -7461,6 +7621,68 @@ export class MapView {
     this.occBuildings = out;
   }
 
+  /**
+   * Your own and allied units a structure paints over show through it: the
+   * covered part is drawn again over the structure, half transparent.
+   */
+  private drawFriendlyXray(drawList: readonly EntityView[], liveIds: ReadonlySet<number>, w: number, h: number, now: number): void {
+    const units: (XrayItem & { e: EntityView; fade: number })[] = [];
+    for (const e of drawList) {
+      if (e.kind !== "unit" || !liveIds.has(e.id) || e.wreck || e.hp <= 0 || e.garrisonedIn) continue;
+      if (!ownerAllied(this.curr, e.ownerId) || !this.unitNearView(e, w, h)) continue;
+      const fade = this.sightFade(e, now) * this.wreckFade(e, now);
+      if (fade <= 0) continue;
+      const def = this.spriteOf(e);
+      const size = def?.drawSize ?? 64;
+      const p = this.lerpEnt(e);
+      const s = this.toScreen(p.x, p.y);
+      const top = size * (def?.contactY ?? 0.8);
+      units.push({ key: this.drawKey(e), rect: { x: s.x - size / 2, y: s.y - top, w: size, h: size }, e, fade });
+    }
+    if (units.length === 0) return;
+    const ts = this.ts();
+    const covers: (XrayItem & { spr: BuildingSpriteDef; southX: number; southY: number; footprintW: number })[] = [];
+    for (const e of drawList) {
+      if (e.kind !== "building" || isBridge(e.type) || isFieldStructure(e.type) || isRubble(e)) continue;
+      if (!this.knownRect(e)) continue;
+      const spr = buildingSpriteFor(e.type, e.facing);
+      if (!spr || !spriteReady(spr)) continue;
+      const x = e.tileX * ts;
+      const y = e.tileY * ts;
+      const bw = e.tileW * ts;
+      const bh = e.tileH * ts;
+      const elev = this.buildingElev(e);
+      const south = this.toScreen(x + bw, y + bh, elev);
+      const footprintW = this.toScreen(x + bw, y, elev).x - this.toScreen(x, y + bh, elev).x;
+      const rect = buildingSpriteDestRect(spr, south.x, south.y, footprintW);
+      if (!rect || rect.x > w || rect.y > h || rect.x + rect.w < 0 || rect.y + rect.h < 0) continue;
+      covers.push({ key: this.drawKey(e), rect, spr, southX: south.x, southY: south.y, footprintW });
+    }
+    const pairs = xrayPairs(units, covers);
+    if (pairs.size === 0) return;
+    const main = this.ctx;
+    // Drawing a unit again queues its work bar again; the first one is kept.
+    const bars = this.workBars.length;
+    for (const [ci, hidden] of pairs) {
+      const c = covers[ci]!;
+      const scratch = this.xrayLayer.begin(main, c.rect);
+      if (!scratch) return;
+      this.ctx = scratch;
+      try {
+        for (const ui of hidden) {
+          const u = units[ui]!;
+          scratch.globalAlpha = u.fade;
+          this.drawUnit(u.e);
+          if (u.e.chute != null) this.drawTroopCanopy(u.e);
+        }
+      } finally {
+        this.ctx = main;
+      }
+      this.xrayLayer.end(main, c.rect, FRIENDLY_XRAY_ALPHA, (m) => drawBuildingSprite(m, c.spr, c.southX, c.southY, c.footprintW));
+    }
+    this.workBars.length = bars;
+  }
+
   private takeMoveClicks(): { x: number; y: number; t: number }[] {
     const now = performance.now();
     const keep: MapView["moveClicks"] = [];
@@ -7476,15 +7698,26 @@ export class MapView {
   }
 
   /** Stance sheet, or the pistol / rifle-recoil / corpse sheet when that pose is showing. */
-  /** The Juggernaut's sheet now, and its frame when a blow or the throw sets it (else it strides). */
+  /**
+   * The Juggernaut's sheet now, and its frame when a blow or the throw sets it (else it strides).
+   * In water every pose has its wading twin: same cell and contact, sunk to mid-thigh.
+   */
   private juggernautPose(e: EntityView): { def: UnitSpriteDef; frame?: number } {
-    const sheets: Record<JuggernautSheet, UnitSpriteDef> = {
-      walk: JUGGERNAUT_SPRITE,
-      swing: JUGGERNAUT_SWING_SPRITE,
-      fists: JUGGERNAUT_FISTS_SPRITE,
-      punch: JUGGERNAUT_PUNCH_SPRITE,
-      throw: JUGGERNAUT_THROW_SPRITE,
-    };
+    const sheets: Record<JuggernautSheet, UnitSpriteDef> = e.wading
+      ? {
+          walk: JUGGERNAUT_WALK_WADE_SPRITE,
+          swing: JUGGERNAUT_SWING_WADE_SPRITE,
+          fists: JUGGERNAUT_FISTS_WADE_SPRITE,
+          punch: JUGGERNAUT_PUNCH_WADE_SPRITE,
+          throw: JUGGERNAUT_THROW_WADE_SPRITE,
+        }
+      : {
+          walk: JUGGERNAUT_SPRITE,
+          swing: JUGGERNAUT_SWING_SPRITE,
+          fists: JUGGERNAUT_FISTS_SPRITE,
+          punch: JUGGERNAUT_PUNCH_SPRITE,
+          throw: JUGGERNAUT_THROW_SPRITE,
+        };
     if (e.wreck) return { def: JUGGERNAUT_SPRITE };
     const blow = this.juggBlows.get(e.id);
     const pose = pickJuggernautPose({
@@ -7721,6 +7954,7 @@ export class MapView {
   /** A working Weaver with a hurt hive unit of its side in reach: it holds the mending pose. */
   private weaverMending(w: EntityView): boolean {
     if (w.hp <= 0 || w.wreck || w.shutdown || w.dormant || w.garrisonedIn != null) return false;
+    if ((this.weaveUntil.get(w.id) ?? 0) > performance.now()) return true;
     const reach = WEAVER_REACH_TILES * this.ts();
     for (const o of this.currById.values()) {
       if (o === w || o.kind !== "unit" || o.ownerId !== w.ownerId || o.hp <= 0 || o.wreck || o.hp >= o.hpMax) continue;
@@ -8149,8 +8383,6 @@ export class MapView {
     else if (!e.wreck && (e.shutdown || e.dormant)) ctx.filter = SHUTDOWN_UNIT_FILTER;
     // Your Shade with its skin settled: a faint shimmer only its own side sees.
     else if (!e.wreck && e.cloaked) ctx.filter = CLOAKED_UNIT_FILTER;
-    // A hull under a Spitter's acid coat: the plate goes a sick yellow-green.
-    else if (!e.wreck && (e.acid ?? 0) > 0) ctx.filter = ACID_HULL_FILTER;
     // A map's neutral unit is grey: no one's colours, everyone's enemy.
     else if (!e.wreck && !e.ownerId) ctx.filter = NEUTRAL_UNIT_FILTER;
     // The ship's mounts are placed on the sim's own spots: no ground sink under the hull.
@@ -8938,7 +9170,7 @@ export class MapView {
     const now = performance.now();
     const blend = Math.min(1, (now - this.snapAt) / 100);
     const live = new Set<number>();
-    const heads: { x: number; y: number; dx: number; dy: number; id: number; heavy: boolean; energy: boolean }[] = [];
+    const heads: { x: number; y: number; dx: number; dy: number; id: number; heavy: boolean; energy: boolean; caliber: number }[] = [];
     for (const p of this.curr.projectiles) {
       if (!p.rocket) continue;
       live.add(p.id);
@@ -8964,6 +9196,7 @@ export class MapView {
         id: p.id,
         heavy: !!p.heavy,
         energy: !!p.energy,
+        caliber: p.caliber,
       });
     }
     for (const id of [...this.rocketLast.keys()]) {
@@ -8993,7 +9226,7 @@ export class MapView {
     ctx.restore();
     this.rocketPuffs = keep;
     for (const h of heads) {
-      if (h.energy) drawPlasmaOrb(ctx, h.x, h.y, h.dx, h.dy, h.heavy);
+      if (h.energy) drawPlasmaOrb(ctx, h.x, h.y, h.dx, h.dy, h.heavy, plasmaOrbScale(h.caliber));
       else drawRocketHead(ctx, h.x, h.y, h.dx, h.dy, h.id, h.heavy);
     }
   }
@@ -9240,29 +9473,21 @@ export class MapView {
     }
   }
 
-  /** Hive energy walls: one panel per stretch of the curve, sorted with the units around it. */
+  /** Hive energy walls: one panel per stretch of the curve, sorted with the units around it. A Siphon's dome: one bubble over it. */
   private collectShields(items: DrawItem[], w: number, h: number): void {
     const walls = this.curr.shields;
-    if (!walls || walls.length === 0) return;
+    if (!walls || walls.length === 0) {
+      this.shieldBorn.clear();
+      return;
+    }
     const now = performance.now();
     for (const s of walls) {
-      const mid = this.toScreen(s.x, s.y);
-      if (mid.x < -120 || mid.y < -120 || mid.x > w + 120 || mid.y > h + 120) continue;
       if (s.dome) {
-        // A Hive Ark's dome: the far rim just behind the hull, the glass bubble just in front of it.
-        // It rides the Ark, so it follows the hull's smoothed position, not the snapshot's.
-        const ark = this.curr.entities.find((e) => e.ark && Math.abs(e.x - s.x) < 1 && Math.abs(e.y - s.y) < 1);
-        const at = ark ? this.lerpEnt(ark) : { x: s.x, y: s.y };
-        const c = this.toScreen(at.x, at.y);
-        const edge = this.toScreen(at.x + s.r / Math.SQRT2, at.y - s.r / Math.SQRT2);
-        const rx = Math.hypot(edge.x - c.x, edge.y - c.y);
-        const share = s.hpMax > 0 ? s.hp / s.hpMax : 0;
-        const z = isoDepth(at.x, at.y);
-        const spot = { x: at.x, y: at.y };
-        items.push({ layer: STANDING_DRAW_LAYER, z: z - 1e-3, at: spot, run: () => drawArkDome(this.ctx, c.x, c.y, rx, share, !!s.hit, now, true) });
-        items.push({ layer: STANDING_DRAW_LAYER, z: z + 1e-3, at: spot, run: () => drawArkDome(this.ctx, c.x, c.y, rx, share, !!s.hit, now, false) });
+        this.collectDome(items, w, h, s, now);
         continue;
       }
+      const mid = this.toScreen(s.x, s.y);
+      if (mid.x < -120 || mid.y < -120 || mid.x > w + 120 || mid.y > h + 120) continue;
       const glow = shieldGlow(s, now, s.id);
       const rise = shieldHeightElev(s.r);
       const pts = shieldCurve(s).map((g) => {
@@ -9281,7 +9506,62 @@ export class MapView {
           run: () => drawShieldPanel(this.ctx, a.base, b.base, (a.lift + b.lift) / 2, glow),
         });
       }
+      this.collectWeaveThread(items, s, pts, now);
     }
+    if (this.shieldBorn.size > 0) {
+      const up = new Set(walls.map((s) => s.id));
+      for (const id of this.shieldBorn.keys()) if (!up.has(id)) this.shieldBorn.delete(id);
+    }
+    for (const [id, until] of this.weaveUntil) if (until <= now) this.weaveUntil.delete(id);
+  }
+
+  /** A Weaver's fresh wall: the thread from its spindle to the curtain, and the Weaver held in its working pose. */
+  private collectWeaveThread(items: DrawItem[], s: EnergyShieldView, pts: { base: { x: number; y: number }; lift: number }[], now: number): void {
+    if (s.by == null) return;
+    let born = this.shieldBorn.get(s.id);
+    if (born == null) this.shieldBorn.set(s.id, (born = now));
+    const age = now - born;
+    if (age >= WEAVE_THREAD_MS) return;
+    const w = this.currById.get(s.by);
+    if (!w || w.hp <= 0 || w.wreck) return;
+    this.weaveUntil.set(w.id, born + WEAVE_THREAD_MS);
+    const mid = pts[pts.length >> 1]!;
+    const to = { x: mid.base.x, y: mid.base.y - mid.lift * 0.5 };
+    const foot = this.toScreen(w.x, w.y, this.elevAt(w.x, w.y));
+    const from = { x: foot.x, y: foot.y - WEAVER_SPINDLE_LIFT_PX };
+    items.push({
+      layer: STANDING_DRAW_LAYER + 0.5,
+      z: isoDepth(s.x, s.y),
+      run: () => drawWeaveThread(this.ctx, from, to, age, s.id),
+    });
+  }
+
+  /** The dome rides on its Siphon's drawn pose, so it never slides off the body between snapshots. */
+  private collectDome(items: DrawItem[], w: number, h: number, s: EnergyShieldView, now: number): void {
+    const host = s.fromId != null ? this.currById.get(s.fromId) : undefined;
+    const at = host ? this.lerpEnt(host) : { x: s.x, y: s.y };
+    const elev = this.elevAt(at.x, at.y);
+    const c = this.toScreen(at.x, at.y, elev);
+    const span = this.groundSpan(at.x, at.y, s.r) * 2;
+    if (c.x < -span || c.y < -span || c.x > w + span || c.y > h + span) return;
+    let rx = 0;
+    let ry = 0;
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      const p = this.toScreen(at.x + Math.cos(a) * s.r, at.y + Math.sin(a) * s.r, elev);
+      rx = Math.max(rx, Math.abs(p.x - c.x));
+      ry = Math.max(ry, Math.abs(p.y - c.y));
+    }
+    const lift = c.y - this.toScreen(at.x, at.y, elev + domeHeightElev(s.r)).y;
+    const glow = shieldGlow(s, now, s.id);
+    // Sorted at its front rim: what stands under it draws first and shows through.
+    const front = { x: at.x + s.r * Math.SQRT1_2, y: at.y + s.r * Math.SQRT1_2 };
+    items.push({
+      layer: STANDING_DRAW_LAYER,
+      z: isoDepth(front.x, front.y),
+      at: front,
+      run: () => drawDome(this.ctx, c, rx, ry, lift, glow),
+    });
   }
 
   private collectFires(items: DrawItem[], w: number, h: number): void {
@@ -10085,10 +10365,11 @@ export class MapView {
     return colorHex(p?.colorId ?? 0);
   }
 
-  private drawGhost(type: BuildingType, siteOk: typeof previewPlace = previewPlace): void {
-    const placed = this.placeSite(type, this.mouseX, this.mouseY);
+  /** The building as it would land: at the cursor, or at `at` with `ok` already decided. */
+  private drawGhost(type: BuildingType, siteOk: typeof previewPlace = previewPlace, at?: { tx: number; ty: number; ok: boolean }): void {
+    const placed = at ? { tx: at.tx, ty: at.ty, facing: 0 } : this.placeSite(type, this.mouseX, this.mouseY);
     const facing = placed.facing;
-    const ok = siteOk(this.curr, type, placed.tx, placed.ty, facing);
+    const ok = at ? at.ok : siteOk(this.curr, type, placed.tx, placed.ty, facing);
     const ts = this.ts();
     const site = buildingSite(type, placed.tx, placed.ty, facing, ts);
     const turned = isTurnedBuilding(site);
@@ -11117,6 +11398,82 @@ export class MapView {
     ctx.restore();
   }
 
+  /**
+   * The fence being sited: each clicked post, the next one at the cursor, and the beams they would
+   * hold, linked by the sim's own rule with the posts already standing. Then the bill.
+   */
+  private drawFenceGhost(): void {
+    const ts = this.ts();
+    const def = catalog("laserfence");
+    const onMap = this.mouseX >= 0;
+    const next = onMap ? this.fencePostAt(this.mouseX, this.mouseY) : null;
+    const nextOk = next ? this.fencePostOk(next) : false;
+    const centre = (p: { tx: number; ty: number }) => ({ x: (p.tx + def.tileW / 2) * ts, y: (p.ty + def.tileH / 2) * ts });
+    // New posts take ids below zero, so a link touching one is a beam this fence would add.
+    const sited = [...this.fencePosts, ...(next && nextOk ? [next] : [])].map((p, i) => ({ id: -1 - i, ownerId: this.curr.youPlayerId, ...centre(p) }));
+    const standing = this.curr.entities
+      .filter((e) => e.type === "laserfence" && e.ownerId === this.curr.youPlayerId && !e.wreck && !e.ruined && e.hp > 0)
+      .map((e) => ({ id: e.id, ownerId: e.ownerId, x: e.x, y: e.y }));
+    const all = [...standing, ...sited];
+    const byId = new Map(all.map((p) => [p.id, p]));
+    const layer = gunLayerFor("laserfence");
+    const heights = layer?.beamZ ?? [5.6, 11.6];
+    const now = performance.now();
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    for (const link of laserFenceLinks(all, LASER_FENCE_REACH_TILES * ts)) {
+      if (link.a >= 0 && link.b >= 0) continue;
+      const a = byId.get(link.a)!;
+      const b = byId.get(link.b)!;
+      const ea = this.elevAt(a.x, a.y);
+      const eb = this.elevAt(b.x, b.y);
+      const sa = this.toScreen(a.x, a.y, ea);
+      const sb = this.toScreen(b.x, b.y, eb);
+      heights.forEach((z, k) => {
+        const la = layer ? this.buildingArtLift({ type: "laserfence", x: a.x, y: a.y }, ea, z, layer) : z * 2;
+        const lb = layer ? this.buildingArtLift({ type: "laserfence", x: b.x, y: b.y }, eb, z, layer) : z * 2;
+        drawFenceBeam(ctx, { x: sa.x, y: sa.y - la }, { x: sb.x, y: sb.y - lb }, now, Math.abs(link.a * 7 + link.b * 3) + k);
+      });
+    }
+    ctx.restore();
+    const ghosts = [...this.fencePosts.map((p) => ({ ...p, ok: true })), ...(next ? [{ ...next, ok: nextOk }] : [])];
+    for (const g of ghosts.sort((u, v) => isoDepth(centre(u).x, centre(u).y) - isoDepth(centre(v).x, centre(v).y))) {
+      this.drawGhost("laserfence", previewPlace, g);
+    }
+    const tip = next ?? this.fencePosts[this.fencePosts.length - 1];
+    if (!tip) return;
+    const faction = this.curr.players.find((p) => p.playerId === this.curr.youPlayerId)?.faction ?? "xeno";
+    const each = costFor("laserfence", faction);
+    const count = this.fencePosts.length + (next && nextOk ? 1 : 0);
+    const bill = each * count;
+    // The hive pays in energy: each post's own, and the links the line adds, more the longer they reach.
+    const hive = this.curr.you.energy;
+    const reach = LASER_FENCE_REACH_TILES * ts;
+    const links = hive ? totalFenceLinkEnergy(all, reach, ts) - totalFenceLinkEnergy(standing, reach, ts) : 0;
+    const energy = count * energyOf("laserfence") + Math.max(0, links);
+    const s = this.toScreen(centre(tip).x, centre(tip).y);
+    ctx.save();
+    ctx.font = "11px 'Share Tech Mono', monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#140e0a";
+    ctx.fillStyle = (hive ? hive.cap - hive.used >= energy : this.curr.you.scrap >= bill) ? "#e8b84a" : "#ff5a4a";
+    const label = hive ? `${count} posts + links = ${energy} EN` : `${count} × ${each} = ${bill}`;
+    ctx.strokeText(label, s.x + 14, s.y - 14);
+    ctx.fillText(label, s.x + 14, s.y - 14);
+    ctx.font = "10px 'Share Tech Mono', monospace";
+    ctx.fillStyle = "#e8dcc4";
+    const hint =
+      this.fencePosts.length === 0
+        ? "Click the fence's start"
+        : "Click a post · Enter / Confirm placement to build · right-click takes one back";
+    ctx.strokeText(hint, s.x + 14, s.y + 2);
+    ctx.fillText(hint, s.x + 14, s.y + 2);
+    ctx.restore();
+  }
+
   /** The armed gate snaps over the two own wall sections nearest the pointer; off a pair it says what it wants. */
   private drawGateGhost(): void {
     const w = this.screenToWorld(this.mouseX, this.mouseY);
@@ -11144,7 +11501,13 @@ export class MapView {
   /** The line sited from the Defences tab, drawn until the yard finishes it. */
   private drawYardBuild(): void {
     const q = this.curr.you.lineQueue;
-    if (!q?.sites || q.sites.length === 0 || !isYardField(q.type)) return;
+    if (!q?.sites || q.sites.length === 0) return;
+    if (isFenceLine(q.type)) {
+      const ts = this.ts();
+      for (const s of q.sites) this.drawGhost("laserfence", previewPlace, { ...fencePostTile(ts, s.x, s.y), ok: true });
+      return;
+    }
+    if (!isYardField(q.type)) return;
     for (const s of q.sites) {
       if (q.type === "gate") {
         // Over the walls it replaces: the gate as it will stand, boom down.

@@ -2,11 +2,6 @@ import {
   ARK_CANNON_AT,
   ARK_CANNON_CELL,
   ARK_CANNON_RECHARGE_SECONDS,
-  ARK_DOME_DOWN_SECONDS,
-  ARK_DOME_HP,
-  ARK_DOME_QUIET_SECONDS,
-  ARK_DOME_RADIUS,
-  ARK_DOME_REGROW_PER_SEC,
   ARK_HULL_RADIUS,
   ARK_POD_AT,
   ARK_WASP_CALM_SECONDS,
@@ -16,7 +11,6 @@ import {
   catalog,
   isHiveArk,
   isTorpedoBody,
-  TICK_DT,
 } from "../catalog.js";
 import { isCrashing } from "./air.js";
 import { allies, destroyEntity, makeEntity, newAirState } from "./geo.js";
@@ -27,19 +21,17 @@ import { canSeeEntity } from "./vision.js";
 
 /**
  * The Hive Ark (catalog ARK_*). Its two plasma cannons fire in combat.ts (fireArk); this
- * phase keeps everything else: each cannon's energy cell, the dome that rides over the hull,
- * and the two Wasps on its pods, which lift by themselves when an enemy unit shows inside the
- * Ark's sight and come home when nothing is left. Nobody commands those Wasps (commands.ts
- * owned, ai.ts): the Ark does.
+ * phase keeps each cannon's energy cell and the two Wasps on its pods, which lift by themselves
+ * when an enemy unit shows inside the Ark's sight and come home when nothing is left. Nobody
+ * commands those Wasps (commands.ts owned): the Ark does. Its dome is an energy dome
+ * (catalog ARK_DOME) that sim/energy-shield.ts casts, carries, and recharges like a Siphon's.
  */
 
-/** A fresh Ark: both cells full, both Wasps on their pods, the dome about to rise. */
+/** A fresh Ark: both cells full, both Wasps on their pods. */
 export function newArkState(facing: number): ArkState {
   return {
     cannons: ARK_CANNON_AT.map(() => ({ facing, energy: ARK_CANNON_CELL, cooldown: 0, drained: false })),
     pods: [0, 1].map(() => ({ waspId: null, regrow: 0 })),
-    domeId: null,
-    domeDown: 0,
     calm: 0,
   };
 }
@@ -69,11 +61,9 @@ export function podWasp(state: MatchState, ark: Entity, i: number): Entity | nul
   return w && w.hp > 0 && !w.wreck && w.arkOf === ark.id && !isCrashing(w) ? w : null;
 }
 
-/** The dome standing over this Ark, if any. */
+/** The dome standing over this Ark, if any (cast and carried by sim/energy-shield.ts, ARK_DOME). */
 export function arkDome(state: MatchState, ark: Entity): EnergyShield | null {
-  const id = ark.ark?.domeId;
-  if (id == null) return null;
-  return state.energyShields?.find((s) => s.id === id && s.hp > 0) ?? null;
+  return state.energyShields?.find((s) => s.dome && s.fromId === ark.id && s.hp > 0) ?? null;
 }
 
 /** An enemy unit the Wasps may go after: alive, in the open, seen, and not under the water. */
@@ -132,45 +122,6 @@ function tickCannons(ark: ArkState, dt: number): void {
   }
 }
 
-/** The dome rides with the hull. Quiet a while, it mends; broken, it rises again full after ARK_DOME_DOWN_SECONDS. */
-function tickDome(state: MatchState, e: Entity, dt: number): void {
-  const ark = e.ark!;
-  const dome = arkDome(state, e);
-  if (dome) {
-    dome.x = e.x;
-    dome.y = e.y;
-    dome.life = ARK_DOME_DOWN_SECONDS;
-    const quiet = dome.hitTick == null || (state.tick - dome.hitTick) * TICK_DT >= ARK_DOME_QUIET_SECONDS;
-    if (quiet) dome.hp = Math.min(dome.hpMax, dome.hp + ARK_DOME_REGROW_PER_SEC * dt);
-    return;
-  }
-  if (ark.domeId != null) {
-    // Broken this tick (tickEnergyShields drops it once its points are gone).
-    ark.domeId = null;
-    ark.domeDown = ARK_DOME_DOWN_SECONDS;
-  }
-  if (ark.domeDown > 0) {
-    ark.domeDown = Math.max(0, ark.domeDown - dt);
-    if (ark.domeDown > 0) return;
-  }
-  const s: EnergyShield = {
-    id: state.nextId++,
-    ownerId: e.ownerId,
-    fromId: e.id,
-    x: e.x,
-    y: e.y,
-    angle: e.facing,
-    half: Math.PI,
-    r: ARK_DOME_RADIUS,
-    hp: ARK_DOME_HP,
-    hpMax: ARK_DOME_HP,
-    life: ARK_DOME_DOWN_SECONDS,
-    dome: true,
-  };
-  (state.energyShields ??= []).push(s);
-  ark.domeId = s.id;
-}
-
 /** The pods: a lost Wasp regrows; the Wasps lift on a threat, hunt, and come home once it is calm. */
 function tickPods(state: MatchState, e: Entity, dt: number): void {
   const ark = e.ark!;
@@ -216,7 +167,7 @@ function tickPods(state: MatchState, e: Entity, dt: number): void {
   });
 }
 
-/** Sim phase: every Hive Ark's cells, dome, and pods, and every Wasp whose Ark is gone. */
+/** Sim phase: every Hive Ark's cells and pods, and every Wasp whose Ark is gone. */
 export function tickHiveArks(state: MatchState, dt: number): void {
   const orphans: Entity[] = [];
   for (const e of state.entities.values()) {
@@ -227,7 +178,6 @@ export function tickHiveArks(state: MatchState, dt: number): void {
     }
     if (!isHiveArk(e.type) || !arkLive(e)) continue;
     tickCannons(e.ark!, dt);
-    tickDome(state, e, dt);
     tickPods(state, e, dt);
   }
   // Its pods are gone: a Wasp off a sunk Ark has nowhere to live and falls with it.

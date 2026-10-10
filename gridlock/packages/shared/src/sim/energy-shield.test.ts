@@ -1,15 +1,16 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
-import { TICK_DT, catalog, energyShieldOf, isCivilianType, secondsToTicks } from "../catalog.js";
+import { TICK_DT, catalog, energyDomeOf, energyShieldOf, isCivilianType, secondsToTicks } from "../catalog.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { tickProjectiles } from "./combat.js";
-import { holdShieldLines, shieldSweep, shieldWatch, tickEnergyShields } from "./energy-shield.js";
+import { domeCharge, holdShieldLines, shieldSweep, shieldWatch, tickEnergyShields } from "./energy-shield.js";
 import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
-import type { Entity, MatchState, Projectile } from "./types.js";
+import { punch } from "./thrall.js";
+import type { EnergyShield, Entity, MatchState, Projectile } from "./types.js";
 
 /** A is Alliance, B the Xenomorphs, on bare flat ground. */
 function field(): MatchState {
@@ -40,6 +41,8 @@ function standoff(): { state: MatchState; b: Entity; tiger: Entity } {
   const b = makeEntity(state, "behemoth", "B", tileCenter(100, ts), tileCenter(120, ts));
   const tiger = makeEntity(state, "ss3", "A", b.x + 32 * ts, b.y);
   b.attackTarget = tiger.id;
+  // Held, so it stands and fights instead of lunging at the tank.
+  b.holdPosition = true;
   return { state, b, tiger };
 }
 
@@ -181,6 +184,150 @@ describe("hive energy wall", () => {
     assert.ok(hit);
     assert.ok(Math.abs(hit.x - (b.x + w.r)) < 1e-6);
     assert.equal(shieldSweep(state, "B", b.x + 100, b.y, b.x - 100, b.y), null, "not against its own side");
+  });
+});
+
+/** A B Siphon alone on the field, its dome cast. */
+function siphonUp(): { state: MatchState; s: Entity; dome: EnergyShield } {
+  const state = field();
+  const ts = state.tileSize;
+  const s = makeEntity(state, "siphon", "B", tileCenter(100, ts), tileCenter(120, ts));
+  tickEnergyShields(state, TICK_DT);
+  const dome = state.energyShields!.find((w) => w.fromId === s.id)!;
+  assert.ok(dome, "dome up");
+  return { state, s, dome };
+}
+
+function lobbed(state: MatchState, ownerId: string, x: number, y: number, damage: number): Projectile {
+  const p = round(state, ownerId, x, y, 0, damage);
+  p.flight = "mortar";
+  p.life = 0.001;
+  p.flightTime = 1;
+  p.apex = 40;
+  p.landX = x;
+  p.landY = y;
+  return p;
+}
+
+describe("Siphon energy dome", () => {
+  it("is cast with nothing to fight, covers the whole circle, and walks with the Siphon", () => {
+    const { state, s, dome } = siphonUp();
+    const def = energyDomeOf("siphon")!;
+    assert.equal(dome.dome, true);
+    assert.equal(dome.r, def.radiusTiles * state.tileSize);
+    assert.equal(dome.hp, def.energy);
+    s.x += 40;
+    s.y -= 12;
+    tickEnergyShields(state, TICK_DT);
+    assert.equal(state.energyShields!.length, 1, "still the one dome");
+    assert.deepEqual({ x: dome.x, y: dome.y }, { x: s.x, y: s.y }, "the dome followed");
+    const me = snapshotFor(state, "B");
+    assert.equal(me.shields?.[0]?.dome, true);
+    assert.equal(me.shields?.[0]?.fromId, s.id);
+    assert.equal(me.entities.find((e) => e.id === s.id)?.energy, 1, "full energy shows on the bar");
+  });
+
+  it("stops enemy rounds from every side and drains the energy; rounds from inside go out", () => {
+    const { state, s, dome } = siphonUp();
+    const mate = makeEntity(state, "rifleman", "B", s.x - dome.r + 10, s.y);
+    for (const [dx, vx] of [
+      [dome.r + 4, -1200],
+      [-(dome.r + 4), 1200],
+    ] as const) {
+      const p = round(state, "A", s.x + dx, s.y, vx, 50);
+      tickProjectiles(state, TICK_DT);
+      assert.ok(!state.projectiles.includes(p), "the enemy round is spent on the dome");
+    }
+    assert.equal(dome.hp, dome.hpMax - 100);
+    assert.equal(mate.hp, mate.hpMax, "the soldier under it untouched");
+    assert.equal(s.hp, s.hpMax);
+    const own = round(state, "B", s.x + dome.r - 4, s.y, 1200, 50);
+    tickProjectiles(state, TICK_DT);
+    assert.ok(state.projectiles.includes(own), "its own side shoots out");
+    const foeIn = makeEntity(state, "rifleman", "A", s.x + 40, s.y + 20);
+    const out = round(state, "A", foeIn.x + 8, foeIn.y, 1200, 50);
+    out.ignoreId = out.fromId = foeIn.id;
+    tickProjectiles(state, TICK_DT);
+    assert.ok(state.projectiles.includes(out), "an enemy already inside is not stopped going out");
+    assert.equal(dome.hp, dome.hpMax - 100);
+  });
+
+  it("catches shells lobbed onto it, and a burst outside does not reach under it", () => {
+    const { state, s, dome } = siphonUp();
+    const mate = makeEntity(state, "rifleman", "B", s.x + dome.r - 6, s.y);
+    const shell = lobbed(state, "A", s.x + 10, s.y, 70);
+    tickProjectiles(state, TICK_DT);
+    assert.ok(!state.projectiles.includes(shell));
+    assert.equal(dome.hp, dome.hpMax - 70, "the shell burst on the skin");
+    assert.equal(s.hp, s.hpMax);
+    lobbed(state, "A", s.x + dome.r + 8, s.y, 70);
+    tickProjectiles(state, TICK_DT);
+    assert.equal(mate.hp, mate.hpMax, "the near burst outside spared the soldier under it");
+    assert.equal(dome.hp, dome.hpMax - 140, "the dome paid for it");
+  });
+
+  it("stops rounds dropping from overhead onto it", () => {
+    const { state, s, dome } = siphonUp();
+    const p = round(state, "A", s.x + 5, s.y, 300, 40);
+    p.fromAbove = true;
+    tickProjectiles(state, TICK_DT);
+    assert.ok(!state.projectiles.includes(p));
+    assert.equal(dome.hp, dome.hpMax - 40);
+  });
+
+  it("turns a blow at arm's reach from outside", () => {
+    const { state, s, dome } = siphonUp();
+    const mate = makeEntity(state, "rifleman", "B", s.x + dome.r - 4, s.y);
+    const thrall = makeEntity(state, "thrall", "A", s.x + dome.r + 8, s.y);
+    punch(state, thrall, mate);
+    assert.equal(mate.hp, mate.hpMax);
+    assert.ok(dome.hp < dome.hpMax);
+  });
+
+  it("drained, it is gone until the energy fills back, then cast again at full", () => {
+    const { state, s, dome } = siphonUp();
+    const def = energyDomeOf("siphon")!;
+    dome.hp = 0;
+    tickEnergyShields(state, TICK_DT);
+    assert.equal(state.energyShields!.length, 0, "gone");
+    const p = round(state, "A", s.x + dome.r + 4, s.y, -1200, 50);
+    for (let i = 0; i < 4 && state.projectiles.includes(p); i++) tickProjectiles(state, TICK_DT);
+    assert.ok(s.hp < s.hpMax, "rounds reach the Siphon now");
+    state.tick += Math.floor(secondsToTicks(def.rechargeSeconds) / 2);
+    const half = domeCharge(state, s)!;
+    assert.ok(half > 0.4 && half < 0.6, `recharging (${half})`);
+    tickEnergyShields(state, TICK_DT);
+    assert.equal(state.energyShields!.length, 0, "not before it is full");
+    state.tick += secondsToTicks(def.rechargeSeconds);
+    tickEnergyShields(state, TICK_DT);
+    assert.equal(state.energyShields!.length, 1);
+    assert.equal(state.energyShields![0]!.hp, def.energy);
+  });
+
+  it("regains energy while it stands, and keeps what it had when lowered undrained", () => {
+    const { state, s, dome } = siphonUp();
+    dome.hp = 300;
+    tickEnergyShields(state, 1);
+    assert.equal(dome.hp, 300 + energyDomeOf("siphon")!.regenPerSecond);
+    s.shutdown = true;
+    tickEnergyShields(state, TICK_DT);
+    assert.equal(state.energyShields!.length, 0, "lowered while shut down");
+    s.shutdown = undefined;
+    tickEnergyShields(state, TICK_DT);
+    assert.equal(state.energyShields![0]!.hp, dome.hp, "cast again with what was left");
+  });
+
+  it("no enemy walks in; one already under it walks out", () => {
+    const { state, s, dome } = siphonUp();
+    const foe = makeEntity(state, "rifleman", "A", s.x + dome.r + 3, s.y);
+    const inside = makeEntity(state, "rifleman", "A", s.x + dome.r - 3, s.y + 20);
+    const watch = shieldWatch(state);
+    const from = { x: foe.x, y: foe.y };
+    foe.x -= 8;
+    inside.x += 8;
+    holdShieldLines(state, watch);
+    assert.deepEqual({ x: foe.x, y: foe.y }, from, "held outside");
+    assert.equal(inside.x, s.x + dome.r + 5, "walked out");
   });
 });
 

@@ -1,6 +1,6 @@
 /**
  * Hive energy walls: a curved curtain of green light standing where a
- * Behemoth, Drone, or Lancer raised it. It dims as it loses points and flares
+ * Behemoth, Drone, or Lancer raised it, or a Weaver threw it in front of a friend. It dims as it loses points and flares
  * when a round strikes it. Drawing only; the sim decides what it stops.
  */
 import { ISO_ELEVATION, type EnergyShieldView } from "@gridlock/shared";
@@ -33,6 +33,48 @@ export function shieldGlow(s: Pick<EnergyShieldView, "hp" | "hpMax" | "hit">, no
   const flicker = left < 0.25 ? 0.65 + 0.35 * Math.abs(Math.sin(now * 0.03 + id * 1.7)) : 1;
   const base = (0.35 + 0.65 * left) * shimmer * flicker;
   return Math.min(1, s.hit ? base + 0.45 : base);
+}
+
+/** How long the nanite thread from a Weaver to the wall it just threw shows, ms. */
+export const WEAVE_THREAD_MS = 450;
+
+/**
+ * The thread a Weaver casts to a wall it throws: a wavering green strand from its spindle to the
+ * curtain's middle, fading over WEAVE_THREAD_MS. `age` is ms since the wall first showed.
+ */
+export function drawWeaveThread(
+  ctx: CanvasRenderingContext2D,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  age: number,
+  id: number,
+): void {
+  const k = 1 - age / WEAVE_THREAD_MS;
+  if (k <= 0) return;
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len;
+  const ny = dx / len;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.lineCap = "round";
+  for (const [width, alpha] of [
+    [3, 0.25],
+    [1.2, 0.85],
+  ] as const) {
+    ctx.lineWidth = width;
+    ctx.strokeStyle = `rgba(150, 255, 205, ${alpha * k})`;
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    for (let i = 1; i <= 8; i++) {
+      const u = i / 8;
+      const wave = Math.sin(u * Math.PI) * Math.sin(u * 9 + age * 0.03 + id) * 2.5;
+      ctx.lineTo(from.x + dx * u + nx * wave, from.y + dy * u + ny * wave);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 /**
@@ -71,6 +113,58 @@ export function drawShieldPanel(
   ctx.beginPath();
   ctx.moveTo(a.x, a.y);
   ctx.lineTo(b.x, b.y);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** A Siphon's dome rises this far for each world px of radius: lower than a wall, it spans much more. */
+const DOME_HEIGHT_PER_R = 0.45;
+
+/** Elevation units a dome's crown rises, from its radius. */
+export function domeHeightElev(r: number): number {
+  return (r * DOME_HEIGHT_PER_R) / ISO_ELEVATION;
+}
+
+/**
+ * A Siphon's dome: a glass bubble of green light over the ground ellipse (centre `c`, half axes
+ * `rx`, `ry` on screen), its crown `lift` screen px up. Drawn over what stands under it.
+ */
+export function drawDome(
+  ctx: CanvasRenderingContext2D,
+  c: { x: number; y: number },
+  rx: number,
+  ry: number,
+  lift: number,
+  glow: number,
+): void {
+  if (glow <= 0 || rx <= 0 || ry <= 0) return;
+  const top = ry + lift;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.beginPath();
+  ctx.ellipse(c.x, c.y, rx, ry, 0, 0, Math.PI);
+  ctx.ellipse(c.x, c.y, rx, top, 0, Math.PI, Math.PI * 2);
+  ctx.closePath();
+  const g = ctx.createRadialGradient(c.x, c.y - lift * 0.45, Math.max(1, rx * 0.2), c.x, c.y - lift * 0.3, rx * 1.05);
+  g.addColorStop(0, `rgba(90, 240, 165, ${0.05 * glow})`);
+  g.addColorStop(0.7, `rgba(90, 240, 165, ${0.12 * glow})`);
+  g.addColorStop(1, `rgba(160, 255, 210, ${0.32 * glow})`);
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.lineWidth = 1.4;
+  ctx.strokeStyle = `rgba(200, 255, 228, ${0.6 * glow})`;
+  ctx.stroke();
+  // Where it meets the ground, all the way round.
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = `rgba(130, 255, 196, ${0.45 * glow})`;
+  ctx.beginPath();
+  ctx.ellipse(c.x, c.y, rx, ry, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  // A soft highlight on the crown.
+  ctx.strokeStyle = `rgba(230, 255, 240, ${0.25 * glow})`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.ellipse(c.x, c.y, rx * 0.7, top * 0.82, 0, Math.PI * 1.15, Math.PI * 1.55);
   ctx.stroke();
   ctx.restore();
 }

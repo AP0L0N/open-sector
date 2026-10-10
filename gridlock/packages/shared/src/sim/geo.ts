@@ -31,6 +31,7 @@ import {
   isTorpedoBody,
   isTransportType,
   wadesOf,
+  fightsWadingOf,
   rocketAmmoOf,
   minePacksOf,
   rocketsOf,
@@ -307,6 +308,14 @@ export function unitInWater(
   // A Jump Jet over a river is flying, not swimming.
   if (e.jet && e.jet.alt > 0) return false;
   return isWater(state, worldToTile(e.x, state.tileSize), worldToTile(e.y, state.tileSize));
+}
+
+/** In the water and out of the fight: every swimmer and wader but the ones that fight wading (the Juggernaut). */
+export function waterSilenced(
+  state: MatchState,
+  e: { type: EntityType; x: number; y: number; garrisonedIn?: number | null; jet?: JetState },
+): boolean {
+  return unitInWater(state, e) && !fightsWadingOf(e.type);
 }
 
 export function footprint(

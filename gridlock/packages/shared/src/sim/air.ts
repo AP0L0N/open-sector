@@ -80,6 +80,8 @@ import {
   dropsTorpedo,
   isTorpedoBody,
   radarLaidOf,
+  rocketRackFor,
+  rocketsOf,
   airFirstOf,
   antiAirGunOf,
   STUKA_MG,
@@ -119,11 +121,20 @@ import {
   HIVE_GUN_BURST_SECONDS,
   HIVE_SCOURGE_STANDOFF_TILES,
   HIVE_WASP_STANDOFF_TILES,
+  HIVE_BOMB_ENERGY,
+  SMALL_ARMS_SPEED,
+  WASP_BOLT,
+  WASP_BURST_ARC_DEG,
+  WASP_BURST_BOLTS,
+  WASP_BURST_COOLDOWN,
+  WASP_BURST_SCATTER_TILES,
+  WASP_BURST_TILES,
   staysAloft,
 } from "../catalog.js";
 import { hasCargo, loseRiders, payloadOf, planeRiders, releaseCanister, startJumping, tickDoor } from "./airdrop.js";
 import type { ImpactView } from "../protocol.js";
 import { aimAngle } from "./ballistics.js";
+import { drawPlasma, plasmaShots } from "./hive-ammo.js";
 import { takeDamage } from "./crits.js";
 import { coverStrike } from "./field.js";
 import { aimHeight, airAlt, entityHeight, weaponRangeWorld, worldTileHeight } from "./elevation.js";
@@ -140,6 +151,7 @@ import { hideScout } from "./scout.js";
 import { canSeeEntity } from "./vision.js";
 import { blastWrecks, toWreck } from "./wreck.js";
 import { blastClutter } from "./clutter.js";
+import { catchLanding, domeOver, domeShelters, soakShield } from "./energy-shield.js";
 import type { AirState, Entity, MatchState, Order, Projectile } from "./types.js";
 
 /** Runway heading of an unturned Airfield, world radians: the strip runs east–west. A turned one adds its facing. */
@@ -172,6 +184,8 @@ export function isCrashing(e: { air?: { phase?: string } | null; jet?: { crash?:
 export function reachesAircraft(e: Entity): boolean {
   // The Battle Ship reaches a plane with its CIWS mounts, not its main guns.
   if (e.type === "walker" || radarLaidOf(e.type) || isBattleship(e.type) || antiAirGunOf(e.type)) return true;
+  // A launcher set to Air attacks lays on planes and nothing else.
+  if (rocketsOf(e.type) && rocketRackFor(e).airOnly) return true;
   const gun = infantryGunFor(e);
   return !!gun && gun.id !== "mortar";
 }
@@ -1319,6 +1333,8 @@ export function stepBomb(state: MatchState, p: Projectile, dt: number): boolean 
     p.y = p.landY;
   }
   p.z = 0;
+  // An enemy dome under the bomb takes it on its skin.
+  if (catchLanding(state, p)) return false;
   detonateBomb(state, p);
   return false;
 }
@@ -1333,6 +1349,7 @@ function detonateBomb(state: MatchState, p: Projectile): void {
   // A Xenomorph bomb was laid at its lighter damage: the whole burst scales with it.
   const mul = p.damage / BOMB_DAMAGE;
   let killed = false;
+  const soaked = new Set<number>();
   for (const e of [...state.entities.values()]) {
     if (e.hp <= 0 || e.wreck || e.garrisonedIn != null) continue;
     if (isLowFieldWork(e.type)) continue;
@@ -1342,6 +1359,7 @@ function detonateBomb(state: MatchState, p: Projectile): void {
     if (d > reach) continue;
     const friendly = e.ownerId !== "" && allies(state, p.ownerId, e.ownerId);
     if (friendly && !p.harmAllies) continue;
+    if (domeShelters(state, p.ownerId, p.x, p.y, e, p.damage, soaked)) continue;
     const fall = mortarFalloff(d, reach);
     let dmg: number;
     if (e.kind === "building") {
@@ -1783,8 +1801,10 @@ function tickHover(state: MatchState, e: Entity, dt: number): void {
     hoverTo(state, e, strike.x, strike.y, dt);
     hoverAlt(a, OVERSEER_HOVER_ALT, dt);
     const d = Math.hypot(strike.x - e.x, strike.y - e.y);
-    if (d <= OVERSEER_FIRE_TILES * ts && a.alt <= OVERSEER_HOVER_ALT + 1 && e.cooldown <= 0) {
+    // The Overseer's pulse draws on its cell; drained, it hangs on and waits for a charge.
+    if (d <= OVERSEER_FIRE_TILES * ts && a.alt <= OVERSEER_HOVER_ALT + 1 && e.cooldown <= 0 && plasmaShots(e) >= 1) {
       firePulse(state, e, strike.x, strike.y, strike.target, strike.forced);
+      drawPlasma(e);
       if (o?.once) e.order = null;
     }
     return;
@@ -1911,7 +1931,8 @@ function holdOff(state: MatchState, e: Entity, tx: number, ty: number, standoff:
 
 /**
  * A Wasp on station: hang HIVE_WASP_STANDOFF_TILES off the target, at its height when it is a plane,
- * low over the ground otherwise, and lay a barrage whenever the cannon are clear and it is on the nose.
+ * low over the ground otherwise, and loose an energy burst whenever the emitters are clear, the
+ * target is on the nose and in reach, and the cell holds a charge.
  */
 function waspStation(state: MatchState, e: Entity, strike: HoverStrike, dt: number): void {
   const a = e.air!;
@@ -1920,9 +1941,70 @@ function waspStation(state: MatchState, e: Entity, strike: HoverStrike, dt: numb
   const { d, off } = holdOff(state, e, strike.x, strike.y, HIVE_WASP_STANDOFF_TILES * state.tileSize, dt);
   const goal = aloft && t ? Math.max(AIR_STRAFE_ALT, entityHeight(state, t) + airAlt(t) - worldTileHeight(state, e.x, e.y)) : AIR_STRAFE_ALT;
   hoverAlt(a, goal, dt);
-  if (!barrageReady(state, e, t, d, off)) return;
-  fireBarrage(state, e, strike.x, strike.y, t, strike.forced);
+  if (e.cooldown > 0 || plasmaShots(e) < 1) return;
+  if (d > WASP_BURST_TILES * state.tileSize || d < e.radius * 2) return;
+  if (off > (WASP_BURST_ARC_DEG * Math.PI) / 180) return;
+  if (aloft && t && Math.abs(airAlt(t) - a.alt) > AIR_STRAFE_ALT) return;
+  fireWaspBurst(state, e, strike.x, strike.y, t, strike.forced);
   if (e.order?.once) e.order = null;
+}
+
+/**
+ * One Wasp energy burst: WASP_BURST_BOLTS bolts from the two wing emitters in turn, each laid on
+ * its own random spot within WASP_BURST_SCATTER_TILES of (tx, ty). On the ground each bolt comes
+ * down on its spot and meets a hull's roof (fromAbove); at a plane the bolts run at its height.
+ * A forced burst hits your own side too. Draws one charge from the cell.
+ */
+function fireWaspBurst(state: MatchState, e: Entity, tx: number, ty: number, target: Entity | undefined, forced: boolean): void {
+  const a = e.air!;
+  const ts = state.tileSize;
+  const speed = SMALL_ARMS_SPEED;
+  const aloft = !!target && isAirborne(target);
+  const ux = Math.cos(e.facing);
+  const uy = Math.sin(e.facing);
+  const z0 = worldTileHeight(state, e.x, e.y) + a.alt;
+  const zAir = aloft && target ? entityHeight(state, target) + airAlt(target) : 0;
+  const scatter = WASP_BURST_SCATTER_TILES * ts;
+  const maxX = state.width * ts - 1;
+  const maxY = state.height * ts - 1;
+  for (let k = 0; k < WASP_BURST_BOLTS; k++) {
+    const gap = (k % 2 === 0 ? 1 : -1) * e.radius * FW190_WING_GUN_OFFSET;
+    const mx = e.x + ux * (e.radius + 2) - uy * gap;
+    const my = e.y + uy * (e.radius + 2) + ux * gap;
+    const r = scatter * Math.sqrt(nextRand(state));
+    const ang = nextRand(state) * Math.PI * 2;
+    const lx = Math.max(0, Math.min(maxX, tx + Math.cos(ang) * r));
+    const ly = Math.max(0, Math.min(maxY, ty + Math.sin(ang) * r));
+    const run = Math.max(1, Math.hypot(lx - mx, ly - my));
+    const dir = Math.atan2(ly - my, lx - mx);
+    const zEnd = aloft ? zAir : worldTileHeight(state, lx, ly);
+    state.projectiles.push({
+      id: state.nextId++,
+      ownerId: e.ownerId,
+      team: playerTeam(state, e.ownerId),
+      x: mx,
+      y: my,
+      vx: Math.cos(dir) * speed,
+      vy: Math.sin(dir) * speed,
+      damage: factionDamage(e.type, WASP_BOLT.damage),
+      penetration: WASP_BOLT.penetration,
+      caliber: WASP_BOLT.caliber,
+      life: run / speed,
+      ignoreId: e.id,
+      fromId: e.id,
+      bounced: false,
+      shell: null,
+      z: z0,
+      vz: -((z0 - zEnd) / run) * speed,
+      fromAbove: aloft ? undefined : true,
+      antiAir: aloft ? true : undefined,
+      landX: aloft ? undefined : lx,
+      landY: aloft ? undefined : ly,
+      harmAllies: forced ? true : undefined,
+    });
+  }
+  drawPlasma(e);
+  e.cooldown = WASP_BURST_COOLDOWN;
 }
 
 /**
@@ -1935,13 +2017,16 @@ function scourgeStation(state: MatchState, e: Entity, strike: HoverStrike, dt: n
   const t = strike.target;
   const { d, off } = holdOff(state, e, strike.x, strike.y, HIVE_SCOURGE_STANDOFF_TILES * ts, dt);
   hoverAlt(a, AIR_STRAFE_ALT, dt);
-  if (a.bombs > 0 && a.rearm <= 0 && d <= BOMB_RELEASE_TILES * ts && !(t && isAirborne(t))) {
+  // Bomb and guns draw on one cell: a bomb takes HIVE_BOMB_ENERGY, a gun burst one, and the guns leave a bomb in it.
+  if (a.bombs > 0 && a.rearm <= 0 && plasmaShots(e) >= HIVE_BOMB_ENERGY && d <= BOMB_RELEASE_TILES * ts && !(t && isAirborne(t))) {
     dropBomb(state, e, strike.x, strike.y, strike.forced);
+    drawPlasma(e, HIVE_BOMB_ENERGY);
     a.rearm = HIVE_BOMB_SECONDS;
     if (e.order?.once) e.order = null;
   }
-  if (t && e.cooldown <= 0 && hasRounds(e) && gunsHurt(e, t) && d <= STUKA_MG.rangeTiles * ts && off <= (STUKA_MG.arcDeg * Math.PI) / 180) {
+  if (t && e.cooldown <= 0 && hasRounds(e) && plasmaShots(e) >= HIVE_BOMB_ENERGY + 1 && gunsHurt(e, t) && d <= STUKA_MG.rangeTiles * ts && off <= (STUKA_MG.arcDeg * Math.PI) / 180) {
     fireWingGuns(state, e, t, d);
+    drawPlasma(e);
     e.cooldown = HIVE_GUN_BURST_SECONDS;
   }
 }
@@ -2050,11 +2135,18 @@ function firePulse(state: MatchState, e: Entity, x: number, y: number, target: E
   const spot = OVERSEER_BEAM_TILES * ts;
   let struck = false;
   let killed = false;
-  for (const o of state.entities.values()) {
+  const dome = domeOver(state, e.ownerId, x, y);
+  if (dome) {
+    soakShield(state, dome, base);
+    target = undefined;
+  }
+  const soaked = new Set<number>(dome ? [dome.id] : []);
+  for (const o of dome ? [] : state.entities.values()) {
     if (o.kind !== "unit" || o.id === target?.id || o.hp <= 0 || o.wreck || o.garrisonedIn != null) continue;
     if (!isInfantryType(o.type) || o.drone || isAirborne(o)) continue;
     if (Math.hypot(o.x - x, o.y - y) > spot + o.radius) continue;
     if (!forced && allies(state, e.ownerId, o.ownerId)) continue;
+    if (domeShelters(state, e.ownerId, x, y, o, base, soaked)) continue;
     coverStrike(o, roll(), state.tick, true);
     struck = true;
     if (o.hp <= 0) killed = true;

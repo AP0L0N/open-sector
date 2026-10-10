@@ -42,8 +42,11 @@ import {
   isNavalType,
   radarLaidOf,
   launcherOnlyOf,
+  rocketRackFor,
+  rocketsOf,
   LOW_POWER_SIGHT_MUL,
   sightBonusTilesOf,
+  neverSurfacesOf,
   submergesOf,
   type EntityType,
 } from "../catalog.js";
@@ -173,7 +176,8 @@ export function droneSightExtra(e: { type: EntityType; air?: { alt: number } }):
  * Sight on top of the catalog that depends on how the unit sits right now: a drone's
  * height, a plane in the air (AIRCRAFT_FLYING_SIGHT_BONUS, the Horten VII's
  * HORTEN_FLYING_SIGHT_BONUS), or a submarine below with
- * only its periscope up (SUB_SUBMERGED_SIGHT_TILES). Negative for a diving submarine.
+ * only its periscope up (SUB_SUBMERGED_SIGHT_TILES). Negative for a diving submarine. A Lurker
+ * never surfaces: its catalog sight is already its sight below.
  */
 export function liveSightExtra(e: {
   type: EntityType;
@@ -181,7 +185,7 @@ export function liveSightExtra(e: {
   dive?: { down?: boolean; air?: number };
   submerged?: boolean;
 }): number {
-  if (submergesOf(e.type) && (e.dive?.down || e.submerged)) {
+  if (submergesOf(e.type) && !neverSurfacesOf(e.type) && (e.dive?.down || e.submerged)) {
     return Math.min(0, SUB_SUBMERGED_SIGHT_TILES - catalog(e.type).sightTiles - sightBonusTilesOf(e.type));
   }
   if (isAircraftType(e.type) && airAlt(e) > 0) {
@@ -306,7 +310,8 @@ export function weaponRangeWorld(state: MatchState, e: Entity): number {
   const inHouse = !!host && host.type !== "supply";
   if (inHouse && host.garrisonHide) return GARRISON_HIDE_SIGHT * state.tileSize;
   const gun = infantryGunFor(e);
-  const base = gun?.rangeTiles ?? catalog(e.type).rangeTiles;
+  // A rack with its own reach (the Mawcaster's Air attacks) sets it.
+  const base = gun?.rangeTiles ?? (rocketsOf(e.type) ? rocketRackFor(e).rangeTiles : undefined) ?? catalog(e.type).rangeTiles;
   if (base <= 0) return 0;
   // A blade reaches an arm, on a hill or off it.
   if (meleeOf(e.type)) return base * state.tileSize;

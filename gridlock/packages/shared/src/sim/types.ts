@@ -424,6 +424,8 @@ export interface Entity {
   rocketSalvo?: number;
   /** Player switched the pods off. Missing means on. */
   rocketsOff?: boolean;
+  /** Set to Air attacks: fires its air rack (rocketRackFor) and lays only on what flies. Missing means Ground attacks. */
+  airMode?: boolean;
   /** CIWS or RAM set to Max range (RADAR_LONG_RANGE_MUL). Missing means normal reach. */
   longRange?: boolean;
   /** Building whose owner uses more power than they provide: its lamps are dark and a CIWS or RAM is silent. Set each tick. */
@@ -576,6 +578,11 @@ export interface Entity {
    * Cyborg Commander takes him over.
    */
   shutdown?: true;
+  /**
+   * Xenomorph unit or defence the hive has no energy for (sim/hive-energy.ts): a unit is also
+   * `shutdown`, a building `unpowered`. It wakes by itself once the hive has room for it.
+   */
+  hiveOffline?: true;
   /** Shut-down Cyborg only: the Cyborg Commander taking him over, and ticks of uplink so far. */
   takeover?: { by: number; ticks: number };
   /** Cyborg only: fires on what his side's thermal and APS read, seen or not, inside his reach. */
@@ -590,9 +597,14 @@ export interface Entity {
   dormant?: true;
   /** Sim Unit II: the tick his blink drive is charged again. Unset or past means ready. */
   blinkReady?: number;
-  /** Plasma cannon: shots of energy left in its cell (sim/hive-ammo.ts), fractional while it regrows. Unset means full. */
+  /**
+   * Plasma cannon: shots of energy left in its cell (sim/hive-ammo.ts), fractional while it regrows.
+   * Siphon: the energy kept while its dome is lowered without being drained. Unset means full.
+   */
   energy?: number;
-  /** Behemoth, Drone, Lancer: the tick it may raise its next energy wall (sim/energy-shield.ts). Unset means ready. */
+  /** Its cell ran dry: it holds fire until the cell regrows PLASMA_RESUME_SHARE (sim/hive-ammo.ts). */
+  energyDrained?: true;
+  /** Behemoth, Drone, Lancer, Weaver: the tick it may raise its next energy wall (sim/energy-shield.ts, sim/weaver.ts); Siphon: the tick its drained dome is cast again. Unset means ready. */
   shieldReady?: number;
   /** Behemoth in the air on a lunge (sim/lunge.ts): from, to, and the ticks it left and lands. */
   lunge?: { x0: number; y0: number; x1: number; y1: number; t0: number; t1: number };
@@ -602,8 +614,6 @@ export interface Entity {
   lungeRing?: number;
   /** Juggernaut running at what it is going for (sim/juggernaut.ts). */
   sprint?: true;
-  /** Armored hull coated by a Spitter (sim/acid.ts): mm off every face, and the tick the coat dries. */
-  acid?: { mm: number; until: number };
   /** Shade (sim/shade.ts): the tick its skin settles again after a shot or a hurt; HP last tick. */
   revealUntil?: number;
   shadeHpSeen?: number;
@@ -625,6 +635,8 @@ export interface Entity {
   field?: number;
   /** Cyborg Commander only: weapons power diverted to the field. The laser is dark; he does not fire. */
   fieldDivert?: true;
+  /** Behemoth only: Light Pulse, quick light bolts. Unset is High Pulse. */
+  lightPulse?: true;
   /** Cyborg Commander only: tick of the last hit on him, field or body. The recharge waits on it. */
   fieldHitTick?: number;
   /** Cyborg Commander only: the laser beam he is cutting with now. */
@@ -654,7 +666,7 @@ export interface Entity {
   asw?: AswDeck;
   /** ASW helicopter only. */
   heli?: HeliState;
-  /** Hive Ark only: its cannons' cells, its Wasp pods, and its dome (sim/hive-ark.ts). */
+  /** Hive Ark only: its cannons' cells and its Wasp pods (sim/hive-ark.ts). Its dome is an energy shield. */
   ark?: ArkState;
   /** A Wasp off a Hive Ark's pod: the Ark it flies from. It takes no orders from anyone. */
   arkOf?: number;
@@ -730,10 +742,6 @@ export interface ArkPod {
 export interface ArkState {
   cannons: ArkCannon[];
   pods: ArkPod[];
-  /** The dome standing in `MatchState.energyShields`, or null while it is down. */
-  domeId: number | null;
-  /** Seconds until a broken dome rises again. */
-  domeDown: number;
   /** Seconds since no enemy unit was in sight. The Wasps come home past ARK_WASP_CALM_SECONDS. */
   calm: number;
 }
@@ -780,10 +788,6 @@ export interface Projectile {
    * Set by the scoped rifle and the PTRD. Omitted for every other gun.
    */
   hpFraction?: number;
-  /** A Spitter's glob: coats an armored hull (sim/acid.ts) and never ricochets. */
-  acid?: boolean;
-  /** A Siphon's bolt: what it takes off an enemy unit mends the Siphon. */
-  drain?: boolean;
   /** Elevation units at the current point. Omit in tests for ground-level. */
   z?: number;
   /** Elevation units per second along the shot. Direct fire only. */
@@ -822,6 +826,8 @@ export interface Projectile {
   aloft?: boolean;
   /** Rocket only: the carrier type whose rack (rocketRackOf) sets its splash and armor dent. */
   launcher?: EntityType;
+  /** Rocket only: left the carrier's air rack (airRackOf), not its own. */
+  airRack?: true;
   /** Lobbed rocket only: height it left the tubes at. `apex` rides on top of the line from here to the ground. */
   launchZ?: number;
   /** Rocket only: CIWS mounts that already fired a burst at it. An ordinary rocket gets one try. */
@@ -849,13 +855,16 @@ export interface Projectile {
 /** Lasting smoke screen from a 75mm smoke shell. */
 /**
  * A hive energy wall (sim/energy-shield.ts): an arc of radius `r` about (x, y),
- * `half` radians either side of `angle`. It stays where it was raised.
+ * `half` radians either side of `angle`. It stays where it was raised. A dome (`dome`)
+ * is the full circle, rides on the unit that holds it, and has no life limit.
  */
 export interface EnergyShield {
   id: number;
   ownerId: string;
   /** The unit that raised it. */
   fromId: number;
+  /** A Weaver's wall: the friend it was thrown in front of (sim/weaver.ts). */
+  forId?: number;
   x: number;
   y: number;
   angle: number;
@@ -867,10 +876,7 @@ export interface EnergyShield {
   life: number;
   /** Tick a round last struck it. */
   hitTick?: number;
-  /**
-   * A Hive Ark's dome: a whole circle that rides with the Ark and never times out. It stops only
-   * what comes in from outside, overhead fire too; nothing walking is held by it.
-   */
+  /** A Siphon's or Hive Ark's dome: stops only what comes in from outside, and follows its unit. */
   dome?: true;
 }
 

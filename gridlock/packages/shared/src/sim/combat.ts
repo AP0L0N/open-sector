@@ -99,6 +99,9 @@ import {
   FW190_SPLASH_TILES,
   isMotorVehicle,
   catalog,
+  behemothPulseOf,
+  BEHEMOTH_PULSE_FAR_MUL,
+  BEHEMOTH_PULSE_NEAR_MUL,
   isLightHull,
   gunArcDegOf,
   GARRISON_STRUCTURAL_CALIBER,
@@ -144,6 +147,8 @@ import {
   rocketsOf,
   launcherOnlyOf,
   rocketRackOf,
+  rocketRackFor,
+  airRackOf,
   type RocketRackDef,
   LAUNCHER_ROCKET_RACK,
   PENETRATOR_RACK,
@@ -167,7 +172,6 @@ import {
   factionDamage,
   factionOf,
   XENO_DAMAGE_MUL,
-  SIPHON_DRAIN,
   MAWCASTER_BILE_CHANCE,
   LURKER_BITE_DAMAGE,
   LURKER_BITE_SOLDIER_DAMAGE,
@@ -206,7 +210,6 @@ import { damageMaulerCart } from "./mauler-cart.js";
 import { hiddenFromAuto, inStrikeReach } from "./simunit.js";
 import { juggernautBlow, landHammer } from "./juggernaut.js";
 import { detonateThrall, maybeStagger, punch, punchAir, thrallDetonatesOn } from "./thrall.js";
-import { coatAcid, corrodedDef } from "./acid.js";
 import { revealShade } from "./shade.js";
 import { artilleryCanLay, artilleryReady, artilleryReloadMul, blastOnGun, bulletOnGun, gunCrewOf } from "./artillery.js";
 import { energyRound, noteImpactSurface } from "./remains.js";
@@ -225,7 +228,7 @@ import {
   weaponRangeWorld,
   worldTileHeight,
 } from "./elevation.js";
-import { absorbRound, anyDome, shieldSweep } from "./energy-shield.js";
+import { absorbRound, catchLanding, domeShelters, overheadSweep, shieldSweep } from "./energy-shield.js";
 import { drawPlasma, plasmaShots } from "./hive-ammo.js";
 import {
   ownerless,
@@ -243,6 +246,7 @@ import {
   segmentCircleT,
   tileCenter,
   unitInWater,
+  waterSilenced,
   worldToTile,
 } from "./geo.js";
 import {
@@ -1202,9 +1206,12 @@ function launchInterceptor(state: MatchState, e: Entity, downed: Set<number>): b
   return true;
 }
 
-/** Standing in water stops every gun except the Titan's shoulder rockets, which ride above it. */
+/**
+ * Standing in water stops every gun except the Titan's shoulder rockets, which ride above it.
+ * The Juggernaut wades thigh-deep and keeps swinging.
+ */
 function waterSilences(state: MatchState, e: Entity): boolean {
-  return unitInWater(state, e) && !rocketsOf(e.type);
+  return waterSilenced(state, e) && !rocketsOf(e.type);
 }
 
 /** A Titan on its leg jets: the main gun is stowed, and only the shoulder pods fire. */
@@ -1241,8 +1248,12 @@ function canFight(e: Entity): boolean {
 function outOfReachAloft(state: MatchState, e: Entity, target: Entity): boolean {
   // The Flak lays only on what flies: a plane, a Jump Jet aloft, a drone, a man under a canopy.
   if (airOnlyOf(e.type) && !isAirborne(target) && !target.drone) return true;
+  // So does a launcher set to Air attacks.
+  if (rocketsOf(e.type) && rocketRackFor(e).airOnly && !isAirborne(target) && !target.drone) return true;
   // A torpedo only finds what is in the water.
   if (torpedoCannotReach(state, e, target)) return true;
+  // The hammer finds a boat on the surface, never one running below.
+  if (isJuggernaut(e.type) && diving(target)) return true;
   if (target.drone) return !reachesDrone(e, target);
   // A Jump Jet in the air: anti-air weapons only.
   if (target.jet) return isAirborne(target) && !reachesJet(e);
@@ -1723,8 +1734,6 @@ function infantryRoundCanHarm(state: MatchState, e: Entity, target: Entity): boo
   }
   const def = catalog(target.type);
   if (!isArmored(def)) return true;
-  // Acid need not get through: it eats the plate of any live hull it lands on.
-  if (infantryGunFor(e)?.id === "acid" && !target.wreck) return true;
   // A gatling turret's rounds sometimes bite a Walker or a truck, like the Cyborg's arm.
   if (twinCiwsOf(e.type) && isLightHull(def)) return true;
   if (radarLaidOf(e.type) || twinCiwsOf(e.type)) {
@@ -2080,8 +2089,10 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   const shell = hasAmmo(e.type) ? pickLoadedShell(e.ammo, e.shell) : null;
   if (hasAmmo(e.type) && !shell) return;
   if (isSmokeShell(shell) && !mayFireSmoke(e)) return;
-  // A plasma cannon with its cell drained waits for the next shot to regrow.
-  if (plasmaShots(e) < 1) return;
+  // A plasma cannon with its cell drained waits for the next shot to regrow. A Light Pulse bolt needs less.
+  const pulse = behemothPulseOf(e);
+  const boltCost = pulse?.energy ?? 1;
+  if (plasmaShots(e) < boltCost) return;
   if (shell) e.shell = shell;
   const gun = fireStats(e);
   // A twin mount fires one barrel, then the other after a short gap. Smoke is one round.
@@ -2116,14 +2127,14 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     }
     // The second barrel only fires while the rack still holds that shell, and the cell a shot.
     if (shell && (e.ammo[shell] ?? 0) <= 0) break;
-    if (plasmaShots(e) < 1) break;
+    if (plasmaShots(e) < boltCost) break;
     fireRound(
       state,
       e,
       aimX,
       aimY,
       {
-        damage: gun.damage,
+        damage: pulse ? gun.damage * pulseBoltMul(pulse.damageMul, dist, range) : gun.damage,
         penetration: gun.penetration,
         caliber: gun.caliber,
         spreadDeg: gun.spreadDeg,
@@ -2143,7 +2154,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     fired++;
     if (armGatling) heatGatling(e, 1);
     if (shell) e.ammo[shell] = Math.max(0, (e.ammo[shell] ?? 0) - 1);
-    drawPlasma(e);
+    drawPlasma(e, boltCost);
     if (infantryGun || belt) {
       e.clip = Math.max(0, e.clip - 1);
       if (e.clip <= 0) {
@@ -2154,18 +2165,27 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     }
   }
   if (fired > 0) {
-    const follow = twin && !second && !!shell && (e.ammo[shell] ?? 0) > 0 && plasmaShots(e) >= 1;
+    const follow = twin && !second && !!shell && (e.ammo[shell] ?? 0) > 0 && plasmaShots(e) >= boltCost;
     if (follow) {
       e.twinUntil = state.tick + Math.round(APOCALYPSE_TWIN_WINDOW / TICK_DT);
       e.cooldown = APOCALYPSE_TWIN_GAP;
     } else {
       e.twinUntil = undefined;
-      e.cooldown = gun.cooldown * crewPace(e);
+      e.cooldown = gun.cooldown * crewPace(e) * (pulse?.cooldownMul ?? 1);
     }
   }
   // The MG nest's tripod gun flashes like a gatling while it works the belt.
   if (fired > 0 && crewGunOf(e.type) && belt) e.gatlingFire = { tick: state.tick, arms: 1 };
   if (fired > 0 && e.order?.once) clearOrder(e);
+}
+
+/**
+ * A Behemoth plasma bolt's damage, times: its pulse setting's share, and more the nearer it is
+ * fired, BEHEMOTH_PULSE_NEAR_MUL at the muzzle down in a line to BEHEMOTH_PULSE_FAR_MUL at full range.
+ */
+export function pulseBoltMul(damageMul: number, dist: number, range: number): number {
+  const f = Math.max(0, Math.min(1, dist / Math.max(1, range)));
+  return damageMul * (BEHEMOTH_PULSE_NEAR_MUL + (BEHEMOTH_PULSE_FAR_MUL - BEHEMOTH_PULSE_NEAR_MUL) * f);
 }
 
 /** World px a second the flying body is making good, for the Flak to lead it. Zero when it hangs still. */
@@ -2393,14 +2413,18 @@ function tickRocketPods(state: MatchState, e: Entity, dt: number): void {
     return;
   }
   if ((e.rocketCooldown ?? 0) > 0) return;
-  const rack = rocketRackOf(e.type);
+  // A swimming soldier holds his launcher out of the water; only the Titan's shoulder pods ride above it.
+  if (isInfantryType(e.type) && unitInWater(state, e)) return;
+  // A plasma launcher waits on its cell.
+  if (plasmaShots(e) < 1) return;
+  const rack = rocketRackFor(e);
   const aim = rack.laid ? launcherAim(state, e) : podAim(state, e);
   if (!aim) {
     e.rocketTarget = null;
     return;
   }
   e.rocketTarget = aim.target?.id ?? null;
-  if (rack.laid && (e.waypoints.length > 0 || !launcherBears(e, aim.x, aim.y))) return;
+  if (rack.laid && (e.waypoints.length > 0 || !launcherBears(e, aim.x, aim.y, rack))) return;
   // Titan pods ride the torso. Aloft the gun is stowed, so the pods' own target turns it; they fire once it bears.
   if (!rack.laid) {
     if (flightStowsGun(e)) {
@@ -2417,7 +2441,7 @@ function tickRocketPods(state: MatchState, e: Entity, dt: number): void {
 /** Inside a laid launcher's band: short of its reach and past its minimum. */
 function inLauncherBand(state: MatchState, e: Entity, x: number, y: number): boolean {
   const d = Math.hypot(x - e.x, y - e.y);
-  const min = (rocketRackOf(e.type).minRangeTiles ?? 0) * state.tileSize;
+  const min = (rocketRackFor(e).minRangeTiles ?? 0) * state.tileSize;
   return d <= weaponRangeWorld(state, e) && d >= min;
 }
 
@@ -2428,20 +2452,23 @@ function inLauncherBand(state: MatchState, e: Entity, x: number, y: number): boo
  */
 function launcherAim(state: MatchState, e: Entity): { x: number; y: number; target?: Entity } | null {
   const o = e.order;
+  // A rack laid only on fliers (the Mawcaster's Air attacks) leaves the ground alone, forced or not.
+  const airOnly = rocketRackFor(e).airOnly === true;
   if (o?.kind === "forceattack" && o.targetId == null && o.x != null && o.y != null) {
-    return inLauncherBand(state, e, o.x, o.y) ? { x: o.x, y: o.y } : null;
+    return !airOnly && inLauncherBand(state, e, o.x, o.y) ? { x: o.x, y: o.y } : null;
   }
   const t = currentTarget(state, e);
   if (!t || !inLauncherBand(state, e, t.x, t.y)) return null;
+  if (airOnly && !isAirborne(t) && !t.drone) return null;
   return { x: t.x, y: t.y, target: t };
 }
 
-/** The launcher frame is on the bearing to (x, y), inside the type's gun arc. */
-function launcherBears(e: Entity, x: number, y: number): boolean {
+/** The launcher frame is on the bearing to (x, y), inside the rack's arc or else the type's gun arc. */
+function launcherBears(e: Entity, x: number, y: number, rack: RocketRackDef): boolean {
   let d = Math.atan2(y - e.y, x - e.x) - (e.turretFacing ?? e.facing);
   while (d > Math.PI) d -= Math.PI * 2;
   while (d < -Math.PI) d += Math.PI * 2;
-  return Math.abs(d) <= (gunArcDegOf(e.type) * Math.PI) / 180;
+  return Math.abs(d) <= ((rack.arcDeg ?? gunArcDegOf(e.type)) * Math.PI) / 180;
 }
 
 /** The torso, and the pods fixed on it, faces (x, y) within TITAN_POD_ARC_DEG. */
@@ -2589,9 +2616,10 @@ function fireRockets(
       ? ((((slot - 1) % 6) - 2.5) / 2.5) * span * 0.35
       : (slot % 2 === 0 ? 1 : -1) * span * 0.8;
     launchRocket(state, e, rack, aimX, aimY, range, dist, target, side);
+    drawPlasma(e);
     e.rockets = Math.max(0, (e.rockets ?? 0) - 1);
     e.rocketSalvo = e.rockets > 0 ? e.rocketSalvo - 1 : 0;
-    if (e.rocketSalvo <= 0) break;
+    if (e.rocketSalvo <= 0 || plasmaShots(e) < 1) break;
   }
   const jitter = (rack.intervalJitter ?? 0) > 0 ? nextRand(state) * (rack.intervalJitter ?? 0) : 0;
   e.rocketCooldown = e.rocketSalvo > 0 ? rack.interval + jitter : rack.reload;
@@ -2682,6 +2710,7 @@ function launchRocket(
     z: z0,
     vz: (zLand - z0) / flight,
     launcher: e.type,
+    airRack: rack === airRackOf(e.type) || undefined,
     heavy: rack.plate != null && rack.plate > 1 ? true : undefined,
     plate: rack.plate != null && rack.plate > 1 ? rack.plate : undefined,
     ...lob(rack, dist, range, z0),
@@ -2725,14 +2754,7 @@ function stepRocket(state: MatchState, p: Projectile, dt: number, rand: () => nu
   // A forced Nebelwerfer rocket is fused on the point. It clears walls, trees,
   // and hulls on the way and bursts where it was aimed. Any other rocket flies
   // low, so the first thing in the path takes the burst.
-  if (p.harmAllies && (p.launcher === "nebelwerfer" || p.launcher === "mawcaster")) {
-    // Fused on the point, it clears everything on the way but a Hive Ark's dome.
-    const dome = shieldSweep(state, p.ownerId, x0, y0, p.x, p.y, "domes");
-    if (dome) {
-      absorbRound(state, p, dome);
-      return false;
-    }
-  } else {
+  if (!(p.harmAllies && (p.launcher === "nebelwerfer" || p.launcher === "mawcaster"))) {
     const wallHit = wallSweep(state, x0, y0, p.x, p.y);
     const struck = nearestSweepHit(state, x0, y0, p, z0, p.z);
     const tree = nearestTreeSweep(state, x0, y0, p, z0, p.z, rand);
@@ -2767,6 +2789,8 @@ function stepRocket(state: MatchState, p: Projectile, dt: number, rand: () => nu
   // Fused at the plane's height with no plane there: a RAM rocket flies on and comes down.
   if (p.airBurst && !airBurstCatchesAny(state, p) && coastPastMiss(state, p)) return true;
   if (!p.airBurst) p.z = 0;
+  // An enemy dome over the point takes the rocket on its skin.
+  if (!p.airBurst && catchLanding(state, p)) return false;
   detonateMortar(state, p, rand);
   return false;
 }
@@ -2785,13 +2809,19 @@ function airBurstCatchesAny(state: MatchState, p: Projectile): boolean {
   return false;
 }
 
+/** The rack a rocket left: its carrier's air rack when it was fired on Air attacks, else the carrier's own. */
+function projectileRack(p: Projectile): RocketRackDef {
+  const launcher = p.launcher ?? "titan";
+  return (p.airRack && airRackOf(launcher)) || rocketRackOf(launcher);
+}
+
 /**
  * A missed rocket that coasts: it keeps its heading for the rack's
  * missCoastTiles (short of the map edge), dropping ever more steeply, and bursts
  * on the ground where it lands. False for a rack that bursts in the air regardless.
  */
 function coastPastMiss(state: MatchState, p: Projectile): boolean {
-  const coast = (p.heavy ? undefined : rocketRackOf(p.launcher ?? "titan").missCoastTiles) ?? 0;
+  const coast = (p.heavy ? undefined : projectileRack(p).missCoastTiles) ?? 0;
   const speed = Math.hypot(p.vx, p.vy);
   if (coast <= 0 || speed <= 0) return false;
   const ux = p.vx / speed;
@@ -2841,9 +2871,9 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
     if (energyRound(state, p.ownerId)) burnTreeAt(state, tx, ty);
     else fellTreeAt(state, tx, ty);
   }
-  // A Mawcaster pod now and then leaves its bile burning where it bursts.
-  if (!inAir && p.launcher === "mawcaster" && rand() < MAWCASTER_BILE_CHANCE) igniteAt(state, p.x, p.y, p.ownerId);
-  const rack = p.heavy ? PENETRATOR_RACK : rocketRackOf(p.launcher ?? "titan");
+  // A Mawcaster's ground ball now and then leaves its bile burning where it bursts.
+  if (!inAir && !p.airRack && p.launcher === "mawcaster" && rand() < MAWCASTER_BILE_CHANCE) igniteAt(state, p.x, p.y, p.ownerId);
+  const rack = p.heavy ? PENETRATOR_RACK : projectileRack(p);
   const lob = p.arkCannon != null ? ARK_PLASMA_BALL : p.shipBarrel != null ? BATTLESHIP_SHELL : p.big ? ARTILLERY_SHELL : MORTAR_LOB;
   const radius = (rocket ? rack.splashTiles : p.big ? lob.splashTiles : MORTAR_SPLASH_TILES) * state.tileSize;
   // A barrage laid on a bridge brick counts wherever its blast reaches the deck.
@@ -2857,6 +2887,7 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
     else merged.splice(at, 0, direct);
     blast = merged;
   }
+  const soaked = new Set<number>();
   for (const e of blast) {
     if (e.hp <= 0 || e.wreck || e.id === p.fromId || e.garrisonedIn != null || isRubble(e)) continue;
     // A ground burst never reaches a plane; an air burst only catches planes.
@@ -2870,6 +2901,8 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
     if (d > reach) continue;
     const friendly = e.ownerId !== "" && allies(state, p.ownerId, e.ownerId);
     if (friendly && !p.harmAllies) continue;
+    // A burst outside an enemy dome does not reach under it.
+    if (!inAir && domeShelters(state, p.ownerId, p.x, p.y, e, p.damage, soaked)) continue;
     const falloff = mortarFalloff(d, reach);
     const def = catalog(e.type);
     if (inAir) {
@@ -3247,7 +3280,9 @@ function slash(state: MatchState, e: Entity, target: Entity): void {
   const vx = target.x - e.x;
   const vy = target.y - e.y;
   let kind: ImpactKind = "hit";
-  if (target.kind === "building" && wallsShieldGarrison(state, target)) {
+  if (domeShelters(state, e.ownerId, e.x, e.y, target, dmg)) {
+    kind = "glance";
+  } else if (target.kind === "building" && wallsShieldGarrison(state, target)) {
     woundGarrison(state, target, SIMUNIT_SLASH_DAMAGE, DAGGER_CALIBER);
   } else if (dmg > 0) {
     takeDamage(target, dmg, state.tick);
@@ -3292,7 +3327,9 @@ function bite(state: MatchState, e: Entity, target: Entity): void {
   const rand = () => nextRand(state);
   const dmg = factionDamage(e.type, Math.round((soldier ? LURKER_BITE_SOLDIER_DAMAGE : LURKER_BITE_DAMAGE * mul) * (0.9 + 0.2 * rand())));
   let kind: ImpactKind = "hit";
-  if (target.kind === "building" && wallsShieldGarrison(state, target)) {
+  if (domeShelters(state, e.ownerId, e.x, e.y, target, dmg)) {
+    kind = "glance";
+  } else if (target.kind === "building" && wallsShieldGarrison(state, target)) {
     woundGarrison(state, target, factionDamage(e.type, LURKER_BITE_SOLDIER_DAMAGE), BITE_CALIBER);
   } else {
     takeDamage(target, dmg, state.tick);
@@ -3444,8 +3481,6 @@ function fireRound(
     gatling: gatling || undefined,
     plunging: plunging || undefined,
     aloft: aloft || undefined,
-    acid: gunId === "acid" || undefined,
-    drain: e.type === "siphon" || undefined,
     z: z0,
     vz: ((zAim - z0) / Math.max(1e-6, aimDist)) * speed,
   };
@@ -3509,7 +3544,6 @@ export function tickProjectiles(state: MatchState, dt: number): void {
   const rand = () => nextRand(state);
   tagBridgeRounds(state);
   const flying = state.projectiles;
-  const domes = anyDome(state);
   for (const p of state.projectiles) {
     if (p.flight === "bomb") {
       if (stepBomb(state, p, dt)) keep.push(p);
@@ -3541,19 +3575,11 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     if (p.flight === "mortar") {
       const total = p.flightTime ?? Math.max(0.05, p.life);
       const stepDt = p.life > 0 ? Math.min(dt, p.life) : 0;
-      const mx0 = p.x;
-      const my0 = p.y;
       p.x += p.vx * stepDt;
       p.y += p.vy * stepDt;
       p.life -= dt;
       const u = Math.min(1, Math.max(0, (total - Math.max(0, p.life)) / total));
       p.z = mortarAirZ(u, p.apex ?? 0);
-      // A shell or bomb falling into a Hive Ark's dome bursts on it, high over the hull.
-      const dome = domes ? shieldSweep(state, p.ownerId, mx0, my0, p.x, p.y, "domes") : null;
-      if (dome) {
-        absorbRound(state, p, dome);
-        continue;
-      }
       if (p.life > 0) {
         keep.push(p);
         continue;
@@ -3563,6 +3589,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
         p.y = p.landY;
       }
       p.z = 0;
+      if (catchLanding(state, p)) continue;
       if (p.hammer) landHammer(state, p);
       else detonateMortar(state, p, rand);
       continue;
@@ -3582,15 +3609,10 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     const concrete = overheadShot ? null : wallSweep(state, x0, y0, p.x, p.y);
     const struck = nearestSweepHit(state, x0, y0, p, z0, z1);
     const blocker = concrete && (!bagHit || concrete.t < bagHit.t) ? concrete : bagHit;
-    // An enemy energy wall stops the round where it meets it. A barrage from overhead falls past it.
-    // A Hive Ark's dome stops that too; a torpedo runs under everything.
-    const guard = p.torpedo
-      ? null
-      : p.fromAbove || p.aloft
-        ? domes
-          ? shieldSweep(state, p.ownerId, x0, y0, p.x, p.y, "domes")
-          : null
-        : shieldSweep(state, p.ownerId, x0, y0, p.x, p.y);
+    // An enemy energy wall stops the round where it meets it. A barrage from overhead falls past a
+    // wall but not onto a dome.
+    const guard =
+      p.torpedo || p.aloft ? null : p.fromAbove ? overheadSweep(state, p.ownerId, x0, y0, p.x, p.y) : shieldSweep(state, p.ownerId, x0, y0, p.x, p.y);
     if (guard && (!struck || guard.t <= struck.t) && (!blocker || guard.t <= blocker.t)) {
       absorbRound(state, p, guard);
       continue;
@@ -3670,8 +3692,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       else pushImpact(state, p, "ricochet", struck.x, struck.y, -p.vx * 0.2, -p.vy * 0.2);
       continue;
     }
-    // A Spitter's coat thins every plate the round can meet.
-    const liveDef = corrodedDef(e, catalog(e.type), state.tick);
+    const liveDef = catalog(e.type);
     const targetDef = e.wreck ? wreckHitDef(e, p.caliber) : liveDef;
     const frac = p.hpFraction;
     const scopedInfantry = frac != null && isInfantryType(e.type) && !e.wreck;
@@ -3771,12 +3792,6 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     }
     if (occupied) woundGarrison(state, e, res.damage, p.caliber, !!p.plunging, isBulletRound(p));
     else woundDeckGunners(state, e, p.damage);
-    // Acid coats the plate whether or not it bit.
-    if (p.acid) coatAcid(state, e);
-    // The Siphon drinks what its bolt took off an enemy body.
-    if (p.drain && chipWalls && dealt > 0 && shooter && shooter.hp > 0 && !shooter.wreck && e.kind === "unit" && !e.wreck && !allies(state, shooter.ownerId, e.ownerId)) {
-      shooter.hp = Math.min(shooter.hpMax, shooter.hp + Math.max(1, Math.round(dealt * SIPHON_DRAIN)));
-    }
     // A bullet that meets the body can smash the lamps, even when it only sparks.
     if (e.hp > 0 && !e.wreck) rollLamp(e, lampShotOf(p), rand);
     if (e.type === "supply" && !e.wreck && e.hp > 0) {
@@ -3800,7 +3815,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       bounces ? res.bounceVy : p.vy,
       blast,
     );
-    if (!bounces || heBursts(p) || p.acid) continue;
+    if (!bounces || heBursts(p)) continue;
     if (p.caliber === PTRD_CALIBER) p.penetration = 0;
     p.vx = res.bounceVx;
     p.vy = res.bounceVy;
@@ -3945,6 +3960,7 @@ function nearestTreeSweep(
 function cannonSplash(state: MatchState, p: Projectile): void {
   const radius = FW190_SPLASH_TILES * state.tileSize;
   const grid = spatialGrid();
+  const soaked = new Set<number>();
   for (const e of poolCircle(state, p.x, p.y, radius, grid?.maxRadius ?? 0)) {
     if (e.hp <= 0 || e.wreck || e.kind !== "unit" || e.garrisonedIn != null || isAirborne(e)) continue;
     if (!p.harmAllies && e.ownerId && allies(state, p.ownerId, e.ownerId)) continue;
@@ -3952,6 +3968,7 @@ function cannonSplash(state: MatchState, p: Projectile): void {
     const d = Math.hypot(e.x - p.x, e.y - p.y);
     if (d > radius + e.radius) continue;
     const dmg = Math.max(1, Math.round(FW190_SPLASH_DAMAGE * mortarFalloff(Math.max(0, d - e.radius), radius)));
+    if (domeShelters(state, p.ownerId, p.x, p.y, e, dmg, soaked)) continue;
     const dealt = coverStrike(e, dmg, state.tick, true);
     if (e.hp > 0) rollCrits(e, "none", "hit", dealt, () => nextRand(state));
   }

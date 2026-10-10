@@ -41,6 +41,7 @@ import {
   MG42_BIPOD_SECONDS,
   MORTAR_PLANT_SECONDS,
   SUB_DIVE_SECONDS,
+  neverSurfacesOf,
   submergesOf,
   walkerGunsOf,
   forceFieldMax,
@@ -53,14 +54,16 @@ import { bridgeOrderSpan } from "./bridge.js";
 import { artilleryCanLay, gunCrewOf } from "./artillery.js";
 import { crateViews, mineViews, payloadOf, planeRiders } from "./airdrop.js";
 import { cyborgShielded } from "./crits.js";
+import { domeCharge } from "./energy-shield.js";
 import { plasmaCharge } from "./hive-ammo.js";
+import { hiveEnergyOf } from "./hive-energy.js";
 import { laserProgress } from "./laser.js";
 import { garrisonBars, garrisonOwner } from "./garrison.js";
 import { deckLoad } from "./lst.js";
 import { allies, unitInWater } from "./geo.js";
 import { energyRound } from "./remains.js";
 import { brokenClutter } from "./clutter.js";
-import { diving, hiddenSubmarine, sonarSpotted } from "./naval.js";
+import { diving, hiddenSubmarine, sonarSpotted, submerged } from "./naval.js";
 import { medicTendView } from "./heal.js";
 import { supplyHasDriver, supplyRiders } from "./supply.js";
 import { powerOf } from "./power.js";
@@ -70,7 +73,7 @@ import { blinkCharge, purgeProgress } from "./simunit.js";
 import { lungeAlt, lungeCharge } from "./lunge.js";
 import { hiddenBurrowed } from "./burrow.js";
 import { hiddenCloaked } from "./shade.js";
-import { isSimUnit, onUplink, vaultsWalls } from "../catalog.js";
+import { isSimUnit, onUplink, usesHiveEnergy, vaultsWalls } from "../catalog.js";
 import { onFortTop } from "./thrall.js";
 import { aswDeckView, sonarContacts } from "./destroyer.js";
 import { scrapCap } from "./smelter.js";
@@ -173,7 +176,7 @@ function arkView(state: MatchState, e: Entity, friendly: boolean): EntityView["a
       docked: !e.wreck && p.waspId == null && p.regrow <= 0,
       ...(friendly && p.regrow > 0 ? { regrow: Math.ceil(p.regrow) } : {}),
     })),
-    ...(friendly && ark.domeDown > 0 ? { domeDown: Math.ceil(ark.domeDown) } : {}),
+    ...(friendly && e.shieldReady != null && state.tick < e.shieldReady ? { domeDown: Math.ceil((e.shieldReady - state.tick) * TICK_DT) } : {}),
   };
 }
 
@@ -480,7 +483,6 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       burrow: e.burrow ? e.burrow.phase : undefined,
       sprint: e.sprint,
       cloaked: friendly ? e.cloaked : undefined,
-      acid: e.acid && state.tick < e.acid.until ? Math.round(e.acid.mm) : undefined,
       fists: e.fists,
       purge: friendly && e.purge ? { hostId: e.purge.hostId, u: purgeProgress(state, e) ?? 0 } : undefined,
       takeover: e.takeover ? { by: e.takeover.by, u: Math.min(1, e.takeover.ticks / secondsToTicks(CYBORG_TAKEOVER_SECONDS)) } : undefined,
@@ -490,9 +492,10 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       stanceOrder: isInfantryType(e.type) && e.stanceOrder !== e.stance ? e.stanceOrder : undefined,
       swimming: isInfantryType(e.type) && unitInWater(state, e) ? true : undefined,
       wading: !isInfantryType(e.type) && unitInWater(state, e) ? true : undefined,
-      submerged: friendly && diving(e) ? true : undefined,
+      // A Lurker shows surfaced only while a bite still gives it away.
+      submerged: friendly && (neverSurfacesOf(e.type) ? submerged(state, e) : diving(e)) ? true : undefined,
       dive:
-        friendly && submergesOf(e.type) && !e.wreck
+        friendly && submergesOf(e.type) && !neverSurfacesOf(e.type) && !e.wreck
           ? { air: e.dive?.air ?? SUB_DIVE_SECONDS, airMax: SUB_DIVE_SECONDS, winded: e.dive?.winded || undefined }
           : undefined,
       braced: e.braced || undefined,
@@ -503,6 +506,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       minePacks: friendly && e.minePacks != null ? e.minePacks : undefined,
       mineReload: friendly && (e.mineReload ?? 0) > 0 ? Math.round((e.mineReload ?? 0) * 10) / 10 : undefined,
       rocketsOff: friendly && e.rocketsOff ? true : undefined,
+      airMode: friendly && e.airMode ? true : undefined,
       longRange: friendly && e.longRange ? true : undefined,
       spotFacing: spotlightManned(e) ? spotFacingOf(e) : undefined,
       unpowered: e.kind === "building" && e.unpowered ? true : undefined,
@@ -546,7 +550,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
             }
           : undefined,
       ammo: friendly && Object.keys(e.ammo).length > 0 ? { ...e.ammo } : undefined,
-      energy: friendly ? plasmaCharge(e) : undefined,
+      energy: friendly ? (plasmaCharge(e) ?? domeCharge(state, e)) : undefined,
       shell: friendly && e.shell ? e.shell : undefined,
       mgAmmo: friendly && hasMg(e.type) ? e.mgAmmo : undefined,
       mgHeat: friendly && (hasMg(e.type) || !!gatlingHeatOf(e.type)) ? e.mgHeat : undefined,
@@ -555,6 +559,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       clip: friendly && (isInfantryType(e.type) || beltOf(e.type)) ? e.clip : undefined,
       guns: friendly && e.type === "walker" ? walkerGunsOf(e) : undefined,
       fieldDivert: friendly && e.hp > 0 ? e.fieldDivert : undefined,
+      lightPulse: friendly && e.hp > 0 ? e.lightPulse : undefined,
       engageContacts: friendly && e.hp > 0 ? e.engageContacts : undefined,
       selfDestruct: friendly && e.type === "walker" && !e.wreck ? !e.selfDestructOff : undefined,
       charging: e.type === "walker" && e.charging ? true : undefined,
@@ -675,6 +680,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       provided: power.provided,
       used: power.used,
       lowPower: power.lowPower,
+      ...(you && usesHiveEnergy(you.faction) ? { energy: hiveEnergyOf(state, youPlayerId) } : {}),
       structureQueue: structureQueueView(you?.structure),
       defenceQueue: structureQueueView(you?.defence),
       lineQueue: structureQueueView(you?.line),
@@ -723,8 +729,6 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
         // A mine canister falls like a small bomb; its caliber tells the client it is not an SC 250.
         bomb: p.flight === "bomb" || p.flight === "cluster" ? true : undefined,
         rocket: p.flight === "rocket" ? true : undefined,
-        acid: p.acid ? true : undefined,
-        drain: p.drain ? true : undefined,
         heavy: p.heavy ? true : undefined,
         hammer: p.hammer,
         ...(p.flight === "bomb" || p.flight === "rocket" || p.flight === "cluster" ? { z: p.z ?? 0 } : {}),
@@ -853,7 +857,8 @@ function shieldViews(state: MatchState, youPlayerId: string, vis: Uint8Array): E
   if (!walls || walls.length === 0) return undefined;
   const out: EnergyShieldView[] = [];
   for (const w of walls) {
-    if (!allies(state, youPlayerId, w.ownerId) && !canSeeWorld(state, vis, w.x + Math.cos(w.angle) * w.r, w.y + Math.sin(w.angle) * w.r)) continue;
+    const edge = w.dome ? 0 : w.r;
+    if (!allies(state, youPlayerId, w.ownerId) && !canSeeWorld(state, vis, w.x + Math.cos(w.angle) * edge, w.y + Math.sin(w.angle) * edge)) continue;
     out.push({
       id: w.id,
       ownerId: w.ownerId,
@@ -865,7 +870,8 @@ function shieldViews(state: MatchState, youPlayerId: string, vis: Uint8Array): E
       hp: Math.ceil(w.hp),
       hpMax: w.hpMax,
       hit: w.hitTick != null && state.tick - w.hitTick < SHIELD_FLASH_TICKS ? true : undefined,
-      dome: w.dome,
+      by: w.forId != null ? w.fromId : undefined,
+      ...(w.dome ? { dome: true as const, fromId: w.fromId } : {}),
     });
   }
   return out.length > 0 ? out : undefined;

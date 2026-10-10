@@ -6,7 +6,9 @@ import {
   isCivilianType,
   isConcreteLine,
   isDefenceStructure,
+  isFenceLine,
   isFieldStructure,
+  FENCE_POSTS_MAX,
   isYardField,
   onLineLane,
   onWaterBuilding,
@@ -20,6 +22,7 @@ import {
   isHqBuilding,
   isSmelterType,
   HQ_OF,
+  usesHiveEnergy,
 } from "../catalog.js";
 import { NOT_YOUR_FACTION } from "./train.js";
 import {
@@ -43,6 +46,7 @@ import { buildingSite, buildingTilesOf, snapBuildingFacing, turnedBox } from "..
 import { ejectUnits } from "./deploy.js";
 import { manGun, spillGarrison } from "./garrison.js";
 import {
+  fencePostTile,
   fieldPiecesFor,
   fieldSiteClear,
   fieldTiles,
@@ -55,7 +59,8 @@ import {
 } from "./field.js";
 import { repathIfBlocked } from "./orders.js";
 import { powerOf, productionSpeed } from "./power.js";
-import { advancePaidJob, jobFullyPaid, refundPaid } from "./production.js";
+import { advancePaidJob, jobFullyPaid } from "./production.js";
+import { fenceLineEnergy, hiveEnergyWallet, jobBill, refundJob } from "./hive-energy.js";
 import { smelterCrowded, smelterSiteOk } from "./smelter.js";
 import type { Entity, MatchState, SimPlayer, StructureJob } from "./types.js";
 
@@ -115,6 +120,7 @@ export function startBuild(state: MatchState, playerId: string, type: BuildingTy
   const faction = p.faction ?? "alliance";
   if (!inFaction(type, faction)) return NOT_YOUR_FACTION;
   if (!hasCore(state, playerId)) return `Deploy the ${catalog(HQ_OF[faction].rig).name}.`;
+  if (isFenceLine(type)) return "Site the fence posts first.";
   const slot = slotOf(type);
   if (jobIn(p, slot)) return "Construction already underway.";
   const def = catalog(type);
@@ -154,7 +160,7 @@ export function cancelStructure(
   const p = state.players.get(playerId);
   const job = p ? resolveJob(p, building) : null;
   if (!p || !job) return "Nothing to cancel.";
-  refundPaid(p, job);
+  refundJob(p, job);
   dropJob(p, job);
   return null;
 }
@@ -175,9 +181,13 @@ function advanceStructure(state: MatchState, p: SimPlayer, job: StructureJob | n
     finishYardField(state, p, job);
     return;
   }
-  const cost = costFor(job.type, p.faction ?? "alliance");
+  if (isFenceLine(job.type)) {
+    finishFenceLine(state, p, job);
+    return;
+  }
+  const { wallet, cost } = jobBill(state, p, job.type, costFor(job.type, p.faction ?? "alliance"));
   const pow = powerOf(state, p.playerId);
-  advancePaidJob(p, job, cost, productionSpeed(pow.provided, pow.used));
+  advancePaidJob(wallet, job, cost, productionSpeed(pow.provided, pow.used));
   if (jobFullyPaid(job, cost)) {
     job.ready = true;
     job.progressTicks = job.totalTicks;
@@ -227,6 +237,84 @@ function finishYardField(state: MatchState, p: SimPlayer, job: StructureJob): vo
     restampForts(state);
   }
   dropJob(p, job);
+}
+
+/**
+ * A sited Laser Fence. Time and scrap scale with the number of posts; every post goes up together.
+ * The hive pays in energy instead: each post's own, and more the longer the links the line adds.
+ */
+function finishFenceLine(state: MatchState, p: SimPlayer, job: StructureJob): void {
+  const sites = job.sites ?? [];
+  if (sites.length === 0) {
+    dropJob(p, job);
+    return;
+  }
+  const each = costFor("laserfence", p.faction ?? "alliance");
+  const hive = usesHiveEnergy(p.faction);
+  const wallet = hive ? hiveEnergyWallet(state, p) : p;
+  const cost = hive ? fenceLineEnergy(state, p.playerId, sites) : each * sites.length;
+  const pow = powerOf(state, p.playerId);
+  advancePaidJob(wallet, job, cost, productionSpeed(pow.provided, pow.used));
+  if (!jobFullyPaid(job, cost)) return;
+  for (const site of sites) {
+    const { tx, ty } = fencePostTile(state.tileSize, site.x, site.y);
+    // Something walked or was built onto the post's ground while it built: that post's scrap comes back.
+    if (buildingSiteError(state, "laserfence", tx, ty)) {
+      p.scrap += each;
+      continue;
+    }
+    raiseBuilding(state, p.playerId, "laserfence", tx, ty);
+  }
+  dropJob(p, job);
+}
+
+/**
+ * Site a Laser Fence from the Defences tab: a post on each top-left tile in `posts`, start first.
+ * The yard pays for them all and raises them together, like a wall line. The fence stops at the
+ * first post that is blocked, out of range, or on another post.
+ */
+export function placeFenceLine(state: MatchState, playerId: string, posts: readonly { tx: number; ty: number }[]): string | null {
+  const p = state.players.get(playerId);
+  if (!p || !p.alive) return "You are out of the fight.";
+  if (!inFaction("laserfence", p.faction ?? "alliance")) return NOT_YOUR_FACTION;
+  if (p.line) return "Construction already underway.";
+  if (!hasCore(state, playerId)) return `Deploy the ${catalog(HQ_OF[p.faction ?? "alliance"].rig).name}.`;
+  const missing = buildTechMissing(state, playerId, "laserfence");
+  if (missing.length > 0) return `Need a ${missing.map((t) => catalog(t).name).join(" and a ")}.`;
+  const def = catalog("laserfence");
+  const taken = new Set<number>();
+  const accepted: { x: number; y: number; facing: number }[] = [];
+  let stop: string | null = null;
+  for (const post of posts.slice(0, FENCE_POSTS_MAX)) {
+    if (!Number.isInteger(post?.tx) || !Number.isInteger(post?.ty)) {
+      stop = "Cannot place there.";
+      break;
+    }
+    const site = buildingSite("laserfence", post.tx, post.ty, 0, state.tileSize);
+    const tiles = buildingTilesOf(site, state.tileSize);
+    const err = buildingSiteError(state, "laserfence", post.tx, post.ty, playerId);
+    if (err || tiles.some((t) => taken.has(t.y * state.width + t.x))) {
+      stop = err ?? "Cannot place there.";
+      break;
+    }
+    if (!inBuildRadius(state, playerId, post.tx, post.ty, def.tileW, def.tileH, buildRadiusOf("laserfence"))) {
+      stop = "Too far from your base.";
+      break;
+    }
+    for (const t of tiles) taken.add(t.y * state.width + t.x);
+    accepted.push({ x: site.x, y: site.y, facing: 0 });
+  }
+  if (accepted.length === 0) return stop ?? "Cannot place there.";
+  p.line = {
+    type: "laserfence",
+    progressTicks: 0,
+    totalTicks: secondsToTicks(yardBuildSeconds("laserfence") * accepted.length),
+    ready: false,
+    paused: false,
+    paid: 0,
+    sites: accepted,
+  };
+  return null;
 }
 
 export function placeBuilding(

@@ -4,9 +4,7 @@ import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
   ARK_CANNON_CELL,
   ARK_CANNON_RECHARGE_SECONDS,
-  ARK_DOME_DOWN_SECONDS,
-  ARK_DOME_HP,
-  ARK_DOME_RADIUS,
+  ARK_DOME,
   ARK_MIN_RANGE_TILES,
   ARK_PLASMA_BALL,
   ARK_RANGE_TILES,
@@ -154,8 +152,8 @@ describe("Hive Ark dome", () => {
     ticks(state, 1);
     const dome = arkDome(state, ark)!;
     assert.ok(dome);
-    assert.equal(dome.hp, ARK_DOME_HP);
-    assert.equal(dome.r, ARK_DOME_RADIUS);
+    assert.equal(dome.hp, ARK_DOME.energy);
+    assert.equal(dome.r, ARK_DOME.radiusTiles * state.tileSize);
     ark.x += 30;
     ticks(state, 1);
     assert.equal(dome.x, ark.x);
@@ -197,7 +195,7 @@ describe("Hive Ark dome", () => {
     });
     ticks(state, secondsToTicks(flight) + 2);
     assert.equal(ark.hp, hp, "the hull took nothing");
-    assert.ok(dome.hp < ARK_DOME_HP, "the dome took the shell");
+    assert.ok(dome.hp < ARK_DOME.energy, "the dome took the shell");
   });
 
   it("broken, it rises again full after its recharge", () => {
@@ -207,8 +205,8 @@ describe("Hive Ark dome", () => {
     arkDome(state, ark)!.hp = 0;
     ticks(state, 2);
     assert.equal(arkDome(state, ark), null);
-    ticks(state, secondsToTicks(ARK_DOME_DOWN_SECONDS) + 2);
-    assert.equal(arkDome(state, ark)?.hp, ARK_DOME_HP);
+    ticks(state, secondsToTicks(ARK_DOME.rechargeSeconds) + 2);
+    assert.equal(arkDome(state, ark)?.hp, ARK_DOME.energy);
   });
 });
 

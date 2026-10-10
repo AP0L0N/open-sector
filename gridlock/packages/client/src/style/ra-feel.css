@@ -437,6 +437,26 @@ input[type="range"] { padding: 0; }
   100% { color: var(--amber); }
 }
 #hud-scrap.scrap-denied b { color: var(--danger); }
+/* The Xenomorph hive's energy, where scrap sits for the other sides: a bar like a Cyborg Commander's field. */
+#hud-scrap .energy-bar {
+  display: inline-block;
+  vertical-align: middle;
+  width: 7.5em;
+  height: 0.62em;
+  margin: 0 0.25em;
+  border: 1px solid rgba(96, 226, 214, 0.55);
+  background: rgba(8, 20, 20, 0.85);
+  position: relative;
+  overflow: hidden;
+}
+#hud-scrap .energy-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: rgba(96, 226, 214, 0.95);
+  transition: width 0.2s linear;
+}
+#hud-scrap .energy-bar.is-full i { background: var(--amber); }
+#hud-scrap.low-power .energy-bar i { background: var(--danger); }
 /* The Smelters' pour, beside the scrap count. */
 #hud-scrap .pour {
   font-style: normal;

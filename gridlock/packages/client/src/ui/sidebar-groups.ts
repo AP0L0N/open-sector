@@ -4,6 +4,8 @@ import {
   YARD_FIELD_TYPES,
   catalog,
   costFor,
+  energyOf,
+  usesHiveEnergy,
   inFaction,
   isAircraftType,
   isDefenceStructure,
@@ -74,10 +76,10 @@ export interface GroupEntry {
 const PRICE_SORTED_GROUPS: readonly SidebarGroup[] = ["defences", "infantry", "tanks", "naval", "aircraft"];
 
 /**
- * The Xenomorph base laid out as the Alliance's reads: power, scrap, foot soldiers, hulls, air, sea,
- * then tech. The Conversion Chamber is their barracks, so it comes third.
+ * The Xenomorph base laid out as the Alliance's reads: energy, foot soldiers, hulls, air, sea,
+ * then tech. The Conversion Chamber is their barracks, so it comes second.
  */
-const XENO_STRUCTURE_ORDER: readonly BuildingType[] = ["fusionnode", "assimilator", "conversion", "forge", "aerie", "spawnpool", "nexus"];
+const XENO_STRUCTURE_ORDER: readonly BuildingType[] = ["fusionnode", "conversion", "forge", "aerie", "spawnpool", "nexus"];
 
 /** The faction's cameos in each group, in catalog order (price order for `PRICE_SORTED_GROUPS`). */
 export function groupEntries(faction: Faction = "alliance"): Record<SidebarGroup, GroupEntry[]> {
@@ -91,7 +93,9 @@ export function groupEntries(faction: Faction = "alliance"): Record<SidebarGroup
   for (const type of TRAIN_TYPES) {
     if (inFaction(type, faction)) out[sidebarGroupOf(type)].push({ id: "train-" + type, type });
   }
-  for (const g of PRICE_SORTED_GROUPS) out[g].sort((a, b) => costFor(a.type, faction) - costFor(b.type, faction));
+  // The hive pays in energy, not scrap.
+  const price = (t: GroupEntry["type"]) => (usesHiveEnergy(faction) ? energyOf(t) : costFor(t, faction));
+  for (const g of PRICE_SORTED_GROUPS) out[g].sort((a, b) => price(a.type) - price(b.type));
   if (faction === "xeno") {
     const rank = (t: GroupEntry["type"]) => {
       const i = XENO_STRUCTURE_ORDER.indexOf(t as BuildingType);

@@ -19,7 +19,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 141;
+export const PROTOCOL_VERSION = 145;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -159,8 +159,6 @@ export interface EntityView {
   sprint?: true;
   /** Shade with its skin settled, own side only: enemies cannot see it. */
   cloaked?: true;
-  /** Armored hull under a Spitter's acid coat: mm off every face. */
-  acid?: number;
   /** Juggernaut has thrown its hammer and fights with its fists. */
   fists?: true;
   /** Stalker digging in, under the ground (own side only), or rising. */
@@ -175,7 +173,7 @@ export interface EntityView {
   laser?: { a0: number; a1: number; u: number; dur: number; lens: number[]; line?: true };
   /** Allied ammo rack. Omitted for enemies and unarmed types. */
   ammo?: Partial<Record<ShellType, number>>;
-  /** Allied plasma cannon: share of its energy cell charged, 0–1. Omitted for enemies and every other gun. */
+  /** Allied plasma cannon: share of its energy cell charged, 0–1. An allied Siphon: its dome's energy, or how far its recharge has come. Omitted for enemies and every other type. */
   energy?: number;
   /** Loaded shell. Allied guns only. */
   shell?: ShellType;
@@ -198,6 +196,8 @@ export interface EntityView {
   selfDestruct?: boolean;
   /** Own Cyborg Commander with the laser's power in his force field. Omitted otherwise. */
   fieldDivert?: true;
+  /** Own Behemoth on Light Pulse. Omitted otherwise (High Pulse). */
+  lightPulse?: true;
   /** Own Cyborg or Cyborg Commander set to fire on thermal and APS contacts out of sight. Omitted otherwise. */
   engageContacts?: true;
   /** Walker is charging to detonate. Anyone who can see him sees it. */
@@ -301,6 +301,8 @@ export interface EntityView {
   unpowered?: boolean;
   /** Titan pods switched off. Friendly snapshots; omitted while on. */
   rocketsOff?: boolean;
+  /** Mawcaster set to Air attacks. Friendly snapshots; omitted on Ground attacks. */
+  airMode?: true;
   /** Stay put: no chase, no withdraw. Friendly snapshots. */
   holdPosition?: boolean;
   /** Overwatch heading in world radians. Friendly snapshots while guarding. */
@@ -447,6 +449,12 @@ export interface YouState {
   provided: number;
   used: number;
   lowPower: boolean;
+  /**
+   * Xenomorph hive energy (sim/hive-energy.ts), shown where scrap is for the other sides: what the
+   * Hive Core and Fusion Nodes hold, what units, defences, and jobs take, and how many sit offline.
+   * Omitted for sides that pay scrap.
+   */
+  energy?: { cap: number; used: number; offline: number };
   structureQueue: StructureQueueView | null;
   /** Guns and garrisons build beside `structureQueue`. Null when that lane is idle. */
   defenceQueue: StructureQueueView | null;
@@ -519,10 +527,6 @@ export interface ProjectileView {
   vy: number;
   /** Fired by the Xenomorphs: drawn and heard as an energy bolt, pulse, or plasma shot. The sim treats it as its round kind. */
   energy?: true;
-  /** A Spitter's acid glob. */
-  acid?: true;
-  /** A Siphon's draining bolt. */
-  drain?: true;
   caliber: number;
   fromId: number;
   bounced: boolean;
@@ -714,6 +718,7 @@ export interface SmokeCloudView {
 /**
  * A hive energy wall: an arc of radius `r` world px about (x, y), `half` radians
  * either side of `angle`. Stationary. Sent to its side and to whoever sees it.
+ * A dome (`dome`) is the whole circle and rides on the unit `fromId`.
  */
 export interface EnergyShieldView {
   id: number;
@@ -727,8 +732,11 @@ export interface EnergyShieldView {
   hpMax: number;
   /** A round struck it in the last few ticks. */
   hit?: true;
-  /** A Hive Ark's dome: a whole circle that rides with the Ark (drawn as a dome, not a wall). */
+  /** The Weaver that threw it in front of a friend (sim/weaver.ts); unset for a unit's own wall. */
+  by?: number;
+  /** A Siphon's or Hive Ark's dome round the unit `fromId`. */
   dome?: true;
+  fromId?: number;
 }
 
 /** Burning ground from a flamethrower or a Pyro's tanks. Burns every soldier standing in it. */
@@ -909,6 +917,8 @@ export type ClientMessage =
   | { type: "cmd.powerdown"; ids: number[]; on: boolean }
   /** Behemoth: lunge at (x, y), short of it when the point is past its reach. */
   | { type: "cmd.lunge"; ids: number[]; x: number; y: number }
+  /** Behemoth: `light` sets Light Pulse (quick, light bolts); false is High Pulse. */
+  | { type: "cmd.pulse"; ids: number[]; light: boolean }
   /** Stalker: dig in under the ground (`on`), or break back out. */
   | { type: "cmd.burrow"; ids: number[]; on: boolean }
   /** Sim Unit II: blink to (x, y). Past his reach he walks until it is in reach, then blinks. */
@@ -916,6 +926,8 @@ export type ClientMessage =
   /** Sim Unit II: blink into a hostile garrison (`targetId`), kill every soldier aboard, and blink back out. */
   | { type: "cmd.purge"; ids: number[]; targetId: number; queue?: boolean }
   | { type: "cmd.rockets"; ids: number[]; on: boolean }
+  /** Mawcaster: `air` true for Air attacks (fliers only, small quick balls), false for Ground attacks. */
+  | { type: "cmd.airmode"; ids: number[]; air: boolean }
   | { type: "cmd.reach"; ids: number[]; max: boolean }
   | { type: "cmd.build"; building: BuildingType | YardFieldType }
   /**
@@ -994,6 +1006,11 @@ export type ClientMessage =
        */
       lead?: { x: number; y: number };
     }
+  /**
+   * Site a Laser Fence from the Defences tab: a post on each top-left tile, start first, the
+   * end last. The yard pays for every post and raises them all together, like a wall line.
+   */
+  | { type: "cmd.fence"; posts: { tx: number; ty: number }[] }
   /** Selected engineers walk to the tile and raise this base building there. A Smelter on distant scrap. */
   | { type: "cmd.construct"; ids: number[]; building: BuildingType; tx: number; ty: number }
   /**
