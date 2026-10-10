@@ -20,6 +20,7 @@ import { moveSpeedMul } from "./crits.js";
 import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
 import { juggernautBlowSeconds } from "./juggernaut.js";
 import { createMatch, step } from "./match.js";
+import { reversing } from "./orders.js";
 import { snapshotFor } from "./snapshot.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -61,6 +62,18 @@ describe("Juggernaut", () => {
     assert.equal(def.kind, "unit");
     assert.equal(meleeOf("juggernaut"), true);
     assert.ok(def.armorFront > 0 && def.leavesWreck);
+  });
+
+  it("turns to face a spot close behind it instead of backing up like a tank", () => {
+    const state = field();
+    const j = at(state, "juggernaut", "B", 20, 30);
+    j.facing = 0;
+    const ts = state.tileSize;
+    assert.equal(applyCommand(state, "B", { type: "cmd.move", ids: [j.id], x: j.x - 2 * TILE_SUBDIV * ts, y: j.y }).ok, true);
+    ticks(state, 2);
+    assert.equal(reversing(j), false);
+    ticks(state, 10);
+    assert.ok(Math.cos(j.facing) < -0.9, `faces west, got ${j.facing}`);
   });
 
   it("sprints at what it is going for, and walks otherwise", () => {
