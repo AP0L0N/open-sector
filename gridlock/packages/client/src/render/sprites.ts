@@ -416,6 +416,7 @@ import {
   bindHiveArkSheets,
   bindApocalypseSheets,
   bindPlaneSheets,
+  bindOverseerSheets,
   bindFlutterSheets,
   FLUTTER_FRAMES,
   bindNebelwerferSheets,
@@ -1757,6 +1758,8 @@ bindFlutterSheets("gnat", GNAT_SPRITE.image);
 /**
  * Overseer: the Xenomorph hover craft, the Stuka's camera and fit. At the Fw 190's px per meter
  * it would be 41 (render_xeno_air.py check); drawn a little larger so the bell reads at play zoom.
+ * Two layers: the hull rows are the base spinning (a quarter turn over 16 rows, picked by
+ * saucerSpinRow, not by facing); the turret is the bell with the eye, on the heading.
  */
 export const OVERSEER_SPRITE: UnitSpriteDef = {
   image: new Image(),
@@ -1767,8 +1770,9 @@ export const OVERSEER_SPRITE: UnitSpriteDef = {
   drawSize: Math.round(48 * UNIT_VISUAL_SCALE),
   contactY: 0.8,
   facingSpace: "world",
+  turret: { image: new Image(), dirs: TANK_FACE_DIRS, frames: 1, frameSize: 128 },
 };
-bindPlaneSheets("overseer", OVERSEER_SPRITE.image);
+bindOverseerSheets(OVERSEER_SPRITE.image, OVERSEER_SPRITE.turret!.image);
 
 /**
  * BV 222 transport. Same camera and cell as the Stuka; its wingspan fills the cell,
@@ -3233,10 +3237,12 @@ export function drawUnitSprite(
     mountFacing?: number;
     mountDx?: number;
     mountDy?: number;
+    /** Hull row to draw instead of the facing's (the Overseer's spinning base). */
+    hullRow?: number;
   },
 ): boolean {
   if (!spriteReady(def)) return false;
-  const dir = sheetDir(def, isoDx, isoDy, opts.facing);
+  const dir = opts.hullRow ?? sheetDir(def, isoDx, isoDy, opts.facing);
   const frame =
     opts.frameIndex != null
       ? Math.min(def.frames - 1, Math.max(0, opts.frameIndex))

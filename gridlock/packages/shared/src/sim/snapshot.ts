@@ -49,6 +49,7 @@ import {
   hasForceField,
   TICK_DT,
   ARK_CANNON_CELL,
+  ARK_CANNON_CHARGE_SECONDS,
 } from "../catalog.js";
 import { padsTaken } from "./air.js";
 import { bridgeOrderSpan } from "./bridge.js";
@@ -173,6 +174,7 @@ function arkView(state: MatchState, e: Entity, friendly: boolean): EntityView["a
     cannons: ark.cannons.map((c) => ({
       facing: c.facing,
       ...(!e.wreck && c.firedTick != null && state.tick - c.firedTick < window ? { fire: true as const } : {}),
+      ...(!e.wreck && c.charge > 0 ? { charge: Math.round((c.charge / ARK_CANNON_CHARGE_SECONDS) * 20) / 20 } : {}),
       ...(friendly ? { energy: Math.round((c.energy / ARK_CANNON_CELL) * 100) / 100 } : {}),
       ...(friendly && c.drained ? { drained: true as const } : {}),
     })),

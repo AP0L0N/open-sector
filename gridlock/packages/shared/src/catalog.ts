@@ -4660,8 +4660,8 @@ export const BATTLESHIP_REARM_ROUNDS = 50;
 
 /**
  * Hive Ark (sim/hive-ark.ts). A round chitin carrier, the Xenomorph answer to the Battle Ship.
- * Two plasma cannons, fore and aft, each lob one huge plasma ball on a high arc, farther than
- * the Battle Ship reaches. Each cannon has its own energy cell: ARK_CANNON_CELL balls full, one
+ * Two plasma cannons, fore and aft, each lob one huge plasma ball on a high arc, about half as
+ * far as the Battle Ship reaches. Each cannon has its own energy cell: ARK_CANNON_CELL balls full, one
  * regrown every ARK_CANNON_RECHARGE_SECONDS; emptied, that cannon holds fire until its cell is
  * full again. An energy dome over the whole hull (ARK_DOME, the Siphon's dome made big,
  * sim/energy-shield.ts) stops what comes at it from outside; drained, it rises again after its
@@ -4670,7 +4670,7 @@ export const BATTLESHIP_REARM_ROUNDS = 50;
  * shows inside the Ark's sight, fight it, and come back to their pods once nothing is left.
  * Nobody commands them. A lost Wasp regrows on its pod after ARK_WASP_REGROW_SECONDS.
  */
-export const ARK_RANGE_TILES = t(31);
+export const ARK_RANGE_TILES = t(15.5);
 export const ARK_MIN_RANGE_TILES = t(6);
 export const ARK_PLASMA_BALL: LobShellDef = {
   damage: 420,
@@ -4687,7 +4687,12 @@ export const ARK_PLASMA_BALL: LobShellDef = {
   trackChance: 0.4,
 };
 /** Seconds one cannon takes to charge its next ball after it fires. */
-export const ARK_CANNON_RELOAD = 6;
+export const ARK_CANNON_RELOAD = 12;
+/**
+ * Seconds a cannon glows up before each ball leaves. It charges over the last of the
+ * reload, so steady fire keeps the reload's pace; a first shot waits the full charge.
+ */
+export const ARK_CANNON_CHARGE_SECONDS = 1.5;
 /** Balls in one cannon's full cell, and the seconds it takes to regrow one. */
 export const ARK_CANNON_CELL = 4;
 export const ARK_CANNON_RECHARGE_SECONDS = 10;
@@ -6696,7 +6701,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Conversion Chamber",
     letter: "C",
     cost: 0,
-    energy: 40,
+    energy: 140,
     buildSeconds: 16,
     hp: 900,
     power: 0,
@@ -6720,7 +6725,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Nanite Forge",
     letter: "N",
     cost: 0,
-    energy: 60,
+    energy: 210,
     buildSeconds: 20,
     hp: 1000,
     power: 0,
@@ -6744,7 +6749,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Neural Nexus",
     letter: "X",
     cost: 0,
-    energy: 120,
+    energy: 420,
     buildSeconds: 26,
     hp: 900,
     power: 0,
@@ -6864,7 +6869,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Spawning Pool",
     letter: "W",
     cost: 0,
-    energy: 80,
+    energy: 280,
     buildSeconds: 20,
     hp: 1000,
     power: 0,
@@ -6889,7 +6894,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Aerie",
     letter: "E",
     cost: 0,
-    energy: 100,
+    energy: 350,
     buildSeconds: 26,
     hp: 1100,
     power: 0,
@@ -6994,9 +6999,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileH: 1,
     radius: ARK_HULL_RADIUS,
     moveTilesPerSec: paced(1.3),
-    turnDegPerSec: 22,
-    noReverse: true,
-    turnInPlace: true,
+    // Round hull, no bow: it never yaws, and slides straight down every course.
+    turnDegPerSec: 0,
     turretTurnDegPerSec: ARK_CANNON_TURN_DEG_PER_SEC,
     rangeTiles: ARK_RANGE_TILES,
     sightTiles: t(20),
@@ -7012,7 +7016,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     naval: true,
     leavesWreck: true,
     wreckHp: 100,
-    blurb: `A round chitin carrier the hive grows in its pool, the Xenomorph answer to the Battle Ship. Water only. Two plasma cannons, fore and aft, each throw one huge plasma ball on a high arc, out to ${ARK_RANGE_TILES / TILE_SUBDIV} tiles, farther than the Battle Ship reaches, but never inside ${ARK_MIN_RANGE_TILES / TILE_SUBDIV} tiles; the burst is wide and burns through soldiers, boats, and buildings alike. Each cannon draws on its own energy cell: ${ARK_CANNON_CELL} balls full, one regrown every ${ARK_CANNON_RECHARGE_SECONDS} seconds. Empty, that cannon falls silent until its cell is full again. An energy dome stands over the whole hull, the Siphon's dome made huge: everything that comes in from outside stops on it, rounds, rockets, beams and flame, shells and bombs falling from above, the blast of a burst outside it, and no enemy boat sails in under it. Every hit drains its ${ARK_DOME.energy} points; a standing dome slowly regains them, and drained, it is gone for ${ARK_DOME.rechargeSeconds} seconds before it rises again. Torpedoes run under it. Two Wasps sit on its landing pods: when an enemy unit shows inside its sight they lift by themselves, hunt it, and come home to their pods when nothing is left. Nobody commands them, and a lost Wasp regrows on its pod after ${ARK_WASP_REGROW_SECONDS} seconds. Needs a Neural Nexus. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.`,
+    blurb: `A round chitin carrier the hive grows in its pool, the Xenomorph answer to the Battle Ship. Water only. Round, it has no bow: it never turns, and moves straight off in any direction it is sent. Two plasma cannons, fore and aft, each throw one huge plasma ball on a high arc, out to ${ARK_RANGE_TILES / TILE_SUBDIV} tiles, well short of the Battle Ship's reach, but never inside ${ARK_MIN_RANGE_TILES / TILE_SUBDIV} tiles; the burst is wide and burns through soldiers, boats, and buildings alike. Each cannon draws on its own energy cell: ${ARK_CANNON_CELL} balls full, one regrown every ${ARK_CANNON_RECHARGE_SECONDS} seconds. Empty, that cannon falls silent until its cell is full again. An energy dome stands over the whole hull, the Siphon's dome made huge: everything that comes in from outside stops on it, rounds, rockets, beams and flame, shells and bombs falling from above, the blast of a burst outside it, and no enemy boat sails in under it. Every hit drains its ${ARK_DOME.energy} points; a standing dome slowly regains them, and drained, it is gone for ${ARK_DOME.rechargeSeconds} seconds before it rises again. Torpedoes run under it. Two Wasps sit on its landing pods: when an enemy unit shows inside its sight they lift by themselves, hunt it, and come home to their pods when nothing is left. Nobody commands them, and a lost Wasp regrows on its pod after ${ARK_WASP_REGROW_SECONDS} seconds. Needs a Neural Nexus. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.`,
   },
   /** Xenomorph fighter: insect wings, twin pulse cannons. Lives in an Aerie nest. */
   wasp: {

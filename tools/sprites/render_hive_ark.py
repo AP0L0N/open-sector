@@ -61,9 +61,14 @@ CANNON_Z = 1.72
 POD_Z = 1.62
 # The cannon is drawn this much bigger than its plan, so it reads as the ship's main battery.
 CANNON_SIZE = 1.55
+# The barrel stands this far up off the deck: the balls go out on a high arc.
+CANNON_ELEV_DEG = 50.0
+# Barrel length and trunnion height (before CANNON_SIZE).
+BARREL_LEN = 2.25
+TRUNNION_Z = 0.62
 # Barrel tip ahead of the cannon pivot, and bore height over it (after CANNON_SIZE).
-MUZZLE_REACH = 2.25 * CANNON_SIZE
-BORE_Z = 0.62 * CANNON_SIZE
+MUZZLE_REACH = BARREL_LEN * math.cos(math.radians(CANNON_ELEV_DEG)) * CANNON_SIZE
+BORE_Z = (TRUNNION_Z + BARREL_LEN * math.sin(math.radians(CANNON_ELEV_DEG))) * CANNON_SIZE
 
 
 def deck_z(r: float) -> float:
@@ -147,16 +152,17 @@ def build_hull() -> Mesh:
 
 
 def build_cannon() -> Mesh:
-    """Plasma cannon. Pivot at the origin, base on z = 0, barrel along +x."""
+    """Plasma cannon. Pivot at the origin, base on z = 0, barrel along +x raised CANNON_ELEV_DEG."""
     m = Mesh()
     seg = 16
     dome(m, 0.0, 0.0, 0.0, 0.95, 0.88, 0.55, banded_dome_mat(seg, (3,), team_seg=seg // 4, team_rings=(4,)), rings=5, seg=seg)
-    gz = BORE_Z / CANNON_SIZE
-    reach = MUZZLE_REACH / CANNON_SIZE
+    gz = TRUNNION_Z
+    reach = BARREL_LEN
     # Breech and plasma chamber riding the back of the turret.
     ellipsoid(m, (-0.45, 0.0, gz + 0.12), (0.55, 0.42, 0.36), "chitin", rings=6, seg=12)
     ellipsoid(m, (-0.45, 0.0, gz + 0.3), (0.36, 0.26, 0.2), "core", rings=5, seg=10)
-    # Thick ribbed barrel with glow coils.
+    # Thick ribbed barrel with glow coils, laid along +x, then raised on the trunnion.
+    barrel_from = len(m.verts)
     tube_x(m, 0.2, reach - 0.25, 0.0, gz, 0.27, "barrel", n=12)
     for x in (0.65, 1.05, 1.45):
         tube_x(m, x, x + 0.14, 0.0, gz, 0.34, "seam", n=12)
@@ -169,6 +175,11 @@ def build_cannon() -> Mesh:
         base = np.array([reach - 0.18, 0.3 * math.cos(a), gz + 0.3 * math.sin(a)])
         tube(m, base, base + np.array([0.42, -0.12 * math.cos(a), -0.12 * math.sin(a)]), 0.08, 0.02, "claw", n=5)
     knob(m, (reach - 0.05, 0.0, gz), 0.22, "core")
+    ce = math.cos(math.radians(CANNON_ELEV_DEG))
+    se = math.sin(math.radians(CANNON_ELEV_DEG))
+    for k in range(barrel_from, len(m.verts)):
+        x, y, z = m.verts[k]
+        m.verts[k] = np.array([x * ce - (z - gz) * se, y, gz + x * se + (z - gz) * ce])
     m.verts = [p * CANNON_SIZE for p in m.verts]
     return m
 

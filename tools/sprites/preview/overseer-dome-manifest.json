@@ -1,0 +1,49 @@
+{
+  "unit": "overseer-dome",
+  "fit_scale": 1,
+  "empty_dirs": [],
+  "clipped_dirs": [],
+  "size_pop_dirs": [
+    "S"
+  ],
+  "heights": [
+    55,
+    54,
+    52,
+    48,
+    44,
+    44,
+    47,
+    49,
+    49,
+    49,
+    47,
+    44,
+    44,
+    48,
+    52,
+    54
+  ],
+  "bottoms": [
+    107,
+    106,
+    104,
+    102,
+    102,
+    102,
+    102,
+    102,
+    102,
+    102,
+    102,
+    102,
+    102,
+    102,
+    104,
+    106
+  ],
+  "ref": "fw190",
+  "ref_fit_scale": 0.7294,
+  "drawSize_base": 40.8,
+  "ref_note": "STUKA_OPTS"
+}

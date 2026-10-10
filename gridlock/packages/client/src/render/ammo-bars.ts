@@ -75,6 +75,8 @@ export function ammoBarRatios(
   }
   // A plasma cannon: the cell is the only store that runs low.
   if (e.energy != null) return [fraction(e.energy, 1)];
+  // A Thrall's fists ride as a one-blow clip the hive keeps full: nothing to show.
+  if (e.type === "thrall") return [];
   const def = catalog(e.type);
   const primary: number[] = [];
   const secondary: number[] = [];

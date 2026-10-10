@@ -40,12 +40,21 @@ export function wingBeatFrame(id: number, fps: number, frames: number, nowMs: nu
   return Math.floor((nowMs / 1000) * fps + id * 1.37) % frames;
 }
 
-/** Turns a second of the Overseer's spinning hull. */
-export const SAUCER_SPIN_PER_SEC = 0.5;
+/** Turns a second of the Overseer's base: a slow, subtle drift (one turn in 25 s). */
+export const SAUCER_SPIN_PER_SEC = 0.04;
 
-/** Radians the Overseer's hull has spun at this moment: it turns all the time, the way it flies or not. */
+/** Radians the Overseer's base has spun at this moment: it turns all the time, the way it flies or not. */
 export function saucerSpin(id: number, nowMs: number): number {
   return ((nowMs / 1000) * SAUCER_SPIN_PER_SEC + id * 0.19) * Math.PI * 2;
+}
+
+/** The base looks the same every quarter turn, so its 16 sheet rows span 90 degrees of spin. */
+export const SAUCER_SPIN_ROWS = 16;
+
+/** Hull row of the Overseer's spinning base now (render_xeno_air.py: frame k is k/16 of a quarter turn). */
+export function saucerSpinRow(id: number, nowMs: number): number {
+  const quarters = (saucerSpin(id, nowMs) / (Math.PI / 2)) % 1;
+  return Math.floor(quarters * SAUCER_SPIN_ROWS) % SAUCER_SPIN_ROWS;
 }
 
 /** Screen pixels a plane lifts off its ground point. */

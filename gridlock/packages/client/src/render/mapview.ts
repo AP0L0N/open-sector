@@ -376,7 +376,7 @@ import {
 import { bumpTilt, crushBump } from "./crush-bump.js";
 import { drawFieldGunSmoke, fieldGunSmokePose, spawnFieldGunSmoke, type FieldGunSmokePuff } from "./field-gun-smoke.js";
 import { emplacementShotLook, facingConeDegOf, PAK43_FX_CALIBER_MUL } from "./emplacement-fx.js";
-import { drawArkPlasmaBall, hiveArkLayers, hiveArkMuzzle } from "./hive-ark.js";
+import { drawArkCharge, drawArkPlasmaBall, hiveArkLayers, hiveArkMuzzle } from "./hive-ark.js";
 import {
   BATTLESHIP_WORLD_PER_UNIT,
   battleshipLayers,
@@ -464,7 +464,7 @@ import {
   tonguePose,
   type FlameParticle,
 } from "./flame-fx.js";
-import { AIR_DRAW_LAYER, aircraftShadowScale, airLiftPx, drawFallingBomb, hoverBobPx, inAir, lerpAirAlt, saucerSpin, wingBeatFrame } from "./aircraft.js";
+import { AIR_DRAW_LAYER, aircraftShadowScale, airLiftPx, drawFallingBomb, hoverBobPx, inAir, lerpAirAlt, saucerSpinRow, wingBeatFrame } from "./aircraft.js";
 import { layCrashTrail, layChargeTrail, CRASH_PUFF_CAP, CHARGE_PUFF_CAP } from "./crash-smoke.js";
 import { canopySway, drawCanopy, drawCrate, drawMine, troopCanopySpan } from "./airdrop-fx.js";
 import { barrageTracers, tracerLandsAt, tracerSpan, type BarrageTracer } from "./barrage-tracer.js";
@@ -8406,6 +8406,10 @@ export class MapView {
         if (!spriteReady(HIVEARK_CANNON)) continue;
         const cell = HIVEARK_CANNON.frameSize;
         ctx.drawImage(HIVEARK_CANNON.image, 0, l.row * cell, cell, cell, left + l.dx, top + l.dy, size, size);
+        const charge = e.wreck ? 0 : (ark.cannons[l.index]?.charge ?? 0);
+        if (charge > 0 && l.mx != null && l.my != null) {
+          drawArkCharge(ctx, ox + l.mx, oy + l.my, charge, performance.now(), e.id + l.index * 2.1, size / HIVEARK_SPRITE.drawSize);
+        }
         continue;
       }
       if (!spriteReady(wasp)) continue;
@@ -8463,9 +8467,10 @@ export class MapView {
       drawTitanThrust(this.ctx, s, { x: s.x, y: s.y + lift }, size, 1, performance.now(), e.id);
     }
     const hex = this.ownerColor(e);
-    // The Overseer is a saucer: its whole hull spins all the time, whichever way it flies.
+    // The Overseer's base turns slowly all the time; the bell above it keeps its eye on the heading.
+    let hullRow: number | undefined;
     if (e.type === "overseer" && !e.wreck) {
-      p.facing += saucerSpin(e.id, performance.now());
+      hullRow = saucerSpinRow(e.id, performance.now());
       p.turretFacing = p.facing;
     }
     const dir = facingToIso(p.facing, this.ts());
@@ -8585,6 +8590,7 @@ export class MapView {
       mountFacing: e.ciws?.facing,
       mountDx: mountDir?.x,
       mountDy: mountDir?.y,
+      hullRow,
     });
     if (drawn && e.scout?.out && !e.wreck) {
       drawScoutHead(ctx, s.x + hullShiftX, s.y + hullShiftY, turretDir.x, turretDir.y, size, p.turretFacing);
