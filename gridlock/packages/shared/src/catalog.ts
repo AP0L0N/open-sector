@@ -447,6 +447,12 @@ export interface RocketRackDef {
   airOnly?: boolean;
   /** A laid rack fires once the frame is this close to the bearing, degrees, in place of the carrier's gunArcDeg. */
   arcDeg?: number;
+  /**
+   * Fired at a flier, the rocket steers onto it in flight, at its height, and bursts on it: a
+   * direct hit, no lead and no scatter. It gives up after steering twice its first flight time,
+   * and then bursts where it was last heading.
+   */
+  homing?: boolean;
 }
 
 export const TITAN_ROCKET_RACK: RocketRackDef = {
@@ -3954,6 +3960,7 @@ export const MAWCASTER_AIR_BALL: RocketRackDef = {
   airOnly: true,
   // Thrown up at the flier, the balls need the maw only roughly on it: a plane outruns a narrow lay.
   arcDeg: 30,
+  homing: true,
 };
 /** The Mawcaster's energy cell: every ball, either rack, draws one shot. */
 export const MAWCASTER_CELL: PlasmaCellDef = { shots: 24, rechargeSeconds: 2 };

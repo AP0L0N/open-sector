@@ -43,6 +43,7 @@ import {
 } from "../catalog.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import { applyCommand } from "./commands.js";
+import { airAlt, entityHeight } from "./elevation.js";
 import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { revealShade } from "./shade.js";
@@ -468,6 +469,33 @@ describe("Mawcaster", () => {
     }
     assert.ok(balls.size >= MAWCASTER_AIR_SALVO * 2, `${balls.size} balls`);
     assert.ok(plane.hp < plane.hpMax, "the plane is hit");
+  });
+
+  it("on Air attacks steers each ball onto a turning plane and bursts it on the plane, at its height", () => {
+    const state = field();
+    const n = at(state, "mawcaster", "B", 10, 30);
+    n.holdPosition = true;
+    n.airMode = true;
+    const plane = makeEntity(state, "stuka", "A", n.x + 4 * state.tileSize * TILE_SUBDIV, n.y);
+    plane.air!.phase = "fly";
+    plane.air!.alt = AIR_CRUISE_ALT;
+    plane.air!.speed = 1;
+    plane.order = { kind: "move", x: plane.x, y: plane.y };
+    plane.hp = plane.hpMax = 1e6;
+    let bursts = 0;
+    for (let i = 0; i < secondsToTicks(6); i++) {
+      step(state, TICK_DT);
+      for (const p of state.projectiles) if (p.fromId === n.id) assert.equal(p.homeOn, plane.id, "each ball steers on the plane");
+      for (const im of state.impacts) {
+        if (im.fromId !== n.id) continue;
+        bursts++;
+        assert.equal(im.homed, plane.id, "burst on the plane");
+        assert.equal(im.z, entityHeight(state, plane) + airAlt(plane), "at its altitude, not under it");
+        assert.ok(Math.hypot(im.x - plane.x, im.y - plane.y) < 1e-6, "on it, not beside it");
+      }
+    }
+    assert.ok(bursts >= MAWCASTER_AIR_SALVO, `${bursts} bursts`);
+    assert.ok(snapshotFor(state, "B").projectiles.every((p) => p.fromId !== n.id || p.homeOn === plane.id), "the client knows its flier");
   });
 
   it("draws every ball from an energy cell the snapshot shows as a bar, and waits on it when empty", () => {

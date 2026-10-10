@@ -19,7 +19,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 148;
+export const PROTOCOL_VERSION = 149;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -558,6 +558,8 @@ export interface ProjectileView {
   bomb?: boolean;
   /** Titan or Nebelwerfer rocket. `z` is its height; a Nebelwerfer rocket lobs, so it climbs and falls. */
   rocket?: boolean;
+  /** A homing ball (the Mawcaster's Air attacks): the flier it is steering onto. */
+  homeOn?: number;
   /** Rocketer high-penetration missile. Same flight as a rocket, a longer body in the air. */
   heavy?: boolean;
   /**
@@ -617,6 +619,8 @@ export interface ImpactView {
   rocket?: boolean;
   /** Rocket air burst beside a plane: elevation units above the ground. No dirt, no crater. */
   z?: number;
+  /** A homing ball burst on this flier: drawn on its body, not at its ground-point height. */
+  homed?: number;
   /**
    * A radar-laid 20mm round fired at a plane: elevation units (projectile z) where
    * it ended. It met the plane, or missed and climbed away. No dirt, no crater.

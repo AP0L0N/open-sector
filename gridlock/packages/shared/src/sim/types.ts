@@ -838,6 +838,11 @@ export interface Projectile {
   launcher?: EntityType;
   /** Rocket only: left the carrier's air rack (airRackOf), not its own. */
   airRack?: true;
+  /** Homing rocket only: the flier it steers onto (RocketRackDef.homing), and the seconds it may still steer. */
+  homeOn?: number;
+  homeLeft?: number;
+  /** Homing rocket only: the flier it burst on. */
+  homedOn?: number;
   /** Lobbed rocket only: height it left the tubes at. `apex` rides on top of the line from here to the ground. */
   launchZ?: number;
   /** Rocket only: CIWS mounts that already fired a burst at it. An ordinary rocket gets one try. */

@@ -1815,6 +1815,11 @@ export class MapView {
         continue;
       }
       this.snapHullFx(fx);
+      // A homing ball's burst sits on the flier's body.
+      if (i.homed != null) {
+        const flier = this.currById.get(i.homed);
+        if (flier) fx.lift = this.flierBodyLiftPx(flier);
+      }
       // A Thrall going off on a hull is the hive's light, not a fireball: one big green burst.
       if (i.blast && i.energy && i.fromId != null && this.prevById.get(i.fromId)?.type === "thrall") fx.kind = "hit";
       else if (i.kind === "kill" && i.blast) fx.death = this.deathBlastAt(i.x, i.y, i.caliber);
@@ -2612,6 +2617,26 @@ export class MapView {
     if (best?.kind === "building") return deathBlastSpec({ tiles: best.tileW * best.tileH });
     if (best) return deathBlastSpec({ radius: catalog(best.type).radius });
     return deathBlastSpec({ caliber });
+  }
+
+  /** Screen pixels from a flier's lifted ground point up to the middle of its painted body. */
+  private flierBodyLiftPx(e: EntityView): number {
+    const spr = spriteFor(e.type, e.stance, e.swimming);
+    return spr ? Math.max(0, spr.drawSize * (spr.contactY - 0.5)) : 0;
+  }
+
+  /**
+   * Extra lift for a homing ball's head: none as it leaves, the flier's whole body lift as it
+   * arrives, so the ball meets the plane on screen where the sim meets it in the air.
+   */
+  private homingBodyLift(targetId: number, head: { x: number; y: number }, from: { x: number; y: number } | undefined): number {
+    const flier = this.currById.get(targetId);
+    if (!flier) return 0;
+    const t = this.lerpEnt(flier);
+    const left = Math.hypot(t.x - head.x, t.y - head.y);
+    const total = from ? Math.hypot(t.x - from.x, t.y - from.y) : left;
+    const u = total > 1e-6 ? Math.min(1, Math.max(0, 1 - left / total)) : 1;
+    return this.flierBodyLiftPx(flier) * u;
   }
 
   /** Pin armor sparks to painted sprite pixels so they don't float in empty canvas. */
@@ -9264,9 +9289,14 @@ export class MapView {
       this.rocketLast.set(p.id, head);
       const s = this.toScreen(head.x, head.y, head.z);
       const tail = this.toScreen(last.x, last.y, last.z);
+      // A homing ball closes on the flier's painted body, not the ground-point height the sim flies it to.
+      const lift = p.homeOn != null ? this.homingBodyLift(p.homeOn, head, this.rocketFrom.get(p.id)) : 0;
+      s.y -= lift;
+      tail.y -= lift;
       const dx = s.x - tail.x;
       const dy = s.y - tail.y;
       const fallback = this.toScreen(head.x - p.vx * 0.01, head.y - p.vy * 0.01, head.z);
+      fallback.y -= lift;
       const moved = dx * dx + dy * dy > 0.25;
       heads.push({
         x: s.x,

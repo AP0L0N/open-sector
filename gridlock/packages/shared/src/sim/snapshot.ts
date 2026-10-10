@@ -734,6 +734,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
         // A mine canister falls like a small bomb; its caliber tells the client it is not an SC 250.
         bomb: p.flight === "bomb" || p.flight === "cluster" ? true : undefined,
         rocket: p.flight === "rocket" ? true : undefined,
+        homeOn: p.homeOn,
         heavy: p.heavy ? true : undefined,
         hammer: p.hammer,
         ...(p.flight === "bomb" || p.flight === "rocket" || p.flight === "cluster" ? { z: p.z ?? 0 } : {}),
