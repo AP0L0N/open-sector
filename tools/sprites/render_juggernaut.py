@@ -53,13 +53,19 @@ CONTACT_Y = 0.82
 WRECK_CONTACT_Y = 0.62
 
 BORG_MATS = {
-    "alloy": ((64, 76, 68), (98, 112, 102), (138, 154, 142)),  # cold grey-green alloy
+    "alloy": ((60, 72, 64), (92, 106, 96), (124, 140, 128)),  # cold grey-green alloy, a step under the Drone's
     "chitin": ((20, 24, 22), (36, 42, 38), (58, 66, 60)),  # dark chitin plates
     "cable": ((30, 32, 32), (48, 52, 50), (70, 76, 72)),  # exposed cabling
-    "gplate": ((84, 92, 88), (122, 130, 124), (162, 170, 164)),  # pale steel edge
+    "gplate": ((76, 84, 80), (110, 118, 112), (140, 148, 142)),  # pale steel edge
     "optic": (160, 255, 96),  # green optic
     "conduit": (96, 204, 72),  # lit conduits on the back and the hammer head
     "dead_glow": ((32, 44, 32), (46, 62, 44), (62, 82, 58)),  # dark conduit on the wreck
+    # Surface detail (see `plating`): panel seams, rivet heads, scuffed and grimed plate.
+    "seam": ((22, 26, 24), (34, 40, 36), (48, 56, 50)),
+    "bolt": ((44, 50, 46), (76, 84, 78), (112, 120, 114)),
+    "alloy_worn": ((48, 58, 52), (74, 86, 78), (100, 114, 104)),
+    "gplate_worn": ((62, 70, 66), (90, 98, 92), (116, 124, 118)),
+    "chitin_worn": ((30, 34, 30), (50, 56, 50), (74, 82, 74)),
 }
 for _name, _spec in BORG_MATS.items():
     R.MATERIALS[_name] = _spec
@@ -114,6 +120,70 @@ def sag(phi: float) -> np.ndarray:
     return np.array([math.cos(phi), 0.0, math.sin(phi)])
 
 
+# ---------------------------------------------------------------- surface detail
+
+WORN = {"alloy": "alloy_worn", "gplate": "gplate_worn", "chitin": "chitin_worn"}
+
+
+def _hash01(q: np.ndarray, salt: int) -> np.ndarray:
+    """Stable per-cell noise in [0, 1) for integer cells `q` (n, 3)."""
+    q = q.astype(np.int64)
+    h = (q[:, 0] * 73856093) ^ (q[:, 1] * 19349663) ^ (q[:, 2] * 83492791) ^ (salt * 2654435761)
+    h = (h ^ (h >> 13)) * 1274126177
+    return ((h ^ (h >> 16)) & 0xFFFF) / 65536.0
+
+
+def plating(base: str, origin, rot=None, step=(6.0, 6.0, 6.0), seam: float = 0.45, wear: float = 0.18,
+            bolts: bool = True, salt: int = 0):
+    """Material for one part: `base` cut into panels by seams every `step` along its own axes
+    (None skips an axis), rivets beside the seams, and blotches of scuffed plate. Worked out in
+    the part's frame (`origin`, `rot` as passed to the primitive), so it rides with the pose."""
+    origin = np.asarray(origin, float)
+    rot = np.eye(3) if rot is None else np.asarray(rot, float)
+    worn = WORN.get(base, base)
+
+    def mat(p: np.ndarray) -> np.ndarray:
+        q = (p - origin) @ rot
+        names = np.full(len(p), base, dtype=object)
+        names[_hash01(np.floor(q / 2.6), salt) < wear] = worn
+        on_seam = np.zeros(len(p), bool)
+        near = np.full(len(p), np.inf)
+        for ax, s in enumerate(step):
+            if not s:
+                continue
+            f = (q[:, ax] / s) % 1.0
+            d = np.minimum(f, 1.0 - f) * s
+            on_seam |= d < seam
+            near = np.minimum(near, d)
+        if bolts:
+            # A rivet row just off each seam, one every couple of units along the other axes.
+            pitch = _hash01(np.floor(q / 2.4), salt + 3) < 0.35
+            ring = (near > seam + 0.35) & (near < seam + 0.85)
+            dots = np.zeros(len(p), bool)
+            for ax, s in enumerate(step):
+                if s:
+                    f = (q[:, ax] / 2.4) % 1.0
+                    dots |= np.minimum(f, 1.0 - f) < 0.16
+            names[ring & dots & pitch] = "bolt"
+        names[on_seam] = "seam"
+        return names
+
+    return mat
+
+
+def limb_frame(a, b) -> np.ndarray:
+    """Rotation whose columns are the a→b axis and two normals: a capsule's own frame."""
+    d = np.asarray(b, float) - np.asarray(a, float)
+    d = d / max(1e-6, np.linalg.norm(d))
+    u, v = R._frame(d)
+    return np.stack([d, u, v], axis=1)
+
+
+def limb_plating(base: str, a, b, band: float, **kw):
+    """Plating for a capsule a→b: hoops every `band` along it and one seam down its length."""
+    return plating(base, a, limb_frame(a, b), step=(band, None, kw.pop("split", None)), **kw)
+
+
 # ---------------------------------------------------------------- parts
 
 
@@ -122,14 +192,23 @@ def leg(c: Cloud, hip, foot) -> None:
     foot = np.asarray(foot, float)
     ankle = foot + np.array([0, 0, 3.6])
     knee = two_bone(hip, ankle, THIGH, SHIN, (1, 0, 0))
-    capsule(c, hip, knee, 6.2, 5.0, "alloy")
-    ellipsoid(c, knee + np.array([2.2, 0, 0.4]), (3.8, 4.0, 4.2), "gplate")
-    capsule(c, knee, ankle, 4.2, 3.4, "chitin")
-    capsule(c, knee + np.array([1.4, 0, -2.0]), ankle + np.array([1.8, 0, 2.4]), 3.0, 2.4, "alloy")
+    capsule(c, hip, knee, 6.2, 5.0, limb_plating("alloy", hip, knee, 7.5, salt=11))
+    # Armour slab down the front of the thigh.
+    d = (knee - hip) / np.linalg.norm(knee - hip)
+    side = np.cross(d, [1.0, 0, 0])
+    side = side / max(1e-6, np.linalg.norm(side))
+    fwd = np.cross(side, d)
+    slab = np.stack([d, side, fwd], axis=1)
+    mid = hip + (knee - hip) * 0.5 + fwd * 4.8
+    box(c, mid, (5.4, 3.4, 0.9), plating("chitin", mid, slab, step=(5.4, 40.0, None), salt=12), rot=slab)
+    ellipsoid(c, knee + np.array([2.2, 0, 0.4]), (3.8, 4.0, 4.2), plating("gplate", knee, step=(None, 40.0, 2.6), salt=13))
+    capsule(c, knee, ankle, 4.2, 3.4, limb_plating("chitin", knee, ankle, 6.8, bolts=False, salt=14))
+    s0, s1 = knee + np.array([1.4, 0, -2.0]), ankle + np.array([1.8, 0, 2.4])
+    capsule(c, s0, s1, 3.0, 2.4, limb_plating("alloy", s0, s1, 5.5, salt=15))
     capsule(c, knee + np.array([-3.2, 0, -1.0]), ankle + np.array([-3.0, 0, 1.4]), 1.0, mat="cable")
     ellipsoid(c, ankle, (3.0, 3.2, 2.6), "chitin")
-    box(c, foot + np.array([2.2, 0, 1.9]), (6.2, 4.0, 1.9), "alloy")
-    box(c, foot + np.array([7.0, 0, 1.5]), (1.6, 3.8, 1.5), "gplate")
+    box(c, foot + np.array([2.2, 0, 1.9]), (6.2, 4.0, 1.9), plating("alloy", foot, step=(None, None, None), salt=16))
+    box(c, foot + np.array([7.0, 0, 1.5]), (1.6, 3.8, 1.5), plating("gplate", foot, step=(None, 2.6, None), bolts=False, salt=17))
     box(c, foot + np.array([-3.8, 0, 2.0]), (1.4, 3.4, 2.0), "chitin")
 
 
@@ -138,16 +217,23 @@ def torso(c: Cloud, hz: float, lean: float = 0.0) -> dict[str, np.ndarray]:
     piv = np.array([0.0, 0.0, hz])
     Rm = rot_y(-lean)  # positive lean tips the chest forward (+x, down)
     P = lambda *v: piv + Rm @ np.array(v, float)  # noqa: E731
-    box(c, P(-0.6, 0, 1.6), (5.6, 8.4, 3.6), "chitin", rot=Rm)  # pelvis
-    box(c, P(4.6, 0, 1.0), (1.2, 4.0, 3.0), "gplate", rot=Rm)  # codpiece plate
+    box(c, P(-0.6, 0, 1.6), (5.6, 8.4, 3.6), plating("chitin", P(-0.6, 0, 1.6), Rm, step=(None, 8.4, None), salt=21), rot=Rm)  # pelvis
+    box(c, P(4.6, 0, 1.0), (1.2, 4.0, 3.0), plating("gplate", P(4.6, 0, 1.0), Rm, step=(None, None, 2.0), salt=22), rot=Rm)  # codpiece plate
     for i in range(3):
         cylinder(c, P(-0.6, 0, 6.0 + i * 2.6), P(-0.6, 0, 7.6 + i * 2.6), 6.4 - 0.3 * i, "cable")  # ribbed waist
-    ellipsoid(c, P(1.0, 0, 20.0), (9.4, 13.6, 10.4), "alloy", rot=Rm)  # chest
-    box(c, P(8.6, 0, 20.4), (1.6, 8.6, 6.4), "gplate", rot=Rm @ rot_y(-0.15))  # breastplate
+    ellipsoid(c, P(1.0, 0, 20.0), (9.4, 13.6, 10.4), plating("alloy", P(1.0, 0, 20.0), Rm, step=(None, 13.6, 7.0), salt=23), rot=Rm)  # chest
+    bp = Rm @ rot_y(-0.15)
+    box(c, P(8.6, 0, 20.4), (1.6, 8.6, 6.4), plating("gplate", P(8.6, 0, 20.4), bp, step=(None, 8.6, None), salt=24), rot=bp)  # breastplate
+    for i in range(3):  # belly lames under the breastplate, overlapping downward
+        ab = Rm @ rot_y(-0.3)
+        at = P(7.6 - 0.5 * i, 0, 12.6 - 2.5 * i)
+        box(c, at, (1.2, 6.4 - 0.7 * i, 1.1), plating("chitin", at, ab, step=(None, 3.2, None), salt=25 + i), rot=ab)
+    gorget = P(3.4, 0, 27.6)
+    ellipsoid(c, gorget, (6.4, 9.0, 2.2), plating("chitin", gorget, Rm, step=(None, 3.0, None), bolts=False, salt=28), rot=Rm)
     for s in (1, -1):
         box(c, P(9.6, s * 4.4, 16.0), (0.4, 0.9, 3.0), "conduit", rot=Rm)  # chest vents
     # Back: a hump of chitin with lit conduits running down it.
-    ellipsoid(c, P(-7.0, 0, 23.0), (6.0, 10.0, 7.4), "chitin", rot=Rm)
+    ellipsoid(c, P(-7.0, 0, 23.0), (6.0, 10.0, 7.4), plating("chitin", P(-7.0, 0, 23.0), Rm, step=(None, 10.0, 7.4), salt=29), rot=Rm)
     for s in (1, -1):
         capsule(c, P(-11.2, s * 3.6, 28.0), P(-9.6, s * 4.2, 14.0), 0.9, mat="conduit")
         capsule(c, P(-10.0, s * 7.6, 26.0), P(-6.0, s * 10.6, 30.6), 1.4, mat="cable")
@@ -160,7 +246,7 @@ def head(c: Cloud, at, Rm) -> None:
     """Small skull sunk between the shoulders, a green optic band, a jaw plate."""
     at = np.asarray(at, float)
     P = lambda *v: at + Rm @ np.array(v, float)  # noqa: E731
-    ellipsoid(c, at, (4.4, 4.4, 4.6), "chitin", rot=Rm)
+    ellipsoid(c, at, (4.4, 4.4, 4.6), plating("chitin", at, Rm, step=(None, 40.0, 3.0), bolts=False, salt=31), rot=Rm)
     box(c, P(3.4, 0, -2.2), (1.6, 3.2, 1.8), "gplate", rot=Rm)
     box(c, P(4.3, 0, 0.9), (0.6, 3.4, 0.7), "optic", rot=Rm)
     box(c, P(-0.6, 0, 4.2), (3.6, 0.8, 0.9), "alloy", rot=Rm)  # crest
@@ -168,7 +254,8 @@ def head(c: Cloud, at, Rm) -> None:
 
 def pauldron(c: Cloud, at, side: float) -> None:
     at = np.asarray(at, float)
-    ellipsoid(c, at + np.array([0, side * 1.0, 2.6]), (7.0, 6.2, 5.0), "gplate", keep=lambda p, z=at[2]: p[:, 2] >= z + 0.6)
+    ellipsoid(c, at + np.array([0, side * 1.0, 2.6]), (7.0, 6.2, 5.0), plating("gplate", at, step=(None, None, 2.6), bolts=False, salt=41),
+              keep=lambda p, z=at[2]: p[:, 2] >= z + 0.6)  # stacked lames
     ellipsoid(c, at + np.array([0, side * 1.4, 4.0]), (5.0, 4.4, 3.6), "metal", keep=lambda p, z=at[2]: p[:, 2] >= z + 4.6)  # team tint
     ellipsoid(c, at + np.array([0, side * 2.2, 1.0]), (7.2, 5.0, 0.8), "chitin")
 
@@ -179,14 +266,16 @@ def arm(c: Cloud, shoulder, hand, side: float, pole=(-0.6, 0.0, -1.0), fist: boo
     p = np.asarray(pole, float) + np.array([0, side * 0.7, 0])
     elbow = two_bone(shoulder, hand, UPPER, FORE, p)
     pauldron(c, shoulder, side)
-    capsule(c, shoulder, elbow, 4.6, 4.0, "alloy")
+    capsule(c, shoulder, elbow, 4.6, 4.0, limb_plating("alloy", shoulder, elbow, 6.8, salt=51))
     ellipsoid(c, elbow, (3.8, 3.8, 3.8), "chitin")
-    capsule(c, elbow, hand, 5.0, 4.4, "gplate")  # heavy forearm
-    capsule(c, elbow + (hand - elbow) * 0.2, elbow + (hand - elbow) * 0.75, 5.3, 5.0, "alloy",
+    capsule(c, elbow, hand, 5.0, 4.4, limb_plating("alloy", elbow, hand, 6.5, salt=52))  # heavy forearm
+    g0, g1 = elbow + (hand - elbow) * 0.2, elbow + (hand - elbow) * 0.75
+    capsule(c, g0, g1, 5.3, 5.0, limb_plating("chitin", g0, g1, 3.6, salt=53),  # dark gauntlet plates
             keep=lambda q, e=elbow, h=hand: ((q - e) @ np.cross(h - e, [0, 0, 1.0])) * side >= -0.5)
     if fist:
-        ellipsoid(c, hand, (4.4, 4.2, 4.0), "chitin")
-        ellipsoid(c, hand + (hand - elbow) / max(1e-6, np.linalg.norm(hand - elbow)) * 2.6, (2.6, 3.6, 3.0), "gplate")
+        ellipsoid(c, hand, (4.4, 4.2, 4.0), plating("chitin", hand, step=(None, 2.4, None), bolts=False, salt=54))
+        k = hand + (hand - elbow) / max(1e-6, np.linalg.norm(hand - elbow)) * 2.6
+        ellipsoid(c, k, (2.6, 3.6, 3.0), limb_plating("gplate", elbow, hand, 1.8, bolts=False, salt=55))  # knuckle ridges
 
 
 def hammer(c: Cloud, grip, axis, glow: bool = True) -> None:
@@ -207,9 +296,9 @@ def hammer(c: Cloud, grip, axis, glow: bool = True) -> None:
         side = np.array([1.0, 0, 0])
     side = side / np.linalg.norm(side)
     head_rot = _along(side)
-    box(c, top, (8.6, 4.8, 5.4), "alloy", rot=head_rot)
+    box(c, top, (8.6, 4.8, 5.4), plating("alloy", top, head_rot, step=(4.3, None, None), salt=61), rot=head_rot)
     for s in (1, -1):
-        box(c, top + side * s * 8.9, (0.8, 5.4, 6.0), "gplate", rot=head_rot)
+        box(c, top + side * s * 8.9, (0.8, 5.4, 6.0), plating("gplate", top, head_rot, step=(None, None, None), salt=62), rot=head_rot)
     for s in (1, -1):
         box(c, top + side * s * 4.0, (0.6, 4.95, 5.55), "conduit" if glow else "dead_glow", rot=head_rot)
     del Rm
