@@ -143,6 +143,7 @@ export {
 export type { DayPhase, HullLamp, MatchClock } from "./night.js";
 export {
   FIELD_TURN_MAX,
+  fencePostTile,
   fieldCornerStart,
   fieldEndAt,
   fieldLine,
@@ -158,5 +159,5 @@ export {
 } from "./field.js";
 export { bridgeBrickProblemFor, bridgeSpanOf, bridgeTilesOf, restampBridges } from "./bridge.js";
 export type { FieldEnd, GateSite, WallTopSample } from "./field.js";
-export { laserFenceLinks } from "./laser-fence.js";
+export { laserFenceLinks, totalFenceLinkEnergy } from "./laser-fence.js";
 export type { FenceLink, FencePost } from "./laser-fence.js";

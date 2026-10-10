@@ -19,7 +19,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 142;
+export const PROTOCOL_VERSION = 143;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -719,6 +719,8 @@ export interface EnergyShieldView {
   hpMax: number;
   /** A round struck it in the last few ticks. */
   hit?: true;
+  /** The Weaver that threw it in front of a friend (sim/weaver.ts); unset for a unit's own wall. */
+  by?: number;
 }
 
 /** Burning ground from a flamethrower or a Pyro's tanks. Burns every soldier standing in it. */
@@ -984,6 +986,11 @@ export type ClientMessage =
        */
       lead?: { x: number; y: number };
     }
+  /**
+   * Site a Laser Fence from the Defences tab: a post on each top-left tile, start first, the
+   * end last. The yard pays for every post and raises them all together, like a wall line.
+   */
+  | { type: "cmd.fence"; posts: { tx: number; ty: number }[] }
   /** Selected engineers walk to the tile and raise this base building there. A Smelter on distant scrap. */
   | { type: "cmd.construct"; ids: number[]; building: BuildingType; tx: number; ty: number }
   /**

@@ -1,7 +1,7 @@
-import { energyOf, energySupplyOf, LASER_FENCE_ENERGY_PER_CELL, TILE_SUBDIV, usesHiveEnergy } from "../catalog.js";
+import { energyOf, energySupplyOf, usesHiveEnergy } from "../catalog.js";
 import { isAirborne } from "./air.js";
 import { clearOrder } from "./geo.js";
-import { laserFenceLinks, laserFenceReach, type FencePost } from "./laser-fence.js";
+import { fenceLinkEnergy, laserFenceLinks, laserFenceReach, totalFenceLinkEnergy, type FencePost } from "./laser-fence.js";
 import type { Entity, MatchState, SimPlayer } from "./types.js";
 
 /**
@@ -31,11 +31,6 @@ export function hiveEnergyCap(state: MatchState, playerId: string): number {
   return cap;
 }
 
-/** Energy one fence link of `lengthPx` world px holds. */
-export function fenceLinkEnergy(lengthPx: number, tileSize: number): number {
-  return Math.round((lengthPx / (tileSize * TILE_SUBDIV)) * LASER_FENCE_ENERGY_PER_CELL);
-}
-
 function fencePosts(state: MatchState, playerId: string): FencePost[] {
   const posts: FencePost[] = [];
   for (const e of state.entities.values()) {
@@ -58,16 +53,19 @@ function linkEnergyByPost(state: MatchState, posts: readonly FencePost[]): Map<n
 }
 
 function totalLinkEnergy(state: MatchState, posts: readonly FencePost[]): number {
-  let n = 0;
-  for (const v of linkEnergyByPost(state, posts).values()) n += v;
-  return n;
+  return totalFenceLinkEnergy(posts, laserFenceReach(state), state.tileSize);
 }
 
-/** How much more energy the links would take with a new post of `playerId`'s at (x, y). */
-export function fenceEnergyToAdd(state: MatchState, playerId: string, x: number, y: number): number {
+/** How much more energy the links would take with new posts of `playerId`'s at `at` (world px). */
+export function fenceEnergyToAdd(state: MatchState, playerId: string, at: readonly { x: number; y: number }[]): number {
   const posts = fencePosts(state, playerId);
-  const ghost: FencePost = { id: Number.MAX_SAFE_INTEGER, ownerId: playerId, x, y };
-  return Math.max(0, totalLinkEnergy(state, [...posts, ghost]) - totalLinkEnergy(state, posts));
+  const ghosts: FencePost[] = at.map((p, i) => ({ id: Number.MAX_SAFE_INTEGER - i, ownerId: playerId, x: p.x, y: p.y }));
+  return Math.max(0, totalLinkEnergy(state, [...posts, ...ghosts]) - totalLinkEnergy(state, posts));
+}
+
+/** Hive energy a sited Laser Fence line takes once it stands: each post's own, and the links it adds. */
+export function fenceLineEnergy(state: MatchState, playerId: string, sites: readonly { x: number; y: number }[]): number {
+  return sites.length * energyOf("laserfence") + fenceEnergyToAdd(state, playerId, sites);
 }
 
 /** Energy each living unit and defence of `playerId` takes, oldest first. A Broodmother's brood is hers: it takes none. */

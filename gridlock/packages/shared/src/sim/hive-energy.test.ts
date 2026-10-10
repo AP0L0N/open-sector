@@ -146,8 +146,9 @@ describe("hive energy", () => {
   it("charges a Laser Fence more the longer its link", () => {
     const state = field();
     at(state, "laserfence", 20, 30);
-    const near = fenceEnergyToAdd(state, "B", tileCenter(Math.round(22 * TILE_SUBDIV), state.tileSize), tileCenter(Math.round(30 * TILE_SUBDIV), state.tileSize));
-    const far = fenceEnergyToAdd(state, "B", tileCenter(Math.round(25 * TILE_SUBDIV), state.tileSize), tileCenter(Math.round(30 * TILE_SUBDIV), state.tileSize));
+    const ts = state.tileSize;
+    const near = fenceEnergyToAdd(state, "B", [{ x: tileCenter(Math.round(22 * TILE_SUBDIV), ts), y: tileCenter(Math.round(30 * TILE_SUBDIV), ts) }]);
+    const far = fenceEnergyToAdd(state, "B", [{ x: tileCenter(Math.round(25 * TILE_SUBDIV), ts), y: tileCenter(Math.round(30 * TILE_SUBDIV), ts) }]);
     assert.equal(near, 2 * LASER_FENCE_ENERGY_PER_CELL);
     assert.equal(far, 5 * LASER_FENCE_ENERGY_PER_CELL);
     at(state, "laserfence", 25, 30);
@@ -156,7 +157,7 @@ describe("hive energy", () => {
     assert.equal(liveFenceLinks(state).links.length, 1);
   });
 
-  it("refuses a fence post whose link the hive cannot feed", () => {
+  it("builds a sited fence line for its posts and links, and waits while the hive is full", () => {
     const state = field();
     const core = hqOf(state, "B")!;
     // Toward the middle of the map from the Hive Core.
@@ -165,16 +166,20 @@ describe("hive energy", () => {
     const cx = core.tileX / TILE_SUBDIV + 1 + sx * 5;
     const cy = core.tileY / TILE_SUBDIV + 1 + sy * 5;
     at(state, "behemoth", cx, cy + sy * 4);
-    at(state, "laserfence", cx, cy);
-    const p = state.players.get("B")!;
-    p.defence = { type: "laserfence", progressTicks: 1, totalTicks: 1, ready: true, paused: false, paid: energyOf("laserfence") };
-    const place = () =>
-      applyCommand(state, "B", { type: "cmd.place", building: "laserfence", tx: Math.round((cx + sx * 5) * TILE_SUBDIV), ty: Math.round(cy * TILE_SUBDIV) });
-    const r = place();
-    assert.equal(r.ok, false);
-    if (!r.ok) assert.match(r.message, /Not enough energy/);
+    const posts = [0, 5].map((d) => ({ tx: Math.round((cx + sx * d) * TILE_SUBDIV), ty: Math.round(cy * TILE_SUBDIV) }));
+    assert.equal(applyCommand(state, "B", { type: "cmd.fence", posts }).ok, true);
+    const scrap = state.players.get("B")!.scrap;
+    // The Behemoth holds all 200: the line waits.
+    ticks(state, 200);
+    const fence = () => [...state.entities.values()].filter((e) => e.type === "laserfence" && e.ownerId === "B");
+    assert.equal(fence().length, 0);
+    const line = state.players.get("B")!.line!;
+    assert.ok(line.progressTicks < line.totalTicks / 10, `stalled at ${line.progressTicks} of ${line.totalTicks}`);
     at(state, "fusionnode", cx + sx * 4, cy + sy * 8);
-    assert.equal(place().ok, true, "with a Fusion Node the link fits");
+    ticks(state, 300);
+    assert.equal(fence().length, 2, "with a Fusion Node the line goes up");
+    assert.equal(state.players.get("B")!.scrap, scrap, "no scrap spent");
+    assert.equal(hiveEnergyOf(state, "B").used, 200 + 2 * energyOf("laserfence") + 5 * LASER_FENCE_ENERGY_PER_CELL);
   });
 });
 

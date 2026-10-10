@@ -1,4 +1,4 @@
-import { buildingRect, isTurnedBuilding, rectContains, rectNearest, rectWorld } from "../building-rect.js";
+import { buildingRect, buildingSite, buildingTilesOf, isTurnedBuilding, rectContains, rectNearest, rectWorld } from "../building-rect.js";
 import {
   NEUTRAL_OWNER,
   catalog,
@@ -14,6 +14,7 @@ import {
   isArmoredType,
   isBridge,
   isCyborg,
+  isFenceLine,
   isFieldStructure,
   isInfantryType,
   isRepairableUnit,
@@ -237,6 +238,12 @@ export function overlapsSitedLine(
   );
 }
 
+/** The top-left tile of a Laser Fence post centred on world (x, y). */
+export function fencePostTile(tileSize: number, x: number, y: number): { tx: number; ty: number } {
+  const def = catalog("laserfence");
+  return { tx: Math.round(x / tileSize - def.tileW / 2), ty: Math.round(y / tileSize - def.tileH / 2) };
+}
+
 /** Tiles under the sections of a sited line, as `y * width + x`. */
 export function sitedLineTiles(
   grid: { width: number; height: number; tileSize: number },
@@ -244,6 +251,14 @@ export function sitedLineTiles(
 ): Set<number> {
   const out = new Set<number>();
   if (!line?.sites?.length) return out;
+  if (isFenceLine(line.type)) {
+    // Fence posts: each site is a post's centre.
+    for (const s of line.sites) {
+      const { tx, ty } = fencePostTile(grid.tileSize, s.x, s.y);
+      for (const t of buildingTilesOf(buildingSite(line.type, tx, ty, 0, grid.tileSize), grid.tileSize)) out.add(t.y * grid.width + t.x);
+    }
+    return out;
+  }
   for (const s of line.sites) {
     for (const t of fieldTilesOn(grid, line.type, s.x, s.y, s.facing, 0)) out.add(t.y * grid.width + t.x);
   }
