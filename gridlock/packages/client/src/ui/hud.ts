@@ -93,6 +93,9 @@ import {
   WALKER_SELF_DESTRUCT_MODES,
   COMMANDER_FIELD_MODES,
   hasForceField,
+  BEHEMOTH_PULSE_MODES,
+  behemothPulseOf,
+  hasPulseModes,
   type BuildingType,
   type YardFieldType,
   canPowerDown,
@@ -386,7 +389,7 @@ export function mountBattlefield(
     });
   }
 
-  bindPress(config, "[data-config-type], [data-shell], [data-weapon], [data-guns], [data-selfdestruct], [data-fielddivert], [data-rockets], [data-reach], [data-payload]", (t) => {
+  bindPress(config, "[data-config-type], [data-shell], [data-weapon], [data-guns], [data-selfdestruct], [data-fielddivert], [data-pulse], [data-rockets], [data-reach], [data-payload]", (t) => {
     runConfigAction(ctx, t);
   });
 
@@ -903,8 +906,14 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
         ? `  ·  ${gun.name}`
         : `  ·  ${gun.name} ${e.clip}/${gun.clip}`
       : "";
-  const rack =
-    e.ammo && e.shell && !e.wreck ? `  ·  ${e.shell.toUpperCase()} ${ammoOf(e.ammo, e.shell)}` : "";
+  const pulse = behemothPulseOf(e);
+  const rack = pulse
+    ? e.wreck || e.ownerId !== ctx.match.youPlayerId
+      ? ""
+      : `  ·  ${pulse.name}`
+    : e.ammo && e.shell && !e.wreck
+    ? `  ·  ${e.shell.toUpperCase()} ${ammoOf(e.ammo, e.shell)}`
+    : "";
   const rockets =
     rocketsOf(e.type) && !e.wreck && e.ownerId === ctx.match.youPlayerId
       ? e.rocketsOff
@@ -1146,7 +1155,7 @@ function updateRocketRack(body: HTMLElement, type: EntityType, mine: EntityView[
 }
 
 function loadoutButton(opts: {
-  attr: "data-shell" | "data-weapon" | "data-guns" | "data-selfdestruct" | "data-fielddivert" | "data-rockets" | "data-reach" | "data-payload";
+  attr: "data-shell" | "data-weapon" | "data-guns" | "data-selfdestruct" | "data-fielddivert" | "data-pulse" | "data-rockets" | "data-reach" | "data-payload";
   id: string;
   name: string;
   blurb: string;
@@ -1409,6 +1418,7 @@ function configBodyLayout(focus: EntityView, live: EntityView[], wrecks: EntityV
     if (mine.length > 0) parts.push("charge");
   }
   else if (isTransportType(focus.type)) parts.push(mine.length > 0 ? "payload" : "transport");
+  else if (hasPulseModes(focus.type)) parts.push(mine.length > 0 ? "pulse" : "plasma");
   else if (hasAmmo(focus.type)) parts.push("ammo");
   if (rocketsOf(focus.type) && mine.length > 0) parts.push("rockets");
   else if (isInfantryType(focus.type)) {
@@ -1496,6 +1506,14 @@ function buildConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
       body.append(el("div", { class: "tiny", text: "Load (change on the pad)" }), rack);
     }
     body.append(el("p", { class: "tiny", attrs: { "data-field": "cargo" } }));
+  } else if (hasPulseModes(focus.type)) {
+    if (mine.length > 0) {
+      const rack = el("div", { class: "shell-rack" });
+      for (const mode of BEHEMOTH_PULSE_MODES) {
+        rack.append(loadoutButton({ attr: "data-pulse", id: mode.id, name: mode.name, blurb: mode.blurb, count: "", on: false }));
+      }
+      body.append(el("div", { class: "tiny", text: "Pulse" }), rack);
+    }
   } else if (hasAmmo(focus.type)) {
     const rack = el("div", { class: "shell-rack" });
     const table = shellsFor(focus.type);
@@ -1625,6 +1643,15 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
         ? "Transport"
         : `${[...new Set(lines)].join("  ·  ")}  ·  Force-attack the ground to drop.`,
     );
+  } else if (hasPulseModes(focus.type)) {
+    const mine = live.filter((e) => e.ownerId === you);
+    const light = mine.length > 0 && mine.every((e) => e.lightPulse);
+    const high = mine.length > 0 && mine.every((e) => !e.lightPulse);
+    for (const mode of BEHEMOTH_PULSE_MODES) {
+      const btn = body.querySelector(`[data-pulse="${mode.id}"]`);
+      if (!(btn instanceof HTMLElement)) continue;
+      updateLoadoutButton(btn, { count: "", on: mode.id === "light" ? light : high });
+    }
   } else if (hasAmmo(focus.type)) {
     const shells = live.filter((e) => e.ownerId === you);
     const same = shells.length > 0 && shells.every((e) => e.shell === shells[0]!.shell);
@@ -2722,6 +2749,15 @@ function runConfigAction(ctx: Ctx, t: HTMLElement): void {
       .map((ent) => ent.id);
     if (ids.length === 0) return;
     ctx.net.send({ type: "cmd.selfdestruct", ids, on: charge === "on" });
+    return;
+  }
+  const pulse = t.dataset.pulse;
+  if (pulse === "high" || pulse === "light") {
+    const ids = selectedOfType(ctx, viewRef, configFocus)
+      .filter((ent) => ent.ownerId === ctx.match!.youPlayerId && !ent.wreck && hasPulseModes(ent.type))
+      .map((ent) => ent.id);
+    if (ids.length === 0) return;
+    ctx.net.send({ type: "cmd.pulse", ids, light: pulse === "light" });
     return;
   }
   const divert = t.dataset.fielddivert;

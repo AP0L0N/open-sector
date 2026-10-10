@@ -36,10 +36,10 @@ export function plasmaCharge(e: Entity): number | undefined {
   return Math.round(((e.energy ?? cell.shots) / cell.shots) * 100) / 100;
 }
 
-/** The plasma cannon on `e` fired one round: draw a shot from its cell. */
-export function drawPlasma(e: Entity): void {
+/** The plasma cannon on `e` fired one round: draw `cost` shots from its cell (a Light Pulse bolt, less). */
+export function drawPlasma(e: Entity, cost = 1): void {
   const cell = plasmaCellOf(e.type);
-  if (cell) e.energy = Math.max(0, (e.energy ?? cell.shots) - 1);
+  if (cell) e.energy = Math.max(0, (e.energy ?? cell.shots) - cost);
 }
 
 /** Fill every finite store `e` carries to the catalog's full load. */
