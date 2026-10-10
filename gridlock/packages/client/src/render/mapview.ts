@@ -349,7 +349,7 @@ import {
 import { followCart, type CartPose } from "./mauler-cart.js";
 import { AMMO_PRIMARY_FILL, AMMO_SECONDARY_FILL, ENERGY_FILL, ammoBarRatios, outOfAmmo } from "./ammo-bars.js";
 import { hiveRecoilColumn, noteHiveGunShots, type HiveGunRecoil } from "./hive-gun-recoil.js";
-import { drawFenceBeam } from "./laser-fence-beam.js";
+import { drawFenceBeam, drawFenceZap } from "./laser-fence-beam.js";
 import { OUT_OF_AMMO_SIZE, drawOutOfAmmo } from "./out-of-ammo.js";
 import {
   backtrackPoints,
@@ -557,6 +557,8 @@ import { lineFrame, lineProfile, lineShapes, type LineShape } from "./line-bend.
 
 /** Bridges lie on the water: over ground decals, under shadows, corpses, and everything standing. */
 const BRIDGE_DRAW_LAYER = -1.5;
+/** Laser Fence beams: over corpses, under everything that stands, so a unit in the beam covers it. */
+const FENCE_BEAM_DRAW_LAYER = 0.75;
 /** Screen px above a Weaver's feet where its nanite spindle sits: the thread to a wall starts there. */
 const WEAVER_SPINDLE_LIFT_PX = 12;
 
@@ -4836,6 +4838,7 @@ export class MapView {
             const prev = ctx.globalAlpha;
             ctx.globalAlpha = prev * fade;
             this.drawUnit(e);
+            if (e.fenceZap) this.drawFenceZapOn(e, now);
             if (e.chute != null) this.drawTroopCanopy(e);
             ctx.globalAlpha = prev;
           }
@@ -4876,6 +4879,7 @@ export class MapView {
     this.collectMuzzleSmoke(items);
     this.collectFires(items, w, h);
     this.collectShields(items, w, h);
+    items.push({ layer: FENCE_BEAM_DRAW_LAYER, z: 0, run: () => this.drawLaserFences(now) });
     this.collectNukeScorch(items);
     this.collectAirdrops(items, w, h);
     for (const m of this.takeMoveClicks()) {
@@ -5424,6 +5428,23 @@ export class MapView {
           n.setTransform(ctx.getTransform());
           n.globalCompositeOperation = "destination-out";
           for (const p of pools) fillPool(n, p, "0,0,0", POOL_CUT[p.kind] * p.a * glow);
+        }
+        // The fence beams are drawn under the units now, so the dark is cut along them to keep them lit.
+        const beams = this.fenceBeamLines();
+        if (beams.length) {
+          n.setTransform(ctx.getTransform());
+          n.globalCompositeOperation = "destination-out";
+          n.lineCap = "round";
+          for (const l of beams) {
+            for (const [width, a] of [[10, 0.25], [3, 0.9]] as const) {
+              n.strokeStyle = `rgba(0, 0, 0, ${a})`;
+              n.lineWidth = width;
+              n.beginPath();
+              n.moveTo(l.from.x, l.from.y);
+              n.lineTo(l.to.x, l.to.y);
+              n.stroke();
+            }
+          }
         }
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -9218,18 +9239,18 @@ export class MapView {
       const from = { x: s.x + lens.x, y: s.y + unitGroundSink(size) + lens.y };
       drawLaserBeam(ctx, from, this.toScreen(end.x, end.y), now, e.id);
     }
-    this.drawLaserFences(now);
     this.drawUplinks(now);
   }
 
-  /** Lit Laser Fence posts and the two beams between each linked pair, by the sim's own link rule. */
-  private drawLaserFences(now: number): void {
+  /** Each lit beam on screen: two between each linked pair of Laser Fence posts, by the sim's own link rule. */
+  private fenceBeamLines(): { from: { x: number; y: number }; to: { x: number; y: number }; seed: number }[] {
     const posts = this.curr.entities.filter((e) => e.type === "laserfence" && !e.wreck && !e.ruined && !e.unpowered && e.hp > 0);
-    if (posts.length < 2) return;
+    if (posts.length < 2) return [];
     const ts = this.ts();
     const layer = gunLayerFor("laserfence");
     const heights = layer?.beamZ ?? [5.6, 11.6];
     const byId = new Map(posts.map((e) => [e.id, e]));
+    const out: { from: { x: number; y: number }; to: { x: number; y: number }; seed: number }[] = [];
     for (const link of laserFenceLinks(posts, LASER_FENCE_REACH_TILES * ts)) {
       const a = byId.get(link.a)!;
       const b = byId.get(link.b)!;
@@ -9240,9 +9261,27 @@ export class MapView {
       heights.forEach((z, k) => {
         const la = layer ? this.buildingArtLift(a, ea, z, layer) : z * 2;
         const lb = layer ? this.buildingArtLift(b, eb, z, layer) : z * 2;
-        drawFenceBeam(this.ctx, { x: sa.x, y: sa.y - la }, { x: sb.x, y: sb.y - lb }, now, link.a * 7 + link.b * 3 + k);
+        out.push({ from: { x: sa.x, y: sa.y - la }, to: { x: sb.x, y: sb.y - lb }, seed: link.a * 7 + link.b * 3 + k });
       });
     }
+    return out;
+  }
+
+  /** The fence beams, laid in the depth sort under every standing unit (FENCE_BEAM_DRAW_LAYER). */
+  private drawLaserFences(now: number): void {
+    for (const l of this.fenceBeamLines()) drawFenceBeam(this.ctx, l.from, l.to, now, l.seed);
+  }
+
+  /**
+   * Crackling arcs over a unit a fence beam is burning, drawn on its sprite. The cell is padded
+   * round the art: a soldier's body is tall and narrow in it, a hull wide and low.
+   */
+  private drawFenceZapOn(e: EntityView, now: number): void {
+    const p = this.lerpEnt(e);
+    const size = spriteFor(e.type, e.stance)?.drawSize ?? 20;
+    const s = this.toScreen(p.x, p.y);
+    if (isInfantryType(e.type)) drawFenceZap(this.ctx, s.x, s.y - size * 0.32, size * 0.24, size * 0.36, now, e.id);
+    else drawFenceZap(this.ctx, s.x, s.y - size * 0.1, size * 0.3, size * 0.16, now, e.id);
   }
 
   /** Screen px above the ground that a height `z` of a building's art sits, at CIWS_SOURCE_ZOOM source px a unit, laid on its pad. */
