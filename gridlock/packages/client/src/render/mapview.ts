@@ -265,6 +265,9 @@ import {
   JUMPJET_DIE_SPRITE,
   JUMPJET_FIRE_SPRITE,
   JUMPJET_FLY_SPRITE,
+  WASP_SPRITE,
+  SCOURGE_SPRITE,
+  GNAT_SPRITE,
   JUMPJET_SPRITE,
   MEDIC_SPRITE,
   CYBORG_CRAWL_FIRE_SPRITE,
@@ -448,7 +451,7 @@ import {
   tonguePose,
   type FlameParticle,
 } from "./flame-fx.js";
-import { AIR_DRAW_LAYER, aircraftShadowScale, airLiftPx, drawFallingBomb, inAir, lerpAirAlt } from "./aircraft.js";
+import { AIR_DRAW_LAYER, aircraftShadowScale, airLiftPx, drawFallingBomb, hoverBobPx, inAir, lerpAirAlt, saucerSpin, wingBeatFrame } from "./aircraft.js";
 import { layCrashTrail, layChargeTrail, CRASH_PUFF_CAP, CHARGE_PUFF_CAP } from "./crash-smoke.js";
 import { canopySway, drawCanopy, drawCrate, drawMine, troopCanopySpan } from "./airdrop-fx.js";
 import { barrageTracers, tracerLandsAt, tracerSpan, type BarrageTracer } from "./barrage-tracer.js";
@@ -733,7 +736,7 @@ const EXTRUDE: Record<EntityType, number> = {
   airfield: 14,
   dock: 12,
   spawnpool: 12,
-  aerie: 14,
+  aerie: 64,
   ciws: 26,
   research: 40,
   radar: 44,
@@ -4037,7 +4040,8 @@ export class MapView {
     }
     if (!e.air && !e.jet && e.chute == null) return 0;
     const t = Math.min(1, (performance.now() - this.snapAt) / 100);
-    return airLiftPx(lerpAirAlt(this.prevById.get(e.id), e, t));
+    // A Xenomorph flier hanging in the air bobs gently on its wings.
+    return airLiftPx(lerpAirAlt(this.prevById.get(e.id), e, t)) + hoverBobPx(e, performance.now());
   }
 
   private lerpEnt(e: EntityView): { x: number; y: number; facing: number; turretFacing: number } {
@@ -7899,6 +7903,11 @@ export class MapView {
       drawTitanThrust(this.ctx, s, { x: s.x, y: s.y + lift }, size, 1, performance.now(), e.id);
     }
     const hex = this.ownerColor(e);
+    // The Overseer is a saucer: its whole hull spins all the time, whichever way it flies.
+    if (e.type === "overseer" && !e.wreck) {
+      p.facing += saucerSpin(e.id, performance.now());
+      p.turretFacing = p.facing;
+    }
     const dir = facingToIso(p.facing, this.ts());
     const turretDir = facingToIso(p.turretFacing ?? p.facing, this.ts());
     const mountDir = e.ciws ? facingToIso(e.ciws.facing, this.ts()) : undefined;
@@ -7946,6 +7955,9 @@ export class MapView {
     } else if (def === JUMPJET_FLY_SPRITE) {
       // The plumes flicker whether he hovers or flies.
       frameIndex = Math.floor((performance.now() / 1000) * def.fps + e.id) % def.frames;
+    } else if ((def === WASP_SPRITE || def === SCOURGE_SPRITE || def === GNAT_SPRITE) && !e.wreck) {
+      // A Xenomorph insect is always in the air: its wings never stop beating.
+      frameIndex = wingBeatFrame(e.id, def.fps, def.frames, performance.now());
     }
     ctx.save();
     ctx.save();

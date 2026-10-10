@@ -23,6 +23,7 @@ import {
   coverHeightOf,
   hasTracks,
   isAircraftType,
+  staysAloft,
   wreckHpOf,
 } from "../catalog.js";
 import { TILE_EMPTY } from "../maps.js";
@@ -740,7 +741,8 @@ describe("fuel", () => {
   });
 
   it("every plane on guard far off comes home on a low tank and lands instead of circling dry", () => {
-    for (const type of TRAIN_TYPES.filter((t) => isAircraftType(t))) {
+    // A Xenomorph flier has no tank and no nest (staysAloft).
+    for (const type of TRAIN_TYPES.filter((t) => isAircraftType(t) && !staysAloft(t))) {
       for (const [dx, dy] of [[70, 0], [-70, 0], [0, 70], [0, -70], [50, 50], [-50, -50]] as const) {
         const state = twoPlayerMatch();
         seedCore(state);

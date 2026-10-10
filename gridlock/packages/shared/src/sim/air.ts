@@ -114,6 +114,11 @@ import {
   OVERSEER_LIFT_PER_SEC,
   OVERSEER_PULSE_DAMAGE,
   OVERSEER_PULSE_SECONDS,
+  HIVE_BOMB_SECONDS,
+  HIVE_GUN_BURST_SECONDS,
+  HIVE_SCOURGE_STANDOFF_TILES,
+  HIVE_WASP_STANDOFF_TILES,
+  staysAloft,
 } from "../catalog.js";
 import { hasCargo, loseRiders, payloadOf, planeRiders, releaseCanister, startJumping, tickDoor } from "./airdrop.js";
 import type { ImpactView } from "../protocol.js";
@@ -307,6 +312,11 @@ function liveHome(state: MatchState, e: Entity): Entity | null {
 function ensureHome(state: MatchState, e: Entity): Entity | null {
   const a = e.air;
   if (!a) return null;
+  // A Xenomorph flier has no nest to go home to.
+  if (staysAloft(e.type)) {
+    a.homeId = null;
+    return null;
+  }
   const home = liveHome(state, e);
   if (home) return home;
   a.homeId = null;
@@ -512,6 +522,11 @@ function loiterHere(e: Entity): void {
 export function orderAircraft(state: MatchState, e: Entity, order: Order): void {
   const a = e.air;
   if (!a || e.hp <= 0 || e.wreck || a.phase === "crash") return;
+  // A Xenomorph flier never lands: Land is a stop, and it hangs where it is.
+  if (order.kind === "land" && staysAloft(e.type)) {
+    stopAircraft(e);
+    return;
+  }
   if (order.kind === "land" && a.phase === "parked") {
     clearGuard(e);
     e.order = null;
@@ -570,6 +585,12 @@ export function stopAircraft(e: Entity): void {
   const a = e.air;
   if (!a || a.phase === "crash") return;
   clearGuard(e);
+  // A Xenomorph flier stops dead in the air and hangs there.
+  if (staysAloft(e.type) && a.phase !== "parked") {
+    e.order = null;
+    e.attackTarget = null;
+    return;
+  }
   if (a.phase === "parked") {
     e.order = null;
     return;
@@ -600,8 +621,10 @@ export function tickAir(state: MatchState, dt: number): void {
       servicePad(state, e, dt);
       continue;
     }
-    a.fuel = Math.max(0, a.fuel - dt);
-    if (isHoverType(e.type)) tickHover(state, e, dt);
+    // A Xenomorph flier runs on the hive: its tank never empties.
+    if (staysAloft(e.type)) a.fuel = airFuelOf(e.type);
+    else a.fuel = Math.max(0, a.fuel - dt);
+    if (isHoverType(e.type) || staysAloft(e.type)) tickHover(state, e, dt);
     else if (a.phase === "takeoff") tickTakeoff(state, e, dt);
     else if (a.phase === "landing") tickLanding(state, e, dt);
     else tickFly(state, e, dt);
@@ -1699,10 +1722,13 @@ function tickLanding(state: MatchState, e: Entity, dt: number): void {
 const HOVER_CLEAR_ALT = 3;
 
 /**
- * The Overseer's flight. No strip and no turning circle: it lifts straight off its nest,
- * flies straight at where it is going, slows onto the spot and hangs there, and sets
- * straight back down on its nest. Sent at something on the ground it hangs over it at
- * OVERSEER_HOVER_ALT, follows it, and burns down on it (firePulse).
+ * Hover flight: the Overseer, the Drifter, and every Xenomorph flier (staysAloft). No strip and
+ * no turning circle: it lifts straight up, flies straight at where it is going, slows onto the
+ * spot and hangs there. The Overseer and the Drifter, sent at something on the ground, hang
+ * over it at OVERSEER_HOVER_ALT, follow it, and burn down on it (firePulse); the Drifter sets
+ * straight back down on its nest. A Wasp or a Scourge hangs a few cells off its target, turned
+ * on it, and fires from there (waspStation, scourgeStation); a Gnat hangs over what it watches.
+ * A Xenomorph flier never lands.
  */
 function tickHover(state: MatchState, e: Entity, dt: number): void {
   const a = e.air!;
@@ -1719,17 +1745,34 @@ function tickHover(state: MatchState, e: Entity, dt: number): void {
     return;
   }
   a.touched = false;
-  const home = ensureHome(state, e);
-  if (home && e.order?.kind !== "land" && a.fuel <= hoverSecondsHome(state, e, home) + AIR_FUEL_RESERVE) {
-    e.order = { kind: "land" };
-    e.attackTarget = null;
-  }
-  if (a.phase === "landing" || e.order?.kind === "land") {
-    hoverLand(state, e, home, dt);
-    return;
+  if (staysAloft(e.type)) {
+    if (a.phase === "landing") a.phase = "fly";
+    if (e.order?.kind === "land") e.order = null;
+    a.rearm = Math.max(0, a.rearm - dt);
+  } else {
+    const home = ensureHome(state, e);
+    if (home && e.order?.kind !== "land" && a.fuel <= hoverSecondsHome(state, e, home) + AIR_FUEL_RESERVE) {
+      e.order = { kind: "land" };
+      e.attackTarget = null;
+    }
+    if (a.phase === "landing" || e.order?.kind === "land") {
+      hoverLand(state, e, home, dt);
+      return;
+    }
   }
   const strike = hoverStrike(state, e);
   const o = e.order;
+  if (strike && !isHoverType(e.type)) {
+    if (isReconType(e.type)) {
+      hoverTo(state, e, strike.x, strike.y, dt);
+      hoverAlt(a, airCruiseAltOf(e.type), dt);
+    } else if (isFighterType(e.type)) {
+      waspStation(state, e, strike, dt);
+    } else {
+      scourgeStation(state, e, strike, dt);
+    }
+    return;
+  }
   if (strike) {
     hoverTo(state, e, strike.x, strike.y, dt);
     hoverAlt(a, OVERSEER_HOVER_ALT, dt);
@@ -1773,13 +1816,14 @@ function tickHover(state: MatchState, e: Entity, dt: number): void {
  * it can see it, a force-fired point (or the unit on it), or on an attack-move, guard, or
  * patrol the nearest enemy on the ground it can see. Null: nothing, fly the order.
  */
-function hoverStrike(state: MatchState, e: Entity): { x: number; y: number; target?: Entity; forced: boolean } | null {
+function hoverStrike(state: MatchState, e: Entity): HoverStrike | null {
   const o = e.order;
   if (!o) return null;
   const ts = state.tileSize;
+  if (isReconType(e.type)) return reconWatch(state, e);
   if (o.kind === "attack" && o.targetId != null) {
     const t = state.entities.get(o.targetId);
-    if (!t || !pulseFinds(state, e, t)) {
+    if (!t || !hoverFinds(state, e, t)) {
       e.order = null;
       return null;
     }
@@ -1795,7 +1839,8 @@ function hoverStrike(state: MatchState, e: Entity): { x: number; y: number; targ
   }
   if (o.kind === "forceattack" && o.x != null && o.y != null) {
     const t = o.targetId != null ? state.entities.get(o.targetId) : undefined;
-    if (o.targetId != null && (!t || t.hp <= 0 || isAirborne(t))) {
+    // Only the Wasp's cannon reach a plane in the air.
+    if (o.targetId != null && (!t || t.hp <= 0 || isCrashing(t) || (isAirborne(t) && !(isFighterType(e.type) && gunsHurt(e, t))))) {
       e.order = null;
       return null;
     }
@@ -1803,12 +1848,96 @@ function hoverStrike(state: MatchState, e: Entity): { x: number; y: number; targ
   }
   if (o.kind === "attackmove" || o.kind === "guard" || o.kind === "patrol") {
     let t = e.attackTarget != null ? state.entities.get(e.attackTarget) : undefined;
-    if (t && (!pulseFinds(state, e, t) || !canSeeEntity(state, e.ownerId, t))) t = undefined;
-    t ??= acquireBelow(state, e);
+    if (t && (!hoverFinds(state, e, t) || !canSeeEntity(state, e.ownerId, t))) t = undefined;
+    if (isHoverType(e.type)) t ??= acquireBelow(state, e);
+    else {
+      // A Wasp clears the sky before it strafes.
+      if (!t || (!isAirborne(t) && isFighterType(e.type))) t = acquireAir(state, e) ?? t;
+      t ??= acquireGround(state, e);
+    }
     e.attackTarget = t?.id ?? null;
     return t ? { x: t.x, y: t.y, target: t, forced: false } : null;
   }
   return null;
+}
+
+type HoverStrike = { x: number; y: number; target?: Entity; forced: boolean };
+
+/** What this hovering flier can fire on: the Overseer's pulse, or a Wasp's or Scourge's guns and bomb. */
+function hoverFinds(state: MatchState, e: Entity, t: Entity): boolean {
+  if (isHoverType(e.type)) return pulseFinds(state, e, t);
+  if (t.hp <= 0 || t.wreck || isCrashing(t) || t.garrisonedIn != null || allies(state, e.ownerId, t.ownerId)) return false;
+  return canHurt(state, e, t);
+}
+
+/** A Gnat sent at a unit hangs over it while it can see it; sent at a point, it hangs over the point. */
+function reconWatch(state: MatchState, e: Entity): HoverStrike | null {
+  const o = e.order;
+  if (!o || (o.kind !== "attack" && o.kind !== "forceattack")) return null;
+  e.attackTarget = null;
+  const t = o.targetId != null ? state.entities.get(o.targetId) : undefined;
+  if (t && t.hp > 0 && canSeeEntity(state, e.ownerId, t)) {
+    o.x = t.x;
+    o.y = t.y;
+  }
+  return o.x != null && o.y != null ? { x: o.x, y: o.y, forced: false } : null;
+}
+
+/**
+ * Hang `standoff` off (tx, ty), turned on it: fly in (or back off) along the line from it to the
+ * flier, then hold. Returns the distance to it and how far it is off the nose.
+ */
+function holdOff(state: MatchState, e: Entity, tx: number, ty: number, standoff: number, dt: number): { d: number; off: number } {
+  const a = e.air!;
+  const dx = e.x - tx;
+  const dy = e.y - ty;
+  const d = Math.hypot(dx, dy);
+  if (d > standoff * 1.15 || d < standoff * 0.6) {
+    const back = d > 1e-3 ? Math.atan2(dy, dx) : e.facing + Math.PI;
+    hoverTo(state, e, tx + Math.cos(back) * standoff, ty + Math.sin(back) * standoff, dt, tx, ty);
+  } else {
+    a.speed = 0;
+    headTo(e, Math.atan2(ty - e.y, tx - e.x), dt);
+  }
+  const nd = Math.hypot(tx - e.x, ty - e.y);
+  return { d: nd, off: Math.abs(angOff(Math.atan2(ty - e.y, tx - e.x), e.facing)) };
+}
+
+/**
+ * A Wasp on station: hang HIVE_WASP_STANDOFF_TILES off the target, at its height when it is a plane,
+ * low over the ground otherwise, and lay a barrage whenever the cannon are clear and it is on the nose.
+ */
+function waspStation(state: MatchState, e: Entity, strike: HoverStrike, dt: number): void {
+  const a = e.air!;
+  const t = strike.target;
+  const aloft = !!t && isAirborne(t);
+  const { d, off } = holdOff(state, e, strike.x, strike.y, HIVE_WASP_STANDOFF_TILES * state.tileSize, dt);
+  const goal = aloft && t ? Math.max(AIR_STRAFE_ALT, entityHeight(state, t) + airAlt(t) - worldTileHeight(state, e.x, e.y)) : AIR_STRAFE_ALT;
+  hoverAlt(a, goal, dt);
+  if (!barrageReady(state, e, t, d, off)) return;
+  fireBarrage(state, e, strike.x, strike.y, t, strike.forced);
+  if (e.order?.once) e.order = null;
+}
+
+/**
+ * A Scourge on station: hang HIVE_SCOURGE_STANDOFF_TILES off the target, lob a bomb onto it every
+ * HIVE_BOMB_SECONDS, and rake a soft target with the pulse guns in short bursts.
+ */
+function scourgeStation(state: MatchState, e: Entity, strike: HoverStrike, dt: number): void {
+  const a = e.air!;
+  const ts = state.tileSize;
+  const t = strike.target;
+  const { d, off } = holdOff(state, e, strike.x, strike.y, HIVE_SCOURGE_STANDOFF_TILES * ts, dt);
+  hoverAlt(a, AIR_STRAFE_ALT, dt);
+  if (a.bombs > 0 && a.rearm <= 0 && d <= BOMB_RELEASE_TILES * ts && !(t && isAirborne(t))) {
+    dropBomb(state, e, strike.x, strike.y, strike.forced);
+    a.rearm = HIVE_BOMB_SECONDS;
+    if (e.order?.once) e.order = null;
+  }
+  if (t && e.cooldown <= 0 && hasRounds(e) && gunsHurt(e, t) && d <= STUKA_MG.rangeTiles * ts && off <= (STUKA_MG.arcDeg * Math.PI) / 180) {
+    fireWingGuns(state, e, t, d);
+    e.cooldown = HIVE_GUN_BURST_SECONDS;
+  }
 }
 
 /** An enemy on the ground the pulse can burn: not a plane, not a wreck, not hidden aboard something. */
@@ -1835,8 +1964,11 @@ function acquireBelow(state: MatchState, e: Entity): Entity | undefined {
   return best;
 }
 
-/** Fly straight at a point, easing in over the last two cells, and stop on it. True once it is there. */
-function hoverTo(state: MatchState, e: Entity, x: number, y: number, dt: number): boolean {
+/**
+ * Fly straight at a point, easing in over the last two cells, and stop on it. True once it is there.
+ * It noses the way it flies, or toward (faceX, faceY) when given.
+ */
+function hoverTo(state: MatchState, e: Entity, x: number, y: number, dt: number, faceX?: number, faceY?: number): boolean {
   const a = e.air!;
   const ts = state.tileSize;
   const top = cruiseSpeed(state, e);
@@ -1850,7 +1982,7 @@ function hoverTo(state: MatchState, e: Entity, x: number, y: number, dt: number)
     e.y = y;
     a.speed = 0;
   } else {
-    headTo(e, Math.atan2(dy, dx), dt);
+    headTo(e, faceX != null && faceY != null ? Math.atan2(faceY - e.y, faceX - e.x) : Math.atan2(dy, dx), dt);
     e.x += (dx / d) * step;
     e.y += (dy / d) * step;
     a.speed = v / Math.max(1e-6, top);

@@ -1,0 +1,50 @@
+{
+  "unit": "gnat-wingdown",
+  "fit_scale": 1,
+  "empty_dirs": [],
+  "clipped_dirs": [],
+  "size_pop_dirs": [
+    "WSW",
+    "ESE"
+  ],
+  "heights": [
+    33,
+    33,
+    32,
+    30,
+    36,
+    40,
+    38,
+    36,
+    33,
+    36,
+    38,
+    40,
+    36,
+    30,
+    32,
+    33
+  ],
+  "bottoms": [
+    101,
+    101,
+    101,
+    101,
+    105,
+    106,
+    104,
+    102,
+    100,
+    102,
+    104,
+    106,
+    105,
+    101,
+    101,
+    101
+  ],
+  "ref": "fw190",
+  "ref_fit_scale": 0.7294,
+  "drawSize_base": 40.8,
+  "ref_note": "STUKA_OPTS"
+}

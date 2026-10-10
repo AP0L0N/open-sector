@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { AIR_CRUISE_ALT, isoLift, type EntityView } from "@gridlock/shared";
-import { AIR_DRAW_LAYER, aircraftShadowScale, airLiftPx, inAir, lerpAirAlt } from "./aircraft.js";
+import { AIR_DRAW_LAYER, HOVER_BOB_PX, SAUCER_SPIN_PER_SEC, aircraftShadowScale, airLiftPx, hoverBobPx, inAir, lerpAirAlt, saucerSpin, wingBeatFrame } from "./aircraft.js";
 import { STANDING_DRAW_LAYER } from "./corpse-depth.js";
 
 function plane(alt: number): EntityView {
@@ -63,5 +63,37 @@ describe("aircraft draw", () => {
     assert.equal(lerpAirAlt(hanging, landed, 1), 0);
     assert.equal(inAir(landed), false);
     assert.equal(lerpAirAlt(landed, landed, 0.5), 0);
+  });
+});
+
+describe("Xenomorph flier animation", () => {
+  const flier = (type: EntityView["type"], alt: number): EntityView => ({ ...plane(alt), type });
+
+  it("bobs a hovering Xenomorph flier gently, and nothing else", () => {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let t = 0; t < 4000; t += 50) {
+      const b = hoverBobPx(flier("wasp", 20), t);
+      lo = Math.min(lo, b);
+      hi = Math.max(hi, b);
+    }
+    assert.ok(hi > HOVER_BOB_PX * 0.9 && lo < -HOVER_BOB_PX * 0.9, "it rises and falls");
+    assert.equal(hoverBobPx(plane(20), 500), 0, "a Stuka does not bob");
+    assert.equal(hoverBobPx(flier("wasp", 0), 500), 0, "nor a flier on the ground");
+    const down = flier("wasp", 20);
+    down.air = { phase: "crash", alt: 20 };
+    assert.equal(hoverBobPx(down, 500), 0, "nor one going down");
+  });
+
+  it("beats the wings through every stroke, out of step between fliers", () => {
+    const seen = new Set<number>();
+    for (let t = 0; t < 1000; t += 10) seen.add(wingBeatFrame(3, 24, 4, t));
+    assert.deepEqual([...seen].sort(), [0, 1, 2, 3]);
+    assert.notEqual(wingBeatFrame(1, 24, 4, 0), wingBeatFrame(2, 24, 4, 0));
+  });
+
+  it("spins the Overseer's hull all the way round", () => {
+    const turn = saucerSpin(5, 1000 / SAUCER_SPIN_PER_SEC) - saucerSpin(5, 0);
+    assert.ok(Math.abs(turn - Math.PI * 2) < 1e-9, "one turn in 1 / SAUCER_SPIN_PER_SEC seconds");
   });
 });

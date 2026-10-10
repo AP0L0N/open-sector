@@ -359,7 +359,7 @@ describe("a Xenomorph seat", () => {
     assert.equal(shot, factionDamage("xenodrone", RIFLE.damage), "the drone's round leaves at the Xenomorph damage");
   });
 
-  it("grows ships at a Spawning Pool and planes at an Aerie, which parks them on its pads", () => {
+  it("grows ships at a Spawning Pool and fliers at an Aerie, which lift straight out of it", () => {
     assert.equal(producerType("leech"), "spawnpool");
     assert.equal(producerType("lurker"), "spawnpool");
     assert.equal(producerType("wasp"), "aerie");
@@ -384,8 +384,9 @@ describe("a Xenomorph seat", () => {
     if (!locked.ok) assert.equal(locked.message, "Need a Neural Nexus.");
     for (let i = 0; i < secondsToTicks(catalog("wasp").buildSeconds) * 3 && aerie.queue.length > 0; i++) step(state, TICK_DT);
     const wasp = [...state.entities.values()].find((e) => e.type === "wasp");
-    assert.ok(wasp, "the Wasp rolls out");
-    assert.equal(wasp!.air?.homeId, aerie.id, "homed on its Aerie");
+    assert.ok(wasp, "the Wasp is grown");
+    assert.equal(wasp!.air?.homeId, null, "no nest to go home to");
+    assert.notEqual(wasp!.air?.phase, "parked", "it lifts off at once");
     const ship = applyCommand(state, "B", { type: "cmd.train", unit: "leech" });
     assert.equal(ship.ok, false);
     if (!ship.ok) assert.equal(ship.message, "Need a Spawning Pool.");
