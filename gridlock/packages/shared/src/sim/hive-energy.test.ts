@@ -193,7 +193,12 @@ describe("Spine Turret cell", () => {
     const man = at(state, "rifleman", 30, 33, "A");
     man.hp = man.hpMax = 1e9;
     assert.equal(turret.energy ?? cell.shots, cell.shots, "full at the start");
-    ticks(state, 120);
-    assert.ok((turret.energy ?? cell.shots) < 2, `drained after a long burst: ${turret.energy}`);
+    let low = cell.shots;
+    for (let i = 0; i < 120; i++) {
+      ticks(state, 1);
+      low = Math.min(low, turret.energy ?? cell.shots);
+    }
+    assert.ok(low < 1, `runs the cell dry on a long burst: lowest ${low}`);
+    assert.ok((turret.energy ?? cell.shots) < cell.shots / 2, `held on a target it never refills: ${turret.energy}`);
   });
 });
