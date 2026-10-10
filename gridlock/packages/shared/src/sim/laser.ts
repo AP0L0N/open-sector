@@ -1,3 +1,4 @@
+import { shieldSweep } from "./energy-shield.js";
 import {
   COMMANDER_HP_REGEN_PER_SEC,
   FORCE_FIELD_DELAY,
@@ -71,6 +72,8 @@ export function beamLength(state: MatchState, e: Entity, angle: number, max: num
   let reach = max;
   const wall = wallSweep(state, e.x, e.y, e.x + dx * max, e.y + dy * max);
   if (wall) reach = Math.min(reach, wall.t * max);
+  const guard = shieldSweep(state, e.ownerId, e.x, e.y, e.x + dx * max, e.y + dy * max);
+  if (guard) reach = Math.min(reach, guard.t * max);
   const step = state.tileSize * 0.25;
   for (let d = e.radius; d < reach; d += step) {
     const id = occupant(state, worldToTile(e.x + dx * d, state.tileSize), worldToTile(e.y + dy * d, state.tileSize));

@@ -580,6 +580,8 @@ export interface Entity {
   dormant?: true;
   /** Sim Unit II: the tick his blink drive is charged again. Unset or past means ready. */
   blinkReady?: number;
+  /** Behemoth, Drone, Lancer: the tick it may raise its next energy wall (sim/energy-shield.ts). Unset means ready. */
+  shieldReady?: number;
   /** Behemoth in the air on a lunge (sim/lunge.ts): from, to, and the ticks it left and lands. */
   lunge?: { x0: number; y0: number; x1: number; y1: number; t0: number; t1: number };
   /** Behemoth: the tick its legs can lunge again. Unset or past means ready. */
@@ -778,6 +780,28 @@ export interface Projectile {
 }
 
 /** Lasting smoke screen from a 75mm smoke shell. */
+/**
+ * A hive energy wall (sim/energy-shield.ts): an arc of radius `r` about (x, y),
+ * `half` radians either side of `angle`. It stays where it was raised.
+ */
+export interface EnergyShield {
+  id: number;
+  ownerId: string;
+  /** The unit that raised it. */
+  fromId: number;
+  x: number;
+  y: number;
+  angle: number;
+  half: number;
+  r: number;
+  hp: number;
+  hpMax: number;
+  /** Seconds left standing. */
+  life: number;
+  /** Tick a round last struck it. */
+  hitTick?: number;
+}
+
 export interface SmokeCloud {
   id: number;
   x: number;
@@ -977,6 +1001,8 @@ export interface MatchState {
   entities: Map<number, Entity>;
   projectiles: Projectile[];
   smokeClouds: SmokeCloud[];
+  /** Hive energy walls standing on the field. Missing or empty until the first is raised. */
+  energyShields?: EnergyShield[];
   /** Burning ground. Empty until the first flamethrower burst. */
   fires: GroundFire[];
   /** Butterfly mines from a transport's cluster canister. Empty until the first drop. */

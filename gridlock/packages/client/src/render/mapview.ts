@@ -155,6 +155,7 @@ import {
   SIMUNIT_BLINK_RANGE_TILES,
   isSimUnit,
 } from "@gridlock/shared";
+import { drawShieldPanel, shieldCurve, shieldGlow, shieldHeightElev } from "./energy-shield.js";
 import { drawNuke, drawNukeFlash, drawNukeScorch, NUKE_FX_MS, NUKE_SCORCH_MS } from "./nuke-fx.js";
 import { drawTitanThrust } from "./titan-jet-fx.js";
 import {
@@ -4633,6 +4634,7 @@ export class MapView {
     this.collectShipWakes(items);
     this.collectMuzzleSmoke(items);
     this.collectFires(items, w, h);
+    this.collectShields(items, w, h);
     this.collectNukeScorch(items);
     this.collectAirdrops(items, w, h);
     for (const m of this.takeMoveClicks()) {
@@ -8852,6 +8854,35 @@ export class MapView {
           if (alt > 0.5) drawCanopy(this.ctx, s.x, y - size * 0.75, size * 1.6, canopySway(c.id, now));
         },
       });
+    }
+  }
+
+  /** Hive energy walls: one panel per stretch of the curve, sorted with the units around it. */
+  private collectShields(items: DrawItem[], w: number, h: number): void {
+    const walls = this.curr.shields;
+    if (!walls || walls.length === 0) return;
+    const now = performance.now();
+    for (const s of walls) {
+      const mid = this.toScreen(s.x, s.y);
+      if (mid.x < -120 || mid.y < -120 || mid.x > w + 120 || mid.y > h + 120) continue;
+      const glow = shieldGlow(s, now, s.id);
+      const rise = shieldHeightElev(s.r);
+      const pts = shieldCurve(s).map((g) => {
+        const elev = this.elevAt(g.x, g.y);
+        const base = this.toScreen(g.x, g.y, elev);
+        return { g, base, lift: base.y - this.toScreen(g.x, g.y, elev + rise).y };
+      });
+      for (let i = 0; i < pts.length - 1; i++) {
+        const a = pts[i]!;
+        const b = pts[i + 1]!;
+        const at = { x: (a.g.x + b.g.x) / 2, y: (a.g.y + b.g.y) / 2 };
+        items.push({
+          layer: STANDING_DRAW_LAYER,
+          z: isoDepth(at.x, at.y),
+          at,
+          run: () => drawShieldPanel(this.ctx, a.base, b.base, (a.lift + b.lift) / 2, glow),
+        });
+      }
     }
   }
 

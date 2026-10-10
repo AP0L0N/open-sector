@@ -1748,6 +1748,39 @@ export function isJuggernaut(type: EntityType): boolean {
 export function canLunge(type: EntityType): boolean {
   return type === "behemoth";
 }
+
+/**
+ * Hive energy shield (sim/energy-shield.ts). A unit that is fighting a target
+ * in reach throws a curved wall of energy across its front. The wall stays where
+ * it was raised. It stops every enemy round that meets it, the beams too, and no
+ * enemy ground unit walks through it; its own side walks and shoots through.
+ * Rounds lobbed from above (mortars, field guns, bombs) fall over it. Each hit
+ * takes the round's damage off the wall's points; at zero it is gone.
+ */
+export interface EnergyShieldDef {
+  /** Points the wall holds. */
+  hp: number;
+  /** Distance of the curve from where the unit stood, world px. */
+  arcPx: number;
+  /** Half of the curve's span either side of the aim, degrees. */
+  halfDeg: number;
+  /** Seconds it stands if nothing brings it down. */
+  seconds: number;
+  /** Seconds from the wall going down until the unit can raise another. */
+  rechargeSeconds: number;
+}
+const BEHEMOTH_SHIELD: EnergyShieldDef = { hp: 900, arcPx: 34, halfDeg: 80, seconds: 20, rechargeSeconds: 25 };
+/** The infantry wall: the same wall, small and far weaker. */
+const INFANTRY_SHIELD: EnergyShieldDef = { hp: 90, arcPx: 13, halfDeg: 65, seconds: 12, rechargeSeconds: 20 };
+const ENERGY_SHIELDS: Partial<Record<EntityType, EnergyShieldDef>> = {
+  behemoth: BEHEMOTH_SHIELD,
+  borgdrone: INFANTRY_SHIELD,
+  lancer: INFANTRY_SHIELD,
+};
+/** The energy wall this type raises, or undefined. */
+export function energyShieldOf(type: EntityType): EnergyShieldDef | undefined {
+  return ENERGY_SHIELDS[type];
+}
 /** Digs in under the ground and waits (sim/burrow.ts): the Stalker. */
 export function canBurrow(type: EntityType): boolean {
   return type === "stalker";
@@ -5566,7 +5599,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: RIFLE.penetration,
     caliber: RIFLE.caliber,
     spreadDeg: RIFLE.spreadDeg,
-    blurb: "The hive's line soldier: a body taken and fitted with a pulse carbine in place of a forearm. It shoots like a rifle, a clip and then a short recharge. Several times a soldier's hit points for a few riflemen's price, but slower on its feet. No stance orders; it fights standing. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It runs on your Cyborg Central's uplink or a living Cyborg Commander, like the Cyborg, and shuts down without them.",
+    blurb: `The hive's line soldier: a body taken and fitted with a pulse carbine in place of a forearm. It shoots like a rifle, a clip and then a short recharge. Several times a soldier's hit points for a few riflemen's price, but slower on its feet. No stance orders; it fights standing. In a fight it raises a small energy wall in front of it, like the Behemoth's but far weaker (${INFANTRY_SHIELD.hp} points): enemy rounds stop on it and enemies cannot walk through, while it and its side shoot and walk through. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It runs on your Cyborg Central's uplink or a living Cyborg Commander, like the Cyborg, and shuts down without them.`,
   },
   thrall: {
     type: "thrall",
@@ -5616,7 +5649,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: LAUNCHER.penetration,
     caliber: LAUNCHER.caliber,
     spreadDeg: LAUNCHER.spreadDeg,
-    blurb: "Anti-armor cyborg. A plasma lance rides its shoulder and throws a burning bolt like a rocket: loose at full reach, tighter up close, a burst among soldiers that dents a tank. The capacitor on its back recharges the lance between shots. Heavy plating keeps it standing where a Rocketer would fall. No stance orders. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It runs on your Cyborg Central's uplink or a living Cyborg Commander, and shuts down without them.",
+    blurb: `Anti-armor cyborg. A plasma lance rides its shoulder and throws a burning bolt like a rocket: loose at full reach, tighter up close, a burst among soldiers that dents a tank. The capacitor on its back recharges the lance between shots. Heavy plating keeps it standing where a Rocketer would fall. In a fight it raises the Drone's small energy wall in front of it (${INFANTRY_SHIELD.hp} points). No stance orders. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It runs on your Cyborg Central's uplink or a living Cyborg Commander, and shuts down without them.`,
   },
   /** Borg heavy assimilator: four legs and a turreted disruptor, the hive's answer to the Tiger. */
   stalker: {
@@ -5722,7 +5755,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     shellResist: BEHEMOTH_SHELL_RESIST,
     leavesWreck: true,
     wreckHp: 60,
-    blurb: `The largest of the heavy assimilators: a carapace on six legs with twin plasma disruptors on one turret. They fire one after the other, a short gap and then a long reload, through a Tiger's front plate, from farther than any tank but the Jagdtiger. The layered carapace sheds part of every shell that hits it (it takes ${Math.round(BEHEMOTH_SHELL_RESIST * 100)}% of the damage). Slow on its legs and slow on the turret, but Lunge throws it up and forward up to ${BEHEMOTH_LUNGE_RANGE_TILES / TILE_SUBDIV} cells; where it lands, ${BEHEMOTH_RING_SWEEPS} green laser sweeps lash out round it, burning enemy soldiers and setting the ground alight. The legs need ${BEHEMOTH_LUNGE_RECHARGE_SECONDS} seconds before the next. Its rack refills near a powered Nanite Forge of yours. Needs a Neural Nexus.`,
+    blurb: `The largest of the heavy assimilators: a carapace on six legs with twin plasma disruptors on one turret. They fire one after the other, a short gap and then a long reload, through a Tiger's front plate, from farther than any tank but the Jagdtiger. The layered carapace sheds part of every shell that hits it (it takes ${Math.round(BEHEMOTH_SHELL_RESIST * 100)}% of the damage). Slow on its legs and slow on the turret, but Lunge throws it up and forward up to ${BEHEMOTH_LUNGE_RANGE_TILES / TILE_SUBDIV} cells; where it lands, ${BEHEMOTH_RING_SWEEPS} green laser sweeps lash out round it, burning enemy soldiers and setting the ground alight. The legs need ${BEHEMOTH_LUNGE_RECHARGE_SECONDS} seconds before the next. In a fight it throws a curved energy wall across its front, ${BEHEMOTH_SHIELD.hp} points strong: the wall stays where it went up, stops every enemy round and beam that meets it, and no enemy walks through it, while the Behemoth walks and fires through as if it were not there. It stands ${BEHEMOTH_SHIELD.seconds} seconds unless shot down; ${BEHEMOTH_SHIELD.rechargeSeconds} seconds after it falls, the next. Its rack refills near a powered Nanite Forge of yours. Needs a Neural Nexus.`,
   },
   /** Borg heavy assimilator: a giant on two legs with a two-handed hammer. Melee only. */
   juggernaut: {
@@ -5732,7 +5765,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     letter: "z",
     cost: 2800,
     buildSeconds: 24,
-    hp: 420,
+    hp: 4200,
     power: 0,
     tileW: 1,
     tileH: 1,

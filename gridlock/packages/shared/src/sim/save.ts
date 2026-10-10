@@ -13,6 +13,7 @@ import type {
   Projectile,
   SimPlayer,
   SmokeCloud,
+  EnergyShield,
   SupplyCrate,
 } from "./types.js";
 import type { CorpseView, RoomState, ShellHoleView } from "../protocol.js";
@@ -66,6 +67,8 @@ export interface SaveGame {
   entities: Entity[];
   projectiles: Projectile[];
   smokeClouds: SmokeCloud[];
+  /** Missing in saves from before the hive energy walls. */
+  energyShields?: EnergyShield[];
   fires: GroundFire[];
   mines: Mine[];
   crates: SupplyCrate[];
@@ -123,6 +126,7 @@ export function exportSave(state: MatchState, room: RoomState, now = Date.now())
     entities: [...state.entities.values()],
     projectiles: state.projectiles,
     smokeClouds: state.smokeClouds,
+    energyShields: state.energyShields,
     fires: state.fires,
     mines: state.mines,
     crates: state.crates,
@@ -224,6 +228,7 @@ export function restoreMatch(
   }
   for (const p of save.projectiles) bump(p.id);
   for (const c of save.smokeClouds) bump(c.id);
+  for (const w of save.energyShields ?? []) bump(w.id);
   for (const f of save.fires) bump(f.id);
   for (const m of save.mines) bump(m.id);
   for (const c of save.crates) bump(c.id);
@@ -251,6 +256,7 @@ export function restoreMatch(
     entities,
     projectiles: save.projectiles.map((p) => ({ ...p, ownerId: mapOwner(p.ownerId) })),
     smokeClouds: save.smokeClouds.map((c) => ({ ...c })),
+    energyShields: (save.energyShields ?? []).map((w) => ({ ...w, ownerId: mapOwner(w.ownerId) })),
     fires: save.fires.map((f) => ({ ...f, ownerId: mapOwner(f.ownerId) })),
     mines: save.mines.map((m) => ({ ...m, ownerId: mapOwner(m.ownerId) })),
     crates: save.crates.map((c) => ({ ...c, ownerId: mapOwner(c.ownerId) })),
@@ -352,6 +358,7 @@ function parseSave(raw: unknown): SaveResult<SaveGame> {
   if (!arrayOf(s.entities, MAX_ENTITIES, entityOk)) return fail("That save cannot be read.");
   if (!arrayOf(s.projectiles, MAX_PROJECTILES, (p) => idOwned(p))) return fail("That save cannot be read.");
   if (!arrayOf(s.smokeClouds, MAX_CLOUDS, (c) => idOnly(c))) return fail("That save cannot be read.");
+  if (s.energyShields != null && !arrayOf(s.energyShields, MAX_CLOUDS, (w) => idOwned(w))) return fail("That save cannot be read.");
   if (!arrayOf(s.fires, MAX_FIRES, (f) => idOwned(f))) return fail("That save cannot be read.");
   if (!arrayOf(s.mines, MAX_MINES, (m) => idOwned(m))) return fail("That save cannot be read.");
   if (!arrayOf(s.crates, MAX_CRATES, (c) => idOwned(c))) return fail("That save cannot be read.");

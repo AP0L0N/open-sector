@@ -215,6 +215,7 @@ import {
   weaponRangeWorld,
   worldTileHeight,
 } from "./elevation.js";
+import { absorbRound, shieldSweep } from "./energy-shield.js";
 import {
   ownerless,
   allies,
@@ -2640,6 +2641,11 @@ function stepRocket(state: MatchState, p: Projectile, dt: number, rand: () => nu
     const wallHit = wallSweep(state, x0, y0, p.x, p.y);
     const struck = nearestSweepHit(state, x0, y0, p, z0, p.z);
     const tree = nearestTreeSweep(state, x0, y0, p, z0, p.z, rand);
+    const guard = shieldSweep(state, p.ownerId, x0, y0, p.x, p.y);
+    if (guard && (!wallHit || guard.t <= wallHit.t) && (!struck || guard.t <= struck.t) && (!tree || guard.t <= tree.t)) {
+      absorbRound(state, p, guard);
+      return false;
+    }
     if (wallHit && (!struck || wallHit.t <= struck.t) && (!tree || wallHit.t <= tree.t)) {
       p.x = wallHit.x;
       p.y = wallHit.y;
@@ -3467,6 +3473,12 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     const concrete = overheadShot ? null : wallSweep(state, x0, y0, p.x, p.y);
     const struck = nearestSweepHit(state, x0, y0, p, z0, z1);
     const blocker = concrete && (!bagHit || concrete.t < bagHit.t) ? concrete : bagHit;
+    // An enemy energy wall stops the round where it meets it. A barrage from overhead falls past it.
+    const guard = p.fromAbove || p.torpedo || p.aloft ? null : shieldSweep(state, p.ownerId, x0, y0, p.x, p.y);
+    if (guard && (!struck || guard.t <= struck.t) && (!blocker || guard.t <= blocker.t)) {
+      absorbRound(state, p, guard);
+      continue;
+    }
     if (blocker && (!struck || blocker.t <= struck.t)) {
       if (isConcreteLine(blocker.e.type)) {
         // A shell chips the concrete. Any round that stops on a manned Large wall reaches the slits.

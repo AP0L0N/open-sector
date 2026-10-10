@@ -19,7 +19,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 133;
+export const PROTOCOL_VERSION = 134;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -685,6 +685,24 @@ export interface SmokeCloudView {
   lifeMax: number;
 }
 
+/**
+ * A hive energy wall: an arc of radius `r` world px about (x, y), `half` radians
+ * either side of `angle`. Stationary. Sent to its side and to whoever sees it.
+ */
+export interface EnergyShieldView {
+  id: number;
+  ownerId: string;
+  x: number;
+  y: number;
+  angle: number;
+  half: number;
+  r: number;
+  hp: number;
+  hpMax: number;
+  /** A round struck it in the last few ticks. */
+  hit?: true;
+}
+
 /** Burning ground from a flamethrower or a Pyro's tanks. Burns every soldier standing in it. */
 export interface GroundFireView {
   id: number;
@@ -741,6 +759,8 @@ export interface MatchSnapshot {
   /** Sim Unit blinks since the last snapshot with an end you can see. */
   blinks?: BlinkView[];
   smoke: SmokeCloudView[];
+  /** Hive energy walls you can see. Omitted when there are none. */
+  shields?: EnergyShieldView[];
   /** Burning ground on tiles you can see, and fires your side lit. Empty until the first flamethrower burst. */
   fires: GroundFireView[];
   /** Mines you can see. Empty until the first cluster drop. */
