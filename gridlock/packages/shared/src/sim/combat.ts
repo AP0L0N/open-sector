@@ -242,6 +242,7 @@ import {
   segmentCircleT,
   tileCenter,
   unitInWater,
+  waterSilenced,
   worldToTile,
 } from "./geo.js";
 import {
@@ -1135,9 +1136,12 @@ function launchInterceptor(state: MatchState, e: Entity, downed: Set<number>): b
   return true;
 }
 
-/** Standing in water stops every gun except the Titan's shoulder rockets, which ride above it. */
+/**
+ * Standing in water stops every gun except the Titan's shoulder rockets, which ride above it.
+ * The Juggernaut wades thigh-deep and keeps swinging.
+ */
 function waterSilences(state: MatchState, e: Entity): boolean {
-  return unitInWater(state, e) && !rocketsOf(e.type);
+  return waterSilenced(state, e) && !rocketsOf(e.type);
 }
 
 /** A Titan on its leg jets: the main gun is stowed, and only the shoulder pods fire. */
@@ -1176,6 +1180,8 @@ function outOfReachAloft(state: MatchState, e: Entity, target: Entity): boolean 
   if (airOnlyOf(e.type) && !isAirborne(target) && !target.drone) return true;
   // A torpedo only finds what is in the water.
   if (torpedoCannotReach(state, e, target)) return true;
+  // The hammer finds a boat on the surface, never one running below.
+  if (isJuggernaut(e.type) && diving(target)) return true;
   if (target.drone) return !reachesDrone(e, target);
   // A Jump Jet in the air: anti-air weapons only.
   if (target.jet) return isAirborne(target) && !reachesJet(e);
