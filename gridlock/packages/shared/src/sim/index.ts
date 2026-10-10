@@ -143,6 +143,7 @@ export {
 export type { DayPhase, HullLamp, MatchClock } from "./night.js";
 export {
   FIELD_TURN_MAX,
+  fencePostTile,
   fieldCornerStart,
   fieldEndAt,
   fieldLine,

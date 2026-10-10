@@ -33,7 +33,7 @@ import { tickDrones } from "./drone.js";
 import { beginJetCrash, tickJets } from "./jet.js";
 import { detonateNuke } from "./nuke.js";
 import { tickThralls } from "./thrall.js";
-import { tickWeavers } from "./weaver.js";
+import { tickWeaverShields, tickWeavers } from "./weaver.js";
 import { tickBrood } from "./brood.js";
 import { tickAcid } from "./acid.js";
 import { tickShades } from "./shade.js";
@@ -424,6 +424,7 @@ function stepHeld(state: MatchState, dt: number): void {
   tickTrain(state, dt);
   state.phaseRev++;
   tickEnergyShields(state, dt);
+  tickWeaverShields(state);
   tickShades(state);
   tickCombat(state, dt);
   tickLasers(state);

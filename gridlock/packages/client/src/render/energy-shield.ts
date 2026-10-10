@@ -1,6 +1,6 @@
 /**
  * Hive energy walls: a curved curtain of green light standing where a
- * Behemoth, Drone, or Lancer raised it. It dims as it loses points and flares
+ * Behemoth, Drone, or Lancer raised it, or a Weaver threw it in front of a friend. It dims as it loses points and flares
  * when a round strikes it. Drawing only; the sim decides what it stops.
  */
 import { ISO_ELEVATION, type EnergyShieldView } from "@gridlock/shared";
@@ -33,6 +33,48 @@ export function shieldGlow(s: Pick<EnergyShieldView, "hp" | "hpMax" | "hit">, no
   const flicker = left < 0.25 ? 0.65 + 0.35 * Math.abs(Math.sin(now * 0.03 + id * 1.7)) : 1;
   const base = (0.35 + 0.65 * left) * shimmer * flicker;
   return Math.min(1, s.hit ? base + 0.45 : base);
+}
+
+/** How long the nanite thread from a Weaver to the wall it just threw shows, ms. */
+export const WEAVE_THREAD_MS = 450;
+
+/**
+ * The thread a Weaver casts to a wall it throws: a wavering green strand from its spindle to the
+ * curtain's middle, fading over WEAVE_THREAD_MS. `age` is ms since the wall first showed.
+ */
+export function drawWeaveThread(
+  ctx: CanvasRenderingContext2D,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  age: number,
+  id: number,
+): void {
+  const k = 1 - age / WEAVE_THREAD_MS;
+  if (k <= 0) return;
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len;
+  const ny = dx / len;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.lineCap = "round";
+  for (const [width, alpha] of [
+    [3, 0.25],
+    [1.2, 0.85],
+  ] as const) {
+    ctx.lineWidth = width;
+    ctx.strokeStyle = `rgba(150, 255, 205, ${alpha * k})`;
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    for (let i = 1; i <= 8; i++) {
+      const u = i / 8;
+      const wave = Math.sin(u * Math.PI) * Math.sin(u * 9 + age * 0.03 + id) * 2.5;
+      ctx.lineTo(from.x + dx * u + nx * wave, from.y + dy * u + ny * wave);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 /**

@@ -844,6 +844,7 @@ function shieldViews(state: MatchState, youPlayerId: string, vis: Uint8Array): E
       hp: Math.ceil(w.hp),
       hpMax: w.hpMax,
       hit: w.hitTick != null && state.tick - w.hitTick < SHIELD_FLASH_TICKS ? true : undefined,
+      by: w.forId != null ? w.fromId : undefined,
       ...(w.dome ? { dome: true as const, fromId: w.fromId } : {}),
     });
   }
