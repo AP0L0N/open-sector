@@ -3,6 +3,10 @@ import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
   LURKER_BITE_DAMAGE,
+  LURKER_SIGHT_TILES,
+  SUB_DIVE_SECONDS,
+  SUB_REVEAL_SECONDS,
+  TILE_SUBDIV,
   TICK_DT,
   catalog,
   factionDamage,
@@ -14,7 +18,9 @@ import { TILE_EMPTY, TILE_WATER } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
+import { liveSightExtra } from "./elevation.js";
 import { diving, submerged } from "./naval.js";
+import { snapshotFor } from "./snapshot.js";
 import type { Entity, MatchState } from "./types.js";
 
 function twoPlayerMatch(): MatchState {
@@ -98,11 +104,32 @@ describe("Lurker", () => {
     assert.equal(bites, 1, "one bite");
   });
 
+  it("lives below: no order brings it up, and it never runs out of air", () => {
+    const state = twoPlayerMatch();
+    shore(state, 100, 140, 100, 130);
+    const beast = spawn(state, "lurker", "B", 115, 115);
+    assert.ok(diving(beast), "it leaves the pool below");
+    assert.ok(submerged(state, beast));
+    assert.equal(applyCommand(state, "B", { type: "cmd.dive", ids: [beast.id], down: false }).ok, false);
+    ticks(state, Math.ceil((SUB_DIVE_SECONDS + 5) / TICK_DT));
+    assert.ok(diving(beast), "still below long after a submarine's air is gone");
+    assert.ok(submerged(state, beast));
+    const view = snapshotFor(state, "B").entities.find((v) => v.id === beast.id);
+    assert.equal(view?.dive, undefined, "no air meter, no Dive or Surface");
+    assert.equal(view?.submerged, true);
+  });
+
+  it("sees less than it did on the surface: its sight is its sight through the water", () => {
+    assert.equal(catalog("lurker").sightTiles, LURKER_SIGHT_TILES);
+    assert.ok(LURKER_SIGHT_TILES < 16 * TILE_SUBDIV);
+    assert.equal(liveSightExtra({ type: "lurker" }), 0);
+    assert.equal(liveSightExtra({ type: "lurker", submerged: true }), 0);
+  });
+
   it("bites from below, and the bite gives it away", () => {
     const state = twoPlayerMatch();
     shore(state, 100, 140, 100, 130);
     const beast = spawn(state, "lurker", "B", 115, 115);
-    assert.equal(applyCommand(state, "B", { type: "cmd.dive", ids: [beast.id], down: true }).ok, true);
     ticks(state, 2);
     assert.ok(diving(beast));
     assert.ok(submerged(state, beast));
@@ -114,5 +141,10 @@ describe("Lurker", () => {
     assert.ok(boat.hp < boat.hpMax, "bitten from below");
     assert.ok(diving(beast), "it stays down to bite");
     assert.equal(submerged(state, beast), false, "but the enemy sees it for a while");
+    assert.equal(snapshotFor(state, "B").entities.find((v) => v.id === beast.id)?.submerged, undefined, "its owner sees it surfaced");
+    ticks(state, Math.ceil((SUB_REVEAL_SECONDS + 1) / TICK_DT));
+    destroyEntity(state, boat);
+    ticks(state, Math.ceil((SUB_REVEAL_SECONDS + 1) / TICK_DT));
+    assert.ok(submerged(state, beast), "and it sinks out of sight again");
   });
 });
