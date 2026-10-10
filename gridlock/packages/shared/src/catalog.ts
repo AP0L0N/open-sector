@@ -3859,11 +3859,13 @@ export const SHADE_SPOT_TILES = t(2);
 
 /**
  * The Assembler's nanite store (sim/assembler.ts). It builds Thralls on its own, ASSEMBLER_SPEEDUP
- * times as fast as the Forge, each one spending 1 / ASSEMBLER_THRALLS of its energy. Empty, it builds
- * no more. Its Thralls count against the unit cap and run on the uplink like any Thrall.
+ * times as fast as the Forge, each one spending 1 / ASSEMBLER_THRALLS of its energy. A lost Thrall's
+ * share regrows over ASSEMBLER_REGEN_SECONDS; a whole Thrall's worth back, it builds again. Its Thralls
+ * count against the unit cap and run on the uplink like any Thrall.
  */
 export const ASSEMBLER_THRALLS = 10;
 export const ASSEMBLER_SPEEDUP = 3;
+export const ASSEMBLER_REGEN_SECONDS = 10;
 
 /**
  * Mawcaster: the hive's answer to the Nebelwerfer. Six spore pods per salvo on a high arc, half
@@ -6503,7 +6505,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: 0,
     leavesWreck: true,
     wreckHp: 35,
-    blurb: `A small nanite forge on four short legs. It carries no weapon. From the moment it leaves the Forge it builds Thralls by itself, ${ASSEMBLER_SPEEDUP} times as fast as a Forge, and sets each one down behind it. Every Thrall spends ${Math.round(100 / ASSEMBLER_THRALLS)}% of its energy: ${ASSEMBLER_THRALLS} in all, then it builds no more. Its Thralls are Thralls like any other: they count against your units and run on the uplink. At the unit cap it holds the next one until there is room. Thick plate on every face. Keep it behind the line. Needs a Neural Nexus.`,
+    blurb: `A small nanite forge on four short legs. It carries no weapon. From the moment it leaves the Forge it builds Thralls by itself, ${ASSEMBLER_SPEEDUP} times as fast as a Forge, and sets each one down behind it. Every Thrall spends ${Math.round(100 / ASSEMBLER_THRALLS)}% of its energy, ${ASSEMBLER_THRALLS} at most. When one of its Thralls dies, that ${Math.round(100 / ASSEMBLER_THRALLS)}% slowly flows back over ${ASSEMBLER_REGEN_SECONDS} seconds, and it builds a new one. Its Thralls are Thralls like any other: they count against your units and run on the uplink. At the unit cap it holds the next one until there is room. Thick plate on every face. Keep it behind the line. Needs a Neural Nexus.`,
   },
   /** Xenomorph heavy assimilator: spore-pod rocket artillery. */
   mawcaster: {
