@@ -41,6 +41,7 @@ import {
   MG42_BIPOD_SECONDS,
   MORTAR_PLANT_SECONDS,
   SUB_DIVE_SECONDS,
+  neverSurfacesOf,
   submergesOf,
   walkerGunsOf,
   forceFieldMax,
@@ -59,7 +60,7 @@ import { deckLoad } from "./lst.js";
 import { allies, unitInWater } from "./geo.js";
 import { energyRound } from "./remains.js";
 import { brokenClutter } from "./clutter.js";
-import { diving, hiddenSubmarine, sonarSpotted } from "./naval.js";
+import { diving, hiddenSubmarine, sonarSpotted, submerged } from "./naval.js";
 import { medicTendView } from "./heal.js";
 import { supplyHasDriver, supplyRiders } from "./supply.js";
 import { powerOf } from "./power.js";
@@ -468,9 +469,10 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       stanceOrder: isInfantryType(e.type) && e.stanceOrder !== e.stance ? e.stanceOrder : undefined,
       swimming: isInfantryType(e.type) && unitInWater(state, e) ? true : undefined,
       wading: !isInfantryType(e.type) && unitInWater(state, e) ? true : undefined,
-      submerged: friendly && diving(e) ? true : undefined,
+      // A Lurker shows surfaced only while a bite still gives it away.
+      submerged: friendly && (neverSurfacesOf(e.type) ? submerged(state, e) : diving(e)) ? true : undefined,
       dive:
-        friendly && submergesOf(e.type) && !e.wreck
+        friendly && submergesOf(e.type) && !neverSurfacesOf(e.type) && !e.wreck
           ? { air: e.dive?.air ?? SUB_DIVE_SECONDS, airMax: SUB_DIVE_SECONDS, winded: e.dive?.winded || undefined }
           : undefined,
       braced: e.braced || undefined,
@@ -840,6 +842,7 @@ function shieldViews(state: MatchState, youPlayerId: string, vis: Uint8Array): E
       hp: Math.ceil(w.hp),
       hpMax: w.hpMax,
       hit: w.hitTick != null && state.tick - w.hitTick < SHIELD_FLASH_TICKS ? true : undefined,
+      by: w.forId != null ? w.fromId : undefined,
     });
   }
   return out.length > 0 ? out : undefined;

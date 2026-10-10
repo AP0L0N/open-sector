@@ -1278,7 +1278,7 @@ export interface PlasmaCellDef {
   shots: number;
   rechargeSeconds: number;
 }
-/** The energy cell on `type`'s main gun, or undefined when the gun is not a plasma cannon. */
+/** The energy cell on `type`'s main gun (the Weaver's feeds its shields), or undefined when it has none. */
 export function plasmaCellOf(type: string): PlasmaCellDef | undefined {
   return catalog(type as EntityType).plasmaCell;
 }
@@ -1471,10 +1471,12 @@ export interface CatalogEntry {
   coverHeight?: number;
   /** Hatch scout: pop the cupola for infantry sight. Tanks only. */
   hasScout?: boolean;
-  /** Walks through water tiles like a swimmer, and like a swimmer cannot fire from one. */
+  /** Walks through water tiles like a swimmer, and like a swimmer cannot fire from one (unless fightsWading). */
   wades?: boolean;
   /** Move-speed share while wading. Omit and the hull uses TITAN_WADE_SPEED. */
   wadeSpeed?: number;
+  /** A wader that keeps fighting from the water, and goes into it after what it hunts. The Juggernaut. */
+  fightsWading?: boolean;
   /** Deploy braces the unit in place: stationary, hull locked, max HP × this. */
   bracedHpMul?: number;
   /**
@@ -1591,6 +1593,11 @@ export interface CatalogEntry {
    * Down, it only torpedoes another boat that is down too. It must surface to strike a hull.
    */
   submerges?: boolean;
+  /**
+   * Lives below and never takes air (the Lurker): always submerged, no Dive or Surface. It comes
+   * up only for SUB_REVEAL_SECONDS after it strikes. Its catalog sight is its sight under water.
+   */
+  neverSurfaces?: boolean;
   /** A torpedo running in the water. Nobody commands it; any gun can shoot it before it arrives. */
   torpedoBody?: boolean;
   /**
@@ -2016,6 +2023,11 @@ const ENERGY_SHIELDS: Partial<Record<EntityType, EnergyShieldDef>> = {
   xenodrone: INFANTRY_SHIELD,
   lancer: INFANTRY_SHIELD,
 };
+/**
+ * The wall a Weaver throws in front of a friend under fire (sim/weaver.ts): one soldier wide and
+ * weaker than a Drone's own. Not in ENERGY_SHIELDS: the Weaver's cell sets the pace, not a recharge.
+ */
+export const WEAVER_SHIELD: EnergyShieldDef = { hp: 60, arcPx: 12, halfDeg: 60, seconds: 10, rechargeSeconds: 0 };
 /** The energy wall this type raises, or undefined. */
 export function energyShieldOf(type: EntityType): EnergyShieldDef | undefined {
   return ENERGY_SHIELDS[type];
@@ -3027,6 +3039,8 @@ export const MAMMOTH_MG_ARC = 25;
 export const MAMMOTH_MG_RANGE_TILES = t(8);
 /** Move-speed share while the Mammoth is wading. Thirty percent slower than dry ground. */
 export const MAMMOTH_WADE_SPEED = 0.7;
+/** Move-speed share while the Juggernaut wades, thigh-deep. */
+export const JUGGERNAUT_WADE_SPEED = 0.7;
 /**
  * Mine launcher on the rear deck. Each pack is one canister lobbed onto the
  * ground, where it bursts into the same field a BV 222 drops (CLUSTER_MINES).
@@ -3706,6 +3720,15 @@ export const DECK_MG: InfantryGun = {
  */
 export const WEAVER_REACH_TILES = t(3.5);
 export const WEAVER_PULSE_SECONDS = 1;
+/**
+ * The Weaver's shields (sim/weaver.ts). A friend of its side under fire within WEAVER_SHIELD_REACH_TILES,
+ * the Weaver too, gets a WEAVER_SHIELD across the side the fire comes from. Each wall draws one of the
+ * WEAVER_CELL.shots in the Weaver's energy cell (a quarter of it), and a Weaver throws at most one
+ * every WEAVER_SHIELD_GAP_SECONDS.
+ */
+export const WEAVER_SHIELD_REACH_TILES = t(7);
+export const WEAVER_SHIELD_GAP_SECONDS = 0.5;
+export const WEAVER_CELL: PlasmaCellDef = { shots: 4, rechargeSeconds: 5 };
 export const WEAVER_MEND_CYBORG = 5;
 export const WEAVER_MEND_HEAVY = 4;
 
@@ -4221,6 +4244,8 @@ export const LURKER_BITE_DAMAGE = 55;
 export const LURKER_BITE_SOLDIER_DAMAGE = 80;
 export const LURKER_HEAVY_MUL = 0.45;
 export const LURKER_BUILDING_MUL = 0.3;
+/** The Lurker's sight: it never surfaces, so this is what it sees through the water. */
+export const LURKER_SIGHT_TILES = t(8);
 
 /**
  * Overseer. A Xenomorph hover craft: it lifts straight off its Aerie nest, flies slowly at
@@ -6071,7 +6096,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rocketRack: SPITTER_BALL,
     blurb: `A taken body with a swollen throat sac: the Mawcaster on two legs. It stands, rears back, and lobs one plasma ball at a time on a high arc over your own line, from long reach, then waits ${SPITTER_BALL.reload} seconds while the sac refills. Force attack sends the ball anywhere in that reach, seen or not. It will not spit inside ${SPITTER_MIN_RANGE_TILES / TILE_SUBDIV} cells, and must stop and face the target first. The ball scatters at full reach and bursts among soldiers; armor only dents. No stance orders. Near death its legs are torn off and it crawls on, still spitting. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
   },
-  /** Xenomorph cyborg: unarmed nanite mender. */
+  /** Xenomorph cyborg: unarmed support, shields friends under fire and mends hive units. */
   weaver: {
     type: "weaver",
     kind: "unit",
@@ -6092,7 +6117,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `No weapon. Four needle arms and a spindle of nanites on its back. Every second it sends a mend into each hive unit of yours within ${WEAVER_REACH_TILES / TILE_SUBDIV} cells: ${WEAVER_MEND_CYBORG} HP to a cyborg, ${WEAVER_MEND_HEAVY} to a heavy assimilator or anything else the hive fields. Two Weavers on one unit mend it once. It cannot mend itself; another Weaver can. Torn legs grow back once the body is whole enough. No stance orders. It hears the hive through your Conversion Chamber's spire, and mends nothing while dark.`,
+    plasmaCell: WEAVER_CELL,
+    blurb: `Support. No weapon. Four needle arms and a spindle of nanites on its back. When a unit of your side is under fire within ${WEAVER_SHIELD_REACH_TILES / TILE_SUBDIV} cells, the Weaver itself too, it throws a small energy wall in front of it, facing the fire: one soldier wide and ${WEAVER_SHIELD.hp} points strong, standing ${WEAVER_SHIELD.seconds} seconds unless shot down. Enemy rounds stop on it and enemies cannot walk through; your side shoots and walks through. Each wall takes a quarter of its energy cell, which regrows a quarter every ${WEAVER_CELL.rechargeSeconds} seconds. It does not stop shells lobbed from above. It also sends a mend every second into each hive unit of yours within ${WEAVER_REACH_TILES / TILE_SUBDIV} cells: ${WEAVER_MEND_CYBORG} HP to a cyborg, ${WEAVER_MEND_HEAVY} to a heavy assimilator or anything else the hive fields. Two Weavers on one unit mend it once. It cannot mend itself; another Weaver can. Torn legs grow back once the body is whole enough. No stance orders. It hears the hive through your Conversion Chamber's spire, and shields and mends nothing while dark.`,
   },
   /** Xenomorph cyborg: cloaked spine sniper. */
   shade: {
@@ -6228,7 +6254,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     shellResist: BEHEMOTH_SHELL_RESIST,
     leavesWreck: true,
     wreckHp: 60,
-    blurb: `The largest of the heavy assimilators: a carapace on six legs with twin plasma disruptors on one turret. They fire one after the other, a short gap and then a long reload, through a Tiger's front plate, from farther than any tank but the Jagdtiger. The layered carapace sheds part of every shell that hits it (it takes ${Math.round(BEHEMOTH_SHELL_RESIST * 100)}% of the damage). Slow on its legs and slow on the turret, but Lunge throws it up and forward up to ${BEHEMOTH_LUNGE_RANGE_TILES / TILE_SUBDIV} cells; where it lands, ${BEHEMOTH_RING_SWEEPS} green laser sweeps lash out round it, burning enemy soldiers and setting the ground alight. The legs need ${BEHEMOTH_LUNGE_RECHARGE_SECONDS} seconds before the next. In a fight it throws a curved energy wall across its front, ${BEHEMOTH_SHIELD.hp} points strong: the wall stays where it went up, stops every enemy round and beam that meets it, and no enemy walks through it, while the Behemoth walks and fires through as if it were not there. It stands ${BEHEMOTH_SHIELD.seconds} seconds unless shot down; ${BEHEMOTH_SHIELD.rechargeSeconds} seconds after it falls, the next. Each barrel's bolt draws on an energy cell that holds 6 and regrows one every 9 seconds. Needs a Neural Nexus.`,
+    blurb: `The largest of the heavy assimilators: a carapace on six legs with twin plasma disruptors on one turret. They fire one after the other, a short gap and then a long reload, through a Tiger's front plate, from farther than any tank but the Jagdtiger. The layered carapace sheds part of every shell that hits it (it takes ${Math.round(BEHEMOTH_SHELL_RESIST * 100)}% of the damage). Slow on its legs and slow on the turret, it walks straight through woods, felling every tree it brushes. Lunge throws it up and forward up to ${BEHEMOTH_LUNGE_RANGE_TILES / TILE_SUBDIV} cells; where it lands, ${BEHEMOTH_RING_SWEEPS} green laser sweeps lash out round it, burning enemy soldiers and setting the ground alight. The legs need ${BEHEMOTH_LUNGE_RECHARGE_SECONDS} seconds before the next. In a fight it throws a curved energy wall across its front, ${BEHEMOTH_SHIELD.hp} points strong: the wall stays where it went up, stops every enemy round and beam that meets it, and no enemy walks through it, while the Behemoth walks and fires through as if it were not there. It stands ${BEHEMOTH_SHIELD.seconds} seconds unless shot down; ${BEHEMOTH_SHIELD.rechargeSeconds} seconds after it falls, the next. Each barrel's bolt draws on an energy cell that holds 6 and regrows one every 9 seconds. Needs a Neural Nexus.`,
   },
   /** Xenomorph heavy assimilator: a giant on two legs with a two-handed hammer. Melee only. */
   juggernaut: {
@@ -6260,7 +6286,10 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: 0,
     leavesWreck: true,
     wreckHp: 50,
-    blurb: `A giant of the hive on two legs, swinging a two-handed hammer. It fights only at arm's reach, and runs at what it goes for at ${JUGGERNAUT_SPRINT_MUL} times its walk. Every blow lands in an area: it kills a soldier outright, staves in a tank's plate whatever its armor, and knocks whole walls out of a building. Only its own side is spared. Plated like a light tank and slow to fall. Brought down to ${Math.round(JUGGERNAUT_RAGE_HP * 100)}% it hurls the hammer at the strongest enemy within ${JUGGERNAUT_THROW_RANGE_TILES / TILE_SUBDIV} cells, a heavy blast where it lands, then fights on with its fists: lighter blows, three for every swing of the hammer, and it moves faster. Needs a Neural Nexus.`,
+    wades: true,
+    wadeSpeed: JUGGERNAUT_WADE_SPEED,
+    fightsWading: true,
+    blurb: `A giant of the hive on two legs, swinging a two-handed hammer. It fights only at arm's reach, and runs at what it goes for at ${JUGGERNAUT_SPRINT_MUL} times its walk. It strides straight through woods, felling every tree it brushes, and wades through water thigh-deep, slower, still swinging: from there it hammers a boat on the surface, but not a submarine running below. Every blow lands in an area: it kills a soldier outright, staves in a tank's plate whatever its armor, and knocks whole walls out of a building. Only its own side is spared. Plated like a light tank and slow to fall. Brought down to ${Math.round(JUGGERNAUT_RAGE_HP * 100)}% it hurls the hammer at the strongest enemy within ${JUGGERNAUT_THROW_RANGE_TILES / TILE_SUBDIV} cells, a heavy blast where it lands, then fights on with its fists: lighter blows, three for every swing of the hammer, and it moves faster. Needs a Neural Nexus.`,
   },
   /** Xenomorph heavy assimilator: four legs and a draining disruptor that feeds its own body. */
   siphon: {
@@ -6627,7 +6656,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     noReverse: true,
     turnInPlace: true,
     rangeTiles: LURKER_REACH_TILES,
-    sightTiles: t(16),
+    sightTiles: LURKER_SIGHT_TILES,
     cooldown: LURKER_BITE_SECONDS,
     damage: LURKER_BITE_DAMAGE,
     projectileSpeed: 0,
@@ -6639,10 +6668,11 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: 0,
     naval: true,
     submerges: true,
+    neverSurfaces: true,
     bite: true,
     leavesWreck: true,
     wreckHp: 40,
-    blurb: `A sea beast the hive grew in its pool: a long plated body that swims like an eel, a crest of spines, glowing eyes, and a split jaw of hooked fangs. No gun: it hunts with its jaws. It leaves the pool surfaced; Dive and Surface set its depth, and it holds ${SUB_DIVE_SECONDS} seconds of breath below. Submerged, the enemy sees it only while one of their Destroyers hears it on sonar, or for ${SUB_REVEAL_SECONDS} seconds after it bites. Up or down, it bites whatever it reaches, ${LURKER_REACH_TILES / TILE_SUBDIV} cells from its body: one bite kills a soldier, swimming or standing at the water's edge, and tears into a boat's hull; a tank's plate gives slowly, a wall slower. It never comes ashore. Dead, its carcass sinks and blocks the water until it is shot apart. Needs a Neural Nexus.`,
+    blurb: `A sea beast the hive grew in its pool: a long plated body that swims like an eel, a crest of spines, glowing eyes, and a split jaw of hooked fangs. No gun: it hunts with its jaws. It lives under the water and never needs air: it cannot be ordered up, and down there it sees only ${LURKER_SIGHT_TILES / TILE_SUBDIV} cells. The enemy sees it only while one of their Destroyers hears it on sonar. It surfaces by itself when it bites and stays in sight for ${SUB_REVEAL_SECONDS} seconds before it sinks again. It bites whatever it reaches, ${LURKER_REACH_TILES / TILE_SUBDIV} cells from its body: one bite kills a soldier, swimming or standing at the water's edge, and tears into a boat's hull; a tank's plate gives slowly, a wall slower. It never comes ashore. Dead, its carcass sinks and blocks the water until it is shot apart. Needs a Neural Nexus.`,
   },
   /** Xenomorph fighter: insect wings, twin pulse cannons. Lives in an Aerie nest. */
   wasp: {
@@ -8661,10 +8691,20 @@ export function isYardField(type: string): type is YardFieldType {
   return (YARD_FIELD_TYPES as readonly string[]).includes(type);
 }
 
-/** Builds in the yard's line lane, beside sandbags and walls, apart from the other defences: the lines and the Spotlight post. */
+/** Builds in the yard's line lane, beside sandbags and walls, apart from the other defences: the lines, the Laser Fence, and the Spotlight post. */
 export function onLineLane(type: string): boolean {
-  return isYardField(type) || type === "spotlight";
+  return isYardField(type) || type === "spotlight" || isFenceLine(type);
 }
+
+/**
+ * Sited like a wall from the Defences tab, before it builds: a post at every corner clicked, then
+ * Confirm. The yard pays for every post and they all go up together.
+ */
+export function isFenceLine(type: string): type is "laserfence" {
+  return type === "laserfence";
+}
+/** Most posts one fence order can site. */
+export const FENCE_POSTS_MAX = 64;
 
 /**
  * Guns, garrisons, and the sandbag and wall lines: the Defences tab.
@@ -8767,6 +8807,11 @@ export function torpedoesOf(type: EntityType): boolean {
 /** Can dive, and down it stays out of enemy sight unless spotted close or just fired. */
 export function submergesOf(type: EntityType): boolean {
   return catalog(type).submerges === true;
+}
+
+/** Always below: no Dive or Surface, no air. It comes up only to strike. */
+export function neverSurfacesOf(type: EntityType): boolean {
+  return catalog(type).neverSurfaces === true;
 }
 
 /** Hull sonar, an ASW helicopter on the fantail, and a mine rail: the Destroyer. */
@@ -8940,9 +8985,12 @@ export function crushes(mover: EntityType, victim: EntityType): boolean {
   return mover === "apocalypse" && APOCALYPSE_CRUSHES.includes(victim);
 }
 
-/** A hull heavy enough to go straight through woods, not only over a lone tree: the Apocalypse, and the Titan on its legs. */
+/**
+ * A hull heavy enough to go straight through woods, not only over a lone tree: the Apocalypse,
+ * the Titan on its legs, and the hive's Behemoth and Juggernaut.
+ */
 export function rollsThroughWoods(type: EntityType): boolean {
-  return type === "apocalypse" || type === "titan";
+  return type === "apocalypse" || type === "titan" || type === "behemoth" || type === "juggernaut";
 }
 
 /**
@@ -9454,6 +9502,11 @@ export function specialLabel(type: EntityType, braced = false): string | null {
 /** Walks through water. Infantry swim; this is the vehicle flag. */
 export function wadesOf(type: EntityType): boolean {
   return catalog(type).wades === true;
+}
+
+/** A wader that fights from the water. See CatalogEntry.fightsWading. */
+export function fightsWadingOf(type: EntityType): boolean {
+  return catalog(type).fightsWading === true;
 }
 
 /** Share of dry-ground speed while wading. A wader that omits wadeSpeed keeps the Titan's pace. */

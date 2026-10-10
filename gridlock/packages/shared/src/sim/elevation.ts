@@ -46,6 +46,7 @@ import {
   rocketsOf,
   LOW_POWER_SIGHT_MUL,
   sightBonusTilesOf,
+  neverSurfacesOf,
   submergesOf,
   type EntityType,
 } from "../catalog.js";
@@ -175,7 +176,8 @@ export function droneSightExtra(e: { type: EntityType; air?: { alt: number } }):
  * Sight on top of the catalog that depends on how the unit sits right now: a drone's
  * height, a plane in the air (AIRCRAFT_FLYING_SIGHT_BONUS, the Horten VII's
  * HORTEN_FLYING_SIGHT_BONUS), or a submarine below with
- * only its periscope up (SUB_SUBMERGED_SIGHT_TILES). Negative for a diving submarine.
+ * only its periscope up (SUB_SUBMERGED_SIGHT_TILES). Negative for a diving submarine. A Lurker
+ * never surfaces: its catalog sight is already its sight below.
  */
 export function liveSightExtra(e: {
   type: EntityType;
@@ -183,7 +185,7 @@ export function liveSightExtra(e: {
   dive?: { down?: boolean; air?: number };
   submerged?: boolean;
 }): number {
-  if (submergesOf(e.type) && (e.dive?.down || e.submerged)) {
+  if (submergesOf(e.type) && !neverSurfacesOf(e.type) && (e.dive?.down || e.submerged)) {
     return Math.min(0, SUB_SUBMERGED_SIGHT_TILES - catalog(e.type).sightTiles - sightBonusTilesOf(e.type));
   }
   if (isAircraftType(e.type) && airAlt(e) > 0) {

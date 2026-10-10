@@ -1,6 +1,7 @@
 import {
   canLunge,
   canBurrow,
+  neverSurfacesOf,
   costFor,
   isAirfieldType,
   BUILDING_TYPES,
@@ -81,6 +82,7 @@ import {
   airRackOf,
   isStance,
   isYardField,
+  isFenceLine,
   onLineLane,
   producerType,
   productionSpeed,
@@ -296,7 +298,7 @@ export function mountBattlefield(
       const m = ctx.match;
       const q = laneQueue(m, type);
       const mine = q?.type === type ? q : null;
-      if (isYardField(type)) {
+      if (isYardField(type) || isFenceLine(type)) {
         if (mine && !mine.ready) {
           if ((e.target as HTMLElement | null)?.closest(".cameo-hold, .cameo-paused") || mine.paused) {
             ctx.net.send({ type: "cmd.pause", what: "structure", paused: !mine.paused, building: type });
@@ -304,7 +306,9 @@ export function mountBattlefield(
           return;
         }
         if (q) return;
-        view.armYardField(type);
+        if (m && buildTechNeed(m, type).length > 0) return;
+        if (isFenceLine(type)) view.armFence();
+        else if (isYardField(type)) view.armYardField(type);
         paintBattleHud(ctx);
         return;
       }
@@ -326,10 +330,12 @@ export function mountBattlefield(
     btn?.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       const q = laneQueue(ctx.match, type);
-      if (isYardField(type)) {
+      if (isYardField(type) || isFenceLine(type)) {
         if (q?.type === type) ctx.net.send({ type: "cmd.cancel", what: "structure", building: type });
         else {
           view.yardArm = null;
+          view.fenceArm = false;
+          view.fencePosts = [];
           view.placeMode = false;
           paintBattleHud(ctx);
         }
@@ -686,7 +692,7 @@ export function paintBattleHud(ctx: Ctx): void {
     const ready = job?.ready === true;
     const paused = !!job && job.paused && !job.ready;
     const stalled = !!job && !job.ready && !job.paused && m.you.scrap <= 0;
-    const siting = isYardField(type) && viewRef?.yardArm === type && !!viewRef.placeMode;
+    const siting = ((isYardField(type) && viewRef?.yardArm === type) || (isFenceLine(type) && !!viewRef?.fenceArm)) && !!viewRef?.placeMode;
     btn.classList.toggle("is-ready", ready);
     btn.classList.toggle("is-building", !!job && !ready);
     btn.classList.toggle("is-placing", (ready && !!viewRef?.placeMode && viewRef.placePick === type) || siting);
@@ -983,7 +989,13 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
             ? airLine(e.air, e.type)
             : "";
   const pads = e.pads ? `  ·  planes ${e.pads.used}/${e.pads.cap}` : "";
-  const depth = e.dive ? diveLine(e.dive, !!e.submerged) : e.asw ? aswLine(e.asw) : "";
+  const depth = e.dive
+    ? diveLine(e.dive, !!e.submerged)
+    : e.asw
+      ? aswLine(e.asw)
+      : neverSurfacesOf(e.type) && !e.wreck && e.ownerId === ctx.match.youPlayerId
+        ? `  ·  ${e.submerged ? "submerged" : "surfaced to bite"}`
+        : "";
   box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${field}${plates}${injuries}${posture}${mag}${rack}${rockets}${mg}${flight}${depth}  ·  ${who}${q}${cart}${smoke}${dep}${special}${garrison}${scout}${bed}${pads}${capturing}${holding}${selfDestroy}${tending}`;
   box.style.borderColor = occ ? colorHex(occ.colorId) : "#b08968";
 }
