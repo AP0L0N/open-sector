@@ -2,14 +2,19 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
-  ACID_CORRODE_MAX_SHARE,
-  ACID_CORRODE_MM,
-  ACID_CORRODE_SECONDS,
+  AIR_CRUISE_ALT,
   XENO_DAMAGE_MUL,
   BROOD_FIRST_SECONDS,
   BROOD_MAX,
+  INFANTRY_SIGHT_TILES,
+  MAWCASTER_AIR_BALL,
+  MAWCASTER_AIR_SALVO,
+  MAWCASTER_CELL,
   MAWCASTER_POD,
   MAWCASTER_SALVO,
+  SPITTER_BALL,
+  SPITTER_MIN_RANGE_TILES,
+  SPITTER_RANGE_TILES,
   SCOPED,
   SHADE_REVEAL_SECONDS,
   TICK_DT,
@@ -25,13 +30,14 @@ import {
   isCyborg,
   isInfantryType,
   onUplink,
+  plasmaCellOf,
+  rocketRackFor,
   rocketAmmoOf,
   secondsToTicks,
   techNeeds,
   type EntityType,
 } from "../catalog.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
-import { acidMm, coatAcid, corrodedDef } from "./acid.js";
 import { applyCommand } from "./commands.js";
 import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
@@ -125,47 +131,52 @@ describe("new Xenomorph roster", () => {
   });
 });
 
-describe("Spitter acid", () => {
-  it("spits the acid gun and coats a hull it hits", () => {
-    assert.equal(infantryGunFor({ type: "spitter", crits: [] })?.id, "acid");
+describe("Spitter", () => {
+  it("is the Mawcaster on two legs: a laid launcher with one plasma ball a salvo, no infantry gun", () => {
+    const def = catalog("spitter");
+    assert.equal(def.rockets, true);
+    assert.equal(def.rocketRack, SPITTER_BALL);
+    assert.equal(SPITTER_BALL.salvo, 1);
+    assert.equal(SPITTER_BALL.laid, true);
+    assert.equal(def.rangeTiles, SPITTER_RANGE_TILES);
+    assert.ok(SPITTER_RANGE_TILES > INFANTRY_SIGHT_TILES, "it reaches past its own eyes");
+    assert.equal(infantryGunFor({ type: "spitter", crits: [] }) ?? undefined, undefined);
+    assert.equal(isInfantryType("spitter"), true);
+  });
+
+  it("lobs one ball at a time at a target and never runs dry", () => {
     const state = field();
     uplink(state);
     const s = at(state, "spitter", "B", 20, 30);
-    const tank = still(at(state, "warden", "A", 26, 30));
+    s.holdPosition = true;
+    const tank = still(at(state, "warden", "A", 30, 30));
+    tank.hp = tank.hpMax = 1e9;
+    still(at(state, "xenodrone", "B", 29, 31)); // spotter
     assert.equal(applyCommand(state, "B", { type: "cmd.attack", ids: [s.id], targetId: tank.id }).ok, true);
-    ticks(state, secondsToTicks(4));
-    assert.ok(acidMm(tank, state.tick) >= ACID_CORRODE_MM, `coat ${acidMm(tank, state.tick)}`);
-    const snap = snapshotFor(state, "A").entities.find((e) => e.id === tank.id);
-    assert.ok((snap?.acid ?? 0) > 0, "the coat shows");
+    const seen = new Set<number>();
+    let most = 0;
+    for (let i = 0; i < secondsToTicks(SPITTER_BALL.reload * 3 + 4); i++) {
+      step(state, TICK_DT);
+      const flying = state.projectiles.filter((p) => p.fromId === s.id && p.flight === "rocket");
+      most = Math.max(most, flying.length);
+      for (const p of flying) seen.add(p.id);
+    }
+    assert.ok(seen.size >= 3, `${seen.size} balls`);
+    assert.equal(most, 1, "one ball in the air at a time");
+    assert.equal(s.rockets ?? rocketAmmoOf("spitter"), rocketAmmoOf("spitter"), "the hive refills the sac");
   });
 
-  it("spits at a tank on its own, with no order", () => {
+  it("will not spit inside its least range", () => {
     const state = field();
     uplink(state);
-    at(state, "spitter", "B", 20, 30).holdPosition = true;
-    const tank = still(at(state, "warden", "A", 25, 30));
-    ticks(state, secondsToTicks(4));
-    assert.ok(acidMm(tank, state.tick) > 0, "coated unprompted");
-  });
-
-  it("eats every face, never past half the plate, and dries after the last glob", () => {
-    const state = field();
-    const tank = still(at(state, "warden", "A", 26, 30));
-    const def = catalog("warden");
-    assert.equal(coatAcid(state, tank), true);
-    const thin = corrodedDef(tank, def, state.tick);
-    assert.equal(thin.armorFront, def.armorFront - ACID_CORRODE_MM);
-    assert.equal(thin.armorSide, def.armorSide - ACID_CORRODE_MM);
-    for (let i = 0; i < 40; i++) coatAcid(state, tank);
-    const eaten = corrodedDef(tank, def, state.tick);
-    assert.equal(eaten.armorFront, def.armorFront * (1 - ACID_CORRODE_MAX_SHARE));
-    assert.equal(eaten.armorRear, def.armorRear * (1 - ACID_CORRODE_MAX_SHARE));
-    // A soldier takes no coat.
-    assert.equal(coatAcid(state, at(state, "rifleman", "A", 30, 30)), false);
-    ticks(state, secondsToTicks(ACID_CORRODE_SECONDS) + 1);
-    assert.equal(acidMm(tank, state.tick), 0);
-    assert.equal(tank.acid, undefined);
-    assert.equal(corrodedDef(tank, def, state.tick), def);
+    const s = at(state, "spitter", "B", 20, 30);
+    s.holdPosition = true;
+    const close = (SPITTER_MIN_RANGE_TILES / TILE_SUBDIV) * 0.5;
+    const foe = still(at(state, "rifleman", "A", 20 + close, 30));
+    foe.hp = foe.hpMax = 1e9;
+    assert.equal(applyCommand(state, "B", { type: "cmd.attack", ids: [s.id], targetId: foe.id }).ok, true);
+    ticks(state, secondsToTicks(3));
+    assert.equal(state.projectiles.filter((p) => p.fromId === s.id).length, 0);
   });
 });
 
@@ -322,5 +333,96 @@ describe("Mawcaster", () => {
     }
     assert.ok(seen.size >= MAWCASTER_SALVO * 2, `${seen.size} pods`);
     assert.equal(n.rockets ?? rocketAmmoOf("mawcaster"), rocketAmmoOf("mawcaster"), "the hive refills the maw");
+  });
+
+  it("switches between Ground attacks and Air attacks; the snapshot shows its own side the mode", () => {
+    const state = field();
+    const n = at(state, "mawcaster", "B", 10, 30);
+    assert.equal(applyCommand(state, "B", { type: "cmd.airmode", ids: [n.id], air: true }).ok, true);
+    assert.equal(n.airMode, true);
+    assert.equal(rocketRackFor(n), MAWCASTER_AIR_BALL);
+    assert.equal(snapshotFor(state, "B").entities.find((e) => e.id === n.id)?.airMode, true);
+    assert.equal(snapshotFor(state, "A").entities.find((e) => e.id === n.id)?.airMode, undefined);
+    assert.equal(applyCommand(state, "A", { type: "cmd.airmode", ids: [n.id], air: false }).ok, false, "not A's");
+    const drone = at(state, "xenodrone", "B", 12, 30);
+    assert.equal(applyCommand(state, "B", { type: "cmd.airmode", ids: [drone.id], air: true }).ok, false, "only a Mawcaster");
+    assert.equal(applyCommand(state, "B", { type: "cmd.airmode", ids: [n.id], air: false }).ok, true);
+    assert.equal(n.airMode, undefined);
+    assert.equal(rocketRackFor(n), MAWCASTER_POD);
+  });
+
+  it("on Air attacks leaves the ground alone, even a forced point", () => {
+    const state = field();
+    const n = at(state, "mawcaster", "B", 10, 30);
+    n.facing = 0;
+    n.turretFacing = 0;
+    n.holdPosition = true;
+    n.airMode = true;
+    const foe = still(at(state, "rifleman", "A", 18, 30));
+    foe.hp = foe.hpMax = 1e9;
+    still(at(state, "xenodrone", "B", 17, 31)); // spotter
+    assert.equal(applyCommand(state, "B", { type: "cmd.attack", ids: [n.id], targetId: foe.id }).ok, true);
+    ticks(state, secondsToTicks(4));
+    assert.equal(state.projectiles.filter((p) => p.fromId === n.id).length, 0, "no ball at a soldier");
+    const ts = state.tileSize;
+    assert.equal(applyCommand(state, "B", { type: "cmd.forceattack", ids: [n.id], x: foe.x, y: foe.y }).ok, true);
+    ticks(state, secondsToTicks(4));
+    assert.equal(state.projectiles.filter((p) => p.fromId === n.id).length, 0, `no ball at the ground (${ts})`);
+  });
+
+  it("on Air attacks spits small quick balls at a plane and bursts them beside it", () => {
+    assert.ok(MAWCASTER_AIR_BALL.caliber < MAWCASTER_POD.caliber, "smaller balls");
+    assert.ok(MAWCASTER_AIR_BALL.reload < MAWCASTER_POD.reload, "quicker");
+    const state = field();
+    const n = at(state, "mawcaster", "B", 10, 30);
+    n.holdPosition = true;
+    n.airMode = true;
+    const plane = makeEntity(state, "stuka", "A", n.x + 5 * state.tileSize * TILE_SUBDIV, n.y);
+    plane.air!.phase = "fly";
+    plane.air!.alt = AIR_CRUISE_ALT;
+    plane.air!.speed = 1;
+    plane.order = { kind: "move", x: plane.x, y: plane.y };
+    plane.hp = plane.hpMax = 1e6;
+    const balls = new Set<number>();
+    for (let i = 0; i < secondsToTicks(10); i++) {
+      step(state, TICK_DT);
+      for (const p of state.projectiles) {
+        if (p.fromId !== n.id) continue;
+        balls.add(p.id);
+        assert.equal(p.airRack, true);
+        assert.equal(p.caliber, MAWCASTER_AIR_BALL.caliber);
+      }
+    }
+    assert.ok(balls.size >= MAWCASTER_AIR_SALVO * 2, `${balls.size} balls`);
+    assert.ok(plane.hp < plane.hpMax, "the plane is hit");
+  });
+
+  it("draws every ball from an energy cell the snapshot shows as a bar, and waits on it when empty", () => {
+    assert.deepEqual(plasmaCellOf("mawcaster"), MAWCASTER_CELL);
+    const state = field();
+    const n = at(state, "mawcaster", "B", 10, 30);
+    n.facing = 0;
+    n.turretFacing = 0;
+    n.holdPosition = true;
+    assert.equal(snapshotFor(state, "B").entities.find((e) => e.id === n.id)?.energy, 1);
+    const foe = still(at(state, "rifleman", "A", 26, 30));
+    foe.hp = foe.hpMax = 1e9;
+    still(at(state, "xenodrone", "B", 25, 31)); // spotter
+    assert.equal(applyCommand(state, "B", { type: "cmd.attack", ids: [n.id], targetId: foe.id }).ok, true);
+    let fired = 0;
+    for (let i = 0; i < secondsToTicks(4) && fired < MAWCASTER_SALVO; i++) {
+      step(state, TICK_DT);
+      fired = new Set(state.projectiles.filter((p) => p.fromId === n.id).map((p) => p.id)).size;
+    }
+    const charge = snapshotFor(state, "B").entities.find((e) => e.id === n.id)?.energy ?? 1;
+    assert.ok(charge < 1, `cell ${charge}`);
+    // Empty, the maw holds even with the rack ready.
+    n.energy = 0;
+    n.rocketCooldown = 0;
+    n.rocketSalvo = 0;
+    const before = new Set(state.projectiles.map((p) => p.id));
+    step(state, TICK_DT);
+    const fresh = state.projectiles.filter((p) => p.fromId === n.id && !before.has(p.id));
+    assert.equal(fresh.length, 0, "no ball on an empty cell");
   });
 });

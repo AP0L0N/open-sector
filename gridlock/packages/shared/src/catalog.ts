@@ -441,6 +441,12 @@ export interface RocketRackDef {
    * Omit for a rocket that bursts in the air regardless.
    */
   missCoastTiles?: number;
+  /** Reach of this rack, gameplay tiles, in place of the carrier's own rangeTiles. */
+  rangeTiles?: number;
+  /** Lays only on what flies (the Mawcaster's Air attacks): ground targets and ground aim points are left alone. */
+  airOnly?: boolean;
+  /** A laid rack fires once the frame is this close to the bearing, degrees, in place of the carrier's gunArcDeg. */
+  arcDeg?: number;
 }
 
 export const TITAN_ROCKET_RACK: RocketRackDef = {
@@ -1482,7 +1488,12 @@ export interface CatalogEntry {
   rocketAmmo?: number;
   /** How the rockets fly and burst. Default TITAN_ROCKET_RACK. */
   rocketRack?: RocketRackDef;
-  /** Flies. Parks on an Airfield pad, ignores ground collision and paths. */
+  /**
+   * A second rack the player switches to with Air attacks (Entity.airMode). Ground attacks
+   * is rocketRack. Only the Mawcaster has one.
+   */
+  airRack?: RocketRackDef;
+  /** Flies.Parks on an Airfield pad, ignores ground collision and paths. */
   aircraft?: boolean;
   /** A fighter like the Fw 190: barrages on each pass, and hunts planes in the air. */
   fighter?: boolean;
@@ -1620,8 +1631,8 @@ export interface ShellDef {
 }
 
 /** Infantry small-arm. CatalogEntry still holds the unit; this is the gun. */
-export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar" | "ptrd" | "gatling" | "launcher" | "flamer" | "assault" | "penetrator" | "laser" | "daggers" | "fists" | "deckmg" | "acid";
-export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar", "ptrd", "gatling", "launcher", "flamer", "assault", "penetrator", "laser", "daggers", "fists", "deckmg", "acid"];
+export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar" | "ptrd" | "gatling" | "launcher" | "flamer" | "assault" | "penetrator" | "laser" | "daggers" | "fists" | "deckmg";
+export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar", "ptrd", "gatling", "launcher", "flamer", "assault", "penetrator", "laser", "daggers", "fists", "deckmg"];
 export interface InfantryGun {
   id: InfantryWeaponId;
   name: string;
@@ -3688,31 +3699,6 @@ export const DECK_MG: InfantryGun = {
 };
 
 /**
- * The Spitter's acid. A glob does a rifle round's work on a soldier, but on a hull it does not
- * need to get through: it coats the plate and eats it (sim/acid.ts). Each glob that lands on an
- * armored hull, whatever the face and whether or not it bites, takes ACID_CORRODE_MM off every
- * face, up to ACID_CORRODE_MAX_SHARE of the plate. Shells, bolts, and rounds that hit the hull
- * meet the thinner plate. The coat dries ACID_CORRODE_SECONDS after the last glob, all at once.
- */
-export const ACID_RANGE_TILES = t(8);
-export const ACID_CORRODE_MM = 6;
-export const ACID_CORRODE_MAX_SHARE = 0.5;
-export const ACID_CORRODE_SECONDS = 10;
-export const ACID = {
-  id: "acid" as const,
-  name: "Acid spit",
-  blurb: "A glob of corrosive bile from the throat sac. A soldier takes a rifle round's worth. On a hull it does not have to get through: it eats the plate, every face of it, for a while.",
-  damage: 14,
-  penetration: 4,
-  caliber: 11,
-  spreadDeg: 3,
-  cooldown: 1.3,
-  clip: 4,
-  reload: 3,
-  rangeTiles: ACID_RANGE_TILES,
-} as const satisfies InfantryGun;
-
-/**
  * The Weaver's mend (sim/weaver.ts). Every WEAVER_PULSE_SECONDS each hive unit of its side within
  * WEAVER_REACH_TILES gets HP back: a cyborg WEAVER_MEND_CYBORG, a heavy assimilator or any other
  * Xenomorph body WEAVER_MEND_HEAVY. Weavers do not stack: a unit in reach of two mends once. A Weaver
@@ -3778,6 +3764,65 @@ export const MAWCASTER_POD: RocketRackDef = {
   laid: true,
 };
 
+/**
+ * The Mawcaster's Air attacks: the maw spits small plasma balls straight up at what flies,
+ * quick and many, from less reach. It lays on planes, Jump Jets aloft, and low drones only;
+ * ground targets are left alone. A ball is fused at the flier's height and bursts beside it.
+ */
+export const MAWCASTER_AIR_RANGE_TILES = t(13);
+export const MAWCASTER_AIR_SALVO = 4;
+export const MAWCASTER_AIR_BALL: RocketRackDef = {
+  salvo: MAWCASTER_AIR_SALVO,
+  interval: 0.2,
+  reload: 2.5,
+  scatterNearTiles: t(0.15),
+  scatterFarTiles: t(0.6),
+  splashTiles: t(0.9),
+  speed: t(22) * TILE_SIZE,
+  podLift: 5,
+  damage: 14,
+  armorDamage: 0,
+  airMul: 2.2,
+  penetration: 8,
+  caliber: 20,
+  antiAir: true,
+  laid: true,
+  rangeTiles: MAWCASTER_AIR_RANGE_TILES,
+  airOnly: true,
+  // Thrown up at the flier, the balls need the maw only roughly on it: a plane outruns a narrow lay.
+  arcDeg: 30,
+};
+/** The Mawcaster's energy cell: every ball, either rack, draws one shot. */
+export const MAWCASTER_CELL: PlasmaCellDef = { shots: 24, rechargeSeconds: 2 };
+
+/**
+ * Spitter: the Mawcaster on two legs. The throat sac lobs one plasma ball at a time on a high
+ * arc over its own line, from long reach, and must stand and face the target to spit. It will
+ * not spit inside SPITTER_MIN_RANGE_TILES. One ball, then the sac refills.
+ */
+export const SPITTER_RANGE_TILES = t(15);
+export const SPITTER_MIN_RANGE_TILES = t(3);
+export const SPITTER_BALL: RocketRackDef = {
+  salvo: 1,
+  interval: 0,
+  reload: 4,
+  scatterNearTiles: t(0.4),
+  scatterFarTiles: t(2),
+  splashTiles: t(1.1),
+  speed: t(11) * TILE_SIZE,
+  podLift: 3,
+  damage: 30,
+  armorDamage: 6,
+  airMul: 0,
+  penetration: 20,
+  caliber: 60,
+  antiAir: false,
+  apexNear: 20,
+  apexFar: 40,
+  minRangeTiles: SPITTER_MIN_RANGE_TILES,
+  laid: true,
+};
+
 export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
   rifle: RIFLE,
   assault: ASSAULT,
@@ -3794,7 +3839,6 @@ export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
   daggers: DAGGERS,
   fists: FISTS,
   deckmg: DECK_MG,
-  acid: ACID,
 };
 
 /**
@@ -6001,7 +6045,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: LAUNCHER.spreadDeg,
     blurb: `Anti-armor cyborg. A plasma lance rides its shoulder and throws a burning bolt like a rocket: loose at full reach, tighter up close, a burst among soldiers that dents a tank. The capacitor on its back recharges the lance between shots. Heavy plating keeps it standing where a Rocketer would fall. In a fight it raises the Drone's small energy wall in front of it (${INFANTRY_SHIELD.hp} points). No stance orders. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
   },
-  /** Xenomorph cyborg: acid spitter whose globs eat tank plate. */
+  /** Xenomorph cyborg: the Mawcaster on two legs, lobbing one plasma ball at a time. */
   spitter: {
     type: "spitter",
     kind: "unit",
@@ -6016,16 +6060,16 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     radius: 7,
     moveTilesPerSec: paced(1.7 * INFANTRY_PACE),
     turnDegPerSec: 1100,
-    rangeTiles: ACID_RANGE_TILES,
+    rangeTiles: SPITTER_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
-    cooldown: ACID.cooldown,
-    damage: ACID.damage,
-    projectileSpeed: SMALL_ARMS_SPEED,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
     ...UNARMED,
-    penetration: ACID.penetration,
-    caliber: ACID.caliber,
-    spreadDeg: ACID.spreadDeg,
-    blurb: `A taken body with a swollen throat sac. It rears back and spits globs of corrosive bile, four and then a short refill from the bladder on its back: about a rifle round on a soldier, from a little less reach. On a tank the glob does not have to get through. It eats the plate: every glob that lands takes ${ACID_CORRODE_MM} mm off every face, up to half the plate, and the coat dries ${ACID_CORRODE_SECONDS} seconds after the last one. Spit a Tiger down and let the Stalkers and Lancers finish it. No stance orders. Near death its legs are torn off and it crawls on, still spitting. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
+    rockets: true,
+    rocketAmmo: 5,
+    rocketRack: SPITTER_BALL,
+    blurb: `A taken body with a swollen throat sac: the Mawcaster on two legs. It stands, rears back, and lobs one plasma ball at a time on a high arc over your own line, from long reach, then waits ${SPITTER_BALL.reload} seconds while the sac refills. Force attack sends the ball anywhere in that reach, seen or not. It will not spit inside ${SPITTER_MIN_RANGE_TILES / TILE_SUBDIV} cells, and must stop and face the target first. The ball scatters at full reach and bursts among soldiers; armor only dents. No stance orders. Near death its legs are torn off and it crawls on, still spitting. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
   },
   /** Xenomorph cyborg: unarmed nanite mender. */
   weaver: {
@@ -6318,7 +6362,9 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rockets: true,
     rocketAmmo: MAWCASTER_SALVO * 5,
     rocketRack: MAWCASTER_POD,
-    blurb: `Spore artillery on four legs. A maw of ${MAWCASTER_SALVO} launch tubes throws its pods on a high arc over your own troops, from nearly the Nebelwerfer's reach: half its salvo, but it draws its pods from the hive and never needs a truck. Force attack sends them anywhere in that reach, seen or not. It will not fire inside ${MAWCASTER_MIN_RANGE_TILES / TILE_SUBDIV} cells, and must stop and swing the maw onto the target first. Pods scatter wide at full reach: a salvo blankets an area and shreds soldiers in the open; armor only dents. Now and then a pod leaves burning bile on the ground. Thin hide and short eyes — keep it behind the line.`,
+    airRack: MAWCASTER_AIR_BALL,
+    plasmaCell: MAWCASTER_CELL,
+    blurb: `Plasma artillery on four legs. Ground attacks: the maw throws ${MAWCASTER_SALVO} plasma balls a salvo on a high arc over your own troops, from nearly the Nebelwerfer's reach. Force attack sends them anywhere in that reach, seen or not. It will not fire inside ${MAWCASTER_MIN_RANGE_TILES / TILE_SUBDIV} cells, and must stop and swing the maw onto the target first. The balls scatter wide at full reach: a salvo blankets an area and shreds soldiers in the open; armor only dents. Now and then one leaves burning bile on the ground. Air attacks: it leaves the ground alone and spits smaller balls, ${MAWCASTER_AIR_SALVO} at a time and quick, straight at planes, Jump Jets, and low drones within ${MAWCASTER_AIR_RANGE_TILES / TILE_SUBDIV} cells; each bursts at the flier's height. Every ball draws on an energy cell that holds ${MAWCASTER_CELL.shots} and regrows one every ${MAWCASTER_CELL.rechargeSeconds} seconds. Thin hide and short eyes — keep it behind the line.`,
   },
   /** Xenomorph infantry: the hive's barracks, and the synapse link its foot soldiers run on. */
   conversion: {
@@ -8945,7 +8991,6 @@ export function primaryInfantryGun(type: EntityType): InfantryGun | null {
   if (type === "xenodrone") return RIFLE;
   if (type === "thrall") return FISTS;
   if (type === "lancer") return LAUNCHER;
-  if (type === "spitter") return ACID;
   if (type === "shade") return SCOPED;
   if (type === "spawnling") return DAGGERS;
   if (type === "gobber") return RIFLE;
@@ -8971,7 +9016,6 @@ export function infantryLoadout(type: EntityType): readonly InfantryGun[] {
   if (type === "xenodrone") return [RIFLE];
   if (type === "thrall") return [FISTS];
   if (type === "lancer") return [LAUNCHER];
-  if (type === "spitter") return [ACID];
   if (type === "shade") return [SCOPED];
   if (type === "spawnling") return [DAGGERS];
   if (type === "gobber") return [RIFLE];
@@ -9503,6 +9547,16 @@ export function rocketsOf(type: EntityType): boolean {
 /** How this type's rockets fly and burst. The Titan's pods unless the catalog says otherwise. */
 export function rocketRackOf(type: EntityType): RocketRackDef {
   return catalog(type).rocketRack ?? TITAN_ROCKET_RACK;
+}
+
+/** The rack Air attacks switches this type to, or undefined when it has only the one. */
+export function airRackOf(type: EntityType): RocketRackDef | undefined {
+  return catalog(type).airRack;
+}
+
+/** The rack `e` fires now: its air rack while set to Air attacks, else its own. */
+export function rocketRackFor(e: { type: EntityType; airMode?: boolean }): RocketRackDef {
+  return (e.airMode && airRackOf(e.type)) || rocketRackOf(e.type);
 }
 
 /** Rockets are this type's only weapon, on a frame that must bear (the Nebelwerfer). */

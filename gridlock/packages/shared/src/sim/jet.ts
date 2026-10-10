@@ -7,7 +7,7 @@ import {
   infantryGunFor,
   radarLaidOf,
   antiAirGunOf,
-  rocketRackOf,
+  rocketRackFor,
   rocketsOf,
   isBattleship,
 } from "../catalog.js";
@@ -54,7 +54,7 @@ export function beginJetCrash(e: Entity): boolean {
  */
 export function reachesJet(shooter: Entity): boolean {
   if (shooter.type === "walker" || radarLaidOf(shooter.type) || isBattleship(shooter.type) || antiAirGunOf(shooter.type)) return true;
-  if (rocketsOf(shooter.type) && rocketRackOf(shooter.type).antiAir) return true;
+  if (rocketsOf(shooter.type) && rocketRackFor(shooter).antiAir) return true;
   return !!infantryGunFor(shooter)?.antiAir;
 }
 

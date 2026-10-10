@@ -459,7 +459,6 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       burrow: e.burrow ? e.burrow.phase : undefined,
       sprint: e.sprint,
       cloaked: friendly ? e.cloaked : undefined,
-      acid: e.acid && state.tick < e.acid.until ? Math.round(e.acid.mm) : undefined,
       fists: e.fists,
       purge: friendly && e.purge ? { hostId: e.purge.hostId, u: purgeProgress(state, e) ?? 0 } : undefined,
       takeover: e.takeover ? { by: e.takeover.by, u: Math.min(1, e.takeover.ticks / secondsToTicks(CYBORG_TAKEOVER_SECONDS)) } : undefined,
@@ -482,6 +481,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       minePacks: friendly && e.minePacks != null ? e.minePacks : undefined,
       mineReload: friendly && (e.mineReload ?? 0) > 0 ? Math.round((e.mineReload ?? 0) * 10) / 10 : undefined,
       rocketsOff: friendly && e.rocketsOff ? true : undefined,
+      airMode: friendly && e.airMode ? true : undefined,
       longRange: friendly && e.longRange ? true : undefined,
       spotFacing: spotlightManned(e) ? spotFacingOf(e) : undefined,
       unpowered: e.kind === "building" && e.unpowered ? true : undefined,
@@ -699,7 +699,6 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
         // A mine canister falls like a small bomb; its caliber tells the client it is not an SC 250.
         bomb: p.flight === "bomb" || p.flight === "cluster" ? true : undefined,
         rocket: p.flight === "rocket" ? true : undefined,
-        acid: p.acid ? true : undefined,
         drain: p.drain ? true : undefined,
         heavy: p.heavy ? true : undefined,
         hammer: p.hammer,

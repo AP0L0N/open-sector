@@ -78,6 +78,7 @@ import {
   rocketsOf,
   rocketAmmoOf,
   launcherOnlyOf,
+  airRackOf,
   isStance,
   isYardField,
   onLineLane,
@@ -387,7 +388,7 @@ export function mountBattlefield(
     });
   }
 
-  bindPress(config, "[data-config-type], [data-shell], [data-weapon], [data-guns], [data-selfdestruct], [data-fielddivert], [data-rockets], [data-reach], [data-payload]", (t) => {
+  bindPress(config, "[data-config-type], [data-shell], [data-weapon], [data-guns], [data-selfdestruct], [data-fielddivert], [data-rockets], [data-attack], [data-reach], [data-payload]", (t) => {
     runConfigAction(ctx, t);
   });
 
@@ -908,7 +909,9 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
     e.ammo && e.shell && !e.wreck ? `  ·  ${e.shell.toUpperCase()} ${ammoOf(e.ammo, e.shell)}` : "";
   const rockets =
     rocketsOf(e.type) && !e.wreck && e.ownerId === ctx.match.youPlayerId
-      ? e.rocketsOff
+      ? airRackOf(e.type)
+        ? `  ·  ${e.airMode ? "air" : "ground"} attacks`
+        : e.rocketsOff
         ? `  ·  rockets off ${e.rockets ?? 0}`
         : (e.rockets ?? 0) <= 0
           ? "  ·  rockets EMPTY"
@@ -1120,6 +1123,30 @@ const LAUNCHER_MODES = [
   { id: "off", name: "Tubes off", blurb: "Hold fire and save the rack." },
 ] as const;
 
+/** Mawcaster attack switch, in place of a tube switch: the maw always fires, on the ground or at what flies. */
+const ATTACK_MODES = [
+  { id: "ground", name: "Ground attacks", blurb: "Lob a salvo of plasma balls on a high arc at ground targets, then reload." },
+  { id: "air", name: "Air attacks", blurb: "Leave the ground alone: small quick plasma balls at planes, Jump Jets, and low drones only." },
+] as const;
+
+function appendAttackModes(body: HTMLElement): void {
+  const rack = el("div", { class: "shell-rack" });
+  for (const mode of ATTACK_MODES) {
+    rack.append(loadoutButton({ attr: "data-attack", id: mode.id, name: mode.name, blurb: mode.blurb, count: "", on: false }));
+  }
+  body.append(el("div", { class: "tiny", text: "Attacks" }), rack);
+}
+
+function updateAttackModes(body: HTMLElement, mine: EntityView[]): void {
+  const air = mine.every((e) => e.airMode);
+  const ground = mine.every((e) => !e.airMode);
+  for (const mode of ATTACK_MODES) {
+    const btn = body.querySelector(`[data-attack="${mode.id}"]`);
+    if (!(btn instanceof HTMLElement)) continue;
+    updateLoadoutButton(btn, { count: "", on: mode.id === "air" ? air : ground });
+  }
+}
+
 function rocketModesFor(type: EntityType): readonly { id: string; name: string; blurb: string }[] {
   return launcherOnlyOf(type) ? LAUNCHER_MODES : ROCKET_MODES;
 }
@@ -1149,7 +1176,7 @@ function updateRocketRack(body: HTMLElement, type: EntityType, mine: EntityView[
 }
 
 function loadoutButton(opts: {
-  attr: "data-shell" | "data-weapon" | "data-guns" | "data-selfdestruct" | "data-fielddivert" | "data-rockets" | "data-reach" | "data-payload";
+  attr: "data-shell" | "data-weapon" | "data-guns" | "data-selfdestruct" | "data-fielddivert" | "data-rockets" | "data-attack" | "data-reach" | "data-payload";
   id: string;
   name: string;
   blurb: string;
@@ -1509,8 +1536,12 @@ function buildConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
     }
     body.append(el("div", { class: "tiny", text: "Shell" }), rack);
     if (rocketsOf(focus.type) && mine.length > 0) appendRocketRack(body, focus.type);
-  } else if (launcherOnlyOf(focus.type)) {
-    if (mine.length > 0) appendRocketRack(body, focus.type);
+  } else if (launcherOnlyOf(focus.type) && !isInfantryType(focus.type)) {
+    // A Spitter is a soldier first: its throat sac has no switch, so it keeps the infantry panel.
+    if (mine.length > 0) {
+      if (airRackOf(focus.type)) appendAttackModes(body);
+      else appendRocketRack(body, focus.type);
+    }
   } else if (isInfantryType(focus.type)) {
     const loadout = infantryLoadout(focus.type);
     if (loadout.length > 0 && mine.length > 0) {
@@ -1642,9 +1673,12 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
       });
     }
     if (rocketsOf(focus.type) && shells.length > 0) updateRocketRack(body, focus.type, shells);
-  } else if (launcherOnlyOf(focus.type)) {
+  } else if (launcherOnlyOf(focus.type) && !isInfantryType(focus.type)) {
     const mine = live.filter((e) => e.ownerId === you);
-    if (mine.length > 0) updateRocketRack(body, focus.type, mine);
+    if (mine.length > 0) {
+      if (airRackOf(focus.type)) updateAttackModes(body, mine);
+      else updateRocketRack(body, focus.type, mine);
+    }
   } else if (isInfantryType(focus.type)) {
     const mine = live.filter((e) => e.ownerId === you);
     const loadout = infantryLoadout(focus.type);
@@ -2699,6 +2733,15 @@ function runConfigAction(ctx: Ctx, t: HTMLElement): void {
       .map((ent) => ent.id);
     if (ids.length === 0) return;
     ctx.net.send({ type: "cmd.rockets", ids, on: pods === "on" });
+    return;
+  }
+  const attack = t.dataset.attack;
+  if (attack === "ground" || attack === "air") {
+    const ids = selectedOfType(ctx, viewRef, configFocus)
+      .filter((ent) => ent.ownerId === ctx.match!.youPlayerId && !ent.wreck && airRackOf(ent.type) != null)
+      .map((ent) => ent.id);
+    if (ids.length === 0) return;
+    ctx.net.send({ type: "cmd.airmode", ids, air: attack === "air" });
     return;
   }
   const reach = t.dataset.reach;
