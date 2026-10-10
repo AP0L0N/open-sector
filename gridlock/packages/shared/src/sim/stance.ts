@@ -6,6 +6,7 @@ import {
   TICK_DT,
   hasCrit,
   isCyborg,
+  noStance,
   isInfantryType,
   stanceOf,
   type Stance,
@@ -17,7 +18,7 @@ import type { Entity, MatchState } from "./types.js";
 export function commandedStance(e: Entity): Stance {
   if (!isInfantryType(e.type)) return "stand";
   if (hasCrit(e, "leg")) return "crawl";
-  if (isCyborg(e.type)) return "stand";
+  if (noStance(e.type)) return "stand";
   return e.stanceOrder;
 }
 
@@ -25,7 +26,7 @@ export function effectiveStance(e: Entity, targeted: boolean): Stance {
   if (!isInfantryType(e.type)) return "stand";
   if (hasCrit(e, "leg")) return "crawl";
   // Plating does not duck. The cyborg stands under fire until the legs go.
-  if (isCyborg(e.type)) return "stand";
+  if (noStance(e.type)) return "stand";
   if (targeted && !e.garrisonedIn) return "crawl";
   return e.stanceOrder;
 }
@@ -69,7 +70,7 @@ export function tickStance(state: MatchState): void {
     if (!isInfantryType(e.type) || e.hp <= 0) continue;
     syncCyborgLegs(e, state.tick);
     if (hasCrit(e, "leg")) e.stanceOrder = "crawl";
-    else if (isCyborg(e.type)) e.stanceOrder = "stand";
+    else if (noStance(e.type)) e.stanceOrder = "stand";
     if (unitInWater(state, e)) {
       e.stance = e.stanceOrder;
       continue;

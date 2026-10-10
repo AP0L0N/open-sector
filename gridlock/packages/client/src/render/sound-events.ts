@@ -67,9 +67,10 @@ export type SoundEvent =
   /**
    * A unit's own effect at a point, played without an order: the ASW helicopter settling back on
    * its deck, one of your defences going up (sandbags thumped down, a gun set in its pit),
-   * (crush) an Apocalypse rolling a hull flat, or (dive) a Stuka's siren as it tips over into its dive.
+   * (crush) an Apocalypse rolling a hull flat, (dive) a Stuka's siren as it tips over into its dive, or
+   * a Thrall going off on a hull (detonate), leaping sandbags or a wall (vault), or rocked by a bullet (stagger).
    */
-  | { kind: "unitsfx"; type: string; cue: "special" | "crush" | "dive" | "lunge" | "burrow" | "unburrow" | LinkSfx; x: number; y: number }
+  | { kind: "unitsfx"; type: string; cue: "special" | "crush" | "dive" | "lunge" | "burrow" | "unburrow" | "cloak" | "mend" | "birth" | ThrallSfx | LinkSfx | JuggernautSfx; x: number; y: number }
   | { kind: "announce"; event: AnnounceEvent };
 
 /**
@@ -77,6 +78,13 @@ export type SoundEvent =
  * (`reboot`); a Cyborg Commander's uplink opening on one (`uplink`, from his folder).
  */
 export type LinkSfx = "shutdown" | "reboot" | "uplink";
+/** The Thrall's own sounds: its detonation, a vault, and a bullet ringing off its shoulder. */
+export type ThrallSfx = "detonate" | "vault" | "stagger";
+/**
+ * Juggernaut cues: a hammer blow landing (`smash`), a fist (`punch`), the hammer leaving its
+ * hands (`throw`) and coming down (`throw_land`), and the giant breaking into a run (`charge`).
+ */
+export type JuggernautSfx = "smash" | "punch" | "throw" | "throw_land" | "charge";
 /** A Cyborg of yours going dark or waking up yours; your Commander starting a takeover. */
 export type LinkVoice = "shutdown" | "online" | "takeover";
 
@@ -98,6 +106,8 @@ const FIRE_GAP_MS: Record<string, number> = {
   lst: 260,
   fw190: 1500,
   stuka: 500,
+  // One zap a pulse: the Overseer burns every 0.3 s.
+  overseer: 260,
   nebelwerfer: 1600,
   titan: 350,
   battleship: 700,
@@ -113,6 +123,8 @@ const FIRE_GAP_MS: Record<string, number> = {
 const DEFAULT_FIRE_GAP_MS = 140;
 /** A Stuka's siren winds up once a dive: one sample covers the drop, the release and the pull-out. */
 const DIVE_GAP_MS = 4000;
+/** A Juggernaut's charge is heard once per run, not on every hop between targets. */
+const CHARGE_GAP_MS = 5000;
 /** How far under cruise height a plane may already be and still be starting its dive. */
 const DIVE_FROM_BELOW_CRUISE = 1;
 /** An LST loading a column calls it once, not once a soldier. */
@@ -157,6 +169,8 @@ function isShell(caliber: number | undefined): boolean {
 export class SoundTracker {
   private started = false;
   private prevById = new Map<number, EntityView>();
+  /** Weaver id -> when its mend was last heard. */
+  private lastMend = new Map<number, number>();
   private everSeen = new Set<number>();
   private seenShots = new Set<number>();
   private seenImpacts = new Set<number>();
@@ -168,6 +182,7 @@ export class SoundTracker {
   private lastShieldHit = new Map<number, number>();
   private lastLoadLine = new Map<number, number>();
   private lastDive = new Map<number, number>();
+  private lastCharge = new Map<number, number>();
   /** Share of health left, not raw hp: bracing or packing up rescales both hp and hpMax. */
   private lastHp = new Map<number, number>();
   private lowPower = false;
@@ -266,6 +281,13 @@ export class SoundTracker {
     for (const p of match.projectiles) {
       if (p.bounced || this.seenShots.has(p.id)) continue;
       this.seenShots.add(p.id);
+      // The Juggernaut hurls its hammer: the throw, and its roar when it is yours.
+      if (p.hammer) {
+        const s = byId.get(p.fromId);
+        out.push({ kind: "unitsfx", type: "juggernaut", cue: "throw", x: s?.x ?? p.x, y: s?.y ?? p.y });
+        if (s?.ownerId === me) out.push({ kind: "voice", type: "juggernaut", event: "special" });
+        continue;
+      }
       fire(p.fromId, p.flame ? "flame" : p.rocket ? "rocket" : isShell(p.caliber) || p.mortar || p.bomb ? "shell" : "small");
     }
     for (const l of match.launches ?? []) {
@@ -283,8 +305,20 @@ export class SoundTracker {
         out.push({ kind: "unitsfx", type: "apocalypse", cue: "crush", x: i.x, y: i.y });
         continue;
       }
+      // A Juggernaut blow is its own sound where it lands: no gun report, no shell burst.
+      if (i.hammer) {
+        const cue = i.hammer === "fist" ? "punch" : i.hammer === "throw" ? "throw_land" : "smash";
+        out.push({ kind: "unitsfx", type: "juggernaut", cue, x: i.x, y: i.y });
+        continue;
+      }
       // The laser's burn is heard when the beam opens (below), not again where it lands.
       if (i.laser) continue;
+      // A Thrall went off against a hull: its own blast, and your own one's last words.
+      const bomber = i.blast && i.fromId != null ? this.prevById.get(i.fromId) : undefined;
+      if (bomber?.type === "thrall") {
+        out.push({ kind: "unitsfx", type: "thrall", cue: "detonate", x: i.x, y: i.y });
+        if (bomber.ownerId === me) out.push({ kind: "voice", type: "thrall", event: "special" });
+      }
       // Hitscan rounds and shells too quick for a snapshot are only seen landing.
       // A flak burst is heard where it bursts (flak_burst); its gun was heard when the shell left.
       if (i.fromId != null && !i.intercept && !i.cookoff && !i.blast && !i.rocket && !i.torpedo && !i.bomb && !i.flak) {
@@ -319,6 +353,10 @@ export class SoundTracker {
           // A helicopter off its ship's deck is a sortie, not a new unit: its pilot answers, the announcer does not.
           if (e.type !== "aswheli") out.push({ kind: "announce", event: "ready" });
         }
+        // A Thrall tearing out of a Broodmother's sac beside her.
+        if (e.type === "thrall" && prev == null && broodmotherBeside(match.entities, e)) {
+          out.push({ kind: "unitsfx", type: "broodmother", cue: "birth", x: e.x, y: e.y });
+        }
         // One of your structures just went up: its own setting-up sound, where it has one.
         if (e.ownerId === me && e.kind === "building" && isBuildingType(e.type)) {
           out.push({ kind: "unitsfx", type: e.type, cue: "special", x: e.x, y: e.y });
@@ -340,8 +378,24 @@ export class SoundTracker {
         out.push({ kind: "death", type: e.type, infantry: false, x: e.x, y: e.y });
         if (e.ownerId === me) out.push({ kind: "announce", event: "unitlost" });
       }
+      // A Juggernaut breaks into a run at what it is going for.
+      if (prev && !prev.sprint && e.sprint && now - (this.lastCharge.get(e.id) ?? -Infinity) >= CHARGE_GAP_MS) {
+        this.lastCharge.set(e.id, now);
+        out.push({ kind: "unitsfx", type: e.type, cue: "charge", x: e.x, y: e.y });
+      }
       // A Behemoth's legs fire it into the air; a Stalker digs in or bursts out.
       if (prev && prev.lungeAlt == null && e.lungeAlt != null) out.push({ kind: "unitsfx", type: e.type, cue: "lunge", x: e.x, y: e.y });
+      if (prev && !prev.vault && e.vault) out.push({ kind: "unitsfx", type: e.type, cue: "vault", x: e.x, y: e.y });
+      if (prev && !prev.stagger && e.stagger) out.push({ kind: "unitsfx", type: e.type, cue: "stagger", x: e.x, y: e.y });
+      // Your Shade's skin settles.
+      if (prev && !prev.cloaked && e.cloaked && e.ownerId === me) out.push({ kind: "unitsfx", type: e.type, cue: "cloak", x: e.x, y: e.y });
+      // Your Weaver's mend lands on a hurt unit beside it; heard now and then, not every pulse.
+      if (e.type === "weaver" && e.ownerId === me && !e.wreck && e.hp > 0 && now - (this.lastMend.get(e.id) ?? -Infinity) >= MEND_GAP_MS) {
+        if (mendLanded(this.prevById, match.entities, e)) {
+          this.lastMend.set(e.id, now);
+          out.push({ kind: "unitsfx", type: e.type, cue: "mend", x: e.x, y: e.y });
+        }
+      }
       if (prev && prev.burrow !== e.burrow) {
         if (e.burrow === "digging") out.push({ kind: "unitsfx", type: e.type, cue: "burrow", x: e.x, y: e.y });
         else if (e.burrow === "rising") out.push({ kind: "unitsfx", type: e.type, cue: "unburrow", x: e.x, y: e.y });
@@ -510,6 +564,26 @@ export class SoundTracker {
       this.queueReady.set(lane, ready);
     }
   }
+}
+
+/** Gap between two mend sounds from one Weaver. */
+const MEND_GAP_MS = 4000;
+/** World px from a Broodmother's centre inside which a new Thrall is hers. */
+const BROOD_BESIDE_PX = 64;
+
+function broodmotherBeside(all: readonly EntityView[], t: EntityView): boolean {
+  return all.some((m) => m.type === "broodmother" && m.ownerId === t.ownerId && !m.wreck && Math.hypot(m.x - t.x, m.y - t.y) <= BROOD_BESIDE_PX);
+}
+
+/** Some unit of the Weaver's side close by gained HP since the last snapshot. */
+function mendLanded(prevById: ReadonlyMap<number, EntityView>, all: readonly EntityView[], w: EntityView): boolean {
+  for (const o of all) {
+    if (o === w || o.ownerId !== w.ownerId || o.kind !== "unit") continue;
+    if (Math.abs(o.x - w.x) > 96 || Math.abs(o.y - w.y) > 96) continue;
+    const was = prevById.get(o.id);
+    if (was && o.hp > was.hp) return true;
+  }
+  return false;
 }
 
 export function impactSound(i: MatchSnapshot["impacts"][number]): ImpactSound | null {

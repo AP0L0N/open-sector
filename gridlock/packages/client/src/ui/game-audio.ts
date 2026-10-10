@@ -12,7 +12,7 @@ import { AMBIENT_KINDS, ambientMix, type AmbientKind, type Mover } from "../rend
 import { buildBank, LineDeck } from "./sound-bank.js";
 import type { LinkVoice, SensorVoice, ShieldCue, SoundEvent, Weapon } from "../render/sound-events.js";
 import { leadType, orderCue, type UnitCue } from "./order-cues.js";
-import type { ClientMessage, MatchSnapshot } from "@gridlock/shared";
+import type { ClientMessage, Faction, MatchSnapshot } from "@gridlock/shared";
 
 const files = import.meta.glob("../assets/audio/**/*.mp3", { eager: true, import: "default" }) as Record<
   string,
@@ -96,7 +96,7 @@ let announcing = false;
 /** Xenomorph commanders hear the Hive Mind (announcer-xeno/); a line it lacks falls back to Battle Control. */
 let announcerFolders: readonly string[] = ["announcer"];
 
-export function setAnnouncerFaction(faction: "alliance" | "xeno"): void {
+export function setAnnouncerFaction(faction: Faction): void {
   announcerFolders = faction === "xeno" ? ["announcer-xeno", "announcer"] : ["announcer"];
 }
 
@@ -171,6 +171,7 @@ const HEAVY_FIRE = new Set([
   "stalker",
   "behemoth",
   "pulsespire",
+  "mawcaster",
 ]);
 const HEAVY_FIRE_VOLUME = 1;
 /** Their `fire` is a cannon, a bomb or a broadside: their machine guns and CIWS must not set it off. */
@@ -285,7 +286,8 @@ export function playSoundEvents(events: readonly SoundEvent[], mixAt: (x: number
         const url = pick(unitFolder(ev.type), `sfx-${ev.cue}`);
         const mix = url ? mixAt(ev.x, ev.y) : null;
         // A hull crumpling under the Apocalypse and a Stuka's siren are heard over the fight around them; a Cyborg link cue sits between.
-        const volume = ev.cue === "crush" || ev.cue === "dive" || ev.cue === "lunge" ? 0.9 : ev.cue === "special" ? 0.6 : 0.75;
+        const loud = ev.cue === "crush" || ev.cue === "dive" || ev.cue === "lunge" || ev.cue === "detonate" || ev.cue === "smash" || ev.cue === "throw_land";
+        const volume = loud ? 0.9 : ev.cue === "special" ? 0.6 : 0.75;
         if (url && mix) playSample(url, mix, { volume, maxVoices: 2, jitter: ev.cue === "special" ? undefined : 0.04 });
         break;
       }

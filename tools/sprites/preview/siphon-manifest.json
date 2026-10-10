@@ -1,0 +1,59 @@
+{
+  "unit": "siphon",
+  "fit_scale": 0.7317,
+  "empty_dirs": [],
+  "clipped_dirs": [],
+  "hull_size_pop_dirs": [],
+  "hull_heights": [
+    67,
+    69,
+    70,
+    74,
+    72,
+    76,
+    71,
+    69,
+    66,
+    69,
+    71,
+    76,
+    72,
+    74,
+    70,
+    69
+  ],
+  "hull_bottoms": [
+    118,
+    118,
+    116,
+    118,
+    117,
+    119,
+    116,
+    117,
+    117,
+    117,
+    116,
+    119,
+    117,
+    118,
+    116,
+    118
+  ],
+  "cellPerMeter": 0.12,
+  "originCell": [
+    0.5,
+    0.7602
+  ],
+  "originLift": 0.1598,
+  "union_m": [
+    7.81,
+    5.53
+  ],
+  "drawSize_at_ref": 40,
+  "model": {
+    "boreZ": 2.3,
+    "muzzleReach": 3.55,
+    "turretRingZ": 1.82
+  }
+}

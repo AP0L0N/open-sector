@@ -32,6 +32,11 @@ import { ejectParatroopers, loseRiders, syncPlaneRiders, tickChutes, tickCrates,
 import { tickDrones } from "./drone.js";
 import { beginJetCrash, tickJets } from "./jet.js";
 import { detonateNuke } from "./nuke.js";
+import { tickThralls } from "./thrall.js";
+import { tickWeavers } from "./weaver.js";
+import { tickBrood } from "./brood.js";
+import { tickAcid } from "./acid.js";
+import { tickShades } from "./shade.js";
 import { tickCapture } from "./capture.js";
 import { detachGarrisoned, enterGarrison, killGarrison, manGun, spillGarrison, tickGarrison, tickGarrisonCare } from "./garrison.js";
 import { buildPatrolRoute } from "./patrol.js";
@@ -57,12 +62,16 @@ import { tickForceFields, tickLasers } from "./laser.js";
 import { tickSupply } from "./supply.js";
 import { tickMineLaunchers } from "./minelauncher.js";
 import { tickSimUnits } from "./simunit.js";
+import { tickJuggernauts } from "./juggernaut.js";
+import { holdShieldLines, shieldWatch, tickEnergyShields } from "./energy-shield.js";
 import { tickLunges } from "./lunge.js";
 import { tickBurrows } from "./burrow.js";
+import { tickMatriarchs } from "./matriarch.js";
+import { tickRegrowth } from "./regrowth.js";
 import type { BlinkView } from "../protocol.js";
 import { syncTowedGuns, tickArtillery } from "./artillery.js";
 import { tickShipRearm } from "./battleship.js";
-import { tickForgeRearm } from "./forge.js";
+import { tickHiveAmmo } from "./hive-ammo.js";
 import { tickMovement, repathIfBlocked } from "./orders.js";
 import { tickWalkerCharge } from "./walker-charge.js";
 import { tickOrderQueue } from "./commands.js";
@@ -108,6 +117,7 @@ export function createMatch(
     entities: new Map(),
     projectiles: [],
     smokeClouds: [],
+    energyShields: [],
     fires: [],
     mines: [],
     crates: [],
@@ -361,20 +371,28 @@ function stepHeld(state: MatchState, dt: number): void {
   tickDeploy(state, dt);
   tickGarrison(state);
   tickHeal(state, dt);
+  tickRegrowth(state, dt);
   tickForceFields(state, dt);
   tickGarrisonCare(state, dt);
   tickSupply(state, dt);
   tickShipRearm(state, dt);
-  tickForgeRearm(state);
+  tickHiveAmmo(state);
   tickArtillery(state, dt);
   tickPlaneBoarding(state);
   tickMineLaunchers(state, dt);
   tickSimUnits(state);
+  tickJuggernauts(state);
+  tickThralls(state);
+  tickWeavers(state);
+  tickBrood(state);
+  tickAcid(state);
   tickLunges(state);
   tickBurrows(state);
+  tickMatriarchs(state, dt);
   tickOrderQueue(state);
   tickPatrol(state);
   groundLstBows(state);
+  const shieldLines = shieldWatch(state);
   tickMovement(state, dt);
   state.phaseRev++;
   // After movement, before collision, so a charging walker detonates on
@@ -389,6 +407,8 @@ function stepHeld(state: MatchState, dt: number): void {
   tickJets(state, dt);
   state.phaseRev++;
   tickCollision(state, dt);
+  // No enemy walks through a hive energy wall, whatever moved him this tick.
+  holdShieldLines(state, shieldLines);
   syncTowedGuns(state);
   tickThermal(state);
   state.phaseRev++;
@@ -401,6 +421,8 @@ function stepHeld(state: MatchState, dt: number): void {
   tickBuild(state, dt);
   tickTrain(state, dt);
   state.phaseRev++;
+  tickEnergyShields(state, dt);
+  tickShades(state);
   tickCombat(state, dt);
   tickLasers(state);
   state.phaseRev++;
@@ -563,6 +585,7 @@ function eliminate(state: MatchState, playerId: string): void {
     if (e.ownerId === playerId) destroyEntity(state, e);
   }
   state.projectiles = state.projectiles.filter((pr) => pr.ownerId !== playerId);
+  if (state.energyShields) state.energyShields = state.energyShields.filter((s) => s.ownerId !== playerId);
 }
 
 function checkWin(state: MatchState): void {

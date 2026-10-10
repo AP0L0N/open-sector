@@ -1,3 +1,4 @@
+import { absorbRound, shieldSweep } from "./energy-shield.js";
 import {
   FIRE_BURN_DPS,
   FIRE_CAP,
@@ -34,6 +35,7 @@ import {
   PYRO_COOKOFF_DAMAGE,
   PYRO_COOKOFF_FIRES,
   PYRO_COOKOFF_RADIUS,
+  factionDamage,
 } from "../catalog.js";
 import { coverStrike, wallSweep } from "./field.js";
 import { takeDamage } from "./crits.js";
@@ -149,7 +151,7 @@ export function throwFlame(
     y: fromY,
     vx: (landX - fromX) / flight,
     vy: (landY - fromY) / flight,
-    damage: FLAMER.damage,
+    damage: factionDamage(e.type, FLAMER.damage),
     penetration: FLAMER.penetration,
     caliber: FLAMER.caliber,
     life: flight,
@@ -271,9 +273,17 @@ function layJetFire(
 export function stepFlame(state: MatchState, p: Projectile, dt: number): boolean {
   const total = p.flightTime ?? Math.max(0.05, p.life);
   const stepDt = p.life > 0 ? Math.min(dt, p.life) : 0;
+  const x0 = p.x;
+  const y0 = p.y;
   p.x += p.vx * stepDt;
   p.y += p.vy * stepDt;
   p.life -= dt;
+  // Burning fuel splashes off an enemy energy wall and goes no farther.
+  const guard = shieldSweep(state, p.ownerId, x0, y0, p.x, p.y);
+  if (guard) {
+    absorbRound(state, p, guard);
+    return false;
+  }
   const u = Math.min(1, Math.max(0, (total - Math.max(0, p.life)) / total));
   p.z = mortarAirZ(u, p.apex ?? 0);
   if (p.life > 0) return true;

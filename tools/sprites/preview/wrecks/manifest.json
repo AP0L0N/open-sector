@@ -177,5 +177,59 @@
     "frames": 1,
     "contactY": 0.56,
     "clipped_dirs": []
+  },
+  {
+    "type": "gnat",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/gnat.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.8,
+    "clipped_dirs": []
+  },
+  {
+    "type": "lurker",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/lurker.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.74,
+    "clipped_dirs": []
+  },
+  {
+    "type": "overseer",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/overseer.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.8,
+    "clipped_dirs": []
+  },
+  {
+    "type": "siphon",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/siphon.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.92,
+    "clipped_dirs": []
+  },
+  {
+    "type": "broodmother",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/broodmother.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.92,
+    "clipped_dirs": []
+  },
+  {
+    "type": "mawcaster",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/mawcaster.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.92,
+    "clipped_dirs": []
   }
 ]

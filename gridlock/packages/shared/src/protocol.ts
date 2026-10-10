@@ -19,7 +19,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 129;
+export const PROTOCOL_VERSION = 137;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -155,6 +155,14 @@ export interface EntityView {
   lungeCharge?: number;
   /** Behemoth landing laser sweeps: green, not the Commander's red. */
   greenLaser?: true;
+  /** Juggernaut running at what it is going for. */
+  sprint?: true;
+  /** Shade with its skin settled, own side only: enemies cannot see it. */
+  cloaked?: true;
+  /** Armored hull under a Spitter's acid coat: mm off every face. */
+  acid?: number;
+  /** Juggernaut has thrown its hammer and fights with its fists. */
+  fists?: true;
   /** Stalker digging in, under the ground (own side only), or rising. */
   burrow?: "digging" | "down" | "rising";
   /** Sim Unit II inside a hostile garrison, own side only: the host and the share of the purge done, 0–1. */
@@ -192,6 +200,10 @@ export interface EntityView {
   engageContacts?: true;
   /** Walker is charging to detonate. Anyone who can see him sees it. */
   charging?: true;
+  /** Thrall staggered by a bullet in the shoulder: the client plays the hit sheet. */
+  stagger?: true;
+  /** Thrall on top of sandbags or a wall, vaulting it: the client lifts it over. */
+  vault?: true;
   /** Walker arms that fired during the last step. `off` is the second arm's bearing when it took another target. */
   gatling?: { arms: 1 | 2; off?: number };
   /** Apocalypse roof mount: its world facing, and `fire` when it shot during the last step. */
@@ -491,6 +503,10 @@ export interface ProjectileView {
   vy: number;
   /** Fired by the Xenomorphs: drawn and heard as an energy bolt, pulse, or plasma shot. The sim treats it as its round kind. */
   energy?: true;
+  /** A Spitter's acid glob. */
+  acid?: true;
+  /** A Siphon's draining bolt. */
+  drain?: true;
   caliber: number;
   fromId: number;
   bounced: boolean;
@@ -523,6 +539,8 @@ export interface ProjectileView {
   flame?: boolean;
   /** A Flak 37 shell climbing to its fuse point. `z` is its height. */
   flak?: boolean;
+  /** The Juggernaut's thrown hammer, tumbling on its arc. `z` is its height. */
+  hammer?: true;
 }
 
 export type ImpactKind = "miss" | "puff" | "crush" | "ricochet" | "glance" | "hit" | "pen" | "kill";
@@ -592,6 +610,12 @@ export interface ImpactView {
   laser?: boolean;
   /** A Flak 37 shell burst in the air at `z`: a flash and a lingering black cloud. Nothing on the ground is touched. */
   flak?: boolean;
+  /** A Lurker's jaws closed here (`fromId` is the beast): a snap and a churn of water, not a round. */
+  bite?: true;
+  /** An Overseer's pulse burned straight down onto this spot from `fromId` hanging above it. */
+  downLaser?: true;
+  /** A Juggernaut blow landed here: the hammer swung, a fist, or the thrown hammer coming down. */
+  hammer?: "swing" | "fist" | "throw";
 }
 
 /**
@@ -640,7 +664,7 @@ export interface CorpseView {
   burned?: true;
 }
 
-/** Persistent crater from a heavy shell on dirt. */
+/** Persistent crater from a heavy shell on dirt, or the scorch a Xenomorph energy round leaves instead. */
 export interface ShellHoleView {
   id: number;
   x: number;
@@ -652,6 +676,8 @@ export interface ShellHoleView {
   seed: number;
   /** Vertical hit. The scar is a circle on the ground, not a gouge. */
   round?: boolean;
+  /** Plasma scorch: charred ground with a fused core, nothing dug out. `radius` is the charred ring. */
+  scorch?: true;
 }
 
 /** Lasting artillery smoke screen. Blocks vision for every player. */
@@ -665,6 +691,24 @@ export interface SmokeCloudView {
   halfAcross: number;
   life: number;
   lifeMax: number;
+}
+
+/**
+ * A hive energy wall: an arc of radius `r` world px about (x, y), `half` radians
+ * either side of `angle`. Stationary. Sent to its side and to whoever sees it.
+ */
+export interface EnergyShieldView {
+  id: number;
+  ownerId: string;
+  x: number;
+  y: number;
+  angle: number;
+  half: number;
+  r: number;
+  hp: number;
+  hpMax: number;
+  /** A round struck it in the last few ticks. */
+  hit?: true;
 }
 
 /** Burning ground from a flamethrower or a Pyro's tanks. Burns every soldier standing in it. */
@@ -723,6 +767,8 @@ export interface MatchSnapshot {
   /** Sim Unit blinks since the last snapshot with an end you can see. */
   blinks?: BlinkView[];
   smoke: SmokeCloudView[];
+  /** Hive energy walls you can see. Omitted when there are none. */
+  shields?: EnergyShieldView[];
   /** Burning ground on tiles you can see, and fires your side lit. Empty until the first flamethrower burst. */
   fires: GroundFireView[];
   /** Mines you can see. Empty until the first cluster drop. */

@@ -1,0 +1,48 @@
+{
+  "key": "gnat",
+  "out": "units/gnat",
+  "voice": {
+    "name": "Open Sector - Xenomorph Swarm",
+    "voice_id": "ChQdep4yvSgTU4K86vAg",
+    "note": "Shares the Xenomorph Swarm voice designed for the Leech (voices/leech.json); quickest and thinnest for the spy fly.",
+    "description": "A fast, hissing swarm chorus of many small synthetic voices speaking the same words together, like a hive of insect-like machines piloting alien craft: thin and sharp, raspy and buzzing, with dry clicking and a faint wet chitter between words, emotionless and eager, quick clipped cadence, a slightly metallic hollow resonance under the voice.",
+    "stability": 0.5,
+    "similarity": 0.8,
+    "style": 0.4,
+    "speed": 1.15
+  },
+  "lines": {
+    "select": [
+      "The eye is open.",
+      "Gnat watching.",
+      "We see."
+    ],
+    "move": [
+      "Drifting.",
+      "Looking there.",
+      "The hive will see."
+    ],
+    "attack": [
+      "Watching the prey.",
+      "Marking them.",
+      "We circle."
+    ],
+    "ready": [
+      "Gnat hatched."
+    ]
+  },
+  "sfx": {
+    "move": {
+      "prompt": "Tiny alien insect drone flying past overhead: a thin high-pitched fly buzz with a soft electric hum, quick and light, passing left to right, outdoors, no music, no voice",
+      "duration": 1.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Tiny alien insect drone shot apart in the air: a small sharp electric pop with a brief crackle, the buzz cutting out and a light tick of debris, medium distance outdoors, no music, no voice",
+      "duration": 1.5,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "key": "thrall",
+  "out": "units/thrall",
+  "voice": {
+    "name": "Open Sector - Heavy Assimilator",
+    "voice_id": "Wgg1tJ9YWBePARF1jEf7",
+    "note": "Shares the Heavy Assimilator voice designed for the Stalker (voices/stalker.json); the account's 24 custom voices are all referenced, so no new slot. Faster, rougher delivery for a sprinting brute.",
+    "description": "Hollow, guttural voice of an assimilated cyborg brute of an alien hive: very deep, heavily processed and layered, more growl than speech, few words, grinding metallic overtones, a drone of many voices beneath it.",
+    "stability": 0.5,
+    "similarity": 0.8,
+    "style": 0.45,
+    "speed": 0.95
+  },
+  "lines": {
+    "select": [
+      "Thrall.",
+      "[growls] We hunger.",
+      "We are many.",
+      "Flesh... and iron."
+    ],
+    "move": [
+      "We run.",
+      "[growls] Onward.",
+      "The hive drives us.",
+      "Nothing stops us."
+    ],
+    "attack": [
+      "Crush them.",
+      "[growls] Break the flesh.",
+      "Tear them down."
+    ],
+    "ready": [
+      "Thrall awakened."
+    ],
+    "die": [
+      "[groans] We... endure...",
+      "Return... to the hive..."
+    ],
+    "special": [
+      "We are the fire.",
+      "One falls. Many remain.",
+      "[shouting] For the hive!"
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Two quick heavy armoured metal fist punches landing on a body one right after the other: meaty deep thuds with a hard metallic clank and a faint electric energy crackle, very short, close, no music, no voice",
+      "duration": 0.6,
+      "variants": 3,
+      "influence": 0.65
+    },
+    "detonate": {
+      "prompt": "Sci-fi cyborg self-destruct: a quick rising high-pitched electric energy whine charging up for one second, then a violent bright plasma energy explosion with a deep boom, sizzling electric crackle and arcing static fading out, energy weapon, no gunpowder, close outdoors, no music, no voice",
+      "duration": 2.5,
+      "variants": 2,
+      "influence": 0.65
+    },
+    "vault": {
+      "prompt": "Heavy armoured cyborg leaping over a sandbag wall: a sharp hydraulic servo kick, a fast whoosh of a heavy body through the air, then one heavy metal landing thud on dirt with a small rattle, short, close, no grunt, no music, no voice",
+      "duration": 1.2,
+      "variants": 2,
+      "influence": 0.65
+    },
+    "stagger": {
+      "prompt": "A rifle bullet striking a thick steel shoulder plate: a sharp metallic ping and ricochet ring with a quick jolting servo whir, very short, close, no music, no voice",
+      "duration": 0.6,
+      "variants": 3,
+      "influence": 0.7
+    },
+    "move": {
+      "prompt": "Heavy armoured cyborg sprinting fast: rapid heavy metal footsteps pounding on dirt, servo motors whining with each stride, clanking armour plates, close, no music, no voice",
+      "duration": 1.8,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Heavy cyborg brute destroyed: electric sparks and short circuit crackle, a big heavy metal body collapsing to the dirt with a deep clanking thud, a dying electronic energy hum winding down in pitch, close, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

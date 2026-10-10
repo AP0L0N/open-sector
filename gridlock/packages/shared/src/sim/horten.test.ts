@@ -11,6 +11,7 @@ import {
   TRAIN_TYPES,
   airLoadoutOf,
   catalog,
+  factionOf,
   isAircraftType,
   isReconType,
   techNeeds,
@@ -63,7 +64,7 @@ function planeOver(state: MatchState, type: "horten" | "stuka", owner: string, t
   return plane;
 }
 
-const PLANES = TRAIN_TYPES.filter((t) => isAircraftType(t) && t !== "horten");
+const PLANES = TRAIN_TYPES.filter((t) => isAircraftType(t) && t !== "horten" && factionOf(t) !== "bloom");
 
 function flyingSight(type: (typeof TRAIN_TYPES)[number]): number {
   return catalog(type).sightTiles + liveSightExtra({ type, air: { alt: AIR_CRUISE_ALT } });
@@ -78,7 +79,8 @@ describe("Horten VII", () => {
     assert.equal(catalog("horten").rangeTiles, 0);
     assert.deepEqual(airLoadoutOf("horten"), { bombs: 0, rounds: 0 });
     assert.deepEqual([...techNeeds("horten")], ["research", "radar"]);
-    for (const t of PLANES) assert.equal(isReconType(t), false, t);
+    // The Xenomorph Gnat is the only other recon flyer.
+    for (const t of PLANES) assert.equal(isReconType(t), t === "gnat", t);
   });
 
   it("is the fastest plane, carries more fuel, and sees the farthest in the air", () => {

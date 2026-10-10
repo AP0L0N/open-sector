@@ -9,11 +9,13 @@ describe("sidebarGroupOf", () => {
   it("files every buildable and trainable type into exactly one group of one faction, shared ones into both", () => {
     const g = groupEntries();
     const xeno = Object.values(groupEntries("xeno")).flat();
+    const bloom = Object.values(groupEntries("bloom")).flat();
     const all = Object.values(g).flat();
     const shownYard = YARD_FIELD_TYPES.filter((t) => !isHiddenField(t));
-    assert.equal(all.length + xeno.length, BUILDING_TYPES.length + TRAIN_TYPES.length + shownYard.length + SHARED_TYPES.size);
+    assert.equal(all.length + xeno.length + bloom.length, BUILDING_TYPES.length + TRAIN_TYPES.length + shownYard.length + SHARED_TYPES.size);
     for (const e of all) assert.equal(factionOf(e.type), "alliance", e.type);
     for (const e of xeno) if (!SHARED_TYPES.has(e.type)) assert.equal(factionOf(e.type), "xeno", e.type);
+    for (const e of bloom) assert.equal(factionOf(e.type), "bloom", e.type);
     assert.equal(new Set(all.map((e) => e.id)).size, all.length);
     const defenceTypes = g.defences.map((e) => e.type);
     assert.ok(defenceTypes.includes("sandbags"));
@@ -27,14 +29,24 @@ describe("sidebarGroupOf", () => {
     const g = groupEntries("xeno");
     assert.deepEqual(g.structures.map((e) => e.type).sort(), ["aerie", "assimilator", "cyborgcentral", "forge", "fusionnode", "nexus", "spawnpool"]);
     assert.deepEqual(g.defences.map((e) => e.type).sort(), ["pulsespire", "spineturret"]);
-    assert.deepEqual(g.infantry.map((e) => e.type).sort(), ["lancer", "simunit2", "xenodrone"]);
-    assert.deepEqual(g.tanks.map((e) => e.type).sort(), ["behemoth", "ravager", "stalker"]);
+    assert.deepEqual(g.infantry.map((e) => e.type).sort(), ["lancer", "shade", "simunit2", "spitter", "thrall", "weaver", "xenodrone"]);
+    assert.deepEqual(g.tanks.map((e) => e.type).sort(), ["behemoth", "broodmother", "juggernaut", "mawcaster", "ravager", "siphon", "stalker"]);
     assert.deepEqual(g.naval.map((e) => e.type).sort(), ["leech", "lurker"]);
-    assert.deepEqual(g.aircraft.map((e) => e.type).sort(), ["scourge", "wasp"]);
+    assert.deepEqual(g.aircraft.map((e) => e.type).sort(), ["gnat", "overseer", "scourge", "wasp"]);
     const alliance = groupEntries("alliance");
     assert.deepEqual(alliance.infantry.map((e) => e.type).filter((t) => t.startsWith("cyborg")).sort(), ["cyborg", "cyborgcommander"]);
     assert.ok(alliance.structures.some((e) => e.type === "cyborgcentral"));
     assert.equal(Object.values(alliance).flat().some((e) => e.type === "xenodrone" || e.type === "simunit2"), false);
+  });
+
+  it("gives the Bloom at least five of everything, and nothing of anyone else's", () => {
+    const g = groupEntries("bloom");
+    assert.deepEqual(g.structures.map((e) => e.type).sort(), ["braincoral", "broodnest", "gestator", "gorger", "lumenbulb", "roost", "tidewomb"]);
+    assert.deepEqual(g.defences.map((e) => e.type).sort(), ["bilelance", "eyestalk", "husk", "puffcap", "thornspitter"]);
+    assert.deepEqual(g.infantry.map((e) => e.type).sort(), ["bloater", "gobber", "longspine", "mender", "quillback", "spawnling"]);
+    assert.deepEqual(g.tanks.map((e) => e.type).sort(), ["bileworm", "goretusk", "mantis", "matriarch", "skitter", "sporemaw"]);
+    assert.deepEqual(g.naval.map((e) => e.type).sort(), ["abyssray", "broodbarge", "driftjelly", "leviathan", "spineback"]);
+    assert.deepEqual(g.aircraft.map((e) => e.type).sort(), ["drifter", "gasbag", "harpy", "moth", "razorwing"]);
   });
 
   it("puts the gun building under defences and the rest under structures", () => {

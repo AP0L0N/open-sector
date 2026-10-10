@@ -409,3 +409,22 @@ describe("SoundTracker cyborg link", () => {
     assert.deepEqual(says(woke), ["cyborglinkrestored"]);
   });
 });
+
+describe("Thrall cues", () => {
+  it("plays its vault and stagger as they start, and its detonation with a last word when yours goes off", () => {
+    const t = new SoundTracker();
+    const cues = (evs: SoundEvent[]) => kinds(evs, "unitsfx").map((e) => (e as { cue: string }).cue);
+    t.step(snap({ entities: [unit(1, "thrall"), unit(2, "thrall", "p2")] }), 0);
+    assert.deepEqual(cues(t.step(snap({ entities: [unit(1, "thrall", ME, { vault: true }), unit(2, "thrall", "p2")] }), 100)), ["vault"]);
+    assert.deepEqual(cues(t.step(snap({ entities: [unit(1, "thrall", ME, { vault: true }), unit(2, "thrall", "p2")] }), 200)), [], "once a vault");
+    assert.deepEqual(cues(t.step(snap({ entities: [unit(1, "thrall"), unit(2, "thrall", "p2", { stagger: true })] }), 300)), ["stagger"]);
+    const blast = { id: 50, kind: "kill", x: 10, y: 5, vx: 0, vy: 0, caliber: 75, blast: true, fromId: 1 };
+    const boom = t.step(snap({ entities: [unit(2, "thrall", "p2")], impacts: [blast] as never }), 400);
+    assert.deepEqual(cues(boom), ["detonate"]);
+    assert.deepEqual(kinds(boom, "voice"), [{ kind: "voice", type: "thrall", event: "special" }]);
+    const theirs = { ...blast, id: 51, fromId: 2 };
+    const far = t.step(snap({ entities: [], impacts: [theirs] as never }), 500);
+    assert.deepEqual(cues(far), ["detonate"]);
+    assert.deepEqual(kinds(far, "voice"), [], "an enemy Thrall says nothing to you");
+  });
+});

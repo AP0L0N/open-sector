@@ -24,6 +24,7 @@ import {
   isFieldStructure,
   isRubble,
   isInfantryType,
+  vaultsWalls,
   isNavalType,
   tooTallForBridge,
   isSupplyCarrier,
@@ -197,6 +198,26 @@ export function fellTreesInDisk(state: MatchState, x: number, y: number, radius:
   return n;
 }
 
+/** Same disk as `fellTreesInDisk`, but the trees inside go up in flames (a Xenomorph plasma scorch). */
+export function burnTreesInDisk(state: MatchState, x: number, y: number, radius: number): number {
+  const ts = state.tileSize;
+  const reach = Math.max(0, radius);
+  const x0 = worldToTile(x - reach, ts);
+  const y0 = worldToTile(y - reach, ts);
+  const x1 = worldToTile(x + reach, ts);
+  const y1 = worldToTile(y + reach, ts);
+  let n = 0;
+  for (let ty = y0; ty <= y1; ty++) {
+    for (let tx = x0; tx <= x1; tx++) {
+      const cx = tileCenter(tx, ts);
+      const cy = tileCenter(ty, ts);
+      if (Math.hypot(cx - x, cy - y) > reach) continue;
+      if (burnTreeAt(state, tx, ty)) n++;
+    }
+  }
+  return n;
+}
+
 /** Remove any tree tile (lone or grove). Shells use this; vehicles still crush loners only. */
 export function fellTreeAt(state: MatchState, x: number, y: number): boolean {
   if (!isTree(state, x, y)) return false;
@@ -257,7 +278,8 @@ export function walkable(state: MatchState, x: number, y: number, type?: EntityT
   if ((state.occupy[i] ?? 0) !== 0) return false;
   if ((state.wreckBlock[i] ?? 0) !== 0) return false;
   const fort = state.fortBlock[i] ?? 0;
-  if (fort === 1) return false;
+  // Sandbags and walls: the Thrall vaults them.
+  if (fort === 1 && !(type && vaultsWalls(type))) return false;
   if (fort === 2 && !(type && isInfantryType(type))) return false;
   // Barbwire holds a man; a hull rolls it flat.
   if (fort === 4 && (!type || isInfantryType(type))) return false;

@@ -4,54 +4,54 @@
   "voice": {
     "name": "Open Sector - Xenomorph Swarm",
     "voice_id": "ChQdep4yvSgTU4K86vAg",
-    "note": "Shares the Xenomorph Swarm voice designed for the Leech (voices/leech.json); slower and lower for the submarine.",
+    "note": "Shares the Xenomorph Swarm voice designed for the Leech (voices/leech.json); slow, low, and hungry for the sea beast.",
     "description": "A fast, hissing swarm chorus of many small synthetic voices speaking the same words together, like a hive of insect-like machines piloting alien craft: thin and sharp, raspy and buzzing, with dry clicking and a faint wet chitter between words, emotionless and eager, quick clipped cadence, a slightly metallic hollow resonance under the voice.",
-    "stability": 0.6,
+    "stability": 0.55,
     "similarity": 0.8,
-    "style": 0.3,
-    "speed": 0.92
+    "style": 0.4,
+    "speed": 0.85
   },
   "lines": {
     "select": [
-      "Lurker waits.",
-      "[whispers] Below the waves.",
-      "The deep listens."
+      "[whispers] The deep is hungry.",
+      "Lurker rises.",
+      "We circle below."
     ],
     "move": [
-      "Gliding deep.",
-      "Unseen.",
-      "We drift below."
+      "Swimming deep.",
+      "[whispers] Unseen.",
+      "Through the dark water."
     ],
     "attack": [
-      "Torpedoes loosed.",
-      "Strike from beneath.",
-      "Sink them."
+      "Feed.",
+      "Drag them under.",
+      "[hissing] Tear the hull."
     ],
     "ready": [
-      "Lurker hatched."
+      "Lurker hatched. It hungers."
     ]
   },
   "sfx": {
     "fire": {
-      "prompt": "Sci-fi plasma torpedo launched from an alien submarine underwater: a deep muffled underwater thump and a rush of bubbles, then a rising electric energy whine as the glowing torpedo speeds away, close, no music, no voice",
-      "duration": 2.0,
-      "variants": 2,
-      "influence": 0.6
+      "prompt": "Huge sea monster bite at the water surface: a deep wet roaring growl, massive jaws snapping shut with a hard crunch of teeth on metal and bone, a heavy splash of water, close, no music, no voice",
+      "duration": 1.5,
+      "variants": 3,
+      "influence": 0.65
     },
     "move": {
-      "prompt": "Alien biomechanical submarine moving underwater: a deep resonant organic sonar hum pulsing slowly, low muffled throb and soft water rush, a faint eerie sonar ping, close, no music, no voice",
+      "prompt": "Giant serpent-like sea creature swimming fast just under the surface: heavy rhythmic water surges and swishes of a long body, a low guttural rumbling purr from the beast, bubbles, close, no music, no voice",
       "duration": 2.5,
       "variants": 1,
       "influence": 0.55
     },
     "special": {
-      "prompt": "Alien submarine diving: a heavy rush of water and big bubbling gurgles as it submerges, ballast venting with a hiss, water closing over the hull with a deep muffled slosh, close, no music, no voice",
+      "prompt": "Huge sea creature diving under the water: a deep snort and hiss of breath, then a heavy plunging slosh as its long body slides under, water closing over it with big gurgling bubbles, close, no music, no voice",
       "duration": 3.0,
       "variants": 1,
       "influence": 0.6
     },
     "die": {
-      "prompt": "Alien biomechanical submarine destroyed underwater: a muffled deep energy explosion with crackling electric fizz, hull plates groaning and cracking, water rushing in and big bubbles rising as it sinks, no music, no voice",
+      "prompt": "Giant alien sea monster dying in the water: a long agonized warbling shriek with a crackle of electric energy, thrashing splashes, then its body sinking with a deep gurgle and bubbles rising, no music, no voice",
       "duration": 3.5,
       "variants": 1,
       "influence": 0.55

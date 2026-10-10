@@ -5,15 +5,23 @@ import {
   BLAST_DIG_PER_LEVEL,
   BOMB_CALIBER,
   BOMB_HOLE_SCALE,
+  FIRE_RADIUS,
   GARRISON_STRUCTURAL_CALIBER,
   HEIGHT_STEP_MAX,
   isInfantryType,
   isSmokeShell,
+  MAX_SCORCH_MARKS,
+  PLASMA_FIRE_CALIBER,
+  PLASMA_FIRE_SECONDS,
+  PLASMA_FIRE_SHARE,
+  PLASMA_SCORCH_MIN_RADIUS,
+  PLASMA_SCORCH_SCALE,
   type ShellType,
 } from "../catalog.js";
 import { TILE_BLOCKED, TILE_MOUNTAIN, TILE_WATER } from "../maps.js";
 import type { BloodStainView, ImpactKind, ImpactView } from "../protocol.js";
-import { fellTreesInDisk, inBounds, isWall, isWater, occupant, tileIndex, worldToTile } from "./geo.js";
+import { igniteAt } from "./flame.js";
+import { burnTreeAt, burnTreesInDisk, fellTreesInDisk, inBounds, isWall, isWater, occupant, tileIndex, worldToTile } from "./geo.js";
 import type { Entity, MatchState } from "./types.js";
 
 /** Drop the oldest crater after this many so a long barrage stays bounded. */
@@ -22,6 +30,16 @@ export const MAX_SHELL_HOLES = 240;
 /** World-pixel radius. A 75mm shell is about 14px; larger calibers scale up. */
 export function shellHoleRadius(caliber: number): number {
   return (caliber / 75) * 14;
+}
+
+/** World-pixel radius of the scorch a Xenomorph energy round of this caliber leaves. */
+export function plasmaScorchRadius(caliber: number): number {
+  return Math.max(PLASMA_SCORCH_MIN_RADIUS, shellHoleRadius(caliber) * PLASMA_SCORCH_SCALE);
+}
+
+/** Every Xenomorph weapon is an energy weapon: bolts, pulses, and plasma, whatever kind of round the sim flies. */
+export function energyRound(state: MatchState, ownerId: string): boolean {
+  return state.players.get(ownerId)?.faction === "xeno";
 }
 
 function stainRand(seed: number): () => number {
@@ -88,7 +106,8 @@ function scarsGround(kind: ImpactKind): boolean {
 /**
  * Water always splashes (bullets included). Dirt keeps a crater only for a
  * heavy shell that actually struck the ground — not smoke, armor sparks, or
- * a round that stopped on a building.
+ * a round that stopped on a building. A Xenomorph energy round of any caliber
+ * scorches the ground instead (`scorchGround`).
  */
 export function noteImpactSurface(
   state: MatchState,
@@ -106,12 +125,17 @@ export function noteImpactSurface(
     return;
   }
   if (!scarsGround(kind)) return;
-  if (p.caliber < GARRISON_STRUCTURAL_CALIBER) return;
+  const energy = energyRound(state, impact.ownerId);
+  if (!energy && p.caliber < GARRISON_STRUCTURAL_CALIBER) return;
   if (isWall(state, tx, ty)) return;
   const occ = occupant(state, tx, ty);
   if (occ) {
     const blocker = state.entities.get(occ);
     if (blocker?.kind === "building") return;
+  }
+  if (energy) {
+    scorchGround(state, impact, p.caliber, tx, ty);
+    return;
   }
   // SC 250 scar: half the hole that caliber would dig.
   const craterScale = impact.bomb && p.caliber >= BOMB_CALIBER ? BOMB_HOLE_SCALE : 1;
@@ -126,8 +150,43 @@ export function noteImpactSurface(
     round: impact.mortar ? true : undefined,
   });
   fellTreesInDisk(state, impact.x, impact.y, radius);
-  if (state.holes.length > MAX_SHELL_HOLES) state.holes.shift();
+  trimHoles(state, false, MAX_SHELL_HOLES);
   soakBlast(state, tx, ty, p.caliber);
+}
+
+/**
+ * Plasma on dirt: nothing is dug and the ground does not sink. The heat chars a
+ * patch sized to the round. From PLASMA_FIRE_CALIBER up it also burns the trees
+ * inside the patch (and the one it landed in) and leaves a short fire at the heart.
+ */
+function scorchGround(state: MatchState, impact: ImpactView, caliber: number, tx: number, ty: number): void {
+  const radius = plasmaScorchRadius(caliber);
+  state.holes.push({
+    id: state.nextId++,
+    x: impact.x,
+    y: impact.y,
+    radius,
+    ang: 0,
+    seed: impact.id,
+    round: true,
+    scorch: true,
+  });
+  trimHoles(state, true, MAX_SCORCH_MARKS);
+  // A rifle bolt only chars the ground: it stops in a tree at the trunk, and must not strip the woods.
+  if (caliber < PLASMA_FIRE_CALIBER) return;
+  burnTreesInDisk(state, impact.x, impact.y, radius);
+  burnTreeAt(state, tx, ty);
+  const fire = Math.min(FIRE_RADIUS, Math.max(3, radius * PLASMA_FIRE_SHARE));
+  igniteAt(state, impact.x, impact.y, impact.ownerId, { radius: fire, life: PLASMA_FIRE_SECONDS });
+}
+
+/** Craters and scorches keep separate budgets, so a Xenomorph rifle line cannot wipe out the shell holes. */
+function trimHoles(state: MatchState, scorch: boolean, cap: number): void {
+  let n = 0;
+  for (const h of state.holes) if ((h.scorch === true) === scorch) n++;
+  if (n <= cap) return;
+  const i = state.holes.findIndex((h) => (h.scorch === true) === scorch);
+  if (i >= 0) state.holes.splice(i, 1);
 }
 
 /** Ground a blast may sink: not water, a wall, a fortification, or under a building. */

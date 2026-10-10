@@ -56,6 +56,7 @@ import { laserProgress } from "./laser.js";
 import { garrisonBars, garrisonOwner } from "./garrison.js";
 import { deckLoad } from "./lst.js";
 import { allies, unitInWater } from "./geo.js";
+import { energyRound } from "./remains.js";
 import { brokenClutter } from "./clutter.js";
 import { diving, hiddenSubmarine, sonarSpotted } from "./naval.js";
 import { medicTendView } from "./heal.js";
@@ -66,7 +67,9 @@ import { cyborgShutdownIn } from "./cyborg-link.js";
 import { blinkCharge, purgeProgress } from "./simunit.js";
 import { lungeAlt, lungeCharge } from "./lunge.js";
 import { hiddenBurrowed } from "./burrow.js";
-import { isSimUnit, onUplink } from "../catalog.js";
+import { hiddenCloaked } from "./shade.js";
+import { isSimUnit, onUplink, vaultsWalls } from "../catalog.js";
+import { onFortTop } from "./thrall.js";
 import { aswDeckView, sonarContacts } from "./destroyer.js";
 import { scrapCap } from "./smelter.js";
 import { thermalContacts } from "./thermal.js";
@@ -75,6 +78,7 @@ import { spotFacingOf, spotlightManned } from "./night.js";
 import type { Entity, LaserBeam, MatchState, Order, QueueableCommand, StructureJob } from "./types.js";
 import type {
   CorpseView,
+  EnergyShieldView,
   EntityView,
   MatchSnapshot,
   PlanKind,
@@ -399,6 +403,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
     if (!friendly && hiddenSubmarine(state, youPlayerId, e)) continue;
     // A Stalker down under the ground shows to no enemy.
     if (hiddenBurrowed(state, youPlayerId, e)) continue;
+    // A Shade with its skin settled shows to no enemy.
+    if (hiddenCloaked(state, youPlayerId, e)) continue;
     // Houses and untaken map defences out of sight are part of the ground: the client draws them from the scenery list.
     if (!friendly && !sonarSpotted(state, youPlayerId, e) && !entityOnMask(e, vis, state.width, state.height, state.tileSize)) continue;
     const job = e.queue[0];
@@ -450,6 +456,10 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       lungeCharge: friendly && canLunge(e.type) && !e.wreck ? Math.round(lungeCharge(state, e) * 100) / 100 : undefined,
       greenLaser: e.laser && factionOf(e.type) === "xeno" && e.type !== "cyborgcommander" ? true : undefined,
       burrow: e.burrow ? e.burrow.phase : undefined,
+      sprint: e.sprint,
+      cloaked: friendly ? e.cloaked : undefined,
+      acid: e.acid && state.tick < e.acid.until ? Math.round(e.acid.mm) : undefined,
+      fists: e.fists,
       purge: friendly && e.purge ? { hostId: e.purge.hostId, u: purgeProgress(state, e) ?? 0 } : undefined,
       takeover: e.takeover ? { by: e.takeover.by, u: Math.min(1, e.takeover.ticks / secondsToTicks(CYBORG_TAKEOVER_SECONDS)) } : undefined,
       laser: e.laser ? laserView(e.laser, state.tick) : undefined,
@@ -524,6 +534,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       engageContacts: friendly && e.hp > 0 ? e.engageContacts : undefined,
       selfDestruct: friendly && e.type === "walker" && !e.wreck ? !e.selfDestructOff : undefined,
       charging: e.type === "walker" && e.charging ? true : undefined,
+      stagger: e.staggered,
+      vault: vaultsWalls(e.type) && !e.wreck && e.garrisonedIn == null && onFortTop(state, e) ? true : undefined,
       gatling: gatlingView(state, e),
       ciws: ciwsView(state, e),
       mounts: twinCiwsView(state, e, friendly),
@@ -684,7 +696,10 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
         // A mine canister falls like a small bomb; its caliber tells the client it is not an SC 250.
         bomb: p.flight === "bomb" || p.flight === "cluster" ? true : undefined,
         rocket: p.flight === "rocket" ? true : undefined,
+        acid: p.acid ? true : undefined,
+        drain: p.drain ? true : undefined,
         heavy: p.heavy ? true : undefined,
+        hammer: p.hammer,
         ...(p.flight === "bomb" || p.flight === "rocket" || p.flight === "cluster" ? { z: p.z ?? 0 } : {}),
         ...(p.flight === "flak" ? { flak: true, z: p.z ?? 0 } : {}),
         ...(p.flight === "flame"
@@ -717,6 +732,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       life: c.life,
       lifeMax: c.lifeMax,
     })),
+    shields: shieldViews(state, youPlayerId, vis),
     fires: state.fires
       .filter((f) => allies(state, youPlayerId, f.ownerId) || canSeeWorld(state, vis, f.x, f.y))
       .map((f) => ({ id: f.id, x: f.x, y: f.y, radius: f.radius, life: f.life, lifeMax: f.lifeMax })),
@@ -799,5 +815,30 @@ function visibleBodies(state: MatchState, youPlayerId: string, vis: Uint8Array):
 
 /** Every Xenomorph weapon is an energy weapon: their shots and hits go out flagged so the client draws and voices them that way. */
 function energyShot(state: MatchState, ownerId: string): boolean {
-  return state.players.get(ownerId)?.faction === "xeno";
+  return energyRound(state, ownerId);
+}
+
+/** Ticks a struck energy wall flares for. */
+const SHIELD_FLASH_TICKS = 4;
+
+function shieldViews(state: MatchState, youPlayerId: string, vis: Uint8Array): EnergyShieldView[] | undefined {
+  const walls = state.energyShields;
+  if (!walls || walls.length === 0) return undefined;
+  const out: EnergyShieldView[] = [];
+  for (const w of walls) {
+    if (!allies(state, youPlayerId, w.ownerId) && !canSeeWorld(state, vis, w.x + Math.cos(w.angle) * w.r, w.y + Math.sin(w.angle) * w.r)) continue;
+    out.push({
+      id: w.id,
+      ownerId: w.ownerId,
+      x: w.x,
+      y: w.y,
+      angle: w.angle,
+      half: w.half,
+      r: w.r,
+      hp: Math.ceil(w.hp),
+      hpMax: w.hpMax,
+      hit: w.hitTick != null && state.tick - w.hitTick < SHIELD_FLASH_TICKS ? true : undefined,
+    });
+  }
+  return out.length > 0 ? out : undefined;
 }

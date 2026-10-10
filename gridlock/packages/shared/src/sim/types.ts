@@ -400,6 +400,12 @@ export interface Entity {
   charging?: true;
   /** The charge has multiplied hp and hpMax. Sim-only. */
   chargeBuff?: true;
+  /** Thrall: a bullet caught its shoulder. Slowed until `staggerUntil` (tick). */
+  staggered?: true;
+  /** Tick the Thrall's stagger ends. Sim-only. */
+  staggerUntil?: number;
+  /** Tick before which no new stagger lands on the Thrall. Sim-only. */
+  staggerGuard?: number;
   /** Titan outriggers are down: stationary, hull locked, braced max HP. Missing means false. */
   braced?: boolean;
   /** Seconds until the Titan's pods can fire the next rocket. Missing means ready. */
@@ -552,6 +558,14 @@ export interface Entity {
   selfQuiet?: number;
   /** Medic only: HP at the end of the last tick, to notice new hits. */
   selfHpSeen?: number;
+  /** Bloom only (sim/regrowth.ts): seconds since it last lost HP. */
+  regrowQuiet?: number;
+  /** Bloom only: HP at the end of the last regrowth pass, to notice new hits. */
+  regrowSeen?: number;
+  /** Matriarch only (sim/brood.ts): seconds toward her next Spawnling. */
+  matriarchLay?: number;
+  /** A Spawnling a Matriarch laid: her id, so she counts her own brood. */
+  matriarchOf?: number;
   /** Cyborg only: sim tick until which nothing takes his HP. Set when the legs are torn off. */
   shieldUntilTick?: number;
   /**
@@ -574,12 +588,31 @@ export interface Entity {
   dormant?: true;
   /** Sim Unit II: the tick his blink drive is charged again. Unset or past means ready. */
   blinkReady?: number;
+  /** Behemoth, Drone, Lancer: the tick it may raise its next energy wall (sim/energy-shield.ts). Unset means ready. */
+  shieldReady?: number;
   /** Behemoth in the air on a lunge (sim/lunge.ts): from, to, and the ticks it left and lands. */
   lunge?: { x0: number; y0: number; x1: number; y1: number; t0: number; t1: number };
   /** Behemoth: the tick its legs can lunge again. Unset or past means ready. */
   lungeReady?: number;
   /** Behemoth just landed: landing laser sweeps still to come. */
   lungeRing?: number;
+  /** Juggernaut running at what it is going for (sim/juggernaut.ts). */
+  sprint?: true;
+  /** Armored hull coated by a Spitter (sim/acid.ts): mm off every face, and the tick the coat dries. */
+  acid?: { mm: number; until: number };
+  /** Shade (sim/shade.ts): the tick its skin settles again after a shot or a hurt; HP last tick. */
+  revealUntil?: number;
+  shadeHpSeen?: number;
+  /** Shade with its skin settled and no enemy close: hidden from every enemy. */
+  cloaked?: true;
+  /** Weaver (sim/weaver.ts): the tick of its next mend pulse. */
+  mendNext?: number;
+  /** Broodmother (sim/brood.ts): the tick the next Thrall leaves the sac. */
+  broodNext?: number;
+  /** A Thrall born of a Broodmother: her id. */
+  broodOf?: number;
+  /** Juggernaut has thrown its hammer: it fights with its fists from now on. */
+  fists?: true;
   /** Stalker under the ground or on its way (sim/burrow.ts). Down, no enemy sees it. */
   burrow?: { phase: "digging" | "down" | "rising"; until: number };
   /** Sim Unit II inside a hostile garrison: the host, where he came from, and the tick he is done. */
@@ -707,6 +740,10 @@ export interface Projectile {
    * Set by the scoped rifle and the PTRD. Omitted for every other gun.
    */
   hpFraction?: number;
+  /** A Spitter's glob: coats an armored hull (sim/acid.ts) and never ricochets. */
+  acid?: boolean;
+  /** A Siphon's bolt: what it takes off an enemy unit mends the Siphon. */
+  drain?: boolean;
   /** Elevation units at the current point. Omit in tests for ground-level. */
   z?: number;
   /** Elevation units per second along the shot. Direct fire only. */
@@ -732,6 +769,8 @@ export interface Projectile {
   lobbed?: boolean;
   /** Force-attack: the blast also catches allies, and a tree on the aim burns. */
   harmAllies?: boolean;
+  /** The Juggernaut's thrown hammer, on a mortar arc: lands in a hammer blast, not a shell burst. */
+  hammer?: true;
   /** Force-attack aim, before the glob scatters. Not sent to clients. */
   aimX?: number;
   aimY?: number;
@@ -766,6 +805,28 @@ export interface Projectile {
 }
 
 /** Lasting smoke screen from a 75mm smoke shell. */
+/**
+ * A hive energy wall (sim/energy-shield.ts): an arc of radius `r` about (x, y),
+ * `half` radians either side of `angle`. It stays where it was raised.
+ */
+export interface EnergyShield {
+  id: number;
+  ownerId: string;
+  /** The unit that raised it. */
+  fromId: number;
+  x: number;
+  y: number;
+  angle: number;
+  half: number;
+  r: number;
+  hp: number;
+  hpMax: number;
+  /** Seconds left standing. */
+  life: number;
+  /** Tick a round last struck it. */
+  hitTick?: number;
+}
+
 export interface SmokeCloud {
   id: number;
   x: number;
@@ -965,6 +1026,8 @@ export interface MatchState {
   entities: Map<number, Entity>;
   projectiles: Projectile[];
   smokeClouds: SmokeCloud[];
+  /** Hive energy walls standing on the field. Missing or empty until the first is raised. */
+  energyShields?: EnergyShield[];
   /** Burning ground. Empty until the first flamethrower burst. */
   fires: GroundFire[];
   /** Butterfly mines from a transport's cluster canister. Empty until the first drop. */

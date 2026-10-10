@@ -414,11 +414,16 @@ SPECS = [
     Spec("stalker", 128, 0.92, "turret", src="stalker", layers=["hull", "turret", "gun"], turn=3, keep=0.45),
     Spec("behemoth", 128, 0.92, "turret", src="behemoth", layers=["hull", "turret", "gun"], turn=-2, keep=0.5, holes=4, debris=18),
     Spec("ravager", 128, 0.92, "turret", src="ravager", layers=["hull", "turret", "gun"], turn=2, keep=0.55, holes=3, soot=0.6, debris=14),
-    # Xenomorph boats and planes (render_xeno_naval.py, render_xeno_air.py): the EU equivalents' recipes.
+    Spec("siphon", 128, 0.92, "turret", src="siphon", layers=["hull", "turret", "gun"], turn=-3, keep=0.5, holes=3, debris=14),
+    Spec("broodmother", 128, 0.92, "turret", src="broodmother", layers=["hull", "turret", "gun"], turn=2, keep=0.6, holes=4, soot=0.55, debris=18),
+    Spec("mawcaster", 128, 0.92, "turret", src="mawcaster", layers=["hull", "turret", "gun"], turn=3, keep=0.5, holes=3, soot=0.6, debris=14),
+    # Xenomorph boats and planes (render_xeno_naval.py, render_xeno_air.py): the Alliance equivalents' recipes.
     Spec("leech", 128, 0.74, "sunk", src="leech", layers=["hull"], padding=2, holes=3, bites=3, soot=0.55, debris=8, sink=6, list_deg=-7),
     Spec("lurker", 128, 0.74, "sunk", src="lurker", layers=["hull"], padding=2, holes=3, bites=2, soot=0.45, debris=6, sink=3.5, list_deg=4),
     Spec("wasp", 128, 0.8, "plane", src="wasp", layers=["hull"], padding=2, holes=3, bites=2, debris=12),
     Spec("scourge", 128, 0.8, "plane", src="scourge", layers=["hull"], padding=2, holes=3, bites=2, debris=14),
+    Spec("overseer", 128, 0.8, "plane", src="overseer", layers=["hull"], padding=2, holes=3, bites=2, debris=10),
+    Spec("gnat", 128, 0.8, "plane", src="gnat", layers=["hull"], padding=2, holes=1, bites=1, debris=5),
 ]
 
 

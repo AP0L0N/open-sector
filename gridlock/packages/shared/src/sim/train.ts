@@ -1,4 +1,4 @@
-import { AIRFIELD_PADS, XENO_FACTORY, airfieldOf, canContinuousTrain, catalog, dockOf, isDockType, factionOf, inFaction, isAirfieldType, isAircraftType, isCyborg, isNavalType, isOneAtATime, secondsToTicks, techNeeds, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, type BuildingType, type TrainType } from "../catalog.js";
+import { AIRFIELD_PADS, BLOOM_GESTATOR, BLOOM_NEST, XENO_FACTORY, airfieldOf, canContinuousTrain, catalog, dockOf, isDockType, factionOf, inFaction, isAirfieldType, isAircraftType, isCyborg, isInfantryType, isNavalType, isOneAtATime, secondsToTicks, techNeeds, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, type BuildingType, type TrainType } from "../catalog.js";
 import { airfieldPadWorld, freePad, padsSpoken, parkHeading } from "./air.js";
 import { makeEntity, newAirState, ownedUnits, rallyPoint, worldToTile } from "./geo.js";
 import { openSpotNear, packRadius, packSlots } from "./formation.js";
@@ -10,13 +10,18 @@ import type { Entity, MatchState, TrainJob } from "./types.js";
 /** The refusal when a player asks for the other faction's building or unit. */
 export const NOT_YOUR_FACTION = "Not available to your faction.";
 
-export function producerType(unit: TrainType): "muster" | "armory" | "airfield" | "aerie" | "dock" | "spawnpool" | "cyborgcentral" | "forge" {
+/** Every building that trains units. */
+export type ProducerType = "muster" | "armory" | "airfield" | "aerie" | "roost" | "dock" | "spawnpool" | "tidewomb" | "cyborgcentral" | "forge" | "broodnest" | "gestator";
+
+export function producerType(unit: TrainType): ProducerType {
   if (isCyborg(unit)) return "cyborgcentral";
   const faction = factionOf(unit);
   if (isAircraftType(unit)) return airfieldOf(faction);
   if (isNavalType(unit)) return dockOf(faction);
   // Every other Xenomorph unit is a heavy assimilator, grown at the Nanite Forge.
   if (faction === "xeno") return XENO_FACTORY;
+  // The Bloom hatch their brood in the Brood Nest and grow every beast in the Gestator.
+  if (faction === "bloom") return isInfantryType(unit) ? BLOOM_NEST : BLOOM_GESTATOR;
   if (unit === "rifleman" || unit === "gunner" || unit === "sniper" || unit === "atinfantry" || unit === "rocketer" || unit === "pyro" || unit === "mortarman" || unit === "engineer" || unit === "medic" || unit === "droneop" || unit === "jumpjet") return "muster";
   return "armory";
 }
@@ -430,7 +435,7 @@ function packAtDoor(state: MatchState, from: Entity, fresh: Entity, door: { x: n
 }
 
 export function isProducer(e: Entity): boolean {
-  return e.kind === "building" && (e.type === "muster" || e.type === "armory" || isDockType(e.type) || e.type === "cyborgcentral" || e.type === "forge");
+  return e.kind === "building" && (e.type === "muster" || e.type === "armory" || isDockType(e.type) || e.type === "cyborgcentral" || e.type === "forge" || e.type === BLOOM_NEST || e.type === BLOOM_GESTATOR);
 }
 
 /** Sets the rally point on every owned producer in `ids`. A point on the building's own footprint clears it. */

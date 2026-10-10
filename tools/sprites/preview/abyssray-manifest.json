@@ -1,0 +1,52 @@
+{
+  "unit": "abyssray",
+  "fit_scale": 0.5741,
+  "empty_dirs": [],
+  "clipped_dirs": [],
+  "source_clipped_dirs": [],
+  "size_pop_dirs": [
+    "W",
+    "E"
+  ],
+  "heights": [
+    52,
+    51,
+    49,
+    45,
+    41,
+    45,
+    49,
+    51,
+    51,
+    51,
+    49,
+    45,
+    41,
+    45,
+    49,
+    51
+  ],
+  "bottoms": [
+    95,
+    95,
+    94,
+    94,
+    95,
+    101,
+    105,
+    106,
+    106,
+    106,
+    105,
+    101,
+    95,
+    94,
+    94,
+    95
+  ],
+  "contactY": 0.74,
+  "ref": "submarine",
+  "ref_fit_scale": 0.4844,
+  "drawSize_base": 98.2,
+  "ref_note": "NAVAL_OPTS"
+}

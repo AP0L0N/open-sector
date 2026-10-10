@@ -7,6 +7,9 @@ import {
   BLAST_DIG_PER_LEVEL,
   HEIGHT_BASE,
   HEIGHT_STEP_MAX,
+  MAX_SCORCH_MARKS,
+  PLASMA_FIRE_CALIBER,
+  PLASMA_FIRE_SECONDS,
   TICK_DT,
   catalog,
   isCivilianType,
@@ -17,7 +20,7 @@ import { enterGarrison, spillGarrison } from "./garrison.js";
 import { makeEntity, occupant, tileCenter, walkable, worldToTile } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { tickCollision } from "./collision.js";
-import { MAX_SHELL_HOLES, burnVariant, shellHoleRadius, soakBlast } from "./remains.js";
+import { MAX_SHELL_HOLES, burnVariant, plasmaScorchRadius, shellHoleRadius, soakBlast } from "./remains.js";
 import { snapshotFor } from "./snapshot.js";
 import { canSeeEntity } from "./vision.js";
 import type { MatchState, Projectile } from "./types.js";
@@ -435,5 +438,116 @@ describe("blasts sink the ground", () => {
     const pad = landTile(state);
     makeEntity(state, "cottage", "", pad.x * ts, pad.y * ts, { tileX: pad.x, tileY: pad.y });
     assert.equal(soakBlast(state, pad.x, pad.y, BLAST_DIG_PER_LEVEL * 4), false);
+  });
+});
+
+describe("plasma scorch", () => {
+  function xenoMatch(): MatchState {
+    const { state } = twoPlayerMatch();
+    state.players.get("A")!.faction = "xeno";
+    clearCover(state);
+    return state;
+  }
+
+  it("chars the ground instead of digging, sized to the round, and does not sink it", () => {
+    const state = xenoMatch();
+    const tile = landTile(state);
+    const x = tileCenter(tile.x, state.tileSize);
+    const y = tileCenter(tile.y, state.tileSize);
+    const i = tile.y * state.width + tile.x;
+    const before = state.heights[i];
+    dropRound(state, x, y, 8);
+    assert.equal(state.holes.length, 1);
+    assert.equal(state.holes[0]!.scorch, true);
+    assert.equal(state.holes[0]!.radius, plasmaScorchRadius(8));
+    dropRound(state, x + 4, y, 150, "ap");
+    assert.equal(state.holes.length, 2);
+    assert.equal(state.holes[1]!.scorch, true);
+    assert.ok(state.holes[1]!.radius > state.holes[0]!.radius);
+    assert.ok(state.holes[1]!.radius > shellHoleRadius(150));
+    assert.equal(state.heights[i], before);
+  });
+
+  it("leaves a small, short fire at the heart from cannon caliber up, none for small arms", () => {
+    const state = xenoMatch();
+    const tile = landTile(state);
+    const x = tileCenter(tile.x, state.tileSize);
+    const y = tileCenter(tile.y, state.tileSize);
+    dropRound(state, x, y, 8);
+    assert.equal(state.fires.length, 0);
+    dropRound(state, x, y, 75, "ap");
+    assert.equal(state.fires.length, 1);
+    const fire = state.fires[0]!;
+    assert.ok(Math.hypot(fire.x - x, fire.y - y) < 0.01);
+    assert.ok(fire.radius < plasmaScorchRadius(75));
+    assert.ok(fire.lifeMax <= PLASMA_FIRE_SECONDS * 1.1);
+  });
+
+  it("burns the trees in reach instead of felling them", () => {
+    const state = xenoMatch();
+    const tile = landTile(state);
+    const i = tile.y * state.width + tile.x;
+    state.terrain[i] = TILE_TREE;
+    const x = tileCenter(tile.x, state.tileSize);
+    const y = tileCenter(tile.y, state.tileSize);
+    dropRound(state, x + 1, y, PLASMA_FIRE_CALIBER);
+    assert.equal(state.terrain[i], TILE_EMPTY);
+    assert.deepEqual(state.clearedTrees.at(-1), { x: tile.x, y: tile.y, burn: true });
+  });
+
+  it("lets a rifle bolt char the ground under a tree without burning it", () => {
+    const state = xenoMatch();
+    const tile = landTile(state);
+    const i = tile.y * state.width + tile.x;
+    state.terrain[i] = TILE_TREE;
+    dropRound(state, tileCenter(tile.x, state.tileSize), tileCenter(tile.y, state.tileSize), 8);
+    assert.equal(state.terrain[i], TILE_TREE);
+    assert.equal(state.clearedTrees.length, 0);
+    assert.equal(state.holes[0]!.scorch, true);
+  });
+
+  it("keeps Alliance shells digging craters", () => {
+    const state = xenoMatch();
+    state.players.get("A")!.faction = "alliance";
+    const tile = landTile(state);
+    dropRound(state, tileCenter(tile.x, state.tileSize), tileCenter(tile.y, state.tileSize), 75, "ap");
+    assert.equal(state.holes.length, 1);
+    assert.equal(state.holes[0]!.scorch, undefined);
+    assert.equal(state.fires.length, 0);
+  });
+
+  it("still splashes on water with no scorch or fire", () => {
+    const state = xenoMatch();
+    const tile = landTile(state);
+    state.terrain[tile.y * state.width + tile.x] = TILE_WATER;
+    dropRound(state, tileCenter(tile.x, state.tileSize), tileCenter(tile.y, state.tileSize), 75, "ap");
+    assert.equal(state.holes.length, 0);
+    assert.equal(state.fires.length, 0);
+    assert.equal(state.impacts[0]!.splash, true);
+  });
+
+  it("caps scorches apart from craters, so bolts never erase a shell hole", () => {
+    const state = xenoMatch();
+    const tile = landTile(state);
+    const x = tileCenter(tile.x, state.tileSize);
+    const y = tileCenter(tile.y, state.tileSize);
+    state.players.get("A")!.faction = "alliance";
+    dropRound(state, x, y, 75, "ap");
+    const craterId = state.holes[0]!.id;
+    state.players.get("A")!.faction = "xeno";
+    for (let n = 0; n < MAX_SCORCH_MARKS + 5; n++) {
+      state.projectiles = [];
+      dropRound(state, x + (n % 5), y, 8);
+    }
+    assert.equal(state.holes.filter((h) => h.scorch).length, MAX_SCORCH_MARKS);
+    assert.ok(state.holes.some((h) => h.id === craterId));
+  });
+
+  it("goes out flagged in the snapshot", () => {
+    const state = xenoMatch();
+    const tile = landTile(state);
+    dropRound(state, tileCenter(tile.x, state.tileSize), tileCenter(tile.y, state.tileSize), 40);
+    const snap = snapshotFor(state, "A");
+    assert.equal(snap.holes[0]!.scorch, true);
   });
 });

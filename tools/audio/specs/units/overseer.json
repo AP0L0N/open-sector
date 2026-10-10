@@ -1,0 +1,54 @@
+{
+  "key": "overseer",
+  "out": "units/overseer",
+  "voice": {
+    "name": "Open Sector - Xenomorph Swarm",
+    "voice_id": "ChQdep4yvSgTU4K86vAg",
+    "note": "Shares the Xenomorph Swarm voice designed for the Leech (voices/leech.json); cold and watchful for the hover craft.",
+    "description": "A fast, hissing swarm chorus of many small synthetic voices speaking the same words together, like a hive of insect-like machines piloting alien craft: thin and sharp, raspy and buzzing, with dry clicking and a faint wet chitter between words, emotionless and eager, quick clipped cadence, a slightly metallic hollow resonance under the voice.",
+    "stability": 0.65,
+    "similarity": 0.8,
+    "style": 0.25,
+    "speed": 0.9
+  },
+  "lines": {
+    "select": [
+      "Overseer watches.",
+      "[whispers] We see all.",
+      "The eye is open."
+    ],
+    "move": [
+      "Drifting.",
+      "We hover there.",
+      "The eye moves."
+    ],
+    "attack": [
+      "Burn below.",
+      "Hold over them.",
+      "Light falls on them."
+    ],
+    "ready": [
+      "Overseer awakened."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "One short sci-fi laser pulse fired straight down from a hovering alien craft: a crisp bright electric zap with a quick searing sizzle, energy weapon, no gunpowder, no explosion, close, outdoors, no music, no voice",
+      "duration": 0.5,
+      "variants": 3,
+      "influence": 0.7
+    },
+    "move": {
+      "prompt": "Alien hover craft gliding slowly overhead: a deep steady pulsing hum of anti-gravity vanes, a soft organic warble and faint electric crackle, no engine roar, no jet, outdoors, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Alien hover craft shot down: the steady hum breaks into a falling electric whine, crackling energy arcs and a wet organic shriek, then a heavy crash and green energy burst on the ground, medium distance outdoors, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

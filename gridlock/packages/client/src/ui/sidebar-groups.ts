@@ -34,17 +34,17 @@ export const SIDEBAR_GROUPS: readonly { id: SidebarGroup; label: string; short: 
     label: "Infantry",
     short: "Inf",
     icon: "M8 1a2.1 2.1 0 110 4.2A2.1 2.1 0 018 1zM4.5 6.4h7L10.3 11H9.4V15H6.6V11H5.7z",
-    byFaction: { xeno: { label: "Cyborgs", short: "Cyb" } },
+    byFaction: { xeno: { label: "Cyborgs", short: "Cyb" }, bloom: { label: "Brood", short: "Brood" } },
   },
   {
     id: "tanks",
     label: "Tanks",
     short: "Tank",
     icon: "M4 5h6v2h5v1.2h-5V9H4zM1 10h14l-1.8 4H2.8z",
-    byFaction: { xeno: { label: "Heavy assimilators", short: "Heavy" } },
+    byFaction: { xeno: { label: "Heavy assimilators", short: "Heavy" }, bloom: { label: "Beasts", short: "Beast" } },
   },
-  { id: "naval", label: "Naval", short: "Sea", icon: "M6 3h3v3h3v3h3l-2.5 3.5h-9L1 9h5zM1 14.2c1.2 0 1.7-.8 2.3-.8s1.1.8 2.3.8 1.7-.8 2.3-.8 1.1.8 2.3.8 1.7-.8 2.3-.8 1.1.8 1.5.8V15c-.6 0-1-.8-1.5-.8s-1.1.8-2.3.8-1.7-.8-2.3-.8-1.1.8-2.3.8-1.7-.8-2.3-.8S2.2 15 1 15z" },
-  { id: "aircraft", label: "Aircraft", short: "Air", icon: "M8 1c.7 0 1 1 1 2v3l6 3.2V11L9 9.4V12l2 1.6V15l-3-.9-3 .9v-1.4L7 12V9.4L1 11V9.2L7 6V3c0-1 .3-2 1-2z" },
+  { id: "naval", label: "Naval", short: "Sea", byFaction: { bloom: { label: "Deep brood", short: "Deep" } }, icon: "M6 3h3v3h3v3h3l-2.5 3.5h-9L1 9h5zM1 14.2c1.2 0 1.7-.8 2.3-.8s1.1.8 2.3.8 1.7-.8 2.3-.8 1.1.8 2.3.8 1.7-.8 2.3-.8 1.1.8 1.5.8V15c-.6 0-1-.8-1.5-.8s-1.1.8-2.3.8-1.7-.8-2.3-.8-1.1.8-2.3.8-1.7-.8-2.3-.8S2.2 15 1 15z" },
+  { id: "aircraft", label: "Aircraft", short: "Air", byFaction: { bloom: { label: "Skybrood", short: "Sky" } }, icon: "M8 1c.7 0 1 1 1 2v3l6 3.2V11L9 9.4V12l2 1.6V15l-3-.9-3 .9v-1.4L7 12V9.4L1 11V9.2L7 6V3c0-1 .3-2 1-2z" },
 ];
 
 /** The tab's heading and short label as `faction` reads them. */

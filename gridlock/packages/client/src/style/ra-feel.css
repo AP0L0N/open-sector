@@ -592,6 +592,9 @@ input[type="range"] { padding: 0; }
 .prod-job[data-type="xenodrone"] {
   background-image: url("../assets/units/xenodrone-cameo.png");
 }
+.prod-job[data-type="thrall"] {
+  background-image: url("../assets/units/thrall-cameo.png");
+}
 .prod-job[data-type="lancer"] {
   background-image: url("../assets/units/lancer-cameo.png");
 }
@@ -601,8 +604,29 @@ input[type="range"] { padding: 0; }
 .prod-job[data-type="ravager"] {
   background-image: url("../assets/units/ravager-cameo.png");
 }
+.prod-job[data-type="spitter"] {
+  background-image: url("../assets/units/spitter-cameo.png");
+}
+.prod-job[data-type="weaver"] {
+  background-image: url("../assets/units/weaver-cameo.png");
+}
+.prod-job[data-type="shade"] {
+  background-image: url("../assets/units/shade-cameo.png");
+}
+.prod-job[data-type="siphon"] {
+  background-image: url("../assets/units/siphon-cameo.png");
+}
+.prod-job[data-type="broodmother"] {
+  background-image: url("../assets/units/broodmother-cameo.png");
+}
+.prod-job[data-type="mawcaster"] {
+  background-image: url("../assets/units/mawcaster-cameo.png");
+}
 .prod-job[data-type="behemoth"] {
   background-image: url("../assets/units/behemoth-cameo.png");
+}
+.prod-job[data-type="juggernaut"] {
+  background-image: url("../assets/units/juggernaut-cameo.png");
 }
 .prod-job[data-type="titan"] {
   background-image: url("../assets/units/titan-cameo.png");
@@ -919,11 +943,21 @@ input[type="range"] { padding: 0; }
 #train-lurker,
 #train-wasp,
 #train-scourge,
+#train-overseer,
+#train-gnat,
 #train-xenodrone,
+#train-thrall,
 #train-lancer,
+#train-spitter,
+#train-weaver,
+#train-shade,
 #train-stalker,
 #train-ravager,
+#train-siphon,
+#train-broodmother,
+#train-mawcaster,
 #train-behemoth,
+#train-juggernaut,
 #train-titan,
 #train-mammoth,
 #train-nebelwerfer,
@@ -1078,6 +1112,11 @@ input[type="range"] { padding: 0; }
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/xenodrone-cameo.png");
 }
+#train-thrall {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/thrall-cameo.png");
+}
 #train-lancer {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
@@ -1092,6 +1131,36 @@ input[type="range"] { padding: 0; }
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/ravager-cameo.png");
+}
+#train-spitter {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/spitter-cameo.png");
+}
+#train-weaver {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/weaver-cameo.png");
+}
+#train-shade {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/shade-cameo.png");
+}
+#train-siphon {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/siphon-cameo.png");
+}
+#train-broodmother {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/broodmother-cameo.png");
+}
+#train-mawcaster {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/mawcaster-cameo.png");
 }
 #train-leech {
   background-image:
@@ -1113,6 +1182,16 @@ input[type="range"] { padding: 0; }
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/scourge-cameo.png");
 }
+#train-overseer {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/overseer-cameo.png");
+}
+#train-gnat {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/gnat-cameo.png");
+}
 #build-spawnpool {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
@@ -1127,6 +1206,11 @@ input[type="range"] { padding: 0; }
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/behemoth-cameo.png");
+}
+#train-juggernaut {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/juggernaut-cameo.png");
 }
 #train-titan {
   background-image:
@@ -1631,14 +1715,26 @@ input[type="range"] { padding: 0; }
 .prod-job[data-type="wasp"] { background-image: url("../assets/units/wasp-cameo.png"); }
 .config-type[data-type="scourge"],
 .prod-job[data-type="scourge"] { background-image: url("../assets/units/scourge-cameo.png"); }
+.config-type[data-type="overseer"],
+.prod-job[data-type="overseer"] { background-image: url("../assets/units/overseer-cameo.png"); }
+.config-type[data-type="gnat"],
+.prod-job[data-type="gnat"] { background-image: url("../assets/units/gnat-cameo.png"); }
 .config-type[data-type="spawnpool"] { background-image: url("../assets/buildings/spawnpool-cameo.png"); }
 .config-type[data-type="aerie"] { background-image: url("../assets/buildings/aerie-cameo.png"); }
 .config-type[data-type="apocalypse"] { background-image: url("../assets/units/apocalypse-cameo.png"); }
 .config-type[data-type="xenodrone"] { background-image: url("../assets/units/xenodrone-cameo.png"); }
+.config-type[data-type="thrall"] { background-image: url("../assets/units/thrall-cameo.png"); }
 .config-type[data-type="lancer"] { background-image: url("../assets/units/lancer-cameo.png"); }
 .config-type[data-type="stalker"] { background-image: url("../assets/units/stalker-cameo.png"); }
 .config-type[data-type="ravager"] { background-image: url("../assets/units/ravager-cameo.png"); }
+.config-type[data-type="spitter"] { background-image: url("../assets/units/spitter-cameo.png"); }
+.config-type[data-type="weaver"] { background-image: url("../assets/units/weaver-cameo.png"); }
+.config-type[data-type="shade"] { background-image: url("../assets/units/shade-cameo.png"); }
+.config-type[data-type="siphon"] { background-image: url("../assets/units/siphon-cameo.png"); }
+.config-type[data-type="broodmother"] { background-image: url("../assets/units/broodmother-cameo.png"); }
+.config-type[data-type="mawcaster"] { background-image: url("../assets/units/mawcaster-cameo.png"); }
 .config-type[data-type="behemoth"] { background-image: url("../assets/units/behemoth-cameo.png"); }
+.config-type[data-type="juggernaut"] { background-image: url("../assets/units/juggernaut-cameo.png"); }
 .config-type[data-type="walker"],
 .prod-job[data-type="walker"] { background-image: url("../assets/units/walker-cameo.png"); }
 .config-type[data-type="cyborg"],
@@ -2121,4 +2217,258 @@ input[type="range"] { padding: 0; }
     grid-template-rows: 36px 1fr 220px;
   }
   .sidebar { border-left: none; border-top: 3px solid var(--rust); }
+}
+
+/* The Bloom: sidebar cameos, the selection strip, and production jobs. */
+#train-spawnling,
+#train-gobber,
+#train-quillback,
+#train-bloater,
+#train-longspine,
+#train-mender,
+#train-skitter,
+#train-goretusk,
+#train-mantis,
+#train-bileworm,
+#train-sporemaw,
+#train-matriarch,
+#train-driftjelly,
+#train-spineback,
+#train-abyssray,
+#train-leviathan,
+#train-broodbarge,
+#train-moth,
+#train-razorwing,
+#train-gasbag,
+#train-drifter,
+#train-harpy,
+#build-lumenbulb,
+#build-gorger,
+#build-broodnest,
+#build-gestator,
+#build-braincoral,
+#build-tidewomb,
+#build-roost,
+#build-thornspitter,
+#build-bilelance,
+#build-puffcap,
+#build-eyestalk,
+#build-husk {
+  background-size: cover;
+  background-position: right 10% center;
+  min-height: 3.1rem;
+}
+#train-spawnling {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/spawnling-cameo.png");
+}
+.config-type[data-type="spawnling"],
+.prod-job[data-type="spawnling"] { background-image: url("../assets/units/spawnling-cameo.png"); }
+#train-gobber {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/gobber-cameo.png");
+}
+.config-type[data-type="gobber"],
+.prod-job[data-type="gobber"] { background-image: url("../assets/units/gobber-cameo.png"); }
+#train-quillback {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/quillback-cameo.png");
+}
+.config-type[data-type="quillback"],
+.prod-job[data-type="quillback"] { background-image: url("../assets/units/quillback-cameo.png"); }
+#train-bloater {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/bloater-cameo.png");
+}
+.config-type[data-type="bloater"],
+.prod-job[data-type="bloater"] { background-image: url("../assets/units/bloater-cameo.png"); }
+#train-longspine {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/longspine-cameo.png");
+}
+.config-type[data-type="longspine"],
+.prod-job[data-type="longspine"] { background-image: url("../assets/units/longspine-cameo.png"); }
+#train-mender {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/mender-cameo.png");
+}
+.config-type[data-type="mender"],
+.prod-job[data-type="mender"] { background-image: url("../assets/units/mender-cameo.png"); }
+#train-skitter {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/skitter-cameo.png");
+}
+.config-type[data-type="skitter"],
+.prod-job[data-type="skitter"] { background-image: url("../assets/units/skitter-cameo.png"); }
+#train-goretusk {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/goretusk-cameo.png");
+}
+.config-type[data-type="goretusk"],
+.prod-job[data-type="goretusk"] { background-image: url("../assets/units/goretusk-cameo.png"); }
+#train-mantis {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/mantis-cameo.png");
+}
+.config-type[data-type="mantis"],
+.prod-job[data-type="mantis"] { background-image: url("../assets/units/mantis-cameo.png"); }
+#train-bileworm {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/bileworm-cameo.png");
+}
+.config-type[data-type="bileworm"],
+.prod-job[data-type="bileworm"] { background-image: url("../assets/units/bileworm-cameo.png"); }
+#train-sporemaw {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/sporemaw-cameo.png");
+}
+.config-type[data-type="sporemaw"],
+.prod-job[data-type="sporemaw"] { background-image: url("../assets/units/sporemaw-cameo.png"); }
+#train-matriarch {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/matriarch-cameo.png");
+}
+.config-type[data-type="matriarch"],
+.prod-job[data-type="matriarch"] { background-image: url("../assets/units/matriarch-cameo.png"); }
+#train-driftjelly {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/driftjelly-cameo.png");
+}
+.config-type[data-type="driftjelly"],
+.prod-job[data-type="driftjelly"] { background-image: url("../assets/units/driftjelly-cameo.png"); }
+#train-spineback {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/spineback-cameo.png");
+}
+.config-type[data-type="spineback"],
+.prod-job[data-type="spineback"] { background-image: url("../assets/units/spineback-cameo.png"); }
+#train-abyssray {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/abyssray-cameo.png");
+}
+.config-type[data-type="abyssray"],
+.prod-job[data-type="abyssray"] { background-image: url("../assets/units/abyssray-cameo.png"); }
+#train-leviathan {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/leviathan-cameo.png");
+}
+.config-type[data-type="leviathan"],
+.prod-job[data-type="leviathan"] { background-image: url("../assets/units/leviathan-cameo.png"); }
+#train-broodbarge {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/broodbarge-cameo.png");
+}
+.config-type[data-type="broodbarge"],
+.prod-job[data-type="broodbarge"] { background-image: url("../assets/units/broodbarge-cameo.png"); }
+#train-moth {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/moth-cameo.png");
+}
+.config-type[data-type="moth"],
+.prod-job[data-type="moth"] { background-image: url("../assets/units/moth-cameo.png"); }
+#train-razorwing {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/razorwing-cameo.png");
+}
+.config-type[data-type="razorwing"],
+.prod-job[data-type="razorwing"] { background-image: url("../assets/units/razorwing-cameo.png"); }
+#train-gasbag {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/gasbag-cameo.png");
+}
+.config-type[data-type="gasbag"],
+.prod-job[data-type="gasbag"] { background-image: url("../assets/units/gasbag-cameo.png"); }
+#train-drifter {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/drifter-cameo.png");
+}
+.config-type[data-type="drifter"],
+.prod-job[data-type="drifter"] { background-image: url("../assets/units/drifter-cameo.png"); }
+#train-harpy {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/harpy-cameo.png");
+}
+.config-type[data-type="harpy"],
+.prod-job[data-type="harpy"] { background-image: url("../assets/units/harpy-cameo.png"); }
+#build-lumenbulb {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/lumenbulb-cameo.png");
+}
+#build-gorger {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/gorger-cameo.png");
+}
+#build-broodnest {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/broodnest-cameo.png");
+}
+#build-gestator {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/gestator-cameo.png");
+}
+#build-braincoral {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/braincoral-cameo.png");
+}
+#build-tidewomb {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/tidewomb-cameo.png");
+}
+#build-roost {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/roost-cameo.png");
+}
+#build-thornspitter {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/thornspitter-cameo.png");
+}
+#build-bilelance {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/bilelance-cameo.png");
+}
+#build-puffcap {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/puffcap-cameo.png");
+}
+#build-eyestalk {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/eyestalk-cameo.png");
+}
+#build-husk {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/husk-cameo.png");
 }

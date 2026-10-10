@@ -143,6 +143,7 @@ import {
   type RocketRackDef,
   LAUNCHER_ROCKET_RACK,
   PENETRATOR_RACK,
+  PLASMA_FIRE_CALIBER,
   type CatalogEntry,
   type ShellType,
   torpedoesOf,
@@ -153,9 +154,21 @@ import {
   SIMUNIT_HEAVY_MUL,
   SIMUNIT_HULL_SLASH_DAMAGE,
   SIMUNIT_HUNT_TILES,
+  JUGGERNAUT_HUNT_TILES,
+  isJuggernaut,
   SIMUNIT_LIGHT_MUL,
   SIMUNIT_SLASH_DAMAGE,
   meleeOf,
+  biteOf,
+  factionDamage,
+  factionOf,
+  XENO_DAMAGE_MUL,
+  SIPHON_DRAIN,
+  MAWCASTER_BILE_CHANCE,
+  LURKER_BITE_DAMAGE,
+  LURKER_BITE_SOLDIER_DAMAGE,
+  LURKER_BUILDING_MUL,
+  LURKER_HEAVY_MUL,
 } from "../catalog.js";
 import { aimableBridge, bridgeSweep, strikeBridge, tagBridgeRounds } from "./bridge.js";
 import type { ImpactKind, ImpactView } from "../protocol.js";
@@ -187,8 +200,12 @@ import {
 import { fireStats, hullTurnMul, immobilized, rollCrits, rollLamp, takeDamage } from "./crits.js";
 import { damageMaulerCart } from "./mauler-cart.js";
 import { hiddenFromAuto, inStrikeReach } from "./simunit.js";
+import { juggernautBlow, landHammer } from "./juggernaut.js";
+import { detonateThrall, maybeStagger, punch, punchAir, thrallDetonatesOn } from "./thrall.js";
+import { coatAcid, corrodedDef } from "./acid.js";
+import { revealShade } from "./shade.js";
 import { artilleryCanLay, artilleryReady, artilleryReloadMul, blastOnGun, bulletOnGun, gunCrewOf } from "./artillery.js";
-import { noteImpactSurface } from "./remains.js";
+import { energyRound, noteImpactSurface } from "./remains.js";
 import { stanceHitRadiusMul, stanceTargetSpreadMul, tickStance } from "./stance.js";
 import {
   aimHeight,
@@ -204,9 +221,11 @@ import {
   weaponRangeWorld,
   worldTileHeight,
 } from "./elevation.js";
+import { absorbRound, shieldSweep } from "./energy-shield.js";
 import {
   ownerless,
   allies,
+  burnTreeAt,
   clearOrder,
   fellTreeAt,
   inBounds,
@@ -250,7 +269,7 @@ import { setPath } from "./path.js";
 import { nextRand } from "./rng.js";
 import { isSupplyBullet, noteSupplyHit, stowedInTransport, supplyRiderFights, syncSupplyRiders } from "./supply.js";
 import { spawnSmokeCloud } from "./smoke.js";
-import { burnShare, heGroundFire, hullHose, stepFlame, throwFlame } from "./flame.js";
+import { burnShare, heGroundFire, hullHose, igniteAt, stepFlame, throwFlame } from "./flame.js";
 import { fireLaser } from "./laser.js";
 import { distToRoute } from "./patrol.js";
 import { activateSpatial, anyHostileNear, clearSpatial, queryCapsules, queryCircle, querySegment, spatialGrid, type SpatialGrid } from "./spatial.js";
@@ -1632,6 +1651,8 @@ function infantryRoundCanHarm(state: MatchState, e: Entity, target: Entity): boo
   }
   const def = catalog(target.type);
   if (!isArmored(def)) return true;
+  // Acid need not get through: it eats the plate of any live hull it lands on.
+  if (infantryGunFor(e)?.id === "acid" && !target.wreck) return true;
   // A gatling turret's rounds sometimes bite a Walker or a truck, like the Cyborg's arm.
   if (twinCiwsOf(e.type) && isLightHull(def)) return true;
   if (radarLaidOf(e.type) || twinCiwsOf(e.type)) {
@@ -1655,6 +1676,8 @@ function infantryRoundCanHarm(state: MatchState, e: Entity, target: Entity): boo
   if (gun.id === "laser") return true;
   // The Sim Unit's daggers open a light hull; a heavy plate is not worth the run.
   if (gun.id === "daggers") return isLightHull(def);
+  // The Thrall's fists never touch a plate: it goes off against it.
+  if (gun.id === "fists") return true;
   if (entityIsScouting(target) && gun.caliber < GARRISON_STRUCTURAL_CALIBER) return true;
   const vx = target.x - e.x;
   const vy = target.y - e.y;
@@ -1838,6 +1861,14 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   const laid = holedUp || traverse || Math.abs(remainingDeg) <= FIRE_LAID_DEG;
   const bearing = traverse && !holedUp ? Math.atan2(aimY - e.y, aimX - e.x) : undefined;
 
+  // The Juggernaut's hammer or fists: a blow at arm's reach, landing now, in an area.
+  if (isJuggernaut(e.type)) {
+    if (!laid || e.cooldown > 0) return;
+    juggernautBlow(state, e, target, aimX, aimY);
+    if (e.order?.once) clearOrder(e);
+    return;
+  }
+
   const useMg = !ground && !e.order?.once && target ? wantsMg(e, target) : false;
   if (useMg && target && gunArcOk && laid && e.mgCooldown <= 0 && e.mgOverheat <= 0 && e.mgAmmo > 0) {
     fireRound(
@@ -1942,10 +1973,30 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     if (e.order?.once) clearOrder(e);
     return;
   }
+  // The Lurker's jaws: a bite at its reach, no round in the air. On a bare point it snaps at the water.
+  if (biteOf(e.type)) {
+    if (target) bite(state, e, target);
+    else biteAir(state, e, aimX, aimY);
+    e.cooldown = def.cooldown;
+    if (e.order?.once) clearOrder(e);
+    return;
+  }
   // The Sim Unit's daggers: a cut at arm's reach, no round in the air. On a bare point he cuts the air.
   if (infantryGun?.id === "daggers") {
     if (target) slash(state, e, target);
     else slashAir(state, e, aimX, aimY);
+    e.cooldown = infantryGun.cooldown;
+    if (e.order?.once) clearOrder(e);
+    return;
+  }
+  // The Thrall's fists: blows on soldiers and walls; on an armored hull it detonates.
+  if (infantryGun?.id === "fists") {
+    if (target && thrallDetonatesOn(target)) {
+      detonateThrall(state, e);
+      return;
+    }
+    if (target) punch(state, e, target);
+    else punchAir(state, e, aimX, aimY);
     e.cooldown = infantryGun.cooldown;
     if (e.order?.once) clearOrder(e);
     return;
@@ -2534,7 +2585,7 @@ function launchRocket(
     y,
     vx: dx / flight,
     vy: dy / flight,
-    damage: rack.damage,
+    damage: factionDamage(e.type, rack.damage),
     penetration: rack.penetration,
     caliber: rack.caliber,
     life: flight,
@@ -2594,10 +2645,15 @@ function stepRocket(state: MatchState, p: Projectile, dt: number, rand: () => nu
   // A forced Nebelwerfer rocket is fused on the point. It clears walls, trees,
   // and hulls on the way and bursts where it was aimed. Any other rocket flies
   // low, so the first thing in the path takes the burst.
-  if (!(p.harmAllies && p.launcher === "nebelwerfer")) {
+  if (!(p.harmAllies && (p.launcher === "nebelwerfer" || p.launcher === "mawcaster"))) {
     const wallHit = wallSweep(state, x0, y0, p.x, p.y);
     const struck = nearestSweepHit(state, x0, y0, p, z0, p.z);
     const tree = nearestTreeSweep(state, x0, y0, p, z0, p.z, rand);
+    const guard = shieldSweep(state, p.ownerId, x0, y0, p.x, p.y);
+    if (guard && (!wallHit || guard.t <= wallHit.t) && (!struck || guard.t <= struck.t) && (!tree || guard.t <= tree.t)) {
+      absorbRound(state, p, guard);
+      return false;
+    }
     if (wallHit && (!struck || wallHit.t <= struck.t) && (!tree || wallHit.t <= tree.t)) {
       p.x = wallHit.x;
       p.y = wallHit.y;
@@ -2694,7 +2750,12 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
   const inAir = rocket && !!p.airBurst;
   const tx = worldToTile(p.x, state.tileSize);
   const ty = worldToTile(p.y, state.tileSize);
-  if (!inAir && isTree(state, tx, ty)) fellTreeAt(state, tx, ty);
+  if (!inAir && isTree(state, tx, ty)) {
+    if (energyRound(state, p.ownerId)) burnTreeAt(state, tx, ty);
+    else fellTreeAt(state, tx, ty);
+  }
+  // A Mawcaster pod now and then leaves its bile burning where it bursts.
+  if (!inAir && p.launcher === "mawcaster" && rand() < MAWCASTER_BILE_CHANCE) igniteAt(state, p.x, p.y, p.ownerId);
   const rack = p.heavy ? PENETRATOR_RACK : rocketRackOf(p.launcher ?? "titan");
   const lob = p.shipBarrel != null ? BATTLESHIP_SHELL : p.big ? ARTILLERY_SHELL : MORTAR_LOB;
   const radius = (rocket ? rack.splashTiles : p.big ? lob.splashTiles : MORTAR_SPLASH_TILES) * state.tileSize;
@@ -3095,7 +3156,7 @@ function slash(state: MatchState, e: Entity, target: Entity): void {
   else if (target.wreck || (isArmored(def) && !isLightHull(def))) mul = SIMUNIT_HEAVY_MUL;
   else if (isLightHull(def)) mul = SIMUNIT_LIGHT_MUL;
   const rand = () => nextRand(state);
-  const dmg = Math.round((soldier ? SIMUNIT_SLASH_DAMAGE : SIMUNIT_HULL_SLASH_DAMAGE * mul) * (0.9 + 0.2 * rand()));
+  const dmg = factionDamage(e.type, Math.round((soldier ? SIMUNIT_SLASH_DAMAGE : SIMUNIT_HULL_SLASH_DAMAGE * mul) * (0.9 + 0.2 * rand())));
   const vx = target.x - e.x;
   const vy = target.y - e.y;
   let kind: ImpactKind = "hit";
@@ -3128,6 +3189,52 @@ function slashAir(state: MatchState, e: Entity, x: number, y: number): void {
 
 /** Shown as a small-arms spark on the client; it also marks the slash as the Sim Unit's shot. */
 const DAGGER_CALIBER = 8;
+
+/**
+ * The Lurker's bite. A soldier takes LURKER_BITE_SOLDIER_DAMAGE, more than his whole pool;
+ * anything else the hull bite: a tank, a wreck, or a plate LURKER_HEAVY_MUL of it, a wall
+ * LURKER_BUILDING_MUL, and through the slits of a held house the soldiers inside the
+ * soldier's bite instead. It lands now, and like a shot it gives the beast away.
+ */
+function bite(state: MatchState, e: Entity, target: Entity): void {
+  const def = catalog(target.type);
+  const soldier = target.kind === "unit" && !target.wreck && isInfantryType(target.type);
+  let mul = 1;
+  if (target.kind === "building") mul = LURKER_BUILDING_MUL;
+  else if (target.wreck || (isArmored(def) && !isLightHull(def))) mul = LURKER_HEAVY_MUL;
+  const rand = () => nextRand(state);
+  const dmg = factionDamage(e.type, Math.round((soldier ? LURKER_BITE_SOLDIER_DAMAGE : LURKER_BITE_DAMAGE * mul) * (0.9 + 0.2 * rand())));
+  let kind: ImpactKind = "hit";
+  if (target.kind === "building" && wallsShieldGarrison(state, target)) {
+    woundGarrison(state, target, factionDamage(e.type, LURKER_BITE_SOLDIER_DAMAGE), BITE_CALIBER);
+  } else {
+    takeDamage(target, dmg, state.tick);
+    if (target.hp <= 0) kind = "kill";
+    else if (soldier) rollCrits(target, "none", "hit", dmg, rand);
+  }
+  surface(state, e);
+  state.impacts.push({
+    id: state.nextId++,
+    ownerId: e.ownerId,
+    kind,
+    fromId: e.id,
+    x: target.x,
+    y: target.y,
+    vx: target.x - e.x,
+    vy: target.y - e.y,
+    caliber: BITE_CALIBER,
+    bite: true,
+  });
+}
+
+/** A force-attack on bare water: the jaws close on nothing. The client still shows the snap. */
+function biteAir(state: MatchState, e: Entity, x: number, y: number): void {
+  surface(state, e);
+  state.impacts.push({ id: state.nextId++, ownerId: e.ownerId, kind: "miss", fromId: e.id, x, y, vx: x - e.x, vy: y - e.y, caliber: BITE_CALIBER, bite: true });
+}
+
+/** Marks the bite on the client: a snap of jaws and a churn of water, not a bullet strike. */
+const BITE_CALIBER = 9;
 
 function fireRound(
   state: MatchState,
@@ -3233,7 +3340,7 @@ function fireRound(
     y,
     vx: dx * speed,
     vy: dy * speed,
-    damage: stats.damage,
+    damage: factionDamage(e.type, stats.damage),
     penetration: gunId === "ptrd" ? ptrdPenetration(distTiles, rangeTiles) : stats.penetration,
     caliber: stats.caliber,
     life,
@@ -3241,7 +3348,7 @@ function fireRound(
     fromId: e.id,
     bounced: false,
     shell: opts?.shell ?? null,
-    hpFraction: gunId === "scoped" || gunId === "ptrd" ? scopedHpFraction(dist, range) : undefined,
+    hpFraction: gunId === "scoped" || gunId === "ptrd" ? scopedHpFraction(dist, range) * (factionOf(e.type) === "xeno" ? XENO_DAMAGE_MUL : 1) : undefined,
     antiAir:
       opts?.radar ||
       (!opts?.shell && (e.type === "walker" || radarLaidOf(e.type) || antiAirGunOf(e.type) || !!infantryGunFor(e)?.antiAir))
@@ -3250,9 +3357,12 @@ function fireRound(
     gatling: gatling || undefined,
     plunging: plunging || undefined,
     aloft: aloft || undefined,
+    acid: gunId === "acid" || undefined,
+    drain: e.type === "siphon" || undefined,
     z: z0,
     vz: ((zAim - z0) / Math.max(1e-6, aimDist)) * speed,
   };
+  revealShade(state, e);
   if (torpedoesOf(e.type)) {
     // The tube fires at the waterline, and the shot gives the boat away.
     armTorpedo(state, p, diving(e));
@@ -3357,7 +3467,8 @@ export function tickProjectiles(state: MatchState, dt: number): void {
         p.y = p.landY;
       }
       p.z = 0;
-      detonateMortar(state, p, rand);
+      if (p.hammer) landHammer(state, p);
+      else detonateMortar(state, p, rand);
       continue;
     }
     const x0 = p.x;
@@ -3375,6 +3486,12 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     const concrete = overheadShot ? null : wallSweep(state, x0, y0, p.x, p.y);
     const struck = nearestSweepHit(state, x0, y0, p, z0, z1);
     const blocker = concrete && (!bagHit || concrete.t < bagHit.t) ? concrete : bagHit;
+    // An enemy energy wall stops the round where it meets it. A barrage from overhead falls past it.
+    const guard = p.fromAbove || p.torpedo || p.aloft ? null : shieldSweep(state, p.ownerId, x0, y0, p.x, p.y);
+    if (guard && (!struck || guard.t <= struck.t) && (!blocker || guard.t <= blocker.t)) {
+      absorbRound(state, p, guard);
+      continue;
+    }
     if (blocker && (!struck || blocker.t <= struck.t)) {
       if (isConcreteLine(blocker.e.type)) {
         // A shell chips the concrete. Any round that stops on a manned Large wall reaches the slits.
@@ -3394,7 +3511,10 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     // A barrage from a plane comes down through the canopy; only what it lands on counts.
     const tree = p.fromAbove || p.plunging || p.torpedo ? null : nearestTreeSweep(state, x0, y0, p, z0, z1, rand);
     if (tree && (!struck || tree.t <= struck.t)) {
-      if (canFellTrees(p)) fellTreeAt(state, tree.tx, tree.ty);
+      if (energyRound(state, p.ownerId)) {
+        // Plasma does not snap the trunk: it sets the tree alight.
+        if (canFellTrees(p) || p.caliber >= PLASMA_FIRE_CALIBER) burnTreeAt(state, tree.tx, tree.ty);
+      } else if (canFellTrees(p)) fellTreeAt(state, tree.tx, tree.ty);
       pushImpact(state, p, "miss", tree.x, tree.y);
       continue;
     }
@@ -3445,7 +3565,8 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       pushImpact(state, p, crewHit ? "hit" : "ricochet", struck.x, struck.y, -p.vx * 0.2, -p.vy * 0.2);
       continue;
     }
-    const liveDef = catalog(e.type);
+    // A Spitter's coat thins every plate the round can meet.
+    const liveDef = corrodedDef(e, catalog(e.type), state.tick);
     const targetDef = e.wreck ? wreckHitDef(e, p.caliber) : liveDef;
     const frac = p.hpFraction;
     const scopedInfantry = frac != null && isInfantryType(e.type) && !e.wreck;
@@ -3526,6 +3647,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
           p.caliber === PTRD_CALIBER && res.kind === "pen" && res.face === "side" ? PTRD_TRACK_CHANCE : undefined;
         rollCrits(e, res.face, res.kind, dealt, rand, tracks);
       }
+      if (dealt > 0) maybeStagger(state, e, p.caliber, rand);
       if (!p.bounced) {
         damageMaulerCart(e, {
           caliber: p.caliber,
@@ -3544,6 +3666,12 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     }
     if (occupied) woundGarrison(state, e, res.damage, p.caliber, !!p.plunging, isBulletRound(p));
     else woundDeckGunners(state, e, p.damage);
+    // Acid coats the plate whether or not it bit.
+    if (p.acid) coatAcid(state, e);
+    // The Siphon drinks what its bolt took off an enemy body.
+    if (p.drain && chipWalls && dealt > 0 && shooter && shooter.hp > 0 && !shooter.wreck && e.kind === "unit" && !e.wreck && !allies(state, shooter.ownerId, e.ownerId)) {
+      shooter.hp = Math.min(shooter.hpMax, shooter.hp + Math.max(1, Math.round(dealt * SIPHON_DRAIN)));
+    }
     // A bullet that meets the body can smash the lamps, even when it only sparks.
     if (e.hp > 0 && !e.wreck) rollLamp(e, lampShotOf(p), rand);
     if (e.type === "supply" && !e.wreck && e.hp > 0) {
@@ -3565,7 +3693,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       res.kind === "ricochet" ? res.bounceVy : p.vy,
       blast,
     );
-    if (res.kind !== "ricochet" || heBursts(p)) continue;
+    if (res.kind !== "ricochet" || heBursts(p) || p.acid) continue;
     if (p.caliber === PTRD_CALIBER) p.penetration = 0;
     p.vx = res.bounceVx;
     p.vy = res.bounceVy;
@@ -3833,7 +3961,8 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
   // Dry tanks: the Pyro has nothing to go at them with until a truck refills him.
   if (e.type === "pyro" && e.clip <= 0) return undefined;
   // The knife reaches an arm; the man carrying it looks further and runs the target down.
-  const range = meleeOf(e.type) ? Math.max(weaponRangeWorld(state, e), SIMUNIT_HUNT_TILES * state.tileSize) : weaponRangeWorld(state, e);
+  const hunt = isJuggernaut(e.type) ? JUGGERNAUT_HUNT_TILES : SIMUNIT_HUNT_TILES;
+  const range = meleeOf(e.type) ? Math.max(weaponRangeWorld(state, e), hunt * state.tileSize) : weaponRangeWorld(state, e);
   // The CIWS takes units only, and a plane in the air before anything on the ground.
   const radar = radarLaidOf(e.type);
   let best: Entity | undefined;

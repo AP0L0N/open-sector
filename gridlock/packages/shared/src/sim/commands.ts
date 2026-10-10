@@ -15,6 +15,7 @@ import {
   infantryLoadout,
   isBuildingType,
   isCyborg,
+  noStance,
   isBridge,
   isRubble,
   isEngineerBuilding,
@@ -1615,7 +1616,7 @@ function cmdWeapon(
 
 function cmdStance(state: MatchState, playerId: string, ids: number[], stance: Stance): CmdResult {
   const units = owned(state, playerId, ids).filter(
-    (e) => isInfantryType(e.type) && e.type !== "engineer" && !isCyborg(e.type),
+    (e) => isInfantryType(e.type) && e.type !== "engineer" && !noStance(e.type),
   );
   if (units.length === 0) return fail("not_yours", "Select infantry.");
   let n = 0;

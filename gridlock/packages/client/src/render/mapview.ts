@@ -4,6 +4,7 @@ import {
   canLunge,
   BEHEMOTH_LUNGE_RANGE_TILES,
   isDockType,
+  WEAVER_REACH_TILES,
   factionOf,
   AIRFIELD_BACK_DEPTH,
   BUILDING_TURN_STEP,
@@ -155,6 +156,7 @@ import {
   SIMUNIT_BLINK_RANGE_TILES,
   isSimUnit,
 } from "@gridlock/shared";
+import { drawShieldPanel, shieldCurve, shieldGlow, shieldHeightElev } from "./energy-shield.js";
 import { drawNuke, drawNukeFlash, drawNukeScorch, NUKE_FX_MS, NUKE_SCORCH_MS } from "./nuke-fx.js";
 import { drawTitanThrust } from "./titan-jet-fx.js";
 import {
@@ -217,6 +219,7 @@ import {
   lampSprite,
   STUMP_FACES,
   CRATER_FACES,
+  SCORCH_FACES,
   CIWS_TURRET_SHEET,
   RAM_TURRET_SHEET,
   gunLayerFor,
@@ -382,12 +385,17 @@ import { roofCiwsMuzzle } from "./roof-ciws.js";
 import { CIWS_INTERCEPT_LIFT, CIWS_MUZZLE_REACH, CIWS_SOURCE_ZOOM, ciwsMuzzleLift, ciwsTurretCell, ciwsTurretRow } from "./ciws.js";
 import { ciwsBurstTracers, ciwsTracers } from "./ciws-tracer.js";
 import { drawEnergyBolt, drawEnergyBurst, drawEnergyMuzzle, drawPlasmaOrb, energyBolts, energyBurstMs } from "./energy-fx.js";
+import { SCORCH_GLOW_MS, SCORCH_SMOKE_RADIUS, drawPlasmaSteam, drawScorchFallback, drawScorchGlow, plasmaSteamMs } from "./plasma-ground.js";
 import { PTRD_MUZZLE_LIFT, ptrdTracers } from "./ptrd-tracer.js";
 import { ROOF_CIWS_LIFT } from "./roof-ciws.js";
 
 /** Gatling barrels above the ground point, as a share of the drawn cell. The Walker matches gatling-flash ARM_LIFT. */
 const WALKER_ARM_LIFT = 0.45;
 const CYBORG_ARM_LIFT = 0.3;
+/** How high a vaulting Thrall clears sandbags or a wall, in tiles of screen height. */
+const THRALL_VAULT_TILES = 0.55;
+/** Time constant of its spring up and drop down, ms. */
+const THRALL_VAULT_EASE_MS = 55;
 /** The Cyborg Commander's force-field bar, over his health bar. */
 const FIELD_BAR_FILL = "#7cc8ff";
 import { INTERCEPT_BURST_SIZE, RAM_MISS_BURST_SIZE, interceptorTrail } from "./ram.js";
@@ -460,7 +468,18 @@ import { cyborgCommanderLens } from "./cyborgcommander-muzzle.js";
 import { beamEnd, beamShare, drawForceField, drawLaserBeam } from "./laser-beam.js";
 import { drawShutdownMark, drawUplink, SHUTDOWN_UNIT_FILTER } from "./cyborg-link-fx.js";
 import { BLINK_FX_MS, drawBlinkFx, drawPurgeMark } from "./blink-fx.js";
+import { BITE_FX_MS, DOWN_BEAM_MS, drawBite, drawDownBeam } from "./hive-fx.js";
 import { SIMUNIT2_CRAWL_FIRE_SPRITE, SIMUNIT2_CRAWL_SPRITE, SIMUNIT2_DIE_SPRITE, SIMUNIT2_FIRE_SPRITE, SIMUNIT2_SPRITE, UNIT_SPRITE_DRAW_SIZE } from "./sprites.js";
+import { JUGGERNAUT_FISTS_SPRITE, JUGGERNAUT_PUNCH_SPRITE, JUGGERNAUT_SPRITE, JUGGERNAUT_SWING_SPRITE, JUGGERNAUT_THROW_SPRITE } from "./sprites.js";
+import { drawThrownHammer, pickJuggernautPose, JUGGERNAUT_STRIDE_WORLD, type JuggernautSheet } from "./juggernaut-fx.js";
+import {
+  THRALL_CRAWL_FIRE_SPRITE,
+  THRALL_CRAWL_SPRITE,
+  THRALL_DIE_SPRITE,
+  THRALL_FIRE_SPRITE,
+  THRALL_HIT_SPRITE,
+  THRALL_SPRITE,
+} from "./sprites.js";
 import {
   XENODRONE_CRAWL_FIRE_SPRITE,
   XENODRONE_CRAWL_SPRITE,
@@ -471,8 +490,39 @@ import {
   LANCER_CRAWL_SPRITE,
   LANCER_DIE_SPRITE,
   LANCER_FIRE_SPRITE,
+  broodSheetsFor,
   LANCER_SPRITE,
+  SHADE_CRAWL_FIRE_SPRITE,
+  SHADE_CRAWL_SPRITE,
+  SHADE_DIE_SPRITE,
+  SHADE_FIRE_SPRITE,
+  SHADE_SPRITE,
+  SPITTER_CRAWL_FIRE_SPRITE,
+  SPITTER_CRAWL_SPRITE,
+  SPITTER_DIE_SPRITE,
+  SPITTER_FIRE_SPRITE,
+  SPITTER_SPRITE,
+  WEAVER_CRAWL_FIRE_SPRITE,
+  WEAVER_CRAWL_SPRITE,
+  WEAVER_DIE_SPRITE,
+  WEAVER_FIRE_SPRITE,
+  WEAVER_SPRITE,
 } from "./sprites.js";
+
+/** A cloaked Shade as its own side sees it. */
+const CLOAKED_UNIT_FILTER = "opacity(0.38) saturate(0.5) brightness(1.35)";
+/** An armored hull coated in a Spitter's acid. */
+const ACID_HULL_FILTER = "sepia(0.55) hue-rotate(28deg) saturate(1.7) brightness(0.92)";
+
+/** The hive cyborgs that share the Drone's sheet set: stand, fire, crawl, crawl-fire, die. */
+const HIVE_SHEETS: Partial<Record<string, { stand: UnitSpriteDef; fire: UnitSpriteDef; crawl: UnitSpriteDef; crawlFire: UnitSpriteDef; die: UnitSpriteDef }>> = {
+  xenodrone: { stand: XENODRONE_SPRITE, fire: XENODRONE_FIRE_SPRITE, crawl: XENODRONE_CRAWL_SPRITE, crawlFire: XENODRONE_CRAWL_FIRE_SPRITE, die: XENODRONE_DIE_SPRITE },
+  lancer: { stand: LANCER_SPRITE, fire: LANCER_FIRE_SPRITE, crawl: LANCER_CRAWL_SPRITE, crawlFire: LANCER_CRAWL_FIRE_SPRITE, die: LANCER_DIE_SPRITE },
+  spitter: { stand: SPITTER_SPRITE, fire: SPITTER_FIRE_SPRITE, crawl: SPITTER_CRAWL_SPRITE, crawlFire: SPITTER_CRAWL_FIRE_SPRITE, die: SPITTER_DIE_SPRITE },
+  // The Weaver's "fire" sheet is its mending pose.
+  weaver: { stand: WEAVER_SPRITE, fire: WEAVER_FIRE_SPRITE, crawl: WEAVER_CRAWL_SPRITE, crawlFire: WEAVER_CRAWL_FIRE_SPRITE, die: WEAVER_DIE_SPRITE },
+  shade: { stand: SHADE_SPRITE, fire: SHADE_FIRE_SPRITE, crawl: SHADE_CRAWL_SPRITE, crawlFire: SHADE_CRAWL_FIRE_SPRITE, die: SHADE_DIE_SPRITE },
+};
 import { inScreenRect, unitGroundSink, unitPickRect, type ScreenRect } from "./unit-hit.js";
 import { engineRowFromProjectedFacing, engineRowFromScreen } from "./turntable.js";
 import { drawSelectFrame, fieldFrameCorners } from "./select-frame.js";
@@ -537,9 +587,14 @@ import {
   workLightBearings,
   workLightCount,
   wreckNightAlpha,
+  XENO_GLOW_RGB,
+  BLOOM_GLOW_RGB,
+  xenoGlowPulse,
+  xenoGlowRadius,
+  xenoGlowUnderShade,
 } from "./night.js";
 
-type NightPool = { x: number; y: number; rx: number; a: number; kind: "tower" | "head" | "work" | "missile" | LampType };
+type NightPool = { x: number; y: number; rx: number; a: number; kind: "tower" | "head" | "work" | "missile" | "xeno" | "bloom" | LampType };
 /** How much of the night tint each kind of pool lifts, per pool (they overlap), and how much it warms. */
 const streetLampPools = <K extends "cut" | "warm" | "rgb">(key: K) =>
   Object.fromEntries(LAMP_TYPES.map((t) => [t, STREET_LAMPS[t][key]])) as Record<LampType, StreetLampSpec[K]>;
@@ -548,6 +603,8 @@ const POOL_CUT: Record<NightPool["kind"], number> = {
   head: 0.8,
   work: 0.75,
   missile: 0.4,
+  xeno: 0.45,
+  bloom: 0.4,
   ...streetLampPools("cut"),
 };
 const POOL_WARM: Record<NightPool["kind"], number> = {
@@ -555,6 +612,8 @@ const POOL_WARM: Record<NightPool["kind"], number> = {
   head: 0.24,
   work: 0.2,
   missile: 0.14,
+  xeno: 0.7,
+  bloom: 0.8,
   ...streetLampPools("warm"),
 };
 const POOL_RGB: Record<NightPool["kind"], string> = {
@@ -562,16 +621,42 @@ const POOL_RGB: Record<NightPool["kind"], string> = {
   head: "255, 242, 205",
   work: "255, 212, 140",
   missile: "255, 214, 150",
+  xeno: XENO_GLOW_RGB,
+  bloom: BLOOM_GLOW_RGB,
   ...streetLampPools("rgb"),
 };
+
+/** One pool as a soft 2:1 ellipse, `rgb` at alpha `a` in the middle fading to nothing at the rim. */
+function fillPool(c: CanvasRenderingContext2D, p: NightPool, rgb: string, a: number): void {
+  if (a <= 0.002) return;
+  c.save();
+  c.translate(p.x, p.y);
+  c.scale(1, 0.5);
+  const g = c.createRadialGradient(0, 0, 0, 0, 0, p.rx);
+  g.addColorStop(0, `rgba(${rgb}, ${a})`);
+  g.addColorStop(0.5, `rgba(${rgb}, ${a * 0.55})`);
+  g.addColorStop(1, `rgba(${rgb}, 0)`);
+  c.fillStyle = g;
+  c.beginPath();
+  c.arc(0, 0, p.rx, 0, Math.PI * 2);
+  c.fill();
+  c.restore();
+}
+
+/** A live Xenomorph or Bloom unit or structure out in the open: it glows. Not a wreck, a ruin, a passenger, or a burrowed or submerged body. */
+function xenoGlows(e: EntityView): boolean {
+  if (factionOf(e.type) === "alliance" || e.hp <= 0 || e.wreck || e.ruined) return false;
+  if (e.garrisonedIn != null || e.burrow === "down" || e.submerged) return false;
+  return e.kind === "unit" || e.kind === "building";
+}
 
 /** Built structures that keep work lights burning round the yard. Not bunkers, guns, walls, or the towers, which have their own lamps. */
 function workLit(e: EntityView): boolean {
   if (e.kind !== "building" || e.hp <= 0 || e.wreck || e.ruined) return false;
   if (!e.ownerId || e.ownerId === NEUTRAL_OWNER || e.unpowered) return false;
   if (isGarrisonable(e.type)) return false;
-  // The Xenomorphs light nothing.
-  if (factionOf(e.type) === "xeno") return false;
+  // The Xenomorphs and the Bloom light nothing.
+  if (factionOf(e.type) !== "alliance") return false;
   return isHqBuilding(e.type) || (BUILDING_TYPES as readonly string[]).includes(e.type);
 }
 import {
@@ -663,6 +748,8 @@ const EXTRUDE: Record<EntityType, number> = {
   fw190: 12,
   wasp: 12,
   scourge: 14,
+  overseer: 12,
+  gnat: 6,
   bv222: 22,
   he111: 17,
   horten: 17,
@@ -689,10 +776,54 @@ const EXTRUDE: Record<EntityType, number> = {
   cyborgcommander: 26,
   simunit2: 26,
   xenodrone: 24,
+  thrall: 27,
   lancer: 27,
+  spitter: 24,
+  weaver: 28,
+  shade: 26,
   stalker: 28,
   ravager: 22,
+  siphon: 24,
+  broodmother: 34,
+  mawcaster: 26,
   behemoth: 46,
+  juggernaut: 44,
+  sporepod: 22,
+  broodheart: 62,
+  lumenbulb: 34,
+  gorger: 50,
+  broodnest: 40,
+  gestator: 52,
+  braincoral: 54,
+  tidewomb: 12,
+  roost: 14,
+  thornspitter: 14,
+  bilelance: 30,
+  puffcap: 16,
+  eyestalk: 60,
+  husk: 18,
+  spawnling: 18,
+  gobber: 26,
+  quillback: 24,
+  bloater: 24,
+  longspine: 30,
+  mender: 26,
+  skitter: 14,
+  goretusk: 26,
+  mantis: 30,
+  bileworm: 16,
+  sporemaw: 26,
+  matriarch: 46,
+  driftjelly: 10,
+  spineback: 12,
+  abyssray: 8,
+  leviathan: 30,
+  broodbarge: 14,
+  moth: 8,
+  razorwing: 12,
+  gasbag: 18,
+  drifter: 14,
+  harpy: 16,
   sandbags: 12,
   barbwire: 9,
   wall: 18,
@@ -899,6 +1030,11 @@ export class MapView {
   private prevCrateById = new Map<number, MatchSnapshot["crates"][number]>();
   /** Walker legs: ground walked so far and where the hull was last frame. */
   private walkerOdo = new Map<number, { x: number; y: number; d: number }>();
+  /** Juggernaut: when its last hammer or fist blow landed (performance.now), and how many it has landed. */
+  private juggBlows = new Map<number, { at: number; n: number }>();
+  /** Juggernaut: when the hammer left its hands. */
+  private juggThrows = new Map<number, number>();
+  private juggSeen = new Set<number>();
   private snapAt = 0;
   /** Top-left of the viewport in isometric space. */
   private camX = 0;
@@ -951,6 +1087,8 @@ export class MapView {
   private nightLayer: HTMLCanvasElement | null = null;
   /** Small layer the lamps' warm light is summed and capped on. */
   private lightLayer: HTMLCanvasElement | null = null;
+  /** This frame's Xenomorph glow pools: drawn on the ground, and cut from the night layer. */
+  private xenoFrame: NightPool[] = [];
   /** Lamp heading on screen per tower, eased toward the snapshot. */
   private spotShown = new Map<number, number>();
   /** Last heading each lamp showed, kept while it is dark so it does not snap. */
@@ -1085,6 +1223,10 @@ export class MapView {
   private gunRecoil = new Map<number, GunRecoil>();
   /** When an Apocalypse began riding over a hull it rolled flat (ms), by its id. */
   private crushBumps = new Map<number, number>();
+  /** When each Thrall's current stagger began (performance.now()), for its hit sheet. */
+  private staggerAt = new Map<number, number>();
+  /** Each vaulting Thrall's lift over the obstacle, screen px, and when it was last eased. */
+  private vaultLift = new Map<number, { h: number; at: number }>();
   private crushBumpSeen = new Set<number>();
   private muzzleSmokes: MuzzleSmokePuff[] = [];
   private fieldGunSmokes: FieldGunSmokePuff[] = [];
@@ -1121,6 +1263,11 @@ export class MapView {
   private burrowSeen = new Map<number, { phase: string; at: number }>();
   /** Blink flashes in flight: both ends in world px and when they started. */
   private blinkFx: { from: { x: number; y: number }; to: { x: number; y: number }; at: number; inside?: boolean }[] = [];
+  /** Overseer pulses still showing: the craft that fired and the spot it burned. */
+  private downBeams: { id: number; fromId: number; x: number; y: number; at: number }[] = [];
+  /** Lurker bites still showing: where the jaws closed and the way the beast lunged. */
+  private biteFx: { id: number; fromId?: number; x: number; y: number; dx: number; dy: number; at: number }[] = [];
+  private hiveFxSeen = new Set<number>();
   private seenBlinks = new Set<number>();
   rotateMode = false;
   /** Rotate light: the rotate click swings only the selected Battle Ships' and Titans' lamps. */
@@ -1464,6 +1611,7 @@ export class MapView {
         if (!was || was.a0 !== e.laser.a0 || e.laser.u < was.u) this.beamSeen.set(e.id, { a0: e.laser.a0, at: now, u: e.laser.u });
       } else this.beamSeen.delete(e.id);
       this.lastHp.set(e.id, e.hp);
+      if (e.stagger && !this.prevById.get(e.id)?.stagger) this.staggerAt.set(e.id, now);
       const scoutHp = e.scout?.hp;
       if (scoutHp !== undefined) {
         const prevScout = this.lastScoutHp.get(e.id);
@@ -1506,6 +1654,13 @@ export class MapView {
       this.blinkFx.push({ from: { x: b.x, y: b.y }, to: { x: b.tx, y: b.ty }, at: now, inside: b.inside });
     }
     for (const i of match.impacts ?? []) {
+      // A Juggernaut blow: its swing or punch loops from this moment. The thrown hammer landing is not one.
+      if (i.hammer && i.hammer !== "throw" && i.fromId != null && !this.juggSeen.has(i.id)) {
+        if (this.juggSeen.size > 200) this.juggSeen.clear();
+        this.juggSeen.add(i.id);
+        const was = this.juggBlows.get(i.fromId);
+        this.juggBlows.set(i.fromId, { at: now, n: (was?.n ?? 0) + 1 });
+      }
       if (i.fromId != null && (i.caliber ?? 0) > 0 && (i.caliber ?? 0) < 40 && i.kind !== "crush") {
         const shooter = this.currById.get(i.fromId);
         if (shooter && isInfantryType(shooter.type) && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
@@ -1517,6 +1672,14 @@ export class MapView {
         this.crushBumps.set(i.crusher, now);
       }
       if (i.kind === "crush") continue;
+      if ((i.downLaser || i.bite) && !this.hiveFxSeen.has(i.id)) {
+        if (this.hiveFxSeen.size > 400) this.hiveFxSeen.clear();
+        this.hiveFxSeen.add(i.id);
+        if (i.downLaser && i.fromId != null) this.downBeams.push({ id: i.id, fromId: i.fromId, x: i.x, y: i.y, at: now });
+        if (i.bite) this.biteFx.push({ id: i.id, fromId: i.fromId, x: i.x, y: i.y, dx: i.vx, dy: i.vy, at: now });
+      }
+      // Jaws leave no strike, burst, or dirt: the snap and the water are all of it.
+      if (i.bite) continue;
       // A 20mm round that missed a plane climbed away into the sky: its tracer is all there is.
       if (i.airZ != null && i.kind === "miss") continue;
       if (i.nuke) {
@@ -1576,7 +1739,9 @@ export class MapView {
         continue;
       }
       this.snapHullFx(fx);
-      if (i.kind === "kill" && i.blast) fx.death = this.deathBlastAt(i.x, i.y, i.caliber);
+      // A Thrall going off on a hull is the hive's light, not a fireball: one big green burst.
+      if (i.blast && i.energy && i.fromId != null && this.prevById.get(i.fromId)?.type === "thrall") fx.kind = "hit";
+      else if (i.kind === "kill" && i.blast) fx.death = this.deathBlastAt(i.x, i.y, i.caliber);
       else if (i.torpedo && torpedoStruckHull(i.kind)) fx.death = heBurstSpec();
       else if (i.heBurst && !i.splash) fx.death = heBurstSpec();
       this.addFx(fx);
@@ -1587,6 +1752,10 @@ export class MapView {
       if (p.bounced || this.seenShots.has(p.id)) continue;
       this.seenShots.add(p.id);
       const shooter = this.currById.get(p.fromId);
+      if (p.hammer) {
+        this.juggThrows.set(p.fromId, now);
+        continue;
+      }
       if (p.flame) {
         // A new glob: the trigger is still held. The jet itself is drawn per frame from his nozzle.
         if (shooter?.type === "pyro" && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
@@ -1839,8 +2008,8 @@ export class MapView {
       if (factionOf(e.type) === "xeno") {
         // Every Xenomorph gun fires light: a green bolt from the muzzle to each hit. Lasers, plasma
         // orbs, torpedoes, and daggers draw themselves elsewhere.
-        const shots = byGun.get(e.id)?.filter((i) => !i.rocket && !i.laser && !i.torpedo && !i.mortar && i.kind !== "crush" && (i.caliber ?? 0) > 0);
-        if (!shots?.length || e.type === "simunit2" || e.type === "cyborgcommander") continue;
+        const shots = byGun.get(e.id)?.filter((i) => !i.rocket && !i.laser && !i.torpedo && !i.mortar && !i.bite && !i.downLaser && i.kind !== "crush" && (i.caliber ?? 0) > 0);
+        if (!shots?.length || e.type === "simunit2" || e.type === "thrall" || e.type === "cyborgcommander" || e.type === "juggernaut") continue;
         const muzzle = this.energyMuzzleWorld(e, shots[0]!);
         for (const bolt of energyBolts(muzzle, shots, ground, now, ts)) {
           this.tracers.push(bolt);
@@ -3844,6 +4013,7 @@ export class MapView {
 
   /** Screen pixels a plane (or a Jump Jet) sits above its ground point. 0 for everything on the ground. */
   private airLift(e: EntityView): number {
+    if (e.type === "thrall") return this.vaultLiftPx(e);
     // A Behemoth on a lunge rides its arc; between snapshots it eases toward the next height.
     if (e.lungeAlt != null) {
       const prev = this.prevById.get(e.id)?.lungeAlt ?? 0;
@@ -4553,6 +4723,10 @@ export class MapView {
     items.push({ layer: GROUND_DECAL_DRAW_LAYER, z: -Infinity, run: () => drawYardWear(this.ctx, yardWear) });
     // One path under craters and unit blobs, so overlapping shadows don't stack.
     items.push({ layer: HOLE_DRAW_LAYER, z: -Infinity, run: () => drawCastShadows(this.ctx, castShadows) });
+    // The Xenomorph glow lights the ground they stand on: over craters and shadows, under everything that stands.
+    const xenoGlow = lampGlow(this.daylight());
+    this.xenoFrame = xenoGlow > 0 ? this.xenoPools(w, h) : [];
+    if (this.xenoFrame.length) items.push({ layer: HOLE_DRAW_LAYER, z: Infinity, run: () => this.drawXenoGlow(xenoGlow) });
     this.collectRemains(items);
     this.collectUnitShadows(items);
     this.collectOwnerRings(items, w, h, now);
@@ -4562,6 +4736,7 @@ export class MapView {
     this.collectShipWakes(items);
     this.collectMuzzleSmoke(items);
     this.collectFires(items, w, h);
+    this.collectShields(items, w, h);
     this.collectNukeScorch(items);
     this.collectAirdrops(items, w, h);
     for (const m of this.takeMoveClicks()) {
@@ -4663,6 +4838,7 @@ export class MapView {
     this.drawBlinkReach();
     this.drawPurgeMarks();
     this.drawBlinkFlashes();
+    this.drawHiveFx();
     this.drawSonarContacts();
     this.drawThermalContacts();
   }
@@ -4790,6 +4966,8 @@ export class MapView {
         lay(e.x + Math.cos(b) * orbit, e.y + Math.sin(b) * orbit, r, 0.8, "work");
       }
     }
+    // The Xenomorph glow, laid this frame under the units (drawXenoGlow); here it only cuts the dark.
+    out.push(...this.xenoFrame);
     // Gate lamps: a small pool off each post, on both sides of the boom.
     const gateSpan = fieldSpan("gate");
     if (gateSpan) {
@@ -4817,6 +4995,43 @@ export class MapView {
       for (const b of aimedLampGround(spec, wx, wy, ((lamp.facing ?? 90) * Math.PI) / 180, ts)) lay(b.x, b.y, b.r, b.a * flicker, lamp.type);
     }
     return out;
+  }
+
+  /**
+   * The Xenomorph carry no lamps: every live unit and structure of theirs gives off
+   * a blue glow, sized to it, as pools in screen space like nightPools.
+   */
+  private xenoPools(w: number, h: number): NightPool[] {
+    const ts = this.ts();
+    const k = (Math.SQRT2 * ISO_TILE_W) / 2 / ts;
+    const nowSec = performance.now() / 1000;
+    const out: NightPool[] = [];
+    const lay = (wx: number, wy: number, r: number, a: number, kind: "xeno" | "bloom"): void => {
+      const s = this.toScreen(wx, wy);
+      const rx = r * k;
+      if (s.x > -rx && s.y > -rx && s.x < w + rx && s.y < h + rx) out.push({ x: s.x, y: s.y, rx, a, kind });
+    };
+    for (const e of this.curr.entities) {
+      if (!xenoGlows(e)) continue;
+      // Blue off the hive, amber off the Bloom's sacs.
+      const kind = factionOf(e.type) === "bloom" ? "bloom" : "xeno";
+      const at = e.kind === "unit" ? this.lerpEnt(e) : e;
+      const r = xenoGlowRadius(e, catalog(e.type).radius, ts);
+      const a = xenoGlowPulse(e.id, nowSec);
+      // A soft wide halo with a brighter core, so the light reads as coming off the body.
+      lay(at.x, at.y, r, 0.75 * a, kind);
+      lay(at.x, at.y, r * 0.5, 0.5 * a, kind);
+    }
+    return out;
+  }
+
+  /**
+   * The Xenomorph glow's blue, on the ground under units and structures. The night
+   * layer goes over it after, so it is lifted to make up for the shade left there.
+   */
+  private drawXenoGlow(glow: number): void {
+    const shade = nightShade(this.daylight());
+    this.drawLampLight(this.xenoFrame, glow * xenoGlowUnderShade(shade, POOL_CUT.xeno * glow));
   }
 
   /** Street lamps on the map that no structure has been raised over, with their world foot. */
@@ -4969,21 +5184,6 @@ export class MapView {
     const ctx = this.ctx;
     const { w: vw, h: vh } = this.viewSize();
     const pools = glow > 0 ? this.nightPools(lamps, vw, vh) : [];
-    const fillPool = (c: CanvasRenderingContext2D, p: NightPool, rgb: string, a: number): void => {
-      if (a <= 0.002) return;
-      c.save();
-      c.translate(p.x, p.y);
-      c.scale(1, 0.5);
-      const g = c.createRadialGradient(0, 0, 0, 0, 0, p.rx);
-      g.addColorStop(0, `rgba(${rgb}, ${a})`);
-      g.addColorStop(0.5, `rgba(${rgb}, ${a * 0.55})`);
-      g.addColorStop(1, `rgba(${rgb}, 0)`);
-      c.fillStyle = g;
-      c.beginPath();
-      c.arc(0, 0, p.rx, 0, Math.PI * 2);
-      c.fill();
-      c.restore();
-    };
     if (shade > 0.001) {
       const w = this.canvas.width;
       const h = this.canvas.height;
@@ -5012,8 +5212,10 @@ export class MapView {
       }
     }
     ctx.save();
+    // The Xenomorph glow lifts the dark above, but its blue was laid on the ground under the units (drawXenoGlow).
+    const lit = pools.filter((p) => p.kind !== "xeno" && p.kind !== "bloom");
+    if (lit.length) this.drawLampLight(lit, glow);
     if (pools.length) {
-      this.drawLampLight(pools, glow, fillPool);
       this.drawLampBulbs(glow);
       ctx.globalCompositeOperation = "lighter";
       // The roof searchlight's lens: brightest when it looks at the viewer. Hull headlights stay a beam only.
@@ -5072,11 +5274,7 @@ export class MapView {
    * each pixel's sum goes through stackedLight, so overlapping lamps brighten
    * the ground a little more but never wash it out.
    */
-  private drawLampLight(
-    pools: NightPool[],
-    glow: number,
-    fillPool: (c: CanvasRenderingContext2D, p: NightPool, rgb: string, a: number) => void,
-  ): void {
+  private drawLampLight(pools: NightPool[], glow: number): void {
     const ctx = this.ctx;
     const S = LIGHT_LAYER_SCALE;
     const lw = Math.max(1, Math.ceil(this.canvas.width / S));
@@ -5337,6 +5535,43 @@ export class MapView {
       const a = this.toScreen(f.from.x, f.from.y);
       const b = this.toScreen(f.to.x, f.to.y);
       drawBlinkFx(this.ctx, a, b, (now - f.at) * speed, UNIT_SPRITE_DRAW_SIZE * this.zoom, f.inside);
+    }
+  }
+
+  /** Overseer beams from the craft as it hangs now down to the spot, and Lurker bites. */
+  private drawHiveFx(): void {
+    if (this.downBeams.length === 0 && this.biteFx.length === 0) return;
+    const now = performance.now();
+    const speed = this.curr.gameSpeed || 1;
+    this.downBeams = this.downBeams.filter((f) => (now - f.at) * speed < DOWN_BEAM_MS);
+    this.biteFx = this.biteFx.filter((f) => (now - f.at) * speed < BITE_FX_MS);
+    const blend = Math.min(1, (now - this.snapAt) / 100);
+    for (const f of this.downBeams) {
+      const craft = this.currById.get(f.fromId);
+      if (!craft) continue;
+      const p = this.lerpEnt(craft);
+      const alt = lerpAirAlt(this.prevById.get(craft.id), craft, blend);
+      const top = this.toScreen(p.x, p.y, this.elevAt(p.x, p.y) + alt);
+      drawDownBeam(this.ctx, top, this.toScreen(f.x, f.y), (now - f.at) * speed, this.zoom);
+    }
+    for (const f of this.biteFx) {
+      // The jaws close at the head's reach toward the target, not on a long hull's middle.
+      const beast = f.fromId != null ? this.currById.get(f.fromId) : undefined;
+      let jx = f.x;
+      let jy = f.y;
+      if (beast) {
+        const p = this.lerpEnt(beast);
+        const d = Math.hypot(f.x - p.x, f.y - p.y);
+        const reach = Math.min(d, catalog(beast.type).radius * 2.4);
+        if (d > 1e-6) {
+          jx = p.x + ((f.x - p.x) / d) * reach;
+          jy = p.y + ((f.y - p.y) / d) * reach;
+        }
+      }
+      const at = this.toScreen(jx, jy);
+      const tip = this.toScreen(f.x + f.dx, f.y + f.dy);
+      const back = this.toScreen(f.x - f.dx, f.y - f.dy);
+      drawBite(this.ctx, at, { x: tip.x - back.x, y: tip.y - back.y }, (now - f.at) * speed, 2 * UNIT_SPRITE_DRAW_SIZE * this.zoom, f.id);
     }
   }
 
@@ -7083,7 +7318,31 @@ export class MapView {
   }
 
   /** Stance sheet, or the pistol / rifle-recoil / corpse sheet when that pose is showing. */
+  /** The Juggernaut's sheet now, and its frame when a blow or the throw sets it (else it strides). */
+  private juggernautPose(e: EntityView): { def: UnitSpriteDef; frame?: number } {
+    const sheets: Record<JuggernautSheet, UnitSpriteDef> = {
+      walk: JUGGERNAUT_SPRITE,
+      swing: JUGGERNAUT_SWING_SPRITE,
+      fists: JUGGERNAUT_FISTS_SPRITE,
+      punch: JUGGERNAUT_PUNCH_SPRITE,
+      throw: JUGGERNAUT_THROW_SPRITE,
+    };
+    if (e.wreck) return { def: JUGGERNAUT_SPRITE };
+    const blow = this.juggBlows.get(e.id);
+    const pose = pickJuggernautPose({
+      fists: !!e.fists,
+      stepping: unitStepping({ type: e.type, state: e.state, prev: this.prevById.get(e.id), curr: e }),
+      now: performance.now(),
+      speed: this.curr.gameSpeed || 1,
+      blowAt: blow?.at,
+      blows: blow?.n,
+      throwAt: this.juggThrows.get(e.id),
+    });
+    return { def: sheets[pose.sheet], frame: pose.frame };
+  }
+
   private spriteOf(e: EntityView): UnitSpriteDef | undefined {
+    if (e.type === "juggernaut") return this.juggernautPose(e).def;
     if (e.type === "titan") {
       // The outriggers read as down from the midpoint of the brace until the midpoint of the pack.
       const p = e.deployProgress ?? 0;
@@ -7234,20 +7493,36 @@ export class MapView {
       if (sheet === "swim") return spriteFor("simunit2", "stand", true);
       return SIMUNIT2_SPRITE;
     }
-    if (e.type === "xenodrone" || e.type === "lancer") {
-      const drone = e.type === "xenodrone";
+    if (e.type === "thrall") {
       const sheet = cyborgSheet({
         swimming: e.swimming,
         wreck: e.wreck,
         stance: e.stance,
         shotAgeMs: this.infantryShotAge(e.id),
       });
-      if (sheet === "die") return drone ? XENODRONE_DIE_SPRITE : LANCER_DIE_SPRITE;
-      if (sheet === "fire") return drone ? XENODRONE_FIRE_SPRITE : LANCER_FIRE_SPRITE;
-      if (sheet === "crawl-fire") return drone ? XENODRONE_CRAWL_FIRE_SPRITE : LANCER_CRAWL_FIRE_SPRITE;
-      if (sheet === "crawl") return drone ? XENODRONE_CRAWL_SPRITE : LANCER_CRAWL_SPRITE;
+      if (sheet === "die") return THRALL_DIE_SPRITE;
+      if (sheet === "crawl-fire") return THRALL_CRAWL_FIRE_SPRITE;
+      if (sheet === "crawl") return THRALL_CRAWL_SPRITE;
+      if (sheet === "swim") return spriteFor("thrall", "stand", true);
+      // A bullet in the shoulder rocks it back, even mid-blow.
+      if (e.stagger || this.staggerAge(e.id) != null) return THRALL_HIT_SPRITE;
+      if (sheet === "fire") return THRALL_FIRE_SPRITE;
+      return THRALL_SPRITE;
+    }
+    const hive = HIVE_SHEETS[e.type];
+    if (hive) {
+      const sheet = cyborgSheet({
+        swimming: e.swimming,
+        wreck: e.wreck,
+        stance: e.stance,
+        shotAgeMs: e.type === "weaver" ? (this.weaverMending(e) ? 0 : null) : this.infantryShotAge(e.id),
+      });
+      if (sheet === "die") return hive.die;
+      if (sheet === "fire") return hive.fire;
+      if (sheet === "crawl-fire") return hive.crawlFire;
+      if (sheet === "crawl") return hive.crawl;
       if (sheet === "swim") return spriteFor(e.type, "stand", true);
-      return drone ? XENODRONE_SPRITE : LANCER_SPRITE;
+      return hive.stand;
     }
     if (e.type === "cyborgcommander") {
       // He holds the firing pose while the beam is out.
@@ -7258,6 +7533,20 @@ export class MapView {
       if (sheet === "crawl") return CYBORGCOMMANDER_CRAWL_SPRITE;
       if (sheet === "swim") return spriteFor("cyborgcommander", "stand", true);
       return CYBORGCOMMANDER_SPRITE;
+    }
+    const brood = broodSheetsFor(e.type);
+    if (brood) {
+      // The Bloom brood: walk, fire, collapse, swim. A Mender holds the reaching pose while it knits.
+      const sheet = cyborgSheet({
+        swimming: e.swimming,
+        wreck: e.wreck,
+        stance: e.stance,
+        shotAgeMs: e.tend != null ? 0 : this.infantryShotAge(e.id),
+      });
+      if (sheet === "die") return brood.die;
+      if (sheet === "swim") return spriteFor(e.type, "stand", true);
+      if (sheet === "fire" || sheet === "crawl-fire") return brood.fire;
+      return brood.walk;
     }
     if (e.type === "engineer") {
       if (e.swimming) return spriteFor(e.type, e.stance, true);
@@ -7271,6 +7560,18 @@ export class MapView {
     return spriteFor(e.type, e.stance, e.swimming);
   }
 
+  /** A working Weaver with a hurt hive unit of its side in reach: it holds the mending pose. */
+  private weaverMending(w: EntityView): boolean {
+    if (w.hp <= 0 || w.wreck || w.shutdown || w.dormant || w.garrisonedIn != null) return false;
+    const reach = WEAVER_REACH_TILES * this.ts();
+    for (const o of this.currById.values()) {
+      if (o === w || o.kind !== "unit" || o.ownerId !== w.ownerId || o.hp <= 0 || o.wreck || o.hp >= o.hpMax) continue;
+      if (factionOf(o.type) !== "xeno") continue;
+      if (Math.abs(o.x - w.x) <= reach && Math.abs(o.y - w.y) <= reach && Math.hypot(o.x - w.x, o.y - w.y) <= reach) return true;
+    }
+    return false;
+  }
+
   private infantryShotAge(id: number): number | null {
     const at = this.infantryShotAt.get(id);
     if (at == null) return null;
@@ -7280,6 +7581,35 @@ export class MapView {
       return null;
     }
     return age;
+  }
+
+  /** Game ms since the Thrall's stagger began, while its hit sheet still plays. Null otherwise. */
+  private staggerAge(id: number): number | null {
+    const at = this.staggerAt.get(id);
+    if (at == null) return null;
+    const age = (performance.now() - at) * (this.curr.gameSpeed || 1);
+    const sheetMs = (THRALL_HIT_SPRITE.frames / THRALL_HIT_SPRITE.fps) * 1000;
+    if (age > sheetMs && !this.currById.get(id)?.stagger) {
+      this.staggerAt.delete(id);
+      return null;
+    }
+    return age;
+  }
+
+  /**
+   * How high a Thrall rides over the sandbags or wall it is vaulting, screen px. It springs up
+   * as it reaches the top and drops off the far side, eased frame to frame.
+   */
+  private vaultLiftPx(e: EntityView): number {
+    const now = performance.now();
+    const was = this.vaultLift.get(e.id);
+    const goal = e.vault && !e.wreck ? this.ts() * THRALL_VAULT_TILES : 0;
+    const h0 = was?.h ?? 0;
+    const k = 1 - Math.exp(-Math.max(0, now - (was?.at ?? now)) / THRALL_VAULT_EASE_MS);
+    const h = h0 + (goal - h0) * k;
+    if (goal === 0 && h < 0.2) this.vaultLift.delete(e.id);
+    else this.vaultLift.set(e.id, { h, at: now });
+    return h;
   }
 
   private corpseAge(id: number): number {
@@ -7582,9 +7912,11 @@ export class MapView {
     // A hulk has its own burnt-out sheet on the same cell and contact; without one it greys the live art.
     const sheet = this.drawnSheet(e, def);
     let frameIndex: number | undefined;
-    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ROCKETER_DIE_SPRITE || def === PYRO_DIE_SPRITE || def === MORTARMAN_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE || def === DRONEOP_DIE_SPRITE || def === CYBORG_DIE_SPRITE || def === CYBORGCOMMANDER_DIE_SPRITE || def === SIMUNIT2_DIE_SPRITE || def === XENODRONE_DIE_SPRITE || def === LANCER_DIE_SPRITE || def === JUMPJET_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
+    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ROCKETER_DIE_SPRITE || def === PYRO_DIE_SPRITE || def === MORTARMAN_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE || def === DRONEOP_DIE_SPRITE || def === CYBORG_DIE_SPRITE || def === CYBORGCOMMANDER_DIE_SPRITE || def === SIMUNIT2_DIE_SPRITE || def === XENODRONE_DIE_SPRITE || def === LANCER_DIE_SPRITE || def === THRALL_DIE_SPRITE || def === JUMPJET_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
     else if (def === TROOPER_RIFLE_FIRE_SPRITE || def === GUNNER_FIRE_SPRITE || def === SNIPER_FIRE_SPRITE || def === ATINFANTRY_FIRE_SPRITE || def === ROCKETER_FIRE_SPRITE || def === PYRO_FIRE_SPRITE || def === JUMPJET_FIRE_SPRITE) {
       frameIndex = heldFrame(this.infantryShotAge(e.id) ?? 0, def.fps, def.frames);
+    } else if (def === THRALL_HIT_SPRITE) {
+      frameIndex = heldFrame(this.staggerAge(e.id) ?? 0, def.fps, def.frames);
     } else if (def === JUMPJET_FLY_SPRITE) {
       // The plumes flicker whether he hovers or flies.
       frameIndex = Math.floor((performance.now() / 1000) * def.fps + e.id) % def.frames;
@@ -7611,11 +7943,26 @@ export class MapView {
     if (e.wreck && !corpse && sheet === def) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
     // A shut-down or powered-down Cyborg is dark: the machine is off.
     else if (!e.wreck && (e.shutdown || e.dormant)) ctx.filter = SHUTDOWN_UNIT_FILTER;
+    // Your Shade with its skin settled: a faint shimmer only its own side sees.
+    else if (!e.wreck && e.cloaked) ctx.filter = CLOAKED_UNIT_FILTER;
+    // A hull under a Spitter's acid coat: the plate goes a sick yellow-green.
+    else if (!e.wreck && (e.acid ?? 0) > 0) ctx.filter = ACID_HULL_FILTER;
     // A map's neutral unit is grey: no one's colours, everyone's enemy.
     else if (!e.wreck && !e.ownerId) ctx.filter = NEUTRAL_UNIT_FILTER;
     // The ship's mounts are placed on the sim's own spots: no ground sink under the hull.
     if (e.ship || def === BATTLESHIP_SPRITE) hullShiftY -= unitGroundSink(size);
     const stepping = unitStepping({ type: e.type, state: e.state, swimming: e.swimming, prev: this.prevById.get(e.id), curr: e });
+    if (e.type === "juggernaut" && !e.wreck) {
+      const pose = this.juggernautPose(e);
+      if (pose.frame != null) frameIndex = pose.frame;
+      else {
+        // Walk and fists stride with the ground covered, so the sprint is a run, not a faster shuffle.
+        const odo = this.walkerOdo.get(e.id);
+        const d = (odo?.d ?? 0) + strideHop(odo, p);
+        this.walkerOdo.set(e.id, { x: p.x, y: p.y, d });
+        frameIndex = stepping ? strideFrame(d, JUGGERNAUT_STRIDE_WORLD, sheet.frames, e.id) : 0;
+      }
+    }
     if (e.type === "walker" && frameIndex == null) {
       const odo = this.walkerOdo.get(e.id);
       const d = (odo?.d ?? 0) + strideHop(odo, p);
@@ -7944,9 +8291,11 @@ export class MapView {
   private drawHole(hole: ShellHoleView, alpha: number): void {
     const c = this.toScreen(hole.x, hole.y);
     const rx = this.groundSpan(hole.x, hole.y, hole.radius);
-    const face = CRATER_FACES[(hole.seed >>> 0) % CRATER_FACES.length];
+    // A Xenomorph plasma round charred the ground instead: the scorch art, sized so its ring spans the radius.
+    const faces = hole.scorch ? SCORCH_FACES : CRATER_FACES;
+    const face = faces[(hole.seed >>> 0) % faces.length];
     const sprite = face && face.image.naturalWidth > 0 && face.bowl > 0 ? face : null;
-    const drawH = sprite ? (sprite.image.naturalHeight * rx * 2.05) / sprite.bowl : 0;
+    const drawH = sprite ? (sprite.image.naturalHeight * rx * (hole.scorch ? 2 : 2.05)) / sprite.bowl : 0;
     const fallback = fallbackHoleRect(c.x, c.y, rx, rx * 0.5);
     const dest = sprite
       ? unionRect(
@@ -7974,6 +8323,10 @@ export class MapView {
         const drew = drawPropSprite(ctx, sprite, c.x, c.y, drawH, false);
         ctx.restore();
         if (drew) return;
+      }
+      if (hole.scorch) {
+        drawScorchFallback(ctx, c.x, c.y, rx, alpha);
+        return;
       }
       const tip = this.toScreen(hole.x + Math.cos(hole.ang), hole.y + Math.sin(hole.ang));
       const ang = hole.round ? 0 : Math.atan2(tip.y - c.y, tip.x - c.x);
@@ -8648,6 +9001,35 @@ export class MapView {
     }
   }
 
+  /** Hive energy walls: one panel per stretch of the curve, sorted with the units around it. */
+  private collectShields(items: DrawItem[], w: number, h: number): void {
+    const walls = this.curr.shields;
+    if (!walls || walls.length === 0) return;
+    const now = performance.now();
+    for (const s of walls) {
+      const mid = this.toScreen(s.x, s.y);
+      if (mid.x < -120 || mid.y < -120 || mid.x > w + 120 || mid.y > h + 120) continue;
+      const glow = shieldGlow(s, now, s.id);
+      const rise = shieldHeightElev(s.r);
+      const pts = shieldCurve(s).map((g) => {
+        const elev = this.elevAt(g.x, g.y);
+        const base = this.toScreen(g.x, g.y, elev);
+        return { g, base, lift: base.y - this.toScreen(g.x, g.y, elev + rise).y };
+      });
+      for (let i = 0; i < pts.length - 1; i++) {
+        const a = pts[i]!;
+        const b = pts[i + 1]!;
+        const at = { x: (a.g.x + b.g.x) / 2, y: (a.g.y + b.g.y) / 2 };
+        items.push({
+          layer: STANDING_DRAW_LAYER,
+          z: isoDepth(at.x, at.y),
+          at,
+          run: () => drawShieldPanel(this.ctx, a.base, b.base, (a.lift + b.lift) / 2, glow),
+        });
+      }
+    }
+  }
+
   private collectFires(items: DrawItem[], w: number, h: number): void {
     const now = performance.now();
     const fires = this.curr.fires ?? [];
@@ -8885,6 +9267,14 @@ export class MapView {
       const prev = this.prevProjById.get(p.id);
       const wx = prev ? prev.x + (p.x - prev.x) * blend : p.x;
       const wy = prev ? prev.y + (p.y - prev.y) * blend : p.y;
+      // The Juggernaut's hammer tumbles end over end on its arc; no smoke behind it.
+      if (p.hammer) {
+        const wz = prev?.z != null && p.z != null ? prev.z + (p.z - prev.z) * blend : (p.z ?? 0);
+        const s = this.toScreen(wx, wy, this.elevAt(wx, wy) + wz);
+        const g = this.toScreen(wx, wy);
+        drawThrownHammer(ctx, s.x, s.y, g.x, g.y, now, p.id);
+        continue;
+      }
       const arc = prev?.arc != null ? prev.arc + (p.arc - prev.arc) * blend : p.arc;
       const apex = prev?.apex != null ? prev.apex + (p.apex - prev.apex) * blend : p.apex;
       const world = mortarArcPoints({
@@ -8929,6 +9319,20 @@ export class MapView {
     const ctx = this.ctx;
     const keep: typeof this.fx = [];
     for (const f of this.fx) {
+      // A Xenomorph round into water throws no column: it flashes, boils the surface, and hisses off steam.
+      if (f.energy && f.splash && !f.death && !f.torpedo && (f.kind === "miss" || f.kind === "puff")) {
+        const life = plasmaSteamMs(f.caliber);
+        const age = now - f.at;
+        if (age > life) {
+          this.fxIds.delete(f.id);
+          continue;
+        }
+        keep.push(f);
+        if (age < 0) continue;
+        const s = this.toScreen(f.x, f.y);
+        drawPlasmaSteam(ctx, s.x, s.y, age / life, f.id, f.caliber);
+        continue;
+      }
       // A Xenomorph hit is light, not metal: a green burst in place of dirt, sparks, and fireball.
       const energyHit = !!f.energy && !f.death && !f.intercept && f.kind !== "muzzle" && f.kind !== "kill" && !f.splash;
       if (energyHit || (f.energy && f.kind === "muzzle")) {
@@ -9047,7 +9451,7 @@ export class MapView {
     this.drawSmoulders(now);
   }
 
-  /** Thin smoke off craters struck while you watched. */
+  /** Thin smoke off craters struck while you watched, and the cooling glow of a fresh plasma scorch. */
   private drawSmoulders(now: number): void {
     const holes = this.curr.holes ?? [];
     if (holes.length === 0) return;
@@ -9064,7 +9468,13 @@ export class MapView {
       if (!(age < SMOULDER_MS)) continue;
       if (!this.lit(worldToTile(hole.x, ts), worldToTile(hole.y, ts))) continue;
       const c = this.toScreen(hole.x, hole.y);
-      drawSmoulder(this.ctx, c.x, c.y, age, hole.seed, this.groundSpan(hole.x, hole.y, hole.radius));
+      const rx = this.groundSpan(hole.x, hole.y, hole.radius);
+      if (hole.scorch) {
+        if (age < SCORCH_GLOW_MS) drawScorchGlow(this.ctx, c.x, c.y, rx, age, hole.seed);
+        // A rifle bolt's dot only glows; a shell-sized scorch smokes too.
+        if (hole.radius < SCORCH_SMOKE_RADIUS) continue;
+      }
+      drawSmoulder(this.ctx, c.x, c.y, age, hole.seed, rx);
     }
     if (this.holeBorn.size > holes.length + 64) {
       const live = new Set(holes.map((h) => h.id));

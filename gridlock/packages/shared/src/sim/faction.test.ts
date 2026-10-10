@@ -5,10 +5,14 @@ import {
   isNavalType,
   isAircraftType,
   XENO_TYPES,
+  XENO_DAMAGE_MUL,
   SHARED_TYPES,
   inFaction,
-  FORGE_REARM_SECONDS,
   BUILDING_TYPES,
+  RIFLE,
+  airLoadoutOf,
+  factionDamage,
+  supplyShortOf,
   HQ_OF,
   SCRAP_TILE_YIELD,
   TICK_DT,
@@ -84,22 +88,32 @@ describe("factions in the catalog", () => {
         "aerie",
         "assimilator",
         "behemoth",
+        "broodmother",
         "forge",
         "fusionnode",
+        "gnat",
         "hivecore",
+        "juggernaut",
         "lancer",
         "leech",
         "lurker",
+        "mawcaster",
         "nexus",
+        "overseer",
         "pulsespire",
         "ravager",
         "scourge",
         "seed",
+        "shade",
         "simunit2",
+        "siphon",
         "spawnpool",
         "spineturret",
+        "spitter",
         "stalker",
+        "thrall",
         "wasp",
+        "weaver",
         "xenodrone",
       ],
     );
@@ -112,8 +126,8 @@ describe("factions in the catalog", () => {
       const want = isCyborg(t) ? "cyborgcentral" : isNavalType(t) ? "spawnpool" : isAircraftType(t) ? "aerie" : "forge";
       assert.equal(producerType(t), want, t);
     }
-    for (const t of ["stalker", "ravager", "behemoth"] as const) assert.equal(producerType(t), "forge");
-    for (const t of ["xenodrone", "lancer"] as const) assert.ok(isCyborg(t) && onUplink(t) && isInfantryType(t), t);
+    for (const t of ["stalker", "ravager", "behemoth", "juggernaut", "siphon", "broodmother", "mawcaster"] as const) assert.equal(producerType(t), "forge");
+    for (const t of ["xenodrone", "thrall", "lancer", "spitter", "weaver", "shade"] as const) assert.ok(isCyborg(t) && onUplink(t) && isInfantryType(t), t);
     assert.ok(!onUplink("cyborgcommander"));
   });
 
@@ -250,12 +264,15 @@ describe("a Xenomorph seat", () => {
       const r = applyCommand(state, "B", { type: "cmd.train", unit });
       assert.equal(r.ok, true, r.ok ? unit : r.message);
     }
-    const locked = applyCommand(state, "B", { type: "cmd.train", unit: "behemoth" });
-    assert.equal(locked.ok, false);
-    if (!locked.ok) assert.equal(locked.message, "Need a Neural Nexus.");
+    for (const unit of ["behemoth", "juggernaut"] as const) {
+      const locked = applyCommand(state, "B", { type: "cmd.train", unit });
+      assert.equal(locked.ok, false);
+      if (!locked.ok) assert.equal(locked.message, "Need a Neural Nexus.");
+    }
     makeEntity(state, "nexus", "B", tileCenter(30, ts), tileCenter(30, ts), { tileX: 30, tileY: 30 });
     assert.equal(applyCommand(state, "B", { type: "cmd.train", unit: "behemoth" }).ok, true);
-    assert.deepEqual(forge.queue.map((j) => j.type), ["stalker", "ravager", "behemoth"]);
+    assert.equal(applyCommand(state, "B", { type: "cmd.train", unit: "juggernaut" }).ok, true);
+    assert.deepEqual(forge.queue.map((j) => j.type), ["stalker", "ravager", "behemoth", "juggernaut"]);
     // Alliance cannot use a captured Forge.
     unpack(state, "A");
     forge.ownerId = "A";
@@ -299,17 +316,46 @@ describe("a Xenomorph seat", () => {
     assert.equal(fight(false), catalog("rifleman").hp, "an unpowered turret stays silent");
   });
 
-  it("rearms Xenomorph units beside a powered Nanite Forge, and only there", () => {
+  it("never lets a Xenomorph unit run dry, with no Forge, truck, or pad anywhere", () => {
     const state = openField();
     const ts = state.tileSize;
-    makeEntity(state, "fusionnode", "B", tileCenter(100, ts), tileCenter(100, ts), { tileX: 100, tileY: 100 });
-    makeEntity(state, "forge", "B", tileCenter(120, ts), tileCenter(120, ts), { tileX: 120, tileY: 120 });
-    const near = makeEntity(state, "stalker", "B", tileCenter(126, ts), tileCenter(121, ts));
-    const far = makeEntity(state, "stalker", "B", tileCenter(180, ts), tileCenter(160, ts));
-    for (const s of [near, far]) s.ammo = { ap: 0, he: 0 };
-    for (let i = 0; i < secondsToTicks(FORGE_REARM_SECONDS * 4) + 1; i++) step(state, TICK_DT);
-    assert.ok((near.ammo.ap ?? 0) + (near.ammo.he ?? 0) > 0, "the Forge refills the near Stalker");
-    assert.equal((far.ammo.ap ?? 0) + (far.ammo.he ?? 0), 0, "the far one waits");
+    const stalker = makeEntity(state, "stalker", "B", tileCenter(180, ts), tileCenter(160, ts));
+    const ravager = makeEntity(state, "ravager", "B", tileCenter(170, ts), tileCenter(160, ts));
+    const cyborg = makeEntity(state, "xenodrone", "B", tileCenter(160, ts), tileCenter(160, ts));
+    const scourge = makeEntity(state, "scourge", "B", tileCenter(150, ts), tileCenter(160, ts));
+    const tiger = makeEntity(state, "ss3", "A", tileCenter(40, ts), tileCenter(40, ts));
+    stalker.ammo = { ap: 0, he: 0 };
+    ravager.mgAmmo = 0;
+    cyborg.clip = 0;
+    scourge.air!.bombs = 0;
+    scourge.air!.rounds = 0;
+    tiger.ammo = { ap: 0, he: 0 };
+    step(state, TICK_DT);
+    for (const e of [stalker, ravager, cyborg]) {
+      assert.equal(supplyShortOf(e.type, e.ammo, e.mgAmmo, e.clip, e.rockets, e.heavy, e.minePacks), false, e.type);
+    }
+    assert.deepEqual({ bombs: scourge.air!.bombs, rounds: scourge.air!.rounds }, airLoadoutOf("scourge"), "the Scourge's pod and belts are full");
+    assert.equal((tiger.ammo.ap ?? 0) + (tiger.ammo.he ?? 0), 0, "an Alliance rack still waits for a truck");
+  });
+
+  it("lands lighter hits from Xenomorph weapons than from the same weapon on Alliance", () => {
+    assert.equal(factionDamage("xenodrone", RIFLE.damage), Math.max(1, Math.round(RIFLE.damage * XENO_DAMAGE_MUL)));
+    assert.ok(factionDamage("leech", 13) < 13);
+    assert.equal(factionDamage("rifleman", RIFLE.damage), RIFLE.damage);
+    assert.equal(factionDamage("gunboat", 13), 13);
+    const state = openField();
+    const ts = state.tileSize;
+    const drone = makeEntity(state, "xenodrone", "B", tileCenter(120, ts), tileCenter(120, ts));
+    makeEntity(state, "rifleman", "A", tileCenter(120, ts), tileCenter(127, ts));
+    // A rifle round can land inside the tick it leaves on: catch it as it is laid.
+    let shot: number | undefined;
+    const push = state.projectiles.push.bind(state.projectiles);
+    state.projectiles.push = (...ps) => {
+      for (const p of ps) if (p.fromId === drone.id) shot ??= p.damage;
+      return push(...ps);
+    };
+    for (let i = 0; i < 200 && shot == null; i++) step(state, TICK_DT);
+    assert.equal(shot, factionDamage("xenodrone", RIFLE.damage), "the drone's round leaves at the Xenomorph damage");
   });
 
   it("grows ships at a Spawning Pool and planes at an Aerie, which parks them on its pads", () => {
@@ -317,6 +363,8 @@ describe("a Xenomorph seat", () => {
     assert.equal(producerType("lurker"), "spawnpool");
     assert.equal(producerType("wasp"), "aerie");
     assert.equal(producerType("scourge"), "aerie");
+    assert.equal(producerType("overseer"), "aerie");
+    assert.equal(producerType("gnat"), "aerie");
     assert.equal(producerType("gunboat"), "dock");
     assert.equal(producerType("fw190"), "airfield");
     const state = openField();

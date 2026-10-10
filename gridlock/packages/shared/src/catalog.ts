@@ -542,6 +542,7 @@ export const CAPTURE_DECAY_PER_SEC = 0.25;
 export type EntityType =
   | "rig"
   | "seed"
+  | "sporepod"
   | "rifleman"
   | "gunner"
   | "sniper"
@@ -562,14 +563,46 @@ export type EntityType =
   | "cyborgcommander"
   | "simunit2"
   | "xenodrone"
+  | "thrall"
   | "lancer"
+  | "spitter"
+  | "weaver"
+  | "shade"
   | "stalker"
   | "ravager"
   | "behemoth"
+  | "juggernaut"
+  | "siphon"
+  | "broodmother"
+  | "mawcaster"
   | "leech"
   | "lurker"
   | "wasp"
   | "scourge"
+  | "overseer"
+  | "gnat"
+  | "spawnling"
+  | "gobber"
+  | "quillback"
+  | "bloater"
+  | "longspine"
+  | "mender"
+  | "skitter"
+  | "goretusk"
+  | "mantis"
+  | "bileworm"
+  | "sporemaw"
+  | "matriarch"
+  | "driftjelly"
+  | "spineback"
+  | "abyssray"
+  | "leviathan"
+  | "broodbarge"
+  | "moth"
+  | "razorwing"
+  | "gasbag"
+  | "drifter"
+  | "harpy"
   | "titan"
   | "mammoth"
   | "nebelwerfer"
@@ -613,6 +646,19 @@ export type EntityType =
   | "pulsespire"
   | "spawnpool"
   | "aerie"
+  | "broodheart"
+  | "lumenbulb"
+  | "gorger"
+  | "broodnest"
+  | "gestator"
+  | "braincoral"
+  | "tidewomb"
+  | "roost"
+  | "thornspitter"
+  | "bilelance"
+  | "puffcap"
+  | "eyestalk"
+  | "husk"
   | "stuka"
   | "fw190"
   | "bv222"
@@ -677,7 +723,19 @@ export type BuildingType =
   | "spineturret"
   | "pulsespire"
   | "spawnpool"
-  | "aerie";
+  | "aerie"
+  | "lumenbulb"
+  | "gorger"
+  | "broodnest"
+  | "gestator"
+  | "braincoral"
+  | "tidewomb"
+  | "roost"
+  | "thornspitter"
+  | "bilelance"
+  | "puffcap"
+  | "eyestalk"
+  | "husk";
 /**
  * Placed by an engineer. Sandbags and walls can also be queued from the Defences tab. The gate comes
  * only from there. Barbwire is laid by maps for now: the Map Builder stands it like sandbags.
@@ -800,7 +858,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "shed",
   "boiler",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "simunit2" | "xenodrone" | "lancer" | "stalker" | "ravager" | "behemoth" | "leech" | "lurker" | "wasp" | "scourge" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "horten" | "droneop" | "jumpjet";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "simunit2" | "xenodrone" | "thrall" | "lancer" | "spitter" | "weaver" | "shade" | "stalker" | "ravager" | "behemoth" | "juggernaut" | "siphon" | "broodmother" | "mawcaster" | "leech" | "lurker" | "wasp" | "scourge" | "gnat" | "overseer" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "horten" | "droneop" | "jumpjet" | "spawnling" | "gobber" | "quillback" | "bloater" | "longspine" | "mender" | "skitter" | "goretusk" | "mantis" | "bileworm" | "sporemaw" | "matriarch" | "driftjelly" | "spineback" | "abyssray" | "leviathan" | "broodbarge" | "moth" | "razorwing" | "gasbag" | "drifter" | "harpy";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -854,6 +912,18 @@ export const BUILDING_TYPES: readonly BuildingType[] = [
   "pulsespire",
   "spawnpool",
   "aerie",
+  "lumenbulb",
+  "gorger",
+  "broodnest",
+  "gestator",
+  "braincoral",
+  "tidewomb",
+  "roost",
+  "thornspitter",
+  "bilelance",
+  "puffcap",
+  "eyestalk",
+  "husk",
 ];
 /**
  * Emplaced guns: the building is the gun, and its garrison is the crew. It fires only while
@@ -911,7 +981,7 @@ export const BUILDING_FACINGS = 24;
 export function isRotatableBuilding(type: string): type is BuildingType {
   return (ROTATABLE_BUILDINGS as readonly string[]).includes(type);
 }
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "simunit2", "xenodrone", "lancer", "stalker", "ravager", "behemoth", "leech", "lurker", "wasp", "scourge", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "horten", "droneop", "jumpjet"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "simunit2", "xenodrone", "thrall", "lancer", "spitter", "weaver", "shade", "stalker", "ravager", "behemoth", "juggernaut", "siphon", "broodmother", "mawcaster", "leech", "lurker", "wasp", "scourge", "gnat", "overseer", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "horten", "droneop", "jumpjet", "spawnling", "gobber", "quillback", "bloater", "longspine", "mender", "skitter", "goretusk", "mantis", "bileworm", "sporemaw", "matriarch", "driftjelly", "spineback", "abyssray", "leviathan", "broodbarge", "moth", "razorwing", "gasbag", "drifter", "harpy"];
 
 /**
  * A player fields only one of each of these at a time. While it lives, another
@@ -940,10 +1010,22 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly Bu
   cyborgcommander: "cyborgcentral",
   simunit2: "cyborgcentral",
   xenodrone: "cyborgcentral",
+  thrall: "cyborgcentral",
   lancer: "cyborgcentral",
+  spitter: "cyborgcentral",
+  weaver: "cyborgcentral",
+  shade: ["cyborgcentral", "nexus"],
   behemoth: "nexus",
+  juggernaut: "nexus",
+  broodmother: "nexus",
   lurker: "nexus",
   scourge: "nexus",
+  overseer: "nexus",
+  matriarch: "braincoral",
+  abyssray: "braincoral",
+  leviathan: "braincoral",
+  harpy: "braincoral",
+  longspine: "braincoral",
   titan: "research",
   mammoth: "research",
   nebelwerfer: "research",
@@ -969,11 +1051,11 @@ export function techNeeds(unit: TrainType): readonly BuildingType[] {
  * Factions. Each seat picks one in the lobby. Alliance fields everything that is not
  * listed under the Xenomorphs; the Xenomorphs field only what is.
  */
-export type Faction = "alliance" | "xeno";
-export const FACTIONS: readonly Faction[] = ["alliance", "xeno"];
-export const FACTION_NAMES: Record<Faction, string> = { alliance: "Alliance", xeno: "Xenomorph" };
+export type Faction = "alliance" | "xeno" | "bloom";
+export const FACTIONS: readonly Faction[] = ["alliance", "xeno", "bloom"];
+export const FACTION_NAMES: Record<Faction, string> = { alliance: "Alliance", xeno: "Xenomorph", bloom: "The Bloom" };
 export function isFaction(v: unknown): v is Faction {
-  return v === "alliance" || v === "xeno";
+  return v === "alliance" || v === "xeno" || v === "bloom";
 }
 /** The ids older saves carry ("eu" was the Alliance, "borg" the Xenomorphs), read as today's. */
 export function migrateFaction(v: unknown): unknown {
@@ -987,10 +1069,18 @@ export const XENO_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([
   "assimilator",
   "simunit2",
   "xenodrone",
+  "thrall",
   "lancer",
+  "spitter",
+  "weaver",
+  "shade",
   "stalker",
   "ravager",
   "behemoth",
+  "juggernaut",
+  "siphon",
+  "broodmother",
+  "mawcaster",
   "forge",
   "nexus",
   "spineturret",
@@ -1001,9 +1091,53 @@ export const XENO_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([
   "lurker",
   "wasp",
   "scourge",
+  "overseer",
+  "gnat",
 ]);
 /**
- * Built by both factions. The Cyborg Central trains the Alliance's Cyborg and Cyborg Commander,
+ * Everything the Bloom grow, train, or start with: the third faction, an alien spore that
+ * rewrote the marsh. Flesh, chitin, and amber glands; it regrows its wounds (sim/regrowth.ts).
+ */
+export const BLOOM_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([
+  "sporepod",
+  "broodheart",
+  "lumenbulb",
+  "gorger",
+  "broodnest",
+  "gestator",
+  "braincoral",
+  "tidewomb",
+  "roost",
+  "thornspitter",
+  "bilelance",
+  "puffcap",
+  "eyestalk",
+  "husk",
+  "spawnling",
+  "gobber",
+  "quillback",
+  "bloater",
+  "longspine",
+  "mender",
+  "skitter",
+  "goretusk",
+  "mantis",
+  "bileworm",
+  "sporemaw",
+  "matriarch",
+  "driftjelly",
+  "spineback",
+  "abyssray",
+  "leviathan",
+  "broodbarge",
+  "moth",
+  "razorwing",
+  "gasbag",
+  "drifter",
+  "harpy",
+]);
+/**
+ * Built by the Alliance and the Xenomorphs (not the Bloom). The Cyborg Central trains the Alliance's Cyborg and Cyborg Commander,
  * and the Xenomorphs' Drone, Lancer, and Sim Unit II; each side sees only its own units there.
  */
 export const SHARED_TYPES: ReadonlySet<EntityType> = new Set<EntityType>(["cyborgcentral"]);
@@ -1012,69 +1146,81 @@ export const SHARED_TYPES: ReadonlySet<EntityType> = new Set<EntityType>(["cybor
  * read as Alliance.
  */
 export function factionOf(type: string): Faction {
-  return XENO_TYPES.has(type as EntityType) ? "xeno" : "alliance";
+  if (XENO_TYPES.has(type as EntityType)) return "xeno";
+  return BLOOM_TYPES.has(type as EntityType) ? "bloom" : "alliance";
 }
 /** May a player of `faction` queue, place, or train `type`? */
 export function inFaction(type: string, faction: Faction): boolean {
-  return SHARED_TYPES.has(type as EntityType) || factionOf(type) === faction;
+  if (SHARED_TYPES.has(type as EntityType)) return faction !== "bloom";
+  return factionOf(type) === faction;
 }
+/** The headquarters packed up and on the move: the Rig, the Xenomorph Seed, the Bloom Spore Pod. */
+export type HqRigType = "rig" | "seed" | "sporepod";
+/** The headquarters building: the Core, the Xenomorph Hive Core, the Bloom Brood Heart. */
+export type HqBuildingType = "core" | "hivecore" | "broodheart";
 /** What each faction starts with, and what that unpacks into. */
-export const HQ_OF: Record<Faction, { rig: "rig" | "seed"; core: "core" | "hivecore" }> = {
+export const HQ_OF: Record<Faction, { rig: HqRigType; core: HqBuildingType }> = {
   alliance: { rig: "rig", core: "core" },
   xeno: { rig: "seed", core: "hivecore" },
+  bloom: { rig: "sporepod", core: "broodheart" },
 };
 /** The headquarters building: losing it eliminates the player. */
-export function isHqBuilding(type: string): type is "core" | "hivecore" {
-  return type === "core" || type === "hivecore";
+export function isHqBuilding(type: string): type is HqBuildingType {
+  return type === "core" || type === "hivecore" || type === "broodheart";
 }
 /** The headquarters packed up and on the move. */
-export function isHqRig(type: string): type is "rig" | "seed" {
-  return type === "rig" || type === "seed";
+export function isHqRig(type: string): type is HqRigType {
+  return type === "rig" || type === "seed" || type === "sporepod";
 }
 /** Either form of a headquarters. */
 export function isHq(type: string): boolean {
   return isHqBuilding(type) || isHqRig(type);
 }
 /** The Core a Rig unpacks into. */
-export function deployTarget(rig: "rig" | "seed"): "core" | "hivecore" {
-  return rig === "seed" ? "hivecore" : "core";
+export function deployTarget(rig: HqRigType): HqBuildingType {
+  return HQ_OF[factionOf(rig)].core;
 }
 /** The Rig a Core packs into. */
-export function packTarget(core: "core" | "hivecore"): "rig" | "seed" {
-  return core === "hivecore" ? "seed" : "rig";
+export function packTarget(core: HqBuildingType): HqRigType {
+  return HQ_OF[factionOf(core)].rig;
 }
-/** A building that pours scrap from a scrap field: the Smelter, or the Xenomorph Assimilator. */
-export type SmelterType = "smelter" | "assimilator";
+/** A building that pours scrap from a scrap field: the Smelter, the Xenomorph Assimilator, the Bloom Gorger. */
+export type SmelterType = "smelter" | "assimilator" | "gorger";
 export function isSmelterType(type: string): type is SmelterType {
-  return type === "smelter" || type === "assimilator";
+  return type === "smelter" || type === "assimilator" || type === "gorger";
 }
+export type PowerPlantType = "dynamo" | "fusionnode" | "lumenbulb";
 /** A building that only makes power. */
-export function isPowerPlantType(type: string): type is "dynamo" | "fusionnode" {
-  return type === "dynamo" || type === "fusionnode";
+export function isPowerPlantType(type: string): type is PowerPlantType {
+  return type === "dynamo" || type === "fusionnode" || type === "lumenbulb";
 }
+const SMELTER_OF: Record<Faction, SmelterType> = { alliance: "smelter", xeno: "assimilator", bloom: "gorger" };
+const POWER_PLANT_OF: Record<Faction, PowerPlantType> = { alliance: "dynamo", xeno: "fusionnode", bloom: "lumenbulb" };
 /** The faction's own Smelter and Power Plant. */
 export function smelterOf(faction: Faction): SmelterType {
-  return faction === "xeno" ? "assimilator" : "smelter";
+  return SMELTER_OF[faction];
 }
-export function powerPlantOf(faction: Faction): "dynamo" | "fusionnode" {
-  return faction === "xeno" ? "fusionnode" : "dynamo";
+export function powerPlantOf(faction: Faction): PowerPlantType {
+  return POWER_PLANT_OF[faction];
 }
-/** A shipyard on the water: the Marine Base, or the Xenomorph Spawning Pool. Ships launch, rearm, and retreat here. */
-export type DockType = "dock" | "spawnpool";
+/** A shipyard on the water: the Marine Base, the Xenomorph Spawning Pool, the Bloom Tide Womb. Ships launch, rearm, and retreat here. */
+export type DockType = "dock" | "spawnpool" | "tidewomb";
 export function isDockType(type: string): type is DockType {
-  return type === "dock" || type === "spawnpool";
+  return type === "dock" || type === "spawnpool" || type === "tidewomb";
 }
-/** A field planes live on: the Airfield, or the Xenomorph Aerie. Same footprint, same four pads. */
-export type AirfieldType = "airfield" | "aerie";
+/** A field planes live on: the Airfield, the Xenomorph Aerie, the Bloom Roost. Same footprint, same four pads. */
+export type AirfieldType = "airfield" | "aerie" | "roost";
 export function isAirfieldType(type: string): type is AirfieldType {
-  return type === "airfield" || type === "aerie";
+  return type === "airfield" || type === "aerie" || type === "roost";
 }
+const DOCK_OF: Record<Faction, DockType> = { alliance: "dock", xeno: "spawnpool", bloom: "tidewomb" };
+const AIRFIELD_OF: Record<Faction, AirfieldType> = { alliance: "airfield", xeno: "aerie", bloom: "roost" };
 /** The faction's own shipyard and airfield. */
 export function dockOf(faction: Faction): DockType {
-  return faction === "xeno" ? "spawnpool" : "dock";
+  return DOCK_OF[faction];
 }
 export function airfieldOf(faction: Faction): AirfieldType {
-  return faction === "xeno" ? "aerie" : "airfield";
+  return AIRFIELD_OF[faction];
 }
 
 /** Advanced defences: the yard queues one only while every building listed here stands. */
@@ -1086,20 +1232,77 @@ export const BUILD_REQUIRES: Partial<Record<BuildingType, readonly BuildingType[
   ciws: ["research", "radar"],
   ram: ["research", "radar"],
   pulsespire: ["nexus"],
+  bilelance: ["braincoral"],
 };
 
 /** The Xenomorph vehicle factory: trains every Xenomorph unit that is not a cyborg. */
 export const XENO_FACTORY = "forge";
-/** A standing, powered Nanite Forge rearms its owner's units and Pulse Spires within this reach. */
-export const FORGE_REARM_TILES = t(6);
-/** Seconds between two rearm passes of a Forge. */
-export const FORGE_REARM_SECONDS = 2;
-/** Hand-outs (a shell, a rocket, or a belt's worth of rounds) each unit in reach takes per pass. */
-export const FORGE_REARM_PER_PASS = 2;
-/** Buildings that light the radar panel: the Radar Station, and the Xenomorph Neural Nexus. */
-export function isRadarStation(type: string): boolean {
-  return type === "radar" || type === "nexus";
+/** The Bloom brood nest (infantry) and gestator (beasts). */
+export const BLOOM_NEST = "broodnest";
+export const BLOOM_GESTATOR = "gestator";
+/**
+ * Xenomorph weapons draw on the hive, not on a rack: no Xenomorph unit or gun ever runs dry, and none
+ * needs a truck, a pad, or a pool to rearm (sim/hive-ammo.ts). In return every Xenomorph weapon
+ * lands XENO_DAMAGE_MUL of what the same round, beam, or blade would do from anyone else.
+ */
+export const XENO_DAMAGE_MUL = 0.8;
+/**
+ * Never runs out of shells, rockets, belts, charges, bombs, or fuel for its weapons: everything
+ * the Xenomorphs field (the hive feeds it), and everything the Bloom field (spines, acid, and spores
+ * grow back in their glands).
+ */
+export function endlessAmmo(type: string): boolean {
+  const f = factionOf(type);
+  return f === "xeno" || f === "bloom";
 }
+/** Damage a weapon on `type` lands: XENO_DAMAGE_MUL of it for the Xenomorphs, whole numbers kept whole, never under 1. */
+export function factionDamage(type: string, damage: number): number {
+  if (damage <= 0 || factionOf(type) !== "xeno") return damage;
+  return Math.max(1, Number.isInteger(damage) ? Math.round(damage * XENO_DAMAGE_MUL) : damage * XENO_DAMAGE_MUL);
+}
+/** Buildings that light the radar panel: the Radar Station, the Xenomorph Neural Nexus, the Bloom Brain Coral. */
+export function isRadarStation(type: string): boolean {
+  return type === "radar" || type === "nexus" || type === "braincoral";
+}
+
+/**
+ * Regrowth: every Bloom unit and structure closes its wounds. Once it has gone
+ * REGROWTH_DELAY_SECONDS without losing a hit point it regains a share of its max HP each
+ * second (sim/regrowth.ts). No engineer or truck mends the Bloom; only the Mender is faster.
+ */
+export const REGROWTH_DELAY_SECONDS = 6;
+/** Share of max HP a Bloom unit regrows each second once it is out of the fire. */
+export const REGROWTH_UNIT_PER_SEC = 0.02;
+/** Share of max HP a Bloom structure regrows each second once it is out of the fire. */
+export const REGROWTH_BUILDING_PER_SEC = 0.006;
+export function regrows(type: string): boolean {
+  return factionOf(type) === "bloom";
+}
+/**
+ * Brood infantry: the Bloom's foot soldiers are creatures, not men. No stance orders (they
+ * fight on their feet) and no random limb hits (a torn limb regrows). Not on any uplink.
+ */
+export function isBrood(type: EntityType): boolean {
+  return factionOf(type) === "bloom" && isInfantryType(type);
+}
+/** Never crouches or crawls: every cyborg, and the Bloom's brood. */
+export function noStance(type: EntityType): boolean {
+  return isCyborg(type) || isBrood(type);
+}
+/** Heals soldiers by hand: the Medic, and the Bloom Mender. */
+export function isHealer(type: EntityType): boolean {
+  return type === "medic" || type === "mender";
+}
+
+/**
+ * Matriarch: as it walks she lays a Spawnling every MATRIARCH_LAY_SECONDS, up to
+ * MATRIARCH_BROOD of her own alive at once (sim/brood.ts). They are free and count
+ * against nothing but that limit.
+ */
+export const MATRIARCH_LAY_SECONDS = 18;
+export const MATRIARCH_BROOD = 4;
+/** Who climbs into a Husk Burrow or an Eye Stalk: the Bloom's brood. */
+export const BROOD_GARRISON: readonly EntityType[] = ["spawnling", "gobber", "quillback", "bloater", "longspine", "mender"];
 
 /**
  * Cyborg link. A Cyborg runs on the uplink from a standing, powered Cyborg Central,
@@ -1253,6 +1456,16 @@ export interface CatalogEntry {
   /** A fighter like the Fw 190: barrages on each pass, and hunts planes in the air. */
   fighter?: boolean;
   /**
+   * Hovers like a helicopter (the Xenomorph Overseer): lifts straight off its pad and sets straight
+   * down on it, stops in the air, and burns down on what it hangs over (sim/air.ts tickHover).
+   */
+  hovers?: boolean;
+  /**
+   * Jaws, not a gun (the Xenomorph Lurker): a bite at the reach of `rangeTiles` from its body to the
+   * target's, landing at once. Up or down it bites, and the bite gives it away like a shot.
+   */
+  bite?: boolean;
+  /**
    * Radar-laid mount (the CIWS, the RAM). Fires on its own at units only, planes and paratroopers first,
    * lays on a plane with CIWS_AIR_SPREAD instead of AIR_TARGET_SPREAD, cranks
    * the gun to any height, and shoots rockets out of the air.
@@ -1371,8 +1584,8 @@ export interface ShellDef {
 }
 
 /** Infantry small-arm. CatalogEntry still holds the unit; this is the gun. */
-export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar" | "ptrd" | "gatling" | "launcher" | "flamer" | "assault" | "penetrator" | "laser" | "daggers" | "deckmg";
-export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar", "ptrd", "gatling", "launcher", "flamer", "assault", "penetrator", "laser", "daggers", "deckmg"];
+export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar" | "ptrd" | "gatling" | "launcher" | "flamer" | "assault" | "penetrator" | "laser" | "daggers" | "fists" | "deckmg" | "acid";
+export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar", "ptrd", "gatling", "launcher", "flamer", "assault", "penetrator", "laser", "daggers", "fists", "deckmg", "acid"];
 export interface InfantryGun {
   id: InfantryWeaponId;
   name: string;
@@ -1684,13 +1897,85 @@ export const BEHEMOTH_RING_SWEEP_SECONDS = 0.3;
 export const STALKER_BURROW_SECONDS = 1.6;
 /** Stalker: seconds to break back out; it comes up with its gun laid. */
 export const STALKER_UNBURROW_SECONDS = 0.8;
+/**
+ * Juggernaut (sim/juggernaut.ts): a giant with a two-handed hammer. Reach is measured like the
+ * Sim Unit's blades, from its centre to the target's body or wall.
+ */
+export const JUGGERNAUT_REACH_TILES = t(1.5);
+/** How far it looks for something to run down by itself. */
+export const JUGGERNAUT_HUNT_TILES = t(8);
+/** Pace while it closes on what it is going for, times its walk. */
+export const JUGGERNAUT_SPRINT_MUL = 2.6;
+/** Seconds between hammer blows. */
+export const JUGGERNAUT_HAMMER_SECONDS = 1.8;
+/** Radius of a hammer blow, round the point it lands on. */
+export const JUGGERNAUT_HAMMER_BLAST_TILES = t(1.4);
+/** A hammer blow at its centre: on a soldier (more than any pool but a cyborg's), a hull, a building. */
+export const JUGGERNAUT_HAMMER_SOLDIER = 120;
+export const JUGGERNAUT_HAMMER_HULL = 60;
+export const JUGGERNAUT_HAMMER_BUILDING = 150;
+/** At or under this share of its pool it throws the hammer and fights on with its fists. */
+export const JUGGERNAUT_RAGE_HP = 0.35;
+/** How far the hammer is thrown, cells. */
+export const JUGGERNAUT_THROW_RANGE_TILES = t(9);
+/** The thrown hammer: flight speed, cells a second, and its landing at the centre. */
+export const JUGGERNAUT_THROW_SPEED_TILES = t(14);
+export const JUGGERNAUT_THROW_BLAST_TILES = t(1.8);
+export const JUGGERNAUT_THROW_SOLDIER = 200;
+export const JUGGERNAUT_THROW_HULL = 110;
+export const JUGGERNAUT_THROW_BUILDING = 300;
+/** Fists: seconds between blows, a tighter blast, and a lighter hit. */
+export const JUGGERNAUT_FIST_SECONDS = 0.6;
+export const JUGGERNAUT_FIST_BLAST_TILES = t(0.7);
+export const JUGGERNAUT_FIST_SOLDIER = 60;
+export const JUGGERNAUT_FIST_HULL = 22;
+export const JUGGERNAUT_FIST_BUILDING = 55;
+/** Without the hammer it moves this much faster, sprint or walk. */
+export const JUGGERNAUT_FIST_PACE_MUL = 1.35;
+/** The Juggernaut: hammer, sprint, and the throw at low HP. */
+export function isJuggernaut(type: EntityType): boolean {
+  return type === "juggernaut";
+}
 /** Leaps on its legs at a point (sim/lunge.ts): the Behemoth. */
 export function canLunge(type: EntityType): boolean {
   return type === "behemoth";
 }
-/** Digs in under the ground and waits (sim/burrow.ts): the Stalker. */
+
+/**
+ * Hive energy shield (sim/energy-shield.ts). A unit that is fighting a target
+ * in reach throws a curved wall of energy across its front. The wall stays where
+ * it was raised. It stops every enemy round that meets it, the beams too, and no
+ * enemy ground unit walks through it; its own side walks and shoots through.
+ * Rounds lobbed from above (mortars, field guns, bombs) fall over it. Each hit
+ * takes the round's damage off the wall's points; at zero it is gone.
+ */
+export interface EnergyShieldDef {
+  /** Points the wall holds. */
+  hp: number;
+  /** Distance of the curve from where the unit stood, world px. */
+  arcPx: number;
+  /** Half of the curve's span either side of the aim, degrees. */
+  halfDeg: number;
+  /** Seconds it stands if nothing brings it down. */
+  seconds: number;
+  /** Seconds from the wall going down until the unit can raise another. */
+  rechargeSeconds: number;
+}
+const BEHEMOTH_SHIELD: EnergyShieldDef = { hp: 900, arcPx: 34, halfDeg: 80, seconds: 20, rechargeSeconds: 25 };
+/** The infantry wall: the same wall, small and far weaker. */
+const INFANTRY_SHIELD: EnergyShieldDef = { hp: 90, arcPx: 13, halfDeg: 65, seconds: 12, rechargeSeconds: 20 };
+const ENERGY_SHIELDS: Partial<Record<EntityType, EnergyShieldDef>> = {
+  behemoth: BEHEMOTH_SHIELD,
+  xenodrone: INFANTRY_SHIELD,
+  lancer: INFANTRY_SHIELD,
+};
+/** The energy wall this type raises, or undefined. */
+export function energyShieldOf(type: EntityType): EnergyShieldDef | undefined {
+  return ENERGY_SHIELDS[type];
+}
+/** Digs in under the ground and waits (sim/burrow.ts): the Stalker, and the Bloom Bile Worm. */
 export function canBurrow(type: EntityType): boolean {
-  return type === "stalker";
+  return type === "stalker" || type === "bileworm";
 }
 /** Seconds inside a hostile garrison before every soldier in it is dead and he is out again. */
 export const SIMUNIT_PURGE_SECONDS = 2;
@@ -1708,6 +1993,59 @@ export const DAGGERS = {
   reload: 0,
   rangeTiles: SIMUNIT_REACH_TILES,
 } as const satisfies InfantryGun;
+
+/**
+ * Thrall. The hive's cheap brawler: a taken body on a heavy frame that runs
+ * everywhere and fights with its two armoured fists. A soldier it reaches is
+ * pummelled, one fist then the other, THRALL_PUNCH_DAMAGE a blow. An armored
+ * hull it reaches, it does not punch: it detonates against the plate
+ * (THRALL_BLAST_*), and nothing is left of it. It vaults sandbags and walls.
+ * A bullet now and then catches a shoulder and staggers it: the run slows to
+ * THRALL_STAGGER_SPEED for THRALL_STAGGER_SECONDS.
+ */
+/** One blow of a fist on a soldier. A rifleman is down in four. */
+export const THRALL_PUNCH_DAMAGE = 12;
+/** Seconds between blows, one hand then the other. */
+export const THRALL_PUNCH_SECONDS = 0.25;
+/** Arm's reach, like the Sim Unit's blades: from its centre to the target's body or wall. */
+export const THRALL_REACH_TILES = SIMUNIT_REACH_TILES;
+/** Share of a blow a wall or a building takes. */
+export const THRALL_BUILDING_MUL = 0.15;
+/** Blast radius when it detonates on a hull, in gameplay tiles. */
+export const THRALL_BLAST_TILES = t(1.25);
+/** HP at the centre against a hull heavier than light plate. */
+export const THRALL_BLAST_HEAVY = 35;
+/** HP at the centre against soldiers, light hulls, buildings, and everything else. */
+export const THRALL_BLAST_SOFT = 55;
+/** Chance a bullet that lands staggers it. Not every round: now and then. */
+export const THRALL_STAGGER_CHANCE = 0.2;
+/** How long a stagger slows it, seconds. */
+export const THRALL_STAGGER_SECONDS = 0.6;
+/** Its speed while staggered, as a share of the sprint. */
+export const THRALL_STAGGER_SPEED = 0.55;
+/** After a stagger ends, this long before the next can land, seconds. A hail of fire does not pin it. */
+export const THRALL_STAGGER_GUARD_SECONDS = 0.6;
+/** Rounds of this caliber or under are bullets: they can stagger it. */
+export const THRALL_STAGGER_MAX_CALIBER = 13;
+
+export const FISTS = {
+  id: "fists" as const,
+  name: "Armoured fists",
+  blurb: "Two heavy fists, fast blows one after the other at arm's reach. A soldier goes down in a few; a wall takes little. An armored hull it does not hit: it detonates against it. Never needs a truck.",
+  damage: THRALL_PUNCH_DAMAGE,
+  penetration: 0,
+  caliber: 8,
+  spreadDeg: 0,
+  cooldown: THRALL_PUNCH_SECONDS,
+  clip: 1,
+  reload: 0,
+  rangeTiles: THRALL_REACH_TILES,
+} as const satisfies InfantryGun;
+
+/** Jumps sandbags and walls (fortBlock 1) where every other unit walks round: the Thrall. */
+export function vaultsWalls(type: EntityType): boolean {
+  return type === "thrall";
+}
 
 export const COMMANDER_FIELD_MODES = [
   {
@@ -2206,6 +2544,27 @@ export const PYRO_COOKOFF_FIRES = 7;
  */
 export const HE_FIRE_RADIUS = t(1.4) * TILE_SIZE;
 export const HE_FIRE_PATCHES = 4;
+/**
+ * A Xenomorph energy round that lands in the dirt digs no crater: it scorches the
+ * ground, burns the trees in reach, and leaves a small fire at the heart. The
+ * scorch is PLASMA_SCORCH_SCALE times the hole the same caliber would dig, never
+ * under PLASMA_SCORCH_MIN_RADIUS world pixels, so a rifle bolt leaves a dot and
+ * a 75mm plasma shell a patch two cells across.
+ */
+export const PLASMA_SCORCH_SCALE = 1.2;
+export const PLASMA_SCORCH_MIN_RADIUS = 2.5;
+/**
+ * From this caliber up the scorch keeps a fire burning at its heart (and a
+ * bolt that meets a tree in flight sets it alight). Small arms only char the
+ * ground: a fire under every missed bolt would burn half the field.
+ */
+export const PLASMA_FIRE_CALIBER = 20;
+/** The fire's radius as a share of the scorch, held between 3 world pixels and FIRE_RADIUS. */
+export const PLASMA_FIRE_SHARE = 0.45;
+/** Seconds the fire burns. Short: it is the round's heat, not spilled fuel. */
+export const PLASMA_FIRE_SECONDS = 4;
+/** Scorch marks kept at once, apart from the shell craters. The oldest fades first. */
+export const MAX_SCORCH_MARKS = 240;
 
 /**
  * Medic. He walks to wounded infantry inside this disk, then has to stand
@@ -3272,6 +3631,97 @@ export const DECK_MG: InfantryGun = {
   antiAir: true,
 };
 
+/**
+ * The Spitter's acid. A glob does a rifle round's work on a soldier, but on a hull it does not
+ * need to get through: it coats the plate and eats it (sim/acid.ts). Each glob that lands on an
+ * armored hull, whatever the face and whether or not it bites, takes ACID_CORRODE_MM off every
+ * face, up to ACID_CORRODE_MAX_SHARE of the plate. Shells, bolts, and rounds that hit the hull
+ * meet the thinner plate. The coat dries ACID_CORRODE_SECONDS after the last glob, all at once.
+ */
+export const ACID_RANGE_TILES = t(8);
+export const ACID_CORRODE_MM = 6;
+export const ACID_CORRODE_MAX_SHARE = 0.5;
+export const ACID_CORRODE_SECONDS = 10;
+export const ACID = {
+  id: "acid" as const,
+  name: "Acid spit",
+  blurb: "A glob of corrosive bile from the throat sac. A soldier takes a rifle round's worth. On a hull it does not have to get through: it eats the plate, every face of it, for a while.",
+  damage: 14,
+  penetration: 4,
+  caliber: 11,
+  spreadDeg: 3,
+  cooldown: 1.3,
+  clip: 4,
+  reload: 3,
+  rangeTiles: ACID_RANGE_TILES,
+} as const satisfies InfantryGun;
+
+/**
+ * The Weaver's mend (sim/weaver.ts). Every WEAVER_PULSE_SECONDS each hive unit of its side within
+ * WEAVER_REACH_TILES gets HP back: a cyborg WEAVER_MEND_CYBORG, a heavy assimilator or any other
+ * Xenomorph body WEAVER_MEND_HEAVY. Weavers do not stack: a unit in reach of two mends once. A Weaver
+ * does not mend itself, and nothing mends while the Weaver is shut down or powered down.
+ */
+export const WEAVER_REACH_TILES = t(3.5);
+export const WEAVER_PULSE_SECONDS = 1;
+export const WEAVER_MEND_CYBORG = 5;
+export const WEAVER_MEND_HEAVY = 4;
+
+/**
+ * The Shade's skin (sim/shade.ts). While cloaked no enemy sees it or can pick it. Firing, or any
+ * hit that takes HP, shows it for SHADE_REVEAL_SECONDS; an enemy unit within SHADE_SPOT_TILES
+ * always sees it. It walks cloaked.
+ */
+export const SHADE_REVEAL_SECONDS = 3;
+export const SHADE_SPOT_TILES = t(2);
+
+/**
+ * The Siphon's drain: SIPHON_DRAIN of the HP its bolt takes off an enemy unit (not a building
+ * or a wreck) flows back into its own body.
+ */
+export const SIPHON_DRAIN = 0.6;
+
+/**
+ * The Broodmother's brood (sim/brood.ts). A Thrall leaves the sac every BROOD_SECONDS while
+ * fewer than BROOD_MAX of hers live; the first BROOD_FIRST_SECONDS after she is born. Brood
+ * count against the unit cap and run on the uplink like any Thrall.
+ */
+export const BROOD_MAX = 3;
+export const BROOD_SECONDS = 30;
+export const BROOD_FIRST_SECONDS = 12;
+
+/**
+ * Mawcaster: the hive's answer to the Nebelwerfer. Six spore pods per salvo on a high arc, half
+ * the Nebelwerfer's frame, from a little less reach, but it draws on the hive and never runs dry.
+ * Each pod that bursts on open ground has MAWCASTER_BILE_CHANCE to leave burning bile there.
+ */
+export const MAWCASTER_RANGE_TILES = t(21);
+export const MAWCASTER_MIN_RANGE_TILES = t(5);
+export const MAWCASTER_SALVO = 6;
+export const MAWCASTER_BILE_CHANCE = 0.25;
+export const MAWCASTER_POD: RocketRackDef = {
+  salvo: MAWCASTER_SALVO,
+  interval: 0.15,
+  intervalJitter: 0.2,
+  volleyMax: 2,
+  reload: 14,
+  scatterNearTiles: t(0.5),
+  scatterFarTiles: t(3),
+  splashTiles: t(1.4),
+  speed: t(13) * TILE_SIZE,
+  podLift: 5,
+  damage: 30,
+  armorDamage: 6,
+  airMul: 0,
+  penetration: 20,
+  caliber: 150,
+  antiAir: false,
+  apexNear: 26,
+  apexFar: 52,
+  minRangeTiles: MAWCASTER_MIN_RANGE_TILES,
+  laid: true,
+};
+
 export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
   rifle: RIFLE,
   assault: ASSAULT,
@@ -3286,7 +3736,9 @@ export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
   flamer: FLAMER,
   laser: LASER,
   daggers: DAGGERS,
+  fists: FISTS,
   deckmg: DECK_MG,
+  acid: ACID,
 };
 
 /**
@@ -3655,6 +4107,40 @@ export const SUB_AIR_RECOVER_MUL = 5;
 export const SUB_TORPEDOES = 8;
 /** Beside a friendly Marine Base a submarine loads one torpedo this often, seconds. */
 export const SUB_REARM_SECONDS = 6;
+
+/**
+ * Lurker. A Xenomorph sea beast, not a boat: it hunts under the water and comes up under what it
+ * goes for with its jaws. Each bite lands at once: a soldier, swimming or on the bank, takes
+ * LURKER_BITE_SOLDIER_DAMAGE, more than his whole pool; anything else the hull bite, a tank's
+ * plate LURKER_HEAVY_MUL of it and a wall LURKER_BUILDING_MUL. It reaches LURKER_REACH_TILES
+ * from its body to the target's, so a soldier or a truck at the water's edge is not safe.
+ */
+export const LURKER_REACH_TILES = t(1.25);
+export const LURKER_BITE_SECONDS = 1.1;
+export const LURKER_BITE_DAMAGE = 55;
+export const LURKER_BITE_SOLDIER_DAMAGE = 80;
+export const LURKER_HEAVY_MUL = 0.45;
+export const LURKER_BUILDING_MUL = 0.3;
+
+/**
+ * Overseer. A Xenomorph hover craft: it lifts straight off its Aerie nest, flies slowly at
+ * OVERSEER_CRUISE_ALT, and sent at something on the ground stops over it at OVERSEER_HOVER_ALT
+ * and burns straight down. Within OVERSEER_FIRE_TILES of overhead it fires a laser pulse every
+ * OVERSEER_PULSE_SECONDS: OVERSEER_PULSE_DAMAGE to every enemy soldier in a spot of
+ * OVERSEER_BEAM_TILES, a hull's roof OVERSEER_HULL_MUL of it, a building OVERSEER_BUILDING_MUL.
+ */
+export const OVERSEER_CRUISE_ALT = 14;
+export const OVERSEER_HOVER_ALT = 9;
+export const OVERSEER_FIRE_TILES = t(0.75);
+export const OVERSEER_PULSE_SECONDS = 0.3;
+export const OVERSEER_PULSE_DAMAGE = 12;
+export const OVERSEER_BEAM_TILES = t(0.35);
+export const OVERSEER_HULL_MUL = 0.6;
+export const OVERSEER_BUILDING_MUL = 0.4;
+/** Climb and descent rate on and off its nest, elevation units a second. */
+export const OVERSEER_LIFT_PER_SEC = 5;
+/** Seconds of flight in a full tank: it hangs in the air longer than a plane flies. */
+export const OVERSEER_FUEL_SECONDS = 140;
 
 /**
  * Destroyer. A twin 40mm on the foredeck that fires fast and not far, a hull
@@ -5397,7 +5883,32 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: RIFLE.penetration,
     caliber: RIFLE.caliber,
     spreadDeg: RIFLE.spreadDeg,
-    blurb: "The hive's line soldier: a body taken and fitted with a pulse carbine in place of a forearm. It shoots like a rifle, a clip and then a short recharge. Several times a soldier's hit points for a few riflemen's price, but slower on its feet. No stance orders; it fights standing. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It runs on your Cyborg Central's uplink or a living Cyborg Commander, like the Cyborg, and shuts down without them.",
+    blurb: `The hive's line soldier: a body taken and fitted with a pulse carbine in place of a forearm. It shoots like a rifle, a clip and then a short recharge. Several times a soldier's hit points for a few riflemen's price, but slower on its feet. No stance orders; it fights standing. In a fight it raises a small energy wall in front of it, like the Behemoth's but far weaker (${INFANTRY_SHIELD.hp} points): enemy rounds stop on it and enemies cannot walk through, while it and its side shoot and walk through. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It runs on your Cyborg Central's uplink or a living Cyborg Commander, like the Cyborg, and shuts down without them.`,
+  },
+  thrall: {
+    type: "thrall",
+    kind: "unit",
+    name: "Thrall",
+    letter: "a",
+    cost: 250,
+    buildSeconds: 6,
+    hp: 200,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: paced(2.8 * INFANTRY_PACE),
+    turnDegPerSec: 1200,
+    rangeTiles: THRALL_REACH_TILES,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: FISTS.cooldown,
+    damage: FISTS.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    ...UNARMED,
+    penetration: FISTS.penetration,
+    caliber: FISTS.caliber,
+    spreadDeg: FISTS.spreadDeg,
+    blurb: "The hive's cheap brawler, quick off the line: a taken body on a heavy frame. It always runs, and it fights with two armoured fists: a soldier it reaches is pummelled down in a few fast blows. An armored hull it reaches, it does not punch: it detonates against the plate and is gone. Sandbags and walls do not stop it; it vaults them. Bullets do little to its plating, but now and then one catches a shoulder and staggers it for a moment. No stance orders. Near death its legs are torn off and it crawls on, still swinging. Medics heal it, engineers repair it. It runs on your Cyborg Central's uplink or a living Cyborg Commander, and shuts down without them.",
   },
   lancer: {
     type: "lancer",
@@ -5422,7 +5933,83 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: LAUNCHER.penetration,
     caliber: LAUNCHER.caliber,
     spreadDeg: LAUNCHER.spreadDeg,
-    blurb: "Anti-armor cyborg. A plasma lance rides its shoulder and throws a burning bolt like a rocket: loose at full reach, tighter up close, a burst among soldiers that dents a tank. The capacitor on its back recharges the lance between shots. Heavy plating keeps it standing where a Rocketer would fall. No stance orders. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It runs on your Cyborg Central's uplink or a living Cyborg Commander, and shuts down without them.",
+    blurb: `Anti-armor cyborg. A plasma lance rides its shoulder and throws a burning bolt like a rocket: loose at full reach, tighter up close, a burst among soldiers that dents a tank. The capacitor on its back recharges the lance between shots. Heavy plating keeps it standing where a Rocketer would fall. In a fight it raises the Drone's small energy wall in front of it (${INFANTRY_SHIELD.hp} points). No stance orders. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It runs on your Cyborg Central's uplink or a living Cyborg Commander, and shuts down without them.`,
+  },
+  /** Xenomorph cyborg: acid spitter whose globs eat tank plate. */
+  spitter: {
+    type: "spitter",
+    kind: "unit",
+    name: "Spitter",
+    letter: "i",
+    cost: 550,
+    buildSeconds: 11,
+    hp: 170,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: paced(1.7 * INFANTRY_PACE),
+    turnDegPerSec: 1100,
+    rangeTiles: ACID_RANGE_TILES,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: ACID.cooldown,
+    damage: ACID.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    ...UNARMED,
+    penetration: ACID.penetration,
+    caliber: ACID.caliber,
+    spreadDeg: ACID.spreadDeg,
+    blurb: `A taken body with a swollen throat sac. It rears back and spits globs of corrosive bile, four and then a short refill from the bladder on its back: about a rifle round on a soldier, from a little less reach. On a tank the glob does not have to get through. It eats the plate: every glob that lands takes ${ACID_CORRODE_MM} mm off every face, up to half the plate, and the coat dries ${ACID_CORRODE_SECONDS} seconds after the last one. Spit a Tiger down and let the Stalkers and Lancers finish it. No stance orders. Near death its legs are torn off and it crawls on, still spitting. It runs on your Cyborg Central's uplink or a living Cyborg Commander, and shuts down without them.`,
+  },
+  /** Xenomorph cyborg: unarmed nanite mender. */
+  weaver: {
+    type: "weaver",
+    kind: "unit",
+    name: "Weaver",
+    letter: "w",
+    cost: 600,
+    buildSeconds: 11,
+    hp: 160,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: paced(2 * INFANTRY_PACE),
+    turnDegPerSec: 1200,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: `No weapon. Four needle arms and a spindle of nanites on its back. Every second it sends a mend into each hive unit of yours within ${WEAVER_REACH_TILES / TILE_SUBDIV} cells: ${WEAVER_MEND_CYBORG} HP to a cyborg, ${WEAVER_MEND_HEAVY} to a heavy assimilator or anything else the hive fields. Two Weavers on one unit mend it once. It cannot mend itself; another Weaver can. Torn legs grow back once the body is whole enough. No stance orders. It runs on your Cyborg Central's uplink or a living Cyborg Commander, and mends nothing while shut down.`,
+  },
+  /** Xenomorph cyborg: cloaked spine sniper. */
+  shade: {
+    type: "shade",
+    kind: "unit",
+    name: "Shade",
+    letter: "h",
+    cost: 750,
+    buildSeconds: 12,
+    hp: 110,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: paced(1.8 * INFANTRY_PACE),
+    turnDegPerSec: 1400,
+    rangeTiles: SCOPED_RANGE_TILES,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    sightBonusTiles: t(4),
+    cooldown: SCOPED.cooldown,
+    damage: SCOPED.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    ...UNARMED,
+    penetration: SCOPED.penetration,
+    caliber: SCOPED.caliber,
+    spreadDeg: SCOPED.spreadDeg,
+    blurb: `A lean hunter with a spine rifle grown along its forearm and a skin that drinks the light. The spine reaches as far as a sniper's scope; a hit takes most of a soldier's health, and the hive's spine never needs a truck. While its skin is settled no enemy sees it or can pick it, even on the move. Each shot, and any hit that hurts it, shows it for ${SHADE_REVEAL_SECONDS} seconds, and an enemy within ${SHADE_SPOT_TILES / TILE_SUBDIV} cells always sees it. Thin plating for a cyborg. No stance orders. Near death its legs are torn off and it crawls on, still firing. It runs on your Cyborg Central's uplink or a living Cyborg Commander, and shuts down without them. Needs a Neural Nexus.`,
   },
   /** Xenomorph heavy assimilator: four legs and a turreted disruptor, the hive's answer to the Tiger. */
   stalker: {
@@ -5456,7 +6043,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     defaultShell: "ap",
     leavesWreck: true,
     wreckHp: 35,
-    blurb: "Heavy assimilator on four long legs, a domed turret on its back. The disruptor throws a piercing plasma bolt about as hard as a Tiger's shell, or a scattering burst for soldiers, from a little less reach. Thinner in front than a Tiger, but its legs turn it quicker. No tracks to lose. Burrow digs it in where it stands: under the ground no enemy sees it or can pick it, but it neither moves nor fires; it rises with its gun laid and fires at once. The rack refills by itself near a powered Nanite Forge of yours.",
+    blurb: "Heavy assimilator on four long legs, a domed turret on its back. The disruptor throws a piercing plasma bolt about as hard as a Tiger's shell, or a scattering burst for soldiers, from a little less reach. Thinner in front than a Tiger, but its legs turn it quicker. No tracks to lose. Burrow digs it in where it stands: under the ground no enemy sees it or can pick it, but it neither moves nor fires; it rises with its gun laid and fires at once. It draws its bolts from the hive and never runs dry.",
   },
   /** Xenomorph heavy assimilator: fast raptor hull, spine gatling turret, nanite flamer in the jaw. */
   ravager: {
@@ -5491,7 +6078,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     mgAmmo: HULL_FLAMER_FUEL,
     leavesWreck: true,
     wreckHp: 28,
-    blurb: `Fast heavy assimilator built to hunt soldiers. A pulse repeater on a quick turret draws on its own core and never runs dry; tank plate turns the bolts, and they do not bring a building down. A plasma jet in the jaw fires on its own at soldiers and soft vehicles inside a short reach, but only where the nose points, and burns every soldier in its path, friends too. ${HULL_FLAMER_BURSTS} bursts of plasma, refilled near a powered Nanite Forge of yours. Lighter plate than a Stalker.`,
+    blurb: `Fast heavy assimilator built to hunt soldiers. A pulse repeater on a quick turret draws on its own core and never runs dry; tank plate turns the bolts, and they do not bring a building down. A plasma jet in the jaw fires on its own at soldiers and soft vehicles inside a short reach, but only where the nose points, and burns every soldier in its path, friends too. The jet never runs dry either. Lighter plate than a Stalker.`,
   },
   /** Xenomorph heavy assimilator: six legs, twin disruptors, a carapace that sheds shells. */
   behemoth: {
@@ -5528,7 +6115,140 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     shellResist: BEHEMOTH_SHELL_RESIST,
     leavesWreck: true,
     wreckHp: 60,
-    blurb: `The largest of the heavy assimilators: a carapace on six legs with twin plasma disruptors on one turret. They fire one after the other, a short gap and then a long reload, through a Tiger's front plate, from farther than any tank but the Jagdtiger. The layered carapace sheds part of every shell that hits it (it takes ${Math.round(BEHEMOTH_SHELL_RESIST * 100)}% of the damage). Slow on its legs and slow on the turret, but Lunge throws it up and forward up to ${BEHEMOTH_LUNGE_RANGE_TILES / TILE_SUBDIV} cells; where it lands, ${BEHEMOTH_RING_SWEEPS} green laser sweeps lash out round it, burning enemy soldiers and setting the ground alight. The legs need ${BEHEMOTH_LUNGE_RECHARGE_SECONDS} seconds before the next. Its rack refills near a powered Nanite Forge of yours. Needs a Neural Nexus.`,
+    blurb: `The largest of the heavy assimilators: a carapace on six legs with twin plasma disruptors on one turret. They fire one after the other, a short gap and then a long reload, through a Tiger's front plate, from farther than any tank but the Jagdtiger. The layered carapace sheds part of every shell that hits it (it takes ${Math.round(BEHEMOTH_SHELL_RESIST * 100)}% of the damage). Slow on its legs and slow on the turret, but Lunge throws it up and forward up to ${BEHEMOTH_LUNGE_RANGE_TILES / TILE_SUBDIV} cells; where it lands, ${BEHEMOTH_RING_SWEEPS} green laser sweeps lash out round it, burning enemy soldiers and setting the ground alight. The legs need ${BEHEMOTH_LUNGE_RECHARGE_SECONDS} seconds before the next. In a fight it throws a curved energy wall across its front, ${BEHEMOTH_SHIELD.hp} points strong: the wall stays where it went up, stops every enemy round and beam that meets it, and no enemy walks through it, while the Behemoth walks and fires through as if it were not there. It stands ${BEHEMOTH_SHIELD.seconds} seconds unless shot down; ${BEHEMOTH_SHIELD.rechargeSeconds} seconds after it falls, the next. Its rack refills near a powered Nanite Forge of yours. Needs a Neural Nexus.`,
+  },
+  /** Xenomorph heavy assimilator: a giant on two legs with a two-handed hammer. Melee only. */
+  juggernaut: {
+    type: "juggernaut",
+    kind: "unit",
+    name: "Juggernaut",
+    letter: "z",
+    cost: 2800,
+    buildSeconds: 24,
+    hp: 4200,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 13,
+    moveTilesPerSec: paced(1.15),
+    turnDegPerSec: 480,
+    rangeTiles: JUGGERNAUT_REACH_TILES,
+    sightTiles: t(8),
+    cooldown: JUGGERNAUT_HAMMER_SECONDS,
+    damage: JUGGERNAUT_HAMMER_HULL,
+    projectileSpeed: TANK_SHELL_SPEED,
+    turnInPlace: true,
+    noReverse: true,
+    armorFront: 60,
+    armorSide: 45,
+    armorRear: 30,
+    penetration: 0,
+    caliber: 0,
+    spreadDeg: 0,
+    leavesWreck: true,
+    wreckHp: 50,
+    blurb: `A giant of the hive on two legs, swinging a two-handed hammer. It fights only at arm's reach, and runs at what it goes for at ${JUGGERNAUT_SPRINT_MUL} times its walk. Every blow lands in an area: it kills a soldier outright, staves in a tank's plate whatever its armor, and knocks whole walls out of a building. Only its own side is spared. Plated like a light tank and slow to fall. Brought down to ${Math.round(JUGGERNAUT_RAGE_HP * 100)}% it hurls the hammer at the strongest enemy within ${JUGGERNAUT_THROW_RANGE_TILES / TILE_SUBDIV} cells, a heavy blast where it lands, then fights on with its fists: lighter blows, three for every swing of the hammer, and it moves faster. Needs a Neural Nexus.`,
+  },
+  /** Xenomorph heavy assimilator: four legs and a draining disruptor that feeds its own body. */
+  siphon: {
+    type: "siphon",
+    kind: "unit",
+    name: "Siphon",
+    letter: "s",
+    cost: 850,
+    buildSeconds: 16,
+    hp: 140,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 12,
+    moveTilesPerSec: paced(1.6),
+    turnDegPerSec: 110,
+    rangeTiles: t(11),
+    sightTiles: t(8),
+    cooldown: 3.4,
+    damage: 34,
+    projectileSpeed: TANK_SHELL_SPEED,
+    turnInPlace: true,
+    turretTurnDegPerSec: 220,
+    armorFront: 55,
+    armorSide: 28,
+    armorRear: 16,
+    penetration: 75,
+    caliber: 75,
+    spreadDeg: 3,
+    ammo: { ap: 12, he: 6 },
+    defaultShell: "ap",
+    leavesWreck: true,
+    wreckHp: 32,
+    blurb: `Heavy assimilator on four legs with a forked drain emitter on a quick turret. Its bolt is lighter than a Stalker's and bites only medium plate from the front, but it fires twice as often, from a little less reach. What the bolt takes off an enemy unit flows back: ${Math.round(SIPHON_DRAIN * 100)}% of every hit mends its own body. A building or a wreck gives nothing back. Thinner in front than a Stalker. It draws its bolts from the hive and never runs dry.`,
+  },
+  /** Xenomorph heavy assimilator: a brood sac on six legs that births Thralls. Unarmed. */
+  broodmother: {
+    type: "broodmother",
+    kind: "unit",
+    name: "Broodmother",
+    letter: "m",
+    cost: 1800,
+    buildSeconds: 22,
+    hp: 300,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 16,
+    moveTilesPerSec: paced(0.85),
+    turnDegPerSec: 50,
+    rangeTiles: 0,
+    sightTiles: t(8),
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    turnInPlace: true,
+    armorFront: 50,
+    armorSide: 40,
+    armorRear: 30,
+    penetration: 0,
+    caliber: 0,
+    spreadDeg: 0,
+    leavesWreck: true,
+    wreckHp: 45,
+    blurb: `A living hatchery: a great brood sac on six short legs. It carries no weapon. Every ${BROOD_SECONDS} seconds a Thrall tears out of the sac beside it, while fewer than ${BROOD_MAX} of its brood live; the first comes ${BROOD_FIRST_SECONDS} seconds after it leaves the Forge. Its brood are Thralls like any other: they count against your units and run on the uplink. Thick hide on every face and slow on its legs. Keep it behind the line. Needs a Neural Nexus.`,
+  },
+  /** Xenomorph heavy assimilator: spore-pod rocket artillery. */
+  mawcaster: {
+    type: "mawcaster",
+    kind: "unit",
+    name: "Mawcaster",
+    letter: "c",
+    cost: 1500,
+    buildSeconds: 18,
+    hp: 100,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 12,
+    moveTilesPerSec: paced(1.6),
+    turnDegPerSec: 110,
+    rangeTiles: MAWCASTER_RANGE_TILES,
+    sightTiles: t(6),
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    turnInPlace: true,
+    turretTurnDegPerSec: 50,
+    gunArcDeg: 4,
+    armorFront: 24,
+    armorSide: 14,
+    armorRear: 10,
+    penetration: 0,
+    caliber: 0,
+    spreadDeg: 0,
+    leavesWreck: true,
+    wreckHp: 20,
+    rockets: true,
+    rocketAmmo: MAWCASTER_SALVO * 5,
+    rocketRack: MAWCASTER_POD,
+    blurb: `Spore artillery on four legs. A maw of ${MAWCASTER_SALVO} launch tubes throws its pods on a high arc over your own troops, from nearly the Nebelwerfer's reach: half its salvo, but it draws its pods from the hive and never needs a truck. Force attack sends them anywhere in that reach, seen or not. It will not fire inside ${MAWCASTER_MIN_RANGE_TILES / TILE_SUBDIV} cells, and must stop and swing the maw onto the target first. Pods scatter wide at full reach: a salvo blankets an area and shreds soldiers in the open; armor only dents. Now and then a pod leaves burning bile on the ground. Thin hide and short eyes — keep it behind the line.`,
   },
   /** Xenomorph vehicle factory. */
   forge: {
@@ -5551,7 +6271,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `A ribbed hangar over vats of nanite gel. It grows the heavy assimilators: the Stalker, the Ravager, and, with a Neural Nexus standing, the Behemoth. The Xenomorphs drive no supply trucks: while it stands and your power holds, the Forge refills the racks, belts, and fuel of your units and Pulse Spires within ${FORGE_REARM_TILES / TILE_SUBDIV} cells of it.`,
+    blurb: `A ribbed hangar over vats of nanite gel. It grows the heavy assimilators: the Stalker, the Ravager, and, with a Neural Nexus standing, the Behemoth and the Juggernaut. The Xenomorphs need no supply trucks: every Xenomorph weapon draws on the hive and never runs dry.`,
   },
   /** Xenomorph tech and sensor building. */
   nexus: {
@@ -5641,7 +6361,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     armorFirst: true,
     poweredGun: true,
     capturable: false,
-    blurb: `A tall spire with a long emitter and a ring of green fire. Nobody works it: it turns all the way round, slowly, and throws a piercing energy pulse through a Tiger's front plate from farther than a Pak 36 reaches. Tanks first. ${PULSE_SPIRE_RACK} charges in the ring; a powered Nanite Forge within reach recharges it. Short on power, it falls silent. Needs a Neural Nexus. Cannot move.`,
+    blurb: `A tall spire with a long emitter and a ring of green fire. Nobody works it: it turns all the way round, slowly, and throws a piercing energy pulse through a Tiger's front plate from farther than a Pak 36 reaches. Tanks first. It draws its charge from the hive and never runs dry. Short on power, it falls silent. Needs a Neural Nexus. Cannot move.`,
   },
   /** Xenomorph shipyard: grows the Leech and the Lurker. Stands on open water like a Marine Base. */
   spawnpool: {
@@ -5665,7 +6385,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     onWater: true,
-    blurb: "A ring of ribbed chitin around a glowing birthing pool. It can only grow on water: every tile under it must be open water. Grows the Leech and, with a Neural Nexus standing, the Lurker, which slip into the water beside it and never come ashore. Lurkers reload their plasma torpedoes beside it.",
+    blurb: "A ring of ribbed chitin around a glowing birthing pool. It can only grow on water: every tile under it must be open water. Grows the Leech and, with a Neural Nexus standing, the Lurker, which slip into the water beside it and never come ashore.",
   },
   /** Xenomorph airfield: a launch spine and four nests. Same footprint and pads as the Airfield. */
   aerie: {
@@ -5688,7 +6408,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `A long spine of fused chitin with four landing nests beside it. Grows the Wasp and, with a Neural Nexus standing, the Scourge, and keeps up to ${AIRFIELD_PADS} of them. They come back to their nests to recharge, rearm, and mend.`,
+    blurb: `A long spine of fused chitin with four landing nests beside it. Grows the Wasp, the Gnat, and, with a Neural Nexus standing, the Scourge and the Overseer, and keeps up to ${AIRFIELD_PADS} of them. They never run out of anything to fire; they come back to their nests to refuel and mend.`,
   },
   /** Xenomorph fast attack boat: a skimming chitin hull with a plasma cannon. */
   leech: {
@@ -5724,7 +6444,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     wreckHp: 14,
     blurb: "A low chitin hull that skims the water on a glowing belly, a small plasma cannon on its back. Water only: it never comes ashore. It fires on boats and on anything within reach of the bank, a little faster and harder than the Attack Boat. Thin shell: an anti-tank rifle or a tank shell goes straight through. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.",
   },
-  /** Xenomorph submarine: plasma torpedoes, runs submerged. */
+  /** Xenomorph sea beast: hunts under the water and bites. No gun. */
   lurker: {
     type: "lurker",
     kind: "unit",
@@ -5732,34 +6452,32 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     letter: "k",
     cost: 1000,
     buildSeconds: 16,
-    hp: 120,
+    hp: 160,
     power: 0,
     tileW: 1,
     tileH: 1,
     radius: 14.4,
-    moveTilesPerSec: paced(1.7),
-    turnDegPerSec: 85,
+    moveTilesPerSec: paced(2.2),
+    turnDegPerSec: 110,
     noReverse: true,
     turnInPlace: true,
-    gunArcDeg: 20,
-    rangeTiles: TORPEDO_RANGE_TILES,
+    rangeTiles: LURKER_REACH_TILES,
     sightTiles: t(16),
-    cooldown: 7,
-    damage: TORPEDO.damage,
-    projectileSpeed: TORPEDO_SPEED,
-    armorFront: 22,
-    armorSide: 20,
-    armorRear: 16,
-    penetration: TORPEDO.penetration,
-    caliber: TORPEDO.caliber,
-    spreadDeg: TORPEDO.spreadDeg,
+    cooldown: LURKER_BITE_SECONDS,
+    damage: LURKER_BITE_DAMAGE,
+    projectileSpeed: 0,
+    armorFront: 18,
+    armorSide: 16,
+    armorRear: 12,
+    penetration: 0,
+    caliber: 0,
+    spreadDeg: 0,
     naval: true,
-    torpedoes: true,
     submerges: true,
+    bite: true,
     leavesWreck: true,
     wreckHp: 40,
-    belt: SUB_TORPEDOES,
-    blurb: `A long ribbed hull with glowing gills that hunts under the water. It leaves the pool surfaced; Dive and Surface set its depth. Submerged, the enemy sees it only while one of their Destroyers hears it on sonar, or for ${SUB_REVEAL_SECONDS} seconds after it fires. It must surface to strike a boat, a swimmer, or a shore building. Its bow tubes throw slow plasma torpedoes that run at the waterline; any gun can burst one before it arrives. ${SUB_TORPEDOES} in the tubes; beside a Spawning Pool it grows one back every ${SUB_REARM_SECONDS} seconds. Needs a Neural Nexus.`,
+    blurb: `A sea beast the hive grew in its pool: a long plated body that swims like an eel, a crest of spines, glowing eyes, and a split jaw of hooked fangs. No gun: it hunts with its jaws. It leaves the pool surfaced; Dive and Surface set its depth, and it holds ${SUB_DIVE_SECONDS} seconds of breath below. Submerged, the enemy sees it only while one of their Destroyers hears it on sonar, or for ${SUB_REVEAL_SECONDS} seconds after it bites. Up or down, it bites whatever it reaches, ${LURKER_REACH_TILES / TILE_SUBDIV} cells from its body: one bite kills a soldier, swimming or standing at the water's edge, and tears into a boat's hull; a tank's plate gives slowly, a wall slower. It never comes ashore. Dead, its carcass sinks and blocks the water until it is shot apart. Needs a Neural Nexus.`,
   },
   /** Xenomorph fighter: insect wings, twin pulse cannons. Lives in an Aerie nest. */
   wasp: {
@@ -5788,7 +6506,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     aircraft: true,
     fighter: true,
     wreckHp: 20,
-    blurb: `Insect fighter on green-veined wings, a pulse cannon under each. ${FW190_BARRAGES} barrages a sortie: on each pass it lines up on the target and lays two straight lines of pulses through it, coming down through a tank's thin roof. It chases enemy planes out of the sky the same way. A shade faster and tighter than the Fw 190, a little lighter. Lands in an Aerie nest to recharge and mend. A hit that tears a wing brings it down at once.`,
+    blurb: `Insect fighter on green-veined wings, a pulse cannon under each. They never run dry: on every pass it lines up on the target and lays two straight lines of pulses through it, coming down through a tank's thin roof. It chases enemy planes out of the sky the same way. A shade faster and tighter than the Fw 190, a little lighter. Lands in an Aerie nest to refuel and mend. A hit that tears a wing brings it down at once.`,
   },
   /** Xenomorph dive bomber: beetle carapace and a plasma bomb pod. Lives in an Aerie nest. */
   scourge: {
@@ -5816,7 +6534,1097 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: STUKA_MG.spreadDeg,
     aircraft: true,
     wreckHp: 23,
-    blurb: "Dive bomber with a beetle's carapace. One plasma bomb per sortie, slung in a glowing pod, and two pulse guns for soft targets. Flies over everything; only rifles, machine guns, the Walker, and the Titan's rockets can reach it in the air. Lands in an Aerie nest to recharge and rearm. A hit that tears a wing brings it down at once. Needs a Neural Nexus.",
+    blurb: "Dive bomber with a beetle's carapace. A plasma bomb in a glowing pod that grows the next one as soon as the last falls, so it bombs on every pass and never goes home to rearm, and two pulse guns for soft targets. Flies over everything; only rifles, machine guns, the Walker, and the Titan's rockets can reach it in the air. Lands in an Aerie nest to refuel and mend. A hit that tears a wing brings it down at once. Needs a Neural Nexus.",
+  },
+  /** Xenomorph hover craft: hangs over its target and burns straight down. Lives in an Aerie nest. */
+  overseer: {
+    type: "overseer",
+    kind: "unit",
+    name: "Overseer",
+    letter: "z",
+    cost: 1800,
+    buildSeconds: 22,
+    hp: 130,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 12,
+    moveTilesPerSec: paced(3.2),
+    turnDegPerSec: 150,
+    rangeTiles: OVERSEER_FIRE_TILES,
+    sightTiles: t(10),
+    cooldown: OVERSEER_PULSE_SECONDS,
+    damage: OVERSEER_PULSE_DAMAGE,
+    projectileSpeed: 0,
+    ...UNARMED,
+    caliber: 10,
+    aircraft: true,
+    hovers: true,
+    wreckHp: 20,
+    blurb: `A floating hive eye: a bell of chitin on a ring of humming vanes, glowing membrane round its rim and a cluster of emitters under its belly. It lifts straight off its Aerie nest and flies slowly. Sent at something on the ground it stops right over it and hangs there, burning straight down with a green laser pulse every ${OVERSEER_PULSE_SECONDS} seconds, and follows it as it moves. Every enemy soldier in the beam's spot burns; a tank's thin roof gives under it slowly, a building slower still. It never runs dry. It cannot touch a plane, and it hovers low: rifles, machine guns, and anti-air reach it. It sets down on its nest to refuel and mend. Needs a Neural Nexus.`,
+  },
+  /** Xenomorph spy drone: a tiny fly with one big sensor eye. Lives in an Aerie nest. */
+  gnat: {
+    type: "gnat",
+    kind: "unit",
+    name: "Gnat",
+    letter: "q",
+    cost: 350,
+    buildSeconds: 6,
+    hp: 22,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 6,
+    moveTilesPerSec: paced(8),
+    turnDegPerSec: 200,
+    rangeTiles: 0,
+    sightTiles: t(11),
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    aircraft: true,
+    recon: true,
+    wreckHp: 6,
+    blurb: `A spy fly the size of a man, grown in an Aerie nest in a few seconds and for a handful of scrap. No weapon: one great sensor eye. It flies as high as the Horten VII and sees almost as far from up there, ${(t(11) + HORTEN_FLYING_SIGHT_BONUS) / TILE_SUBDIV} tiles around it. Only anti-air guns and a fighter that climbs after it can reach it, but its shell is paper: one burst brings it down. Its charge holds ${HORTEN_FUEL_SECONDS} seconds of flight. Send it at a point or a unit and it flies over and circles there; on guard or patrol it keeps watching the area. It comes home to its nest to recharge when it runs low.`,
+  },
+  // ── The Bloom ───────────────────────────────────────────────────────────────────────────
+  /** Bloom HQ on the move: a fat seed-pod on root legs. */
+  sporepod: {
+    type: "sporepod",
+    kind: "unit",
+    name: "Spore Pod",
+    letter: "E",
+    cost: 0,
+    buildSeconds: 0,
+    hp: 760,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 14,
+    moveTilesPerSec: paced(1.35),
+    turnDegPerSec: 120,
+    turnInPlace: true,
+    rangeTiles: 0,
+    sightTiles: t(6),
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    special: "deploy",
+    blurb: "A fat, ribbed spore-pod walking on six root legs. Root it where the ground is level and it bursts open into a Brood Heart. Its wounds close by themselves, like every Bloom body's.",
+  },
+  broodheart: {
+    type: "broodheart",
+    kind: "building",
+    name: "Brood Heart",
+    letter: "H",
+    cost: 0,
+    buildSeconds: DEPLOY_SECONDS,
+    hp: 2400,
+    power: 50,
+    tileW: t(3),
+    tileH: t(3),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    special: "deploy",
+    blurb: "A great heart half sunk in the marsh, beating under arched ribs. Every Bloom structure grows from its veins. Like all Bloom flesh it closes its wounds once the fire stops. Lose it and the Bloom withers.",
+  },
+  /** Bloom power: glowing bulbs on stalks. */
+  lumenbulb: {
+    type: "lumenbulb",
+    kind: "building",
+    name: "Lumen Bulb",
+    letter: "L",
+    cost: 450,
+    buildSeconds: 11,
+    hp: 600,
+    power: 100,
+    tileW: t(2),
+    tileH: t(2),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: "Three translucent bulbs on stalks, glowing amber with the marsh's rot. They power the Bloom as much as a Power Plant, a little cheaper, on a softer skin that regrows.",
+  },
+  /** Bloom scrap smelter: a maw that digests a scrap field. */
+  gorger: {
+    type: "gorger",
+    kind: "building",
+    name: "Gorger",
+    letter: "G",
+    cost: 1500,
+    buildSeconds: 24,
+    hp: 1100,
+    power: -40,
+    tileW: t(3),
+    tileH: t(3),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: `A toothed maw that chews a scrap field and swallows it into a swelling gullet. Stands on scrap like a Smelter: half its footprint on the field, ${SMELTER_CLEARANCE} open tiles from any other. It digests ${SMELTER_SCRAP_PER_SEC} scrap a second, ${DIAMOND_SCRAP_MUL}× on diamond scrap, slower on low power, and each one lets you hold up to ${SCRAP_CAP_PER_SMELTER} scrap.`,
+  },
+  /** Bloom infantry producer. */
+  broodnest: {
+    type: "broodnest",
+    kind: "building",
+    name: "Brood Nest",
+    letter: "B",
+    cost: 700,
+    buildSeconds: 16,
+    hp: 900,
+    power: -25,
+    tileW: t(2.5),
+    tileH: t(2.5),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: "A mound of leathery egg-sacs under a chitin awning. It hatches the brood: the Spawnling, the Gobber, the Quillback, the Bloater, the Mender, and, with a Brain Coral standing, the Longspine. Brood take no stance orders and lose no limbs: a torn limb grows back.",
+  },
+  /** Bloom beast producer. */
+  gestator: {
+    type: "gestator",
+    kind: "building",
+    name: "Gestator",
+    letter: "V",
+    cost: 1000,
+    buildSeconds: 20,
+    hp: 1000,
+    power: -35,
+    tileW: t(3),
+    tileH: t(3),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: "A long ribbed womb-hall around one huge translucent sac. It grows the beasts: the Skitter, the Goretusk, the Bile Mantis, the Bile Worm, the Sporemaw, and, with a Brain Coral standing, the Matriarch. The Bloom need no supply trucks: their spines, acid, and spores grow back in the gland.",
+  },
+  /** Bloom tech and radar. */
+  braincoral: {
+    type: "braincoral",
+    kind: "building",
+    name: "Brain Coral",
+    letter: "X",
+    cost: 4000,
+    buildSeconds: 26,
+    hp: 850,
+    power: -70,
+    tileW: t(2),
+    tileH: t(2),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: "A folded dome of brain coral under a crown of glowing feelers: where the Bloom dreams. It unlocks the Longspine, the Matriarch, the Abyss Ray, the Leviathan, the Harpy, and the Bile Lance, and its feelers light the radar panel like a Radar Station.",
+  },
+  /** Bloom shipyard: stands on open water. */
+  tidewomb: {
+    type: "tidewomb",
+    kind: "building",
+    name: "Tide Womb",
+    letter: "W",
+    cost: 1100,
+    buildSeconds: 20,
+    hp: 950,
+    power: -35,
+    tileW: t(2.5),
+    tileH: t(2.5),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    onWater: true,
+    blurb: "A ring of fleshy lily-pads around an amber pool, tendrils trailing in the current. It only grows on open water. It spawns the deep brood: the Drift Jelly, the Spineback, the Brood Barge, and, with a Brain Coral standing, the Abyss Ray and the Leviathan.",
+  },
+  /** Bloom airfield: a bone spine and four sinew nests. Same footprint and pads as the Airfield. */
+  roost: {
+    type: "roost",
+    kind: "building",
+    name: "Roost",
+    letter: "R",
+    cost: 2600,
+    buildSeconds: 26,
+    hp: 1050,
+    power: -45,
+    tileW: t(7.5),
+    tileH: t(3.75),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: `A long arching bone spine with four cup nests of woven sinew. It grows the skybrood: the Watcher Moth, the Razorwing, the Gasbag, the Drifter, and, with a Brain Coral standing, the Harpy, and keeps up to ${AIRFIELD_PADS} of them. They come home to their nests to feed and heal.`,
+  },
+  /** Bloom anti-infantry gun: crewless, runs on base power. */
+  thornspitter: {
+    type: "thornspitter",
+    kind: "building",
+    name: "Thorn Spitter",
+    letter: "s",
+    cost: 450,
+    buildSeconds: 9,
+    hp: 450,
+    power: -15,
+    tileW: t(1),
+    tileH: t(1),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    turretTurnDegPerSec: 160,
+    rangeTiles: t(11),
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: TICK_DT,
+    damage: MG42.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    armorFront: 0,
+    armorSide: 0,
+    armorRear: 0,
+    penetration: MG42.penetration,
+    caliber: MG42.caliber,
+    spreadDeg: 4,
+    shotsPerTick: MG42.shotsPerTick,
+    poweredGun: true,
+    capturable: false,
+    blurb: "A bulb on a knotted root with a fan of quills round a puckered mouth. Nobody works it: it turns all the way round and spits quills at soldiers at an MG42's pace, a little short of a Spine Turret's reach. Tank plate turns the quills, and they do not bring a building down. The quills grow back, so it never runs dry. Short on power, it falls silent. Cannot move.",
+  },
+  /** Bloom anti-armour gun: crewless, runs on base power. */
+  bilelance: {
+    type: "bilelance",
+    kind: "building",
+    name: "Bile Lance",
+    letter: "q",
+    cost: 1500,
+    buildSeconds: 14,
+    hp: 750,
+    power: -30,
+    tileW: t(1),
+    tileH: t(1),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    turretTurnDegPerSec: 55,
+    rangeTiles: t(14),
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 3.2,
+    damage: PULSE_SPIRE_SHELLS.ap.damage,
+    projectileSpeed: TANK_SHELL_SPEED,
+    armorFront: 0,
+    armorSide: 0,
+    armorRear: 0,
+    penetration: PULSE_SPIRE_SHELLS.ap.penetration,
+    caliber: PULSE_SPIRE_SHELLS.ap.caliber,
+    spreadDeg: PULSE_SPIRE_SHELLS.ap.spreadDeg,
+    ammo: { ap: PULSE_SPIRE_RACK },
+    defaultShell: "ap",
+    shells: PULSE_SPIRE_SHELLS,
+    armorFirst: true,
+    poweredGun: true,
+    capturable: false,
+    blurb: "A tall curled stalk planted like a scorpion's tail, an acid gland at its tip. Nobody works it: it swings round and spits a bolt of acid that eats through a Tiger's front plate. Tanks first. The gland refills by itself. Short on power, it falls silent. Needs a Brain Coral. Cannot move.",
+  },
+  /** Bloom anti-air: a mushroom that bursts spore clouds among planes. */
+  puffcap: {
+    type: "puffcap",
+    kind: "building",
+    name: "Puffcap",
+    letter: "p",
+    cost: 1200,
+    buildSeconds: 14,
+    hp: 600,
+    power: -20,
+    tileW: t(1),
+    tileH: t(1),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    turretTurnDegPerSec: 140,
+    rangeTiles: FLAK_RANGE_TILES,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0.5,
+    damage: FLAK_BURST_DAMAGE,
+    projectileSpeed: FLAK_SHELL_SPEED,
+    armorFront: 0,
+    armorSide: 0,
+    armorRear: 0,
+    penetration: FLAK_SHELLS.he.penetration,
+    caliber: FLAK_SHELLS.he.caliber,
+    spreadDeg: FLAK_SHELLS.he.spreadDeg,
+    ammo: { he: FLAK_RACK },
+    defaultShell: "he",
+    shells: FLAK_SHELLS,
+    antiAir: true,
+    airFirst: true,
+    airOnly: true,
+    poweredGun: true,
+    capturable: false,
+    blurb: "A squat mushroom with a tilting cap. Nobody works it: it turns to a plane and bursts caustic spore clouds round it, like a Flak 37's shells. It fires only at what flies. The spores grow back, so it never runs dry. Short on power, it falls silent. Cannot move.",
+  },
+  /** Bloom watch post: a stalk with one huge eye and a pouch for two brood. */
+  eyestalk: {
+    type: "eyestalk",
+    kind: "building",
+    name: "Eye Stalk",
+    letter: "e",
+    cost: 700,
+    buildSeconds: 12,
+    hp: 1100,
+    power: 0,
+    tileW: t(1),
+    tileH: t(1),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    garrisonCap: 2,
+    garrisonHpMul: TOWER_GARRISON_HP_MUL,
+    garrisonWoundMul: TOWER_WOUND_MUL,
+    garrisonBulletMul: SLIT_BULLET_WOUND_MUL,
+    garrisonWindows: 2,
+    garrisonFloors: HOCHSTAND_FLOORS,
+    garrisonSightBonus: TOWER_SIGHT_BONUS,
+    garrisonReachBonus: TOWER_REACH_BONUS,
+    garrisonEye: HOCHSTAND_EYE_HEIGHT,
+    garrisonFullArms: true,
+    garrisonTypes: BROOD_GARRISON,
+    blurb: "A tall fleshy stalk with one great amber eye and a hollow pouch under it. Two brood in the pouch see as far as a Watch Tower's cab and fire from it, their reach a little longer. The pouch takes part of every hit.",
+  },
+  /** Bloom bunker: the hollowed carapace of a giant beetle. */
+  husk: {
+    type: "husk",
+    kind: "building",
+    name: "Husk Burrow",
+    letter: "u",
+    cost: 550,
+    buildSeconds: 15,
+    hp: 2600,
+    power: 0,
+    tileW: t(2),
+    tileH: t(2),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    garrisonCap: BUNKER_GARRISON_CAP,
+    garrisonHpMul: BUNKER_GARRISON_HP_MUL,
+    garrisonWoundMul: BUNKER_WOUND_MUL,
+    garrisonBulletMul: SLIT_BULLET_WOUND_MUL,
+    garrisonWindows: 2,
+    garrisonFloors: 1,
+    garrisonSightBonus: 0,
+    garrisonFullArms: true,
+    garrisonTypes: BROOD_GARRISON,
+    capturable: false,
+    coverHeight: BUNKER_COVER_HEIGHT,
+    blurb: `The hollowed carapace of a giant beetle, half buried, with firing slits between its plates. Holds ${BUNKER_GARRISON_CAP} brood. The shell takes most of every hit and every brood weapon fires from the slits. Low, so it adds no sight or reach. It cannot be captured, only broken, and it regrows between fights.`,
+  },
+  /** Bloom swarm melee: cheap, fast, two hooked claws. */
+  spawnling: {
+    type: "spawnling",
+    kind: "unit",
+    name: "Spawnling",
+    letter: "n",
+    cost: 150,
+    buildSeconds: 4,
+    hp: 45,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 6,
+    moveTilesPerSec: paced(3.2 * INFANTRY_PACE),
+    turnDegPerSec: 1400,
+    rangeTiles: SIMUNIT_REACH_TILES,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: DAGGERS.cooldown,
+    damage: DAGGERS.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    ...UNARMED,
+    penetration: DAGGERS.penetration,
+    caliber: DAGGERS.caliber,
+    spreadDeg: DAGGERS.spreadDeg,
+    blurb: "A dog-sized horror that is mostly mouth and two hooked claws. Very fast and very cheap: it runs down a soldier and opens him in a slash or two, but a few rifle rounds put it down. It barely scratches plate. Hatched in a few seconds; the Matriarch lays them as she walks.",
+  },
+  /** Bloom rifleman: spits acid from a throat sac. */
+  gobber: {
+    type: "gobber",
+    kind: "unit",
+    name: "Gobber",
+    letter: "i",
+    cost: 300,
+    buildSeconds: 7,
+    hp: 60,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: paced(2.1 * INFANTRY_PACE),
+    turnDegPerSec: 1200,
+    rangeTiles: RIFLE_RANGE_TILES,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: RIFLE.cooldown,
+    damage: RIFLE.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    ...UNARMED,
+    penetration: RIFLE.penetration,
+    caliber: RIFLE.caliber,
+    spreadDeg: RIFLE.spreadDeg,
+    blurb: "The Bloom's line soldier: a lanky thing with a throat sac that swells and spits a glob of acid at a rifle's reach and pace, a few globs and then a pause while the sac refills. A little tougher than a rifleman, and its wounds close by themselves.",
+  },
+  /** Bloom gunner: a stream of quills from a shoulder hump. */
+  quillback: {
+    type: "quillback",
+    kind: "unit",
+    name: "Quillback",
+    letter: "k",
+    cost: 650,
+    buildSeconds: 11,
+    hp: 110,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: paced(1.6 * INFANTRY_PACE),
+    turnDegPerSec: 900,
+    rangeTiles: CYBORG_RANGE_TILES,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: GATLING.cooldown,
+    damage: GATLING.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    ...UNARMED,
+    penetration: GATLING.penetration,
+    caliber: GATLING.caliber,
+    spreadDeg: GATLING.spreadDeg,
+    blurb: "Squat and broad, its back a bed of quills. A hump on its shoulder flexes and throws them in a stream that mows soldiers down, then it has to rest while the muscle cools. A round sometimes bites a Walker or a truck; tank plate turns it. The quills grow back, so it never runs dry. Slow on its feet.",
+  },
+  /** Bloom anti-armour: hurls acid sacs. */
+  bloater: {
+    type: "bloater",
+    kind: "unit",
+    name: "Bloater",
+    letter: "b",
+    cost: 750,
+    buildSeconds: 12,
+    hp: 120,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: paced(1.35 * INFANTRY_PACE),
+    turnDegPerSec: 900,
+    rangeTiles: LAUNCHER_RANGE_TILES,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: LAUNCHER.cooldown,
+    damage: LAUNCHER.damage,
+    projectileSpeed: TITAN_ROCKET_SPEED,
+    ...UNARMED,
+    penetration: LAUNCHER.penetration,
+    caliber: LAUNCHER.caliber,
+    spreadDeg: LAUNCHER.spreadDeg,
+    blurb: "Bloated and waddling, it carries glowing acid sacs on its back and hurls them overhand like a Rocketer's rocket: loose at full reach, tighter close in, a burst of acid that eats into a tank's plate and spatters soldiers round it. It grows the next sac on its back. Slow and fat: a good target.",
+  },
+  /** Bloom sniper: one long bone spine at great reach. */
+  longspine: {
+    type: "longspine",
+    kind: "unit",
+    name: "Longspine",
+    letter: "l",
+    cost: 900,
+    buildSeconds: 12,
+    hp: 50,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: paced(1.9 * INFANTRY_PACE),
+    turnDegPerSec: 1000,
+    rangeTiles: SCOPED_RANGE_TILES,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    sightBonusTiles: t(3),
+    cooldown: SCOPED.cooldown,
+    damage: SCOPED.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    ...UNARMED,
+    penetration: SCOPED.penetration,
+    caliber: SCOPED.caliber,
+    spreadDeg: SCOPED.spreadDeg,
+    blurb: "Gaunt and very tall, with a ring of small eyes and one long arm that is a bone launcher. It drives a single spine through a soldier from as far as a sniper reaches, and sees nearly as far. Paper-thin: keep it behind the line. Needs a Brain Coral.",
+  },
+  /** Bloom healer: knits flesh with amber threads. */
+  mender: {
+    type: "mender",
+    kind: "unit",
+    name: "Mender",
+    letter: "m",
+    cost: 450,
+    buildSeconds: 8,
+    hp: 45,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: paced(2.1 * INFANTRY_PACE),
+    turnDegPerSec: 1600,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: "Delicate and translucent, trailing long feelers spun with amber thread. No weapon. It goes to wounded brood nearby and knits them closed far faster than they regrow alone. Its own wounds close by themselves.",
+  },
+  /** Bloom fast raider: a six-legged tick with a quill pod. */
+  skitter: {
+    type: "skitter",
+    kind: "unit",
+    name: "Skitter",
+    letter: "t",
+    cost: 400,
+    buildSeconds: 10,
+    hp: 75,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 10,
+    moveTilesPerSec: paced(2.4),
+    turnDegPerSec: 200,
+    rangeTiles: t(9),
+    sightTiles: t(10),
+    cooldown: TICK_DT,
+    damage: 7,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    turnInPlace: true,
+    gunArcDeg: 25,
+    armorFront: 22,
+    armorSide: 14,
+    armorRear: 10,
+    penetration: 10,
+    caliber: 10,
+    spreadDeg: 4,
+    shotsPerTick: 2,
+    blurb: "A low six-legged tick that runs faster than any hull. The quill pod on its back is fixed: it turns its whole body to fire, a stream of quills that cuts down soldiers and nicks soft vehicles. Tank plate turns them, and they do not bring a building down. Thin shell. Dead, it melts into the mud and leaves no wreck.",
+  },
+  /** Bloom melee charger: a rhino-beetle that gores. */
+  goretusk: {
+    type: "goretusk",
+    kind: "unit",
+    name: "Goretusk",
+    letter: "r",
+    cost: 900,
+    buildSeconds: 15,
+    hp: 210,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 13,
+    moveTilesPerSec: paced(1.75),
+    turnDegPerSec: 140,
+    rangeTiles: LURKER_REACH_TILES,
+    sightTiles: t(8),
+    cooldown: LURKER_BITE_SECONDS,
+    damage: LURKER_BITE_DAMAGE,
+    projectileSpeed: 0,
+    turnInPlace: true,
+    armorFront: 85,
+    armorSide: 40,
+    armorRear: 24,
+    penetration: 0,
+    caliber: 0,
+    spreadDeg: 0,
+    bite: true,
+    blurb: "A rhino-beetle the size of a tank, with a plated head shield and two great tusks. No gun: it charges and gores what it reaches. One thrust kills a soldier; a hull's plate gives under the tusks, a wall more slowly. Its head shield is as thick as a Tiger's front, its flanks are not. Dead, it melts into the mud and leaves no wreck.",
+  },
+  /** Bloom main battle beast: a mantis torso on a six-legged abdomen. */
+  mantis: {
+    type: "mantis",
+    kind: "unit",
+    name: "Bile Mantis",
+    letter: "y",
+    cost: 700,
+    buildSeconds: 15,
+    hp: 140,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 12,
+    moveTilesPerSec: paced(1.55),
+    turnDegPerSec: 110,
+    rangeTiles: t(12),
+    sightTiles: t(8),
+    cooldown: 6,
+    damage: 52,
+    projectileSpeed: TANK_SHELL_SPEED,
+    turnInPlace: true,
+    turretTurnDegPerSec: 220,
+    armorFront: 60,
+    armorSide: 28,
+    armorRear: 16,
+    penetration: 90,
+    caliber: 75,
+    spreadDeg: 3,
+    ammo: { ap: 12, he: 6 },
+    defaultShell: "ap",
+    blurb: "An upright mantis torso on a six-legged abdomen, an acid gland cannon between its raptor arms. The torso turns on its own like a turret. It spits a piercing bolt about as hard as a Tiger's shell, or a splash of acid for soldiers. Thinner than a Tiger, quicker on its legs, and it heals between fights. Dead, it melts into the mud and leaves no wreck.",
+  },
+  /** Bloom acid worm: sprays acid from its ring mouth and burrows. */
+  bileworm: {
+    type: "bileworm",
+    kind: "unit",
+    name: "Bile Worm",
+    letter: "w",
+    cost: 650,
+    buildSeconds: 13,
+    hp: 130,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 11,
+    moveTilesPerSec: paced(1.6),
+    turnDegPerSec: 130,
+    rangeTiles: t(7),
+    sightTiles: t(8),
+    cooldown: 1.2,
+    damage: 14,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    turnInPlace: true,
+    gunArcDeg: 30,
+    armorFront: 40,
+    armorSide: 26,
+    armorRear: 16,
+    penetration: 22,
+    caliber: 15,
+    spreadDeg: 3,
+    hullFlamer: true,
+    mgAmmo: HULL_FLAMER_FUEL,
+    blurb: "A segmented worm with a ring of teeth for a mouth. It spits acid at what it faces, and up close its mouth sprays a jet of burning acid that eats every soldier in its path, friend too. Burrow digs it in where it stands: under the mud no enemy sees it or can pick it, but it neither moves nor fires; it rises ready to spray. Dead, it melts into the mud and leaves no wreck.",
+  },
+  /** Bloom artillery: lobs volleys of spore bombs. */
+  sporemaw: {
+    type: "sporemaw",
+    kind: "unit",
+    name: "Sporemaw",
+    letter: "o",
+    cost: 1800,
+    buildSeconds: 20,
+    hp: 120,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 12,
+    moveTilesPerSec: paced(1.4),
+    turnDegPerSec: 100,
+    rangeTiles: NEBELWERFER_RANGE_TILES,
+    sightTiles: t(6),
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    turnInPlace: true,
+    gunArcDeg: 6,
+    armorFront: 26,
+    armorSide: 16,
+    armorRear: 10,
+    penetration: 0,
+    caliber: 0,
+    spreadDeg: 0,
+    rockets: true,
+    rocketAmmo: NEBELWERFER_ROCKET_AMMO,
+    rocketRack: NEBELWERFER_ROCKET,
+    blurb: "A toad-like beast with a vast sac on its back. It squats, turns to face the target, and vents a volley of spore bombs high over the line: the longest reach on the field, as far as the Nebelwerfer. They scatter wide at full reach and shred soldiers in the open; plate only dents. It will not fire close in. The sac refills by itself. Thin skin, short eyes: keep it behind the line.",
+  },
+  /** Bloom heavy: eight legs, a sac cannon, and a brood of Spawnlings. */
+  matriarch: {
+    type: "matriarch",
+    kind: "unit",
+    name: "Matriarch",
+    letter: "M",
+    cost: 3800,
+    buildSeconds: 26,
+    hp: 320,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 20,
+    moveTilesPerSec: paced(0.85),
+    turnDegPerSec: 55,
+    rangeTiles: t(14),
+    sightTiles: t(9),
+    cooldown: 7,
+    damage: APOCALYPSE_SHELLS.ap.damage,
+    projectileSpeed: TANK_SHELL_SPEED,
+    turnInPlace: true,
+    turretTurnDegPerSec: 110,
+    armorFront: 100,
+    armorSide: 60,
+    armorRear: 35,
+    penetration: APOCALYPSE_SHELLS.ap.penetration,
+    caliber: APOCALYPSE_SHELLS.ap.caliber,
+    spreadDeg: APOCALYPSE_SHELLS.ap.spreadDeg,
+    shells: APOCALYPSE_SHELLS,
+    ammo: { ap: 14, he: 8 },
+    defaultShell: "ap",
+    blurb: `The Bloom's queen of the field: eight legs, a sagging abdomen heavy with eggs, and a sac cannon on her back that throws acid through a Tiger's front plate. As she walks she lays a Spawnling every ${MATRIARCH_LAY_SECONDS} seconds, up to ${MATRIARCH_BROOD} of her own alive at once. Slow, huge, and she heals between fights. Needs a Brain Coral.`,
+  },
+  /** Bloom cheap naval stinger: a floating jellyfish. */
+  driftjelly: {
+    type: "driftjelly",
+    kind: "unit",
+    name: "Drift Jelly",
+    letter: "j",
+    cost: 350,
+    buildSeconds: 8,
+    hp: 60,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 10,
+    moveTilesPerSec: paced(2.1),
+    turnDegPerSec: 200,
+    turnInPlace: true,
+    rangeTiles: LURKER_REACH_TILES,
+    sightTiles: t(12),
+    cooldown: LURKER_BITE_SECONDS,
+    damage: LURKER_BITE_DAMAGE,
+    projectileSpeed: 0,
+    armorFront: 6,
+    armorSide: 6,
+    armorRear: 6,
+    penetration: 0,
+    caliber: 0,
+    spreadDeg: 0,
+    naval: true,
+    bite: true,
+    blurb: "A jellyfish bell drifting on the surface, tentacles trailing. No gun: it stings what it reaches, a swimmer or a soldier at the water's edge dead at once, a boat's hull torn. Cheap and soft. Water only. Dead, it dissolves and leaves no hulk.",
+  },
+  /** Bloom attack boat: a finned fish with a dorsal quill battery. */
+  spineback: {
+    type: "spineback",
+    kind: "unit",
+    name: "Spineback",
+    letter: "h",
+    cost: 500,
+    buildSeconds: 10,
+    hp: 80,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 11,
+    moveTilesPerSec: paced(2.9),
+    turnDegPerSec: 130,
+    noReverse: true,
+    turnInPlace: true,
+    turretTurnDegPerSec: 260,
+    rangeTiles: GUNBOAT_RANGE_TILES,
+    sightTiles: t(18),
+    cooldown: 0.45,
+    damage: 12,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    armorFront: 12,
+    armorSide: 8,
+    armorRear: 6,
+    penetration: 28,
+    caliber: 20,
+    spreadDeg: 2.5,
+    naval: true,
+    blurb: "A finned fish skimming the surface, a battery of quills along its dorsal ridge. It fires on boats and on anything within reach of the bank, as hard as the Attack Boat and a touch faster on the water. Thin skin: an anti-tank rifle or a tank shell goes straight through. Water only. Dead, it dissolves and leaves no hulk.",
+  },
+  /** Bloom submarine: a manta that dives and looses acid eels. */
+  abyssray: {
+    type: "abyssray",
+    kind: "unit",
+    name: "Abyss Ray",
+    letter: "a",
+    cost: 1000,
+    buildSeconds: 16,
+    hp: 120,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 14.4,
+    moveTilesPerSec: paced(1.8),
+    turnDegPerSec: 90,
+    noReverse: true,
+    turnInPlace: true,
+    gunArcDeg: 20,
+    rangeTiles: TORPEDO_RANGE_TILES,
+    sightTiles: t(16),
+    cooldown: 7,
+    damage: TORPEDO.damage,
+    projectileSpeed: TORPEDO_SPEED,
+    armorFront: 18,
+    armorSide: 18,
+    armorRear: 14,
+    penetration: TORPEDO.penetration,
+    caliber: TORPEDO.caliber,
+    spreadDeg: TORPEDO.spreadDeg,
+    naval: true,
+    torpedoes: true,
+    submerges: true,
+    belt: SUB_TORPEDOES,
+    blurb: `A wide manta with glowing spots along its wings. It dives and surfaces like a Submarine and looses living acid eels that swim at the waterline like torpedoes. Submerged, the enemy sees it only on a Destroyer's sonar, or for ${SUB_REVEAL_SECONDS} seconds after it fires. It grows new eels in its belly and never runs out. Needs a Brain Coral. Dead, it sinks and leaves no hulk.`,
+  },
+  /** Bloom capital ship: a turtle-whale with a gland cannon. */
+  leviathan: {
+    type: "leviathan",
+    kind: "unit",
+    name: "Leviathan",
+    letter: "v",
+    cost: 4200,
+    buildSeconds: 30,
+    hp: 1400,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 30,
+    moveTilesPerSec: paced(1.3),
+    turnDegPerSec: 30,
+    noReverse: true,
+    turnInPlace: true,
+    turretTurnDegPerSec: 60,
+    rangeTiles: t(17),
+    sightTiles: t(18),
+    cooldown: 4.5,
+    damage: 75,
+    projectileSpeed: TANK_SHELL_SPEED,
+    armorFront: 70,
+    armorSide: 60,
+    armorRear: 45,
+    penetration: 130,
+    caliber: 128,
+    spreadDeg: 2.5,
+    naval: true,
+    blurb: "A turtle-whale as long as a destroyer, its mossy shell plated like a bunker. A gland cannon rises from the shell and throws a bolt of acid far out over the water and onto the shore, through a Tiger's front plate. Slow to turn. It heals between fights like every Bloom body. Needs a Brain Coral. Water only. Dead, it sinks and leaves no hulk.",
+  },
+  /** Bloom transport: a floating raft of flesh with a pouch hold. */
+  broodbarge: {
+    type: "broodbarge",
+    kind: "unit",
+    name: "Brood Barge",
+    letter: "g",
+    cost: 1500,
+    buildSeconds: 20,
+    hp: 520,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 26,
+    moveTilesPerSec: paced(1.6),
+    turnDegPerSec: 30,
+    noReverse: true,
+    turnInPlace: true,
+    rangeTiles: 0,
+    sightTiles: t(16),
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    armorFront: 60,
+    armorSide: 50,
+    armorRear: 40,
+    penetration: 0,
+    caliber: 0,
+    spreadDeg: 0,
+    naval: true,
+    tankDeck: true,
+    garrisonCap: 28,
+    garrisonHpMul: BUNKER_GARRISON_HP_MUL,
+    garrisonWoundMul: BUNKER_WOUND_MUL,
+    garrisonWindows: 2,
+    garrisonFloors: 1,
+    garrisonSightBonus: 0,
+    garrisonFullArms: true,
+    garrisonDiesWithHost: true,
+    blurb: "A broad raft of floating flesh with a deep pouch hold. Brood and beasts board over its lip with its edge on the shore, and Unload spills them onto the beach. The first two brood aboard who can fight do so from the rim. If it dies, everything in the pouch drowns with it. Water only. Dead, it sinks and leaves no hulk.",
+  },
+  /** Bloom recon flyer: a great moth with eyes on its wings. */
+  moth: {
+    type: "moth",
+    kind: "unit",
+    name: "Watcher Moth",
+    letter: "q",
+    cost: 400,
+    buildSeconds: 7,
+    hp: 26,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: paced(7.5),
+    turnDegPerSec: 200,
+    rangeTiles: 0,
+    sightTiles: t(11),
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    aircraft: true,
+    recon: true,
+    wreckHp: 6,
+    blurb: `A huge pale moth whose wing eye-spots really are eyes. No weapon. It flies as high as the Horten VII and watches ${(t(11) + HORTEN_FLYING_SIGHT_BONUS) / TILE_SUBDIV} tiles around it. Only anti-air and a climbing fighter reach it, and one burst brings it down. It holds ${HORTEN_FUEL_SECONDS} seconds of flight, then comes home to its nest to feed.`,
+  },
+  /** Bloom fighter: bladed membrane wings and quill guns. */
+  razorwing: {
+    type: "razorwing",
+    kind: "unit",
+    name: "Razorwing",
+    letter: "z",
+    cost: 850,
+    buildSeconds: 21,
+    hp: 88,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 11,
+    moveTilesPerSec: paced(7),
+    turnDegPerSec: 170,
+    rangeTiles: FW190_BARRAGE_TILES,
+    sightTiles: t(10),
+    cooldown: FW190_BARRAGE_COOLDOWN,
+    damage: FW190_CANNON.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    ...UNARMED,
+    penetration: FW190_CANNON.penetration,
+    caliber: FW190_CANNON.caliber,
+    spreadDeg: FW190_CANNON.spreadDeg,
+    aircraft: true,
+    fighter: true,
+    wreckHp: 20,
+    blurb: "A swift-like flyer on bladed membrane wings, a quill gun under each. On every pass it lays two lines of quills through the target, down through a tank's thin roof, and it hunts enemy planes the same way. The fastest and tightest-turning fighter in the sky, and the lightest. Its quills grow back; it comes home to its nest to feed and heal.",
+  },
+  /** Bloom bomber: a floating bladder with an acid bomb sac. */
+  gasbag: {
+    type: "gasbag",
+    kind: "unit",
+    name: "Gasbag",
+    letter: "x",
+    cost: 1700,
+    buildSeconds: 20,
+    hp: 150,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 13,
+    moveTilesPerSec: paced(4.2),
+    turnDegPerSec: 100,
+    rangeTiles: STUKA_MG.rangeTiles,
+    sightTiles: t(10),
+    cooldown: TICK_DT,
+    damage: STUKA_MG.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    ...UNARMED,
+    penetration: STUKA_MG.penetration,
+    caliber: STUKA_MG.caliber,
+    spreadDeg: STUKA_MG.spreadDeg,
+    aircraft: true,
+    wreckHp: 26,
+    blurb: "A floating gas bladder on small flapping fins, a glowing acid bomb sac dangling under it and quill pores for soft targets. It drops the sac on every pass and grows another, so it never goes home to rearm. Slower than a Stuka and thicker-skinned. Only rifles, machine guns, and anti-air reach it in the air. It comes home to its nest to feed and heal.",
+  },
+  /** Bloom hover: a sky-jelly that drips acid on what it hangs over. */
+  drifter: {
+    type: "drifter",
+    kind: "unit",
+    name: "Drifter",
+    letter: "d",
+    cost: 1600,
+    buildSeconds: 20,
+    hp: 140,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 12,
+    moveTilesPerSec: paced(3),
+    turnDegPerSec: 150,
+    rangeTiles: OVERSEER_FIRE_TILES,
+    sightTiles: t(10),
+    cooldown: OVERSEER_PULSE_SECONDS,
+    damage: OVERSEER_PULSE_DAMAGE,
+    projectileSpeed: 0,
+    ...UNARMED,
+    caliber: 10,
+    aircraft: true,
+    hovers: true,
+    wreckHp: 20,
+    blurb: "A sky-jelly: a glowing bell trailing long stinging tendrils. It lifts straight off its nest, drifts slowly to what it is sent at, and hangs over it, dripping burning acid straight down. Every enemy soldier under it burns; a tank's thin roof gives slowly, a building slower. It follows its prey. It cannot touch a plane, and it hangs low: rifles, machine guns, and anti-air reach it. It sets down on its nest to feed and heal.",
+  },
+  /** Bloom torpedo bomber: a sea-wyrm that drops a living eel. */
+  harpy: {
+    type: "harpy",
+    kind: "unit",
+    name: "Harpy",
+    letter: "y",
+    cost: 2200,
+    buildSeconds: 24,
+    hp: 170,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 14,
+    moveTilesPerSec: paced(4.8),
+    turnDegPerSec: 80,
+    rangeTiles: TORPEDO_RANGE_TILES,
+    sightTiles: t(14),
+    cooldown: 0,
+    damage: TORPEDO.damage,
+    projectileSpeed: TORPEDO_SPEED,
+    ...UNARMED,
+    penetration: TORPEDO.penetration,
+    caliber: TORPEDO.caliber,
+    spreadDeg: TORPEDO.spreadDeg,
+    aircraft: true,
+    airTorpedo: true,
+    wreckHp: 34,
+    blurb: `A long-necked sea-wyrm on leathery wings, a living acid eel clutched in its talons. It attacks only what is in the water, and only over water: it swoops low and lets the eel go ${TORPEDO_RANGE_TILES / TILE_SUBDIV} tiles off its beak, where it swims its full length like a torpedo and strikes the first thing in its path. It grows a new eel on the wing and never goes home to rearm. Low on the run in, rifles and anti-air reach it easily. Needs a Brain Coral.`,
   },
   titan: {
     type: "titan",
@@ -6815,7 +8623,7 @@ export function armorLabel(type: EntityType): string | null {
   return `F${d.armorFront} / S${d.armorSide} / R${d.armorRear}`;
 }
 
-const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "cyborg", "cyborgcommander", "simunit2", "xenodrone", "lancer", "droneop", "jumpjet"];
+const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "cyborg", "cyborgcommander", "simunit2", "xenodrone", "thrall", "lancer", "spitter", "weaver", "shade", "droneop", "jumpjet", "spawnling", "gobber", "quillback", "bloater", "longspine", "mender"];
 
 /** Soldier with a jet pack: the Jump Jet. */
 export function isJumpJetType(type: EntityType): boolean {
@@ -6846,8 +8654,8 @@ export function airLoadoutOf(type: EntityType): { bombs: number; rounds: number 
   if (type === "bv222") return { bombs: 1, rounds: 0 };
   // The He 111's torpedo rides in the bomb slot: hung on the pad, spent on the run.
   if (dropsTorpedo(type)) return { bombs: HE111_TORPEDOES, rounds: 0 };
-  // The Horten VII carries cameras only.
-  if (isReconType(type)) return { bombs: 0, rounds: 0 };
+  // The Horten VII carries cameras only. The Overseer's emitters draw on the hive.
+  if (isReconType(type) || isHoverType(type)) return { bombs: 0, rounds: 0 };
   return { bombs: STUKA_BOMBS, rounds: STUKA_MG_ROUNDS };
 }
 
@@ -6863,11 +8671,13 @@ export function isReconType(type: EntityType): boolean {
 
 /** Height a plane cruises at between runs. */
 export function airCruiseAltOf(type: EntityType): number {
+  if (isHoverType(type)) return OVERSEER_CRUISE_ALT;
   return isReconType(type) ? HORTEN_CRUISE_ALT : AIR_CRUISE_ALT;
 }
 
 /** Seconds of flight in a full tank. */
 export function airFuelOf(type: EntityType): number {
+  if (isHoverType(type)) return OVERSEER_FUEL_SECONDS;
   return isReconType(type) ? HORTEN_FUEL_SECONDS : AIR_FUEL_SECONDS;
 }
 
@@ -6885,6 +8695,16 @@ export function isFighterType(type: EntityType): boolean {
   return type === "fw190" || catalog(type).fighter === true;
 }
 
+/** Hovers like a helicopter: the Xenomorph Overseer. */
+export function isHoverType(type: EntityType): boolean {
+  return catalog(type).hovers === true;
+}
+
+/** Fights with its jaws: the Xenomorph Lurker. */
+export function biteOf(type: EntityType): boolean {
+  return catalog(type).bite === true;
+}
+
 /** Operator's quadcopter. */
 export function isDroneType(type: EntityType): boolean {
   return catalog(type).drone === true;
@@ -6899,7 +8719,7 @@ export function isInfantryType(type: EntityType): boolean {
  * no random limb hits, legs tied to HP.
  */
 export function isCyborg(type: EntityType): boolean {
-  return type === "cyborg" || type === "cyborgcommander" || isSimUnit(type) || type === "xenodrone" || type === "lancer";
+  return type === "cyborg" || type === "cyborgcommander" || isSimUnit(type) || type === "xenodrone" || type === "thrall" || type === "lancer" || type === "spitter" || type === "weaver" || type === "shade";
 }
 
 /**
@@ -6924,9 +8744,9 @@ export function canPowerDown(type: EntityType): boolean {
   return onUplink(type);
 }
 
-/** Fights with the energy daggers: Sim Unit II. */
+/** Fights at arm's reach, no round in the air: the Sim Unit II's daggers, the Thrall's fists, the Juggernaut's hammer and fists, the Lurker's jaws. */
 export function meleeOf(type: EntityType): boolean {
-  return isSimUnit(type);
+  return isSimUnit(type) || type === "thrall" || type === "spawnling" || isJuggernaut(type) || biteOf(type);
 }
 
 /** The lighter hulls, guns, and trucks the Apocalypse rolls flat. */
@@ -6992,7 +8812,15 @@ export function primaryInfantryGun(type: EntityType): InfantryGun | null {
   if (type === "cyborgcommander") return LASER;
   if (type === "simunit2") return DAGGERS;
   if (type === "xenodrone") return RIFLE;
+  if (type === "thrall") return FISTS;
   if (type === "lancer") return LAUNCHER;
+  if (type === "spitter") return ACID;
+  if (type === "shade") return SCOPED;
+  if (type === "spawnling") return DAGGERS;
+  if (type === "gobber") return RIFLE;
+  if (type === "quillback") return GATLING;
+  if (type === "bloater") return LAUNCHER;
+  if (type === "longspine") return SCOPED;
   if (type === "jumpjet") return ASSAULT;
   return null;
 }
@@ -7010,7 +8838,15 @@ export function infantryLoadout(type: EntityType): readonly InfantryGun[] {
   if (type === "cyborgcommander") return [LASER];
   if (type === "simunit2") return [DAGGERS];
   if (type === "xenodrone") return [RIFLE];
+  if (type === "thrall") return [FISTS];
   if (type === "lancer") return [LAUNCHER];
+  if (type === "spitter") return [ACID];
+  if (type === "shade") return [SCOPED];
+  if (type === "spawnling") return [DAGGERS];
+  if (type === "gobber") return [RIFLE];
+  if (type === "quillback") return [GATLING];
+  if (type === "bloater") return [LAUNCHER];
+  if (type === "longspine") return [SCOPED];
   if (type === "jumpjet") return [ASSAULT, HANDGUN];
   return [];
 }
@@ -7091,7 +8927,7 @@ export function stanceOf(e: {
 }): Stance {
   if (!isInfantryType(e.type)) return "stand";
   if (hasCrit(e, "leg")) return "crawl";
-  if (isCyborg(e.type)) return "stand";
+  if (noStance(e.type)) return "stand";
   return e.stance ?? "stand";
 }
 

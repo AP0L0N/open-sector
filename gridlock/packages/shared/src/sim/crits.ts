@@ -12,6 +12,7 @@ import {
   STANCE_AIM_SPREAD,
   STANCE_SPEED,
   SWIM_SPEED,
+  THRALL_STAGGER_SPEED,
   WALKER_CHARGE_SPEED,
   addCrit,
   catalog,
@@ -22,6 +23,7 @@ import {
   hasForceField,
   infantryGunFor,
   isCyborg,
+  isBrood,
   isInfantryType,
   isMotorVehicle,
   trackCritAllowed,
@@ -30,15 +32,22 @@ import {
   stanceOf,
   wadeSpeedOf,
   wadesOf,
+  isJuggernaut,
   type Crit,
 } from "../catalog.js";
 import type { ImpactKind } from "../protocol.js";
 import { artilleryHaulMul, gunCrewOf } from "./artillery.js";
+import { juggernautPaceMul } from "./juggernaut.js";
 import type { ArmorFace } from "./ballistics.js";
 import { hasHeadlight, hasSpotlight } from "./night.js";
 import type { Entity } from "./types.js";
 
 export function moveSpeedMul(e: Entity, swimming = false): number {
+  // A bullet in the shoulder: the Thrall's run falters for a moment.
+  return e.staggered ? THRALL_STAGGER_SPEED * baseMoveSpeedMul(e, swimming) : baseMoveSpeedMul(e, swimming);
+}
+
+function baseMoveSpeedMul(e: Entity, swimming: boolean): number {
   if (e.braced || hasCrit(e, "tracks") || hasCrit(e, "engine")) return 0;
   if (e.type === "artillery") return artilleryHaulMul(e);
   if (e.towing != null) return ARTILLERY_TOW_SPEED;
@@ -47,6 +56,7 @@ export function moveSpeedMul(e: Entity, swimming = false): number {
   if (swimming && wadesOf(e.type)) return wadeSpeedOf(e.type);
   if (isInfantryType(e.type)) return STANCE_SPEED[stanceOf(e)];
   if (e.charging) return WALKER_CHARGE_SPEED;
+  if (isJuggernaut(e.type)) return juggernautPaceMul(e);
   return 1;
 }
 
@@ -168,6 +178,8 @@ export function rollCrits(
   if (kind === "ricochet" || kind === "miss" || kind === "puff" || kind === "crush") return;
   // The cyborg's limbs are not dice rolls: the legs follow his HP (syncCyborgLegs).
   if (isCyborg(e.type)) return;
+  // Brood limbs regrow: a hit tears flesh, never a lasting crit.
+  if (isBrood(e.type)) return;
   if (isInfantryType(e.type)) {
     if (damage <= 0) return;
     if (rand() < CRIT_ARM_CHANCE) addCrit(e, "arm");

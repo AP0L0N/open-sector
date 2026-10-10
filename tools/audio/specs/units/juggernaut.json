@@ -1,0 +1,85 @@
+{
+  "key": "juggernaut",
+  "out": "units/juggernaut",
+  "voice": {
+    "name": "Open Sector - Heavy Assimilator",
+    "voice_id": "Wgg1tJ9YWBePARF1jEf7",
+    "note": "Shares the Heavy Assimilator voice designed for the Stalker (voices/stalker.json): the account holds more than 20 custom voices, all in use, so no new one is designed. A harder, shouted delivery for the brute.",
+    "description": "Enormous, slow machine voice of a giant legged alien war machine of a cyborg hive: very deep sub-bass layered voice, as if several huge synthetic voices speak at once an octave apart, grinding metallic overtones and a rumbling engine-like drone beneath every word, cold, emotionless and inevitable, each word heavy and deliberate with long pauses.",
+    "stability": 0.45,
+    "similarity": 0.8,
+    "style": 0.45,
+    "speed": 0.9
+  },
+  "lines": {
+    "select": [
+      "Juggernaut.",
+      "The hammer waits.",
+      "We are the wall that walks.",
+      "[growls] Point me at them."
+    ],
+    "move": [
+      "Striding.",
+      "Nothing stands in our path.",
+      "The ground breaks beneath us.",
+      "Onward."
+    ],
+    "attack": [
+      "[shouting] Crush them!",
+      "Break them apart.",
+      "The hammer falls.",
+      "[shouting] Run them down!"
+    ],
+    "ready": [
+      "Juggernaut, forged."
+    ],
+    "special": [
+      "[shouting] Take the hammer!",
+      "[roaring] Then with our hands!"
+    ]
+  },
+  "sfx": {
+    "smash": {
+      "prompt": "A colossal two-handed sci-fi war hammer slammed into the ground by a giant: an enormous deep earth-shaking impact boom with a crackling green energy discharge, cracking rock and debris thrown up, a heavy metal clang inside the blast, close, outdoors, no music, no voice",
+      "duration": 2.0,
+      "variants": 3,
+      "influence": 0.65
+    },
+    "punch": {
+      "prompt": "A giant armored robot fist punching hard: a heavy dull metal thud with a deep bass impact and a short crunch of bending steel, quick and punchy, close, no music, no voice",
+      "duration": 0.8,
+      "variants": 3,
+      "influence": 0.7
+    },
+    "throw": {
+      "prompt": "A giant hurling a huge metal war hammer: a heavy grunt of servos straining, then a deep rushing whoosh of a massive object spinning end over end through the air, whirring away, close, outdoors, no music, no voice",
+      "duration": 1.5,
+      "variants": 1,
+      "influence": 0.65
+    },
+    "throw_land": {
+      "prompt": "A huge thrown sci-fi war hammer crashing down from the air onto the battlefield: a massive deep ground-shaking slam, a burst of crackling green energy, splintering metal and rock debris raining down, medium distance outdoors, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.65
+    },
+    "charge": {
+      "prompt": "A giant armored humanoid war machine breaking into a run: fast, enormous, heavy metal footsteps pounding the ground one after another, each a deep thud, hydraulic hiss and servo whine rising in pitch, close, outdoors, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.65
+    },
+    "move": {
+      "prompt": "A giant armored humanoid war machine taking two slow heavy steps: very deep metallic footfalls that shake the ground, hydraulic pistons hissing, servo grind, close, outdoors, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.65
+    },
+    "die": {
+      "prompt": "A giant armored humanoid war machine destroyed and toppling: an electric explosion with green arcs discharging, a deep synthetic groan dropping in pitch, a huge steel body crashing face down onto the ground with a long rumbling thud, medium distance outdoors, no music, no voice",
+      "duration": 4.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

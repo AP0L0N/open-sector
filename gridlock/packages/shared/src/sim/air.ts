@@ -103,6 +103,17 @@ import {
   isTransportType,
   isBattleship,
   isLowFieldWork,
+  endlessAmmo,
+  factionDamage,
+  isHoverType,
+  OVERSEER_BEAM_TILES,
+  OVERSEER_BUILDING_MUL,
+  OVERSEER_FIRE_TILES,
+  OVERSEER_HOVER_ALT,
+  OVERSEER_HULL_MUL,
+  OVERSEER_LIFT_PER_SEC,
+  OVERSEER_PULSE_DAMAGE,
+  OVERSEER_PULSE_SECONDS,
 } from "../catalog.js";
 import { hasCargo, loseRiders, payloadOf, planeRiders, releaseCanister, startJumping, tickDoor } from "./airdrop.js";
 import type { ImpactView } from "../protocol.js";
@@ -450,8 +461,8 @@ function secondsHome(state: MatchState, e: Entity, home: Entity): number {
 
 function spent(state: MatchState, e: Entity): boolean {
   if (isTransportType(e.type)) return !hasCargo(state, e);
-  // A recon plane has nothing to spend: only the tank sends it home.
-  if (isReconType(e.type)) return false;
+  // A recon plane has nothing to spend: only the tank sends it home. Nor does a Xenomorph one: the hive refills it in the air.
+  if (isReconType(e.type) || endlessAmmo(e.type)) return false;
   // Once the bomb is gone the sortie is over; the belts are only for the way in.
   if (e.air!.bombed) return true;
   return e.air!.bombs <= 0 && !hasRounds(e);
@@ -590,7 +601,8 @@ export function tickAir(state: MatchState, dt: number): void {
       continue;
     }
     a.fuel = Math.max(0, a.fuel - dt);
-    if (a.phase === "takeoff") tickTakeoff(state, e, dt);
+    if (isHoverType(e.type)) tickHover(state, e, dt);
+    else if (a.phase === "takeoff") tickTakeoff(state, e, dt);
     else if (a.phase === "landing") tickLanding(state, e, dt);
     else tickFly(state, e, dt);
     const onGround = a.phase === "takeoff" || (a.phase === "landing" && a.touched) || e.air?.phase === "parked";
@@ -1113,7 +1125,7 @@ function fireWingGuns(state: MatchState, e: Entity, target: Entity, dist: number
       y: e.y + Math.sin(ang) * (e.radius + 2),
       vx: Math.cos(ang) * speed,
       vy: Math.sin(ang) * speed,
-      damage: STUKA_MG.damage,
+      damage: factionDamage(e.type, STUKA_MG.damage),
       penetration: STUKA_MG.penetration,
       caliber: STUKA_MG.caliber,
       life: travel / speed,
@@ -1208,7 +1220,7 @@ function fireBarrage(state: MatchState, e: Entity, tx: number, ty: number, targe
         y: my,
         vx: Math.cos(ang) * gun.projectileSpeed,
         vy: Math.sin(ang) * gun.projectileSpeed,
-        damage: gun.damage,
+        damage: factionDamage(e.type, gun.damage),
         penetration: gun.penetration,
         caliber: gun.caliber,
         life: run / gun.projectileSpeed,
@@ -1248,7 +1260,7 @@ function dropBomb(state: MatchState, e: Entity, tx: number, ty: number, forced: 
     y: e.y,
     vx: (lx - e.x) / fall,
     vy: (ly - e.y) / fall,
-    damage: BOMB_DAMAGE,
+    damage: factionDamage(e.type, BOMB_DAMAGE),
     penetration: 0,
     caliber: BOMB_CALIBER,
     life: fall,
@@ -1294,6 +1306,8 @@ function detonateBomb(state: MatchState, p: Projectile): void {
   if (isTree(state, tx, ty)) fellTreeAt(state, tx, ty);
   const radius = BOMB_SPLASH_TILES * ts;
   const direct = BOMB_DIRECT_TILES * ts;
+  // A Xenomorph bomb was laid at its lighter damage: the whole burst scales with it.
+  const mul = p.damage / BOMB_DAMAGE;
   let killed = false;
   for (const e of [...state.entities.values()]) {
     if (e.hp <= 0 || e.wreck || e.garrisonedIn != null) continue;
@@ -1307,20 +1321,20 @@ function detonateBomb(state: MatchState, p: Projectile): void {
     const fall = mortarFalloff(d, reach);
     let dmg: number;
     if (e.kind === "building") {
-      dmg = Math.round(BOMB_BUILDING_DAMAGE * fall);
+      dmg = Math.round(BOMB_BUILDING_DAMAGE * fall * mul);
       if (isGarrisonable(e.type) && livingGarrison(state, e).length > 0) woundGarrison(state, e, dmg, p.caliber);
     } else if (isArmoredType(e.type) && !isInfantryType(e.type)) {
-      dmg = Math.round(e.hpMax * (d <= direct ? BOMB_ARMOR_DIRECT : BOMB_ARMOR_NEAR * fall));
+      dmg = Math.round(e.hpMax * (d <= direct ? BOMB_ARMOR_DIRECT : BOMB_ARMOR_NEAR * fall) * mul);
       if (hasTracks(e.type) && trackCritAllowed(e.type) && nextRand(state) < BOMB_TRACK_CHANCE * fall) addCrit(e, "tracks");
       hideScout(state, e);
     } else {
-      dmg = Math.round(BOMB_DAMAGE * fall);
+      dmg = Math.round(p.damage * fall);
     }
     if (e.kind === "unit") coverStrike(e, dmg, state.tick, true);
     else takeDamage(e, dmg, state.tick);
     if (e.hp <= 0) killed = true;
   }
-  blastWrecks(state, p.x, p.y, radius, BOMB_DAMAGE);
+  blastWrecks(state, p.x, p.y, radius, p.damage);
   blastClutter(state, p.x, p.y, radius);
   const impact: ImpactView = {
     id: state.nextId++,
@@ -1332,7 +1346,7 @@ function detonateBomb(state: MatchState, p: Projectile): void {
     vx: p.vx,
     vy: p.vy,
     caliber: p.caliber,
-    damage: BOMB_DAMAGE,
+    damage: p.damage,
     blast: true,
     mortar: true,
     bomb: true,
@@ -1680,6 +1694,266 @@ function tickLanding(state: MatchState, e: Entity, dt: number): void {
   }
   advance(state, e, dt);
 }
+
+/** Off the nest it is up and flying once it clears this height. */
+const HOVER_CLEAR_ALT = 3;
+
+/**
+ * The Overseer's flight. No strip and no turning circle: it lifts straight off its nest,
+ * flies straight at where it is going, slows onto the spot and hangs there, and sets
+ * straight back down on its nest. Sent at something on the ground it hangs over it at
+ * OVERSEER_HOVER_ALT, follows it, and burns down on it (firePulse).
+ */
+function tickHover(state: MatchState, e: Entity, dt: number): void {
+  const a = e.air!;
+  const ts = state.tileSize;
+  e.state = "move";
+  a.taxi = false;
+  a.roll = 0;
+  a.extend = false;
+  if (a.phase === "takeoff") {
+    a.touched = false;
+    a.speed = 0;
+    a.alt = Math.min(airCruiseAltOf(e.type), a.alt + OVERSEER_LIFT_PER_SEC * dt);
+    if (a.alt >= HOVER_CLEAR_ALT) a.phase = "fly";
+    return;
+  }
+  a.touched = false;
+  const home = ensureHome(state, e);
+  if (home && e.order?.kind !== "land" && a.fuel <= hoverSecondsHome(state, e, home) + AIR_FUEL_RESERVE) {
+    e.order = { kind: "land" };
+    e.attackTarget = null;
+  }
+  if (a.phase === "landing" || e.order?.kind === "land") {
+    hoverLand(state, e, home, dt);
+    return;
+  }
+  const strike = hoverStrike(state, e);
+  const o = e.order;
+  if (strike) {
+    hoverTo(state, e, strike.x, strike.y, dt);
+    hoverAlt(a, OVERSEER_HOVER_ALT, dt);
+    const d = Math.hypot(strike.x - e.x, strike.y - e.y);
+    if (d <= OVERSEER_FIRE_TILES * ts && a.alt <= OVERSEER_HOVER_ALT + 1 && e.cooldown <= 0) {
+      firePulse(state, e, strike.x, strike.y, strike.target, strike.forced);
+      if (o?.once) e.order = null;
+    }
+    return;
+  }
+  hoverAlt(a, airCruiseAltOf(e.type), dt);
+  if (!o) {
+    a.speed = 0;
+    e.state = "idle";
+    return;
+  }
+  if (o.kind === "patrol" && o.route && o.route.length >= 2) {
+    const loop = o.loop === true;
+    const leg = patrolLegIndex(o.route.length, o.leg, loop);
+    const dest = o.route[leg] ?? o.route[o.route.length - 1]!;
+    if (hoverTo(state, e, dest.x, dest.y, dt)) {
+      const stepped = stepPatrolLeg(o.route, leg, o.dir === -1 ? -1 : 1, loop);
+      o.leg = stepped.leg;
+      o.dir = stepped.dir;
+    }
+    return;
+  }
+  if (o.x == null || o.y == null) {
+    e.order = null;
+    return;
+  }
+  // A move ends on the spot: it hangs there. A guard or an attack-move holds the point.
+  if (hoverTo(state, e, o.x, o.y, dt) && o.kind === "move") {
+    e.order = null;
+    e.state = "idle";
+  }
+}
+
+/**
+ * What the Overseer burns this tick, and where to hang for it: the unit it was sent at while
+ * it can see it, a force-fired point (or the unit on it), or on an attack-move, guard, or
+ * patrol the nearest enemy on the ground it can see. Null: nothing, fly the order.
+ */
+function hoverStrike(state: MatchState, e: Entity): { x: number; y: number; target?: Entity; forced: boolean } | null {
+  const o = e.order;
+  if (!o) return null;
+  const ts = state.tileSize;
+  if (o.kind === "attack" && o.targetId != null) {
+    const t = state.entities.get(o.targetId);
+    if (!t || !pulseFinds(state, e, t)) {
+      e.order = null;
+      return null;
+    }
+    if (canSeeEntity(state, e.ownerId, t)) {
+      o.x = t.x;
+      o.y = t.y;
+      return { x: t.x, y: t.y, target: t, forced: false };
+    }
+    // Lost from sight: fly to where it was last seen and look again.
+    if (o.x != null && o.y != null && Math.hypot(o.x - e.x, o.y - e.y) > OVERSEER_FIRE_TILES * ts) return null;
+    e.order = null;
+    return null;
+  }
+  if (o.kind === "forceattack" && o.x != null && o.y != null) {
+    const t = o.targetId != null ? state.entities.get(o.targetId) : undefined;
+    if (o.targetId != null && (!t || t.hp <= 0 || isAirborne(t))) {
+      e.order = null;
+      return null;
+    }
+    return { x: t?.x ?? o.x, y: t?.y ?? o.y, target: t, forced: true };
+  }
+  if (o.kind === "attackmove" || o.kind === "guard" || o.kind === "patrol") {
+    let t = e.attackTarget != null ? state.entities.get(e.attackTarget) : undefined;
+    if (t && (!pulseFinds(state, e, t) || !canSeeEntity(state, e.ownerId, t))) t = undefined;
+    t ??= acquireBelow(state, e);
+    e.attackTarget = t?.id ?? null;
+    return t ? { x: t.x, y: t.y, target: t, forced: false } : null;
+  }
+  return null;
+}
+
+/** An enemy on the ground the pulse can burn: not a plane, not a wreck, not hidden aboard something. */
+function pulseFinds(state: MatchState, e: Entity, t: Entity): boolean {
+  if (t.hp <= 0 || t.wreck || t.garrisonedIn != null || isCrashing(t) || isAirborne(t) || t.drone) return false;
+  if (isTorpedoBody(t.type) || isLowFieldWork(t.type)) return false;
+  return !allies(state, e.ownerId, t.ownerId);
+}
+
+/** Nearest enemy unit on the ground it can see. Buildings it burns only when sent at them. */
+function acquireBelow(state: MatchState, e: Entity): Entity | undefined {
+  const reach = catalog(e.type).sightTiles * state.tileSize;
+  let best: Entity | undefined;
+  let bestD = reach * reach;
+  for (const o of state.entities.values()) {
+    if (o.kind !== "unit" || o.id === e.id || o.dormant || ownerless(o)) continue;
+    if (!pulseFinds(state, e, o)) continue;
+    const d = (o.x - e.x) ** 2 + (o.y - e.y) ** 2;
+    if (d > bestD) continue;
+    if (!canSeeEntity(state, e.ownerId, o)) continue;
+    bestD = d;
+    best = o;
+  }
+  return best;
+}
+
+/** Fly straight at a point, easing in over the last two cells, and stop on it. True once it is there. */
+function hoverTo(state: MatchState, e: Entity, x: number, y: number, dt: number): boolean {
+  const a = e.air!;
+  const ts = state.tileSize;
+  const top = cruiseSpeed(state, e);
+  const dx = x - e.x;
+  const dy = y - e.y;
+  const d = Math.hypot(dx, dy);
+  const v = top * Math.min(1, Math.max(0.15, d / (2 * ts)));
+  const step = v * dt;
+  if (d <= Math.max(0.5, step)) {
+    e.x = x;
+    e.y = y;
+    a.speed = 0;
+  } else {
+    headTo(e, Math.atan2(dy, dx), dt);
+    e.x += (dx / d) * step;
+    e.y += (dy / d) * step;
+    a.speed = v / Math.max(1e-6, top);
+  }
+  const maxX = state.width * ts - 1;
+  const maxY = state.height * ts - 1;
+  e.x = Math.max(1, Math.min(maxX, e.x));
+  e.y = Math.max(1, Math.min(maxY, e.y));
+  e.tileX = worldToTile(e.x, ts);
+  e.tileY = worldToTile(e.y, ts);
+  return d <= Math.max(0.5, step);
+}
+
+/** Climb or sink toward a height at the lift rate. */
+function hoverAlt(a: AirState, goal: number, dt: number): void {
+  const r = OVERSEER_LIFT_PER_SEC * dt;
+  a.alt = a.alt < goal ? Math.min(goal, a.alt + r) : Math.max(goal, a.alt - r);
+}
+
+/** Seconds to fly home and set down from here. */
+function hoverSecondsHome(state: MatchState, e: Entity, home: Entity): number {
+  const pad = airfieldPadWorld(home, e.air!.pad, state.tileSize);
+  return Math.hypot(pad.x - e.x, pad.y - e.y) / Math.max(1, cruiseSpeed(state, e)) + e.air!.alt / OVERSEER_LIFT_PER_SEC + 2;
+}
+
+/** Back over its nest and straight down onto it. No nest left: it hangs where it is. */
+function hoverLand(state: MatchState, e: Entity, home: Entity | null, dt: number): void {
+  const a = e.air!;
+  if (!home) {
+    a.phase = "fly";
+    e.order = null;
+    a.speed = 0;
+    return;
+  }
+  a.phase = "landing";
+  e.order = { kind: "land" };
+  e.attackTarget = null;
+  const ts = state.tileSize;
+  const pad = airfieldPadWorld(home, a.pad, ts);
+  const over = hoverTo(state, e, pad.x, pad.y, dt);
+  if (!over && Math.hypot(pad.x - e.x, pad.y - e.y) > ts * 2) {
+    hoverAlt(a, airCruiseAltOf(e.type), dt);
+    return;
+  }
+  hoverAlt(a, 0, dt);
+  if (over && a.alt <= 0.05) stopOnGround(e, parkHeading(home, ts));
+}
+
+/**
+ * One pulse straight down onto (x, y). Every enemy soldier in the spot burns (with `forced`,
+ * friends too), and the unit it was laid on takes it whatever it is: a hull through its thin
+ * roof at OVERSEER_HULL_MUL, a building at OVERSEER_BUILDING_MUL, the soldiers in a held
+ * house their share through the roof. A tree on the spot catches.
+ */
+function firePulse(state: MatchState, e: Entity, x: number, y: number, target: Entity | undefined, forced: boolean): void {
+  const ts = state.tileSize;
+  const base = factionDamage(e.type, OVERSEER_PULSE_DAMAGE);
+  const roll = (mul = 1): number => Math.max(1, Math.round(base * mul * (0.9 + 0.2 * nextRand(state))));
+  const spot = OVERSEER_BEAM_TILES * ts;
+  let struck = false;
+  let killed = false;
+  for (const o of state.entities.values()) {
+    if (o.kind !== "unit" || o.id === target?.id || o.hp <= 0 || o.wreck || o.garrisonedIn != null) continue;
+    if (!isInfantryType(o.type) || o.drone || isAirborne(o)) continue;
+    if (Math.hypot(o.x - x, o.y - y) > spot + o.radius) continue;
+    if (!forced && allies(state, e.ownerId, o.ownerId)) continue;
+    coverStrike(o, roll(), state.tick, true);
+    struck = true;
+    if (o.hp <= 0) killed = true;
+  }
+  if (target && target.hp > 0 && !target.wreck && !isAirborne(target)) {
+    if (target.kind === "building") {
+      if (isGarrisonable(target.type) && livingGarrison(state, target).length > 0) woundGarrison(state, target, roll(), PULSE_CALIBER);
+      takeDamage(target, roll(OVERSEER_BUILDING_MUL), state.tick);
+    } else if (isInfantryType(target.type)) {
+      coverStrike(target, roll(), state.tick, true);
+    } else {
+      coverStrike(target, roll(OVERSEER_HULL_MUL), state.tick, true);
+    }
+    struck = true;
+    if (target.hp <= 0) killed = true;
+  }
+  const tx = worldToTile(x, ts);
+  const ty = worldToTile(y, ts);
+  if (isTree(state, tx, ty)) burnTreeAt(state, tx, ty);
+  state.impacts.push({
+    id: state.nextId++,
+    ownerId: e.ownerId,
+    kind: killed ? "kill" : struck ? "hit" : "miss",
+    fromId: e.id,
+    x,
+    y,
+    vx: Math.cos(e.facing),
+    vy: Math.sin(e.facing),
+    caliber: PULSE_CALIBER,
+    damage: base,
+    downLaser: true,
+  });
+  e.cooldown = OVERSEER_PULSE_SECONDS;
+}
+
+/** Marks the Overseer's pulse on the client: a scorch, not a bullet strike. */
+const PULSE_CALIBER = 10;
 
 /** Wheels chocked: parked, facing `heading`. */
 function stopOnGround(e: Entity, heading: number): void {

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
+import { factionOf } from "../catalog.js";
 import {
   BUILDING_TYPES,
   SUB_AIR_RECOVER_MUL,
@@ -578,7 +579,7 @@ describe("Submarine runs submerged", () => {
 describe("boats turn before they move", () => {
   it("swings the bow onto the course before it makes way", () => {
     const shared = harbour();
-    const ships = TRAIN_TYPES.filter((t) => isNavalType(t));
+    const ships = TRAIN_TYPES.filter((t) => isNavalType(t) && factionOf(t) !== "bloom");
     assert.deepEqual([...ships].sort(), ["battleship", "destroyer", "gunboat", "leech", "lst", "lurker", "submarine", "supplyboat"]);
     for (const type of ships) {
       assert.equal(catalog(type).turnInPlace, true, `${type} turns before it moves`);
