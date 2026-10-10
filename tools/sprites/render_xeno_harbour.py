@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Xenomorph harbour: the Spawning Pool (shipyard).
+"""Xenite harbour: the Spawning Pool (shipyard).
 
   spawnpool  t(2.5) x t(2.5), on water, like the Marine Base (render_dock.py):
              a floating ribbed chitin ring round a glowing birthing pool, open
@@ -11,12 +11,12 @@
              and glow spots, source px), spawnpool-cameo.png (96 px), the
              render_xeno_base.py format, at the dock's 3x zoom (384 px pad).
 
-The Aerie (Xenomorph air) used to be drawn here as an airfield. Its fliers now
+The Aerie (Xenite air) used to be drawn here as an airfield. Its fliers now
 hover and never land, so it is a compact t(3) x t(3) building rendered with the
 other base buildings: render_xeno_base.py --only aerie.
 
 Look: render_xeno_base.py's (the inked structure pipeline of
-render_airfield.py, the Xenomorph gunmetal and chitin, the green glow).
+render_airfield.py, the Xenite gunmetal and chitin, the green glow).
 
   python3 tools/sprites/render_xeno_harbour.py --out gridlock/packages/client/src/assets/buildings
 """

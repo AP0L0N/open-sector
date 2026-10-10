@@ -1,5 +1,5 @@
 /**
- * Xenomorph energy weapons. Every Xenomorph gun, launcher, and turret fires light, not
+ * Xenite energy weapons. Every Xenite gun, launcher, and turret fires light, not
  * metal: a green bolt from the muzzle to where it lands, a green flare at the
  * muzzle and no smoke, a plasma orb in flight in place of a rocket, and a burst
  * of green light, a shock ring, and sparks where it hits. The sim still treats

@@ -339,7 +339,7 @@ export function applySaveSeats(room: RoomState, save: SaveGame, humanPlayerId: s
 }
 
 /**
- * Saves from before the factions were renamed: the Borg Drone is the Xenomorph Drone now, the
+ * Saves from before the factions were renamed: the Borg Drone is the Xenite Drone now, the
  * Broodmother is the Assembler, and the faction ids "eu" and "borg" read as "alliance" and "xeno".
  */
 function migrateNames(raw: object): object {

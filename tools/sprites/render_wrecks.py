@@ -410,14 +410,14 @@ SPECS = [
     # Same cell as render_battleship.py's CELL: the client reads the hulk on the live sheet's cell.
     Spec("battleship", 384, 0.56, "sunk", src="battleship", layers=["hull", "super", "turret", "ciws"], raw=True,
          turn=3, holes=6, bites=4, soot=0.5, debris=14, sink=15, list_deg=-3),
-    # Xenomorph walkers (render_stalker.py, render_behemoth.py, render_ravager.py, render_assembler.py): the Tiger's turret recipe.
+    # Xenite walkers (render_stalker.py, render_behemoth.py, render_ravager.py, render_assembler.py): the Tiger's turret recipe.
     Spec("stalker", 128, 0.92, "turret", src="stalker", layers=["hull", "turret", "gun"], turn=3, keep=0.45),
     Spec("behemoth", 128, 0.92, "turret", src="behemoth", layers=["hull", "turret", "gun"], turn=-2, keep=0.5, holes=4, debris=18),
     Spec("ravager", 128, 0.92, "turret", src="ravager", layers=["hull", "turret", "gun"], turn=2, keep=0.55, holes=3, soot=0.6, debris=14),
     Spec("siphon", 128, 0.92, "turret", src="siphon", layers=["hull", "turret", "gun"], turn=-3, keep=0.5, holes=3, debris=14),
     Spec("assembler", 128, 0.92, "turret", src="assembler", layers=["hull", "turret", "gun"], turn=2, keep=0.55, holes=3, soot=0.55, debris=12),
     Spec("mawcaster", 128, 0.92, "turret", src="mawcaster", layers=["hull", "turret", "gun"], turn=3, keep=0.5, holes=3, soot=0.6, debris=14),
-    # Xenomorph boats and planes (render_xeno_naval.py, render_xeno_air.py): the Alliance equivalents' recipes.
+    # Xenite boats and planes (render_xeno_naval.py, render_xeno_air.py): the Alliance equivalents' recipes.
     Spec("leech", 128, 0.74, "sunk", src="leech", layers=["hull"], padding=2, holes=3, bites=3, soot=0.55, debris=8, sink=6, list_deg=-7),
     Spec("lurker", 128, 0.74, "sunk", src="lurker", layers=["hull"], padding=2, holes=3, bites=2, soot=0.45, debris=6, sink=3.5, list_deg=4),
     Spec("wasp", 128, 0.8, "plane", src="wasp", layers=["hull"], padding=2, holes=3, bites=2, debris=12),

@@ -1,7 +1,7 @@
 import { catalog, LOW_POWER_MIN_SPEED, usesHiveEnergy } from "../catalog.js";
 import type { MatchState } from "./types.js";
 
-/** A side's power. The Xenomorphs draw none: they run on hive energy (sim/hive-energy.ts). */
+/** A side's power. The Xenite draw none: they run on hive energy (sim/hive-energy.ts). */
 export function powerOf(state: MatchState, playerId: string): { provided: number; used: number; lowPower: boolean } {
   if (usesHiveEnergy(state.players.get(playerId)?.faction)) return { provided: 0, used: 0, lowPower: false };
   let provided = 0;

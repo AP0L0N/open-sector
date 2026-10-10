@@ -125,7 +125,7 @@ const DEFS: Partial<Record<EntityType, BuildingAnimDef>> = {
     ],
     arcs: [{ x: 325, y: 167 }],
   },
-  // Xenomorph spots from tools/sprites/render_xeno_base.py (hivecore.json, fusionnode.json, assimilator.json).
+  // Xenite spots from tools/sprites/render_xeno_base.py (hivecore.json, fusionnode.json, assimilator.json).
   // Hive Core: the iris breathes, the crown rings chase round the spines, the apex beacon blinks.
   hivecore: {
     lights: [

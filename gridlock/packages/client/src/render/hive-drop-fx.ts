@@ -1,5 +1,5 @@
 /**
- * The Xenomorph Deployment and the Hive Core's fall. The Deployment is no body:
+ * The Xenite Deployment and the Hive Core's fall. The Deployment is no body:
  * a radial landing grid laid flat on the ground, the APS scan grid's look in
  * rings and spokes, breathing slowly. Deployed, the Hive Core comes down out
  * of the sky onto it like a comet and the sim makes it whole on landing.

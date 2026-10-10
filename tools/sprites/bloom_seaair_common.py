@@ -2,7 +2,7 @@
 """Shared Bloom materials, organic shapes, and the runtime-fit check for the Bloom sea and air sheets.
 
 Imported by render_bloom_naval.py and render_bloom_air.py. Same numpy rasterizer,
-camera, light, and outline as render_procedural.py (and the Xenomorph naval / air forks),
+camera, light, and outline as render_procedural.py (and the Xenite naval / air forks),
 with the Bloom palette lock from gridlock/docs/factions/bloom.md:
 
   flesh     #5e2f45 dark  #8a4a63 mid  #b7778a light
@@ -12,7 +12,7 @@ with the Bloom palette lock from gridlock/docs/factions/bloom.md:
   team      #6e6e68 / #4a4a46 (a gray carapace plate on every unit)
   outline   #1a1410 (render_procedural.OUTLINE)
 
-Material names are Bloom-only (`flesh`, `bone`, `glow`, ...), so the Xenomorph tables
+Material names are Bloom-only (`flesh`, `bone`, `glow`, ...), so the Xenite tables
 that xeno_walker loads into the shared MAT are left alone.
 """
 
@@ -308,7 +308,7 @@ def check(unit: str, folder: Path, contact_y: float, padding: int, ref: str | No
 
 
 def cameo72(faces: Path, path: Path, face: str = "0015", gain: float = 1.2, lift: float = 0.03) -> None:
-    """72 px static cameo from the south-east face, brightened like the Xenomorph cameos."""
+    """72 px static cameo from the south-east face, brightened like the Xenite cameos."""
     im = Image.open(faces / f"{face}.png").convert("RGBA")
     crop = im.crop(bw.bbox(im))
     px = np.asarray(crop).astype(np.float64) / 255

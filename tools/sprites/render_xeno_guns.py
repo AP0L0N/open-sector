@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Xenomorph crewless emplacements: Spine Turret and Pulse Spire.
+"""Xenite crewless emplacements: Spine Turret and Pulse Spire.
 
 Same file set and JSON schema as render_ww2_guns.py, so the client draws them as forts (FORT_TYPES):
   <id>.png            the static base (pad, roots / spire), with its cast shadow
@@ -32,7 +32,7 @@ from pathlib import Path
 import numpy as np
 
 import render_ww2_guns as wg  # noqa: E402  (sets up the WW2 kit, ra.ZOOM = 3)
-import render_xeno_base as bb  # noqa: E402  (chains the Xenomorph materials over it)
+import render_xeno_base as bb  # noqa: E402  (chains the Xenite materials over it)
 
 wf = wg.wf
 ra = wg.ra

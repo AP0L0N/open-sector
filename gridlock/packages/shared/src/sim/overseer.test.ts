@@ -67,7 +67,7 @@ function nest(state: MatchState): { aerie: Entity; craft: Entity } {
 }
 
 describe("Overseer", () => {
-  it("is a Xenomorph hover craft grown at the Aerie", () => {
+  it("is a Xenite hover craft grown at the Aerie", () => {
     assert.ok(isAircraftType("overseer"));
     assert.ok(isHoverType("overseer"));
     assert.equal(isHoverType("scourge"), false);

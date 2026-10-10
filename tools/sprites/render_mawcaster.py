@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mawcaster: Xenomorph spore-pod rocket artillery, the Xenomorph answer to the Nebelwerfer. Three 16-face layers.
+"""Mawcaster: Xenite spore-pod rocket artillery, the Xenite answer to the Nebelwerfer. Three 16-face layers.
 
 A long, narrow hull on four thin stilt legs (light armour: bare limbs, no
 shin plates), carrying a ribbed launcher carapace with a cluster of six

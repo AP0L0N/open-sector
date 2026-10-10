@@ -275,7 +275,7 @@ describe("SoundTracker", () => {
 
 describe("impactSound", () => {
   const base = { id: 1, ownerId: ME, x: 0, y: 0, vx: 0, vy: 0 };
-  it("gives a Xenomorph bolt an energy sound: a burst for a cannon or a lance, a zap for one pulse in four", () => {
+  it("gives a Xenite bolt an energy sound: a burst for a cannon or a lance, a zap for one pulse in four", () => {
     assert.equal(impactSound({ ...base, kind: "pen", caliber: 75, energy: true }), "energy_burst");
     assert.equal(impactSound({ ...base, kind: "miss", caliber: 60, rocket: true, energy: true }), "energy_burst");
     assert.equal(impactSound({ ...base, id: 4, kind: "miss", caliber: 8, energy: true }), "energy_hit");

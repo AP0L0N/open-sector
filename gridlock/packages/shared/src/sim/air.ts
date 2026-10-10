@@ -335,7 +335,7 @@ function liveHome(state: MatchState, e: Entity): Entity | null {
 function ensureHome(state: MatchState, e: Entity): Entity | null {
   const a = e.air;
   if (!a) return null;
-  // A Xenomorph flier has no nest to go home to.
+  // A Xenite flier has no nest to go home to.
   if (staysAloft(e.type)) {
     a.homeId = null;
     return null;
@@ -494,7 +494,7 @@ function secondsHome(state: MatchState, e: Entity, home: Entity): number {
 
 function spent(state: MatchState, e: Entity): boolean {
   if (isTransportType(e.type)) return !hasCargo(state, e);
-  // A recon plane has nothing to spend: only the tank sends it home. Nor does a Xenomorph one: the hive refills it in the air.
+  // A recon plane has nothing to spend: only the tank sends it home. Nor does a Xenite one: the hive refills it in the air.
   if (isReconType(e.type) || endlessAmmo(e.type)) return false;
   // Once the bomb is gone the sortie is over; the belts are only for the way in.
   if (e.air!.bombed) return true;
@@ -545,7 +545,7 @@ function loiterHere(e: Entity): void {
 export function orderAircraft(state: MatchState, e: Entity, order: Order): void {
   const a = e.air;
   if (!a || e.hp <= 0 || e.wreck || a.phase === "crash") return;
-  // A Xenomorph flier never lands: Land is a stop, and it hangs where it is.
+  // A Xenite flier never lands: Land is a stop, and it hangs where it is.
   if (order.kind === "land" && staysAloft(e.type)) {
     stopAircraft(e);
     return;
@@ -608,7 +608,7 @@ export function stopAircraft(e: Entity): void {
   const a = e.air;
   if (!a || a.phase === "crash") return;
   clearGuard(e);
-  // A Xenomorph flier stops dead in the air and hangs there.
+  // A Xenite flier stops dead in the air and hangs there.
   if (staysAloft(e.type) && a.phase !== "parked") {
     e.order = null;
     e.attackTarget = null;
@@ -644,7 +644,7 @@ export function tickAir(state: MatchState, dt: number): void {
       servicePad(state, e, dt);
       continue;
     }
-    // A Xenomorph flier runs on the hive: its tank never empties.
+    // A Xenite flier runs on the hive: its tank never empties.
     if (staysAloft(e.type)) a.fuel = airFuelOf(e.type);
     else a.fuel = Math.max(0, a.fuel - dt);
     if (isHoverType(e.type) || staysAloft(e.type)) tickHover(state, e, dt);
@@ -1354,7 +1354,7 @@ function detonateBomb(state: MatchState, p: Projectile): void {
   if (isTree(state, tx, ty)) fellTreeAt(state, tx, ty);
   const radius = BOMB_SPLASH_TILES * ts;
   const direct = BOMB_DIRECT_TILES * ts;
-  // A Xenomorph bomb was laid at its lighter damage: the whole burst scales with it.
+  // A Xenite bomb was laid at its lighter damage: the whole burst scales with it.
   const mul = p.damage / BOMB_DAMAGE;
   let killed = false;
   const soaked = new Set<number>();
@@ -1754,13 +1754,13 @@ function tickLanding(state: MatchState, e: Entity, dt: number): void {
 const HOVER_CLEAR_ALT = 3;
 
 /**
- * Hover flight: the Overseer, the Drifter, and every Xenomorph flier (staysAloft). No strip and
+ * Hover flight: the Overseer, the Drifter, and every Xenite flier (staysAloft). No strip and
  * no turning circle: it lifts straight up, flies straight at where it is going, slows onto the
  * spot and hangs there. The Overseer and the Drifter, sent at something on the ground, hang
  * over it at OVERSEER_HOVER_ALT, follow it, and burn down on it (firePulse); the Drifter sets
  * straight back down on its nest. A Wasp or a Scourge hangs a few cells off its target, turned
  * on it, and fires from there (waspStation, scourgeStation); a Gnat hangs over what it watches.
- * A Xenomorph flier never lands.
+ * A Xenite flier never lands.
  */
 function tickHover(state: MatchState, e: Entity, dt: number): void {
   const a = e.air!;

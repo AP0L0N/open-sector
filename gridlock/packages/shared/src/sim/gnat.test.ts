@@ -69,7 +69,7 @@ function flyingSight(type: (typeof TRAIN_TYPES)[number]): number {
 }
 
 describe("Gnat", () => {
-  it("is an unarmed Xenomorph recon flyer grown at the Aerie with no tech to wait on", () => {
+  it("is an unarmed Xenite recon flyer grown at the Aerie with no tech to wait on", () => {
     assert.ok(TRAIN_TYPES.includes("gnat"));
     assert.equal(factionOf("gnat"), "xeno");
     assert.equal(producerType("gnat"), "aerie");

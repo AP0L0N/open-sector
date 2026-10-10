@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Plasma scorch: the mark a Xenomorph energy round leaves on the ground in place of a
+Plasma scorch: the mark a Xenite energy round leaves on the ground in place of a
 shell crater. Nothing is dug out. The heat fuses a glassy core of slag with a
 faint green sheen and fine crazing, chars a ring of soil black around it, and
 throws soot fingers and grey ash out past the ring, breaking up into whatever

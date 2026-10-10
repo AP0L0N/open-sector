@@ -84,7 +84,7 @@ function unpack(state: MatchState, pid: string): void {
 }
 
 describe("factions in the catalog", () => {
-  it("gives the Xenomorphs their foot soldiers and their own base, the Conversion Chamber in place of the Central", () => {
+  it("gives the Xenite their foot soldiers and their own base, the Conversion Chamber in place of the Central", () => {
     assert.deepEqual(
       [...XENO_TYPES].sort(),
       [
@@ -124,7 +124,7 @@ describe("factions in the catalog", () => {
       ],
     );
     for (const t of ["rig", "core", "dynamo", "smelter", "rifleman", "ss3", "muster", "sandbags", "cyborg", "cyborgcommander"]) assert.equal(factionOf(t), "alliance", t);
-    // The Cyborg Central is the Alliance's alone; the Xenomorphs raise their infantry in the Conversion Chamber.
+    // The Cyborg Central is the Alliance's alone; the Xenite raise their infantry in the Conversion Chamber.
     assert.deepEqual([...SHARED_TYPES], []);
     assert.ok(inFaction("cyborgcentral", "alliance") && !inFaction("cyborgcentral", "xeno"));
     assert.ok(inFaction("conversion", "xeno") && !inFaction("conversion", "alliance") && !inFaction("conversion", "bloom"));
@@ -139,7 +139,7 @@ describe("factions in the catalog", () => {
     assert.ok(!onUplink("cyborgcommander"));
   });
 
-  it("names the Xenomorph base and keeps its roles beside the Alliance's", () => {
+  it("names the Xenite base and keeps its roles beside the Alliance's", () => {
     assert.equal(catalog("seed").name, "Deployment");
     assert.equal(catalog("hivecore").name, "Hive Core");
     assert.equal(catalog("fusionnode").name, "Fusion Node");
@@ -153,7 +153,7 @@ describe("factions in the catalog", () => {
   });
 });
 
-describe("a Xenomorph seat", () => {
+describe("a Xenite seat", () => {
   it("starts with a Deployment and sees its faction in the snapshot", () => {
     const state = match();
     assert.equal(hqOf(state, "A")!.type, "rig");
@@ -213,7 +213,7 @@ describe("a Xenomorph seat", () => {
     assert.equal(state.players.get("B")!.alive, false);
   });
 
-  it("builds only Xenomorph structures, and Alliance only its own", () => {
+  it("builds only Xenite structures, and Alliance only its own", () => {
     const state = match();
     unpack(state, "A");
     unpack(state, "B");
@@ -255,7 +255,7 @@ describe("a Xenomorph seat", () => {
     assert.equal(eu.ok, false);
   });
 
-  it("builds the Alliance a Cyborg Central for its Cyborg and Commander, and no Xenomorph cyborg", () => {
+  it("builds the Alliance a Cyborg Central for its Cyborg and Commander, and no Xenite cyborg", () => {
     const state = match();
     unpack(state, "A");
     const ts = state.tileSize;
@@ -358,7 +358,7 @@ describe("a Xenomorph seat", () => {
     assert.equal(fight(false), catalog("rifleman").hp, "an unpowered turret stays silent");
   });
 
-  it("never lets a Xenomorph unit run dry, with no Forge, truck, or pad anywhere", () => {
+  it("never lets a Xenite unit run dry, with no Forge, truck, or pad anywhere", () => {
     const state = openField();
     const ts = state.tileSize;
     const stalker = makeEntity(state, "stalker", "B", tileCenter(180, ts), tileCenter(160, ts));
@@ -380,7 +380,7 @@ describe("a Xenomorph seat", () => {
     assert.equal((tiger.ammo.ap ?? 0) + (tiger.ammo.he ?? 0), 0, "an Alliance rack still waits for a truck");
   });
 
-  it("lands lighter hits from Xenomorph weapons than from the same weapon on Alliance", () => {
+  it("lands lighter hits from Xenite weapons than from the same weapon on Alliance", () => {
     assert.equal(factionDamage("xenodrone", RIFLE.damage), Math.max(1, Math.round(RIFLE.damage * XENO_DAMAGE_MUL)));
     assert.ok(factionDamage("leech", 13) < 13);
     assert.equal(factionDamage("rifleman", RIFLE.damage), RIFLE.damage);
@@ -397,7 +397,7 @@ describe("a Xenomorph seat", () => {
       return push(...ps);
     };
     for (let i = 0; i < 200 && shot == null; i++) step(state, TICK_DT);
-    assert.equal(shot, factionDamage("xenodrone", RIFLE.damage), "the drone's round leaves at the Xenomorph damage");
+    assert.equal(shot, factionDamage("xenodrone", RIFLE.damage), "the drone's round leaves at the Xenite damage");
   });
 
   it("grows ships at a Spawning Pool and fliers at an Aerie, which lift straight out of it", () => {
@@ -433,7 +433,7 @@ describe("a Xenomorph seat", () => {
     if (!ship.ok) assert.equal(ship.message, "Need a Spawning Pool.");
   });
 
-  it("flags every Xenomorph shot and hit as energy, and no Alliance one", () => {
+  it("flags every Xenite shot and hit as energy, and no Alliance one", () => {
     const state = openField();
     const ts = state.tileSize;
     makeEntity(state, "xenodrone", "B", tileCenter(120, ts), tileCenter(120, ts));
@@ -456,7 +456,7 @@ describe("a Xenomorph seat", () => {
     assert.ok(euHit, "the rifleman fired too");
   });
 
-  it("lets the host seat a Xenomorph CPU, and refuses an unknown faction", () => {
+  it("lets the host seat a Xenite CPU, and refuses an unknown faction", () => {
     const r = createRoom({ id: "FX2", hostId: "A", hostName: "Alpha", mapId: "yard-64", maxSlots: 8 });
     if (!r.ok) throw new Error(r.message);
     const room = r.value;

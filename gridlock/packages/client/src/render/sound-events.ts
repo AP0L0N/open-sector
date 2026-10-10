@@ -611,7 +611,7 @@ export function impactSound(i: MatchSnapshot["impacts"][number]): ImpactSound | 
   if (i.splash || i.torpedo) return i.torpedo ? "explosion_large" : "splash";
   if (i.blast || i.bomb) return "explosion_large";
   if (i.kind === "kill" && isShell(i.caliber)) return "explosion_large";
-  // A Xenomorph bolt lands as light: a plasma burst for a cannon or a lance, a zap for the small pulses
+  // A Xenite bolt lands as light: a plasma burst for a cannon or a lance, a zap for the small pulses
   // (one in four of a stream, or a repeater would drown out the fight).
   if (i.energy) {
     if (i.rocket || i.heBurst || isShell(i.caliber)) return "energy_burst";

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Behemoth: Xenomorph heavy assault walker, Jagdtiger / Apocalypse class. Three 16-face layers.
+"""Behemoth: Xenite heavy assault walker, Jagdtiger / Apocalypse class. Three 16-face layers.
 
 A big six-legged carapace under a wide turret with twin disruptor barrels.
 Cold grey-green alloy, dark chitin, the Seed's glow (xeno_walker.py). The

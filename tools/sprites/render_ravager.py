@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ravager: fast Xenomorph anti-infantry walker, Feuerwirbel class. Three 16-face layers.
+"""Ravager: fast Xenite anti-infantry walker, Feuerwirbel class. Three 16-face layers.
 
 A low raptor-like hull on four back-bent legs with a flame nozzle under the
 jaw (the hull flamer) fed from two glowing fuel pods, and a small turret

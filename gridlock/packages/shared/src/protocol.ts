@@ -61,7 +61,7 @@ export interface Slot {
   ready: boolean;
   /** Set when status is ai. */
   ai?: AiDifficulty;
-  /** Alliance or Xenomorph. Missing reads as Alliance. */
+  /** Alliance or Xenite. Missing reads as Alliance. */
   faction?: Faction;
 }
 
@@ -288,7 +288,7 @@ export interface EntityView {
   dive?: { air: number; airMax: number; winded?: boolean };
   /** Titan outriggers down: stationary, braced max HP. Omitted when false. */
   braced?: boolean;
-  /** Xenomorph Deployment: the drop zone its leash runs round. Friendly-only. */
+  /** Xenite Deployment: the drop zone its leash runs round. Friendly-only. */
   anchor?: { x: number; y: number };
   /** Seconds until the Titan's pods can fire the next rocket. Friendly snapshots; omitted when ready. */
   rocketReload?: number;
@@ -457,7 +457,7 @@ export interface YouState {
   used: number;
   lowPower: boolean;
   /**
-   * Xenomorph hive energy (sim/hive-energy.ts), shown where scrap is for the other sides: what the
+   * Xenite hive energy (sim/hive-energy.ts), shown where scrap is for the other sides: what the
    * Hive Core and Fusion Nodes hold, what units, defences, and jobs take, and how many sit offline.
    * Omitted for sides that pay scrap.
    */
@@ -532,7 +532,7 @@ export interface ProjectileView {
   y: number;
   vx: number;
   vy: number;
-  /** Fired by the Xenomorphs: drawn and heard as an energy bolt, pulse, or plasma shot. The sim treats it as its round kind. */
+  /** Fired by the Xenite: drawn and heard as an energy bolt, pulse, or plasma shot. The sim treats it as its round kind. */
   energy?: true;
   caliber: number;
   fromId: number;
@@ -592,7 +592,7 @@ export interface ImpactView {
   id: number;
   ownerId: string;
   kind: ImpactKind;
-  /** Landed by a Xenomorph weapon: an energy burst rather than a bullet strike or a shell blast. */
+  /** Landed by a Xenite weapon: an energy burst rather than a bullet strike or a shell blast. */
   energy?: true;
   x: number;
   y: number;
@@ -702,7 +702,7 @@ export interface CorpseView {
   burned?: true;
 }
 
-/** Persistent crater from a heavy shell on dirt, or the scorch a Xenomorph energy round leaves instead. */
+/** Persistent crater from a heavy shell on dirt, or the scorch a Xenite energy round leaves instead. */
 export interface ShellHoleView {
   id: number;
   x: number;

@@ -483,7 +483,7 @@ describe("research gate", () => {
     for (const unit of gated.filter((u) => producerType(u) !== "dock" && producerType(u) !== "airfield")) {
       const r = applyCommand(state, "A", { type: "cmd.train", unit });
       assert.equal(r.ok, false, unit);
-      // The Xenomorph units are not the Alliance's to train at all; its own cyborgs want a Cyborg Central.
+      // The Xenite units are not the Alliance's to train at all; its own cyborgs want a Cyborg Central.
       const want = factionOf(unit) === "xeno" ? "Not available to your faction." : unit === "cyborg" || unit === "cyborgcommander" ? "Need a Cyborg Central." : "Need a Research Facility.";
       if (!r.ok) assert.equal(r.message, want, unit);
     }

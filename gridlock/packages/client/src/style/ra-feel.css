@@ -437,7 +437,7 @@ input[type="range"] { padding: 0; }
   100% { color: var(--amber); }
 }
 #hud-scrap.scrap-denied b { color: var(--danger); }
-/* The Xenomorph hive's energy, where scrap sits for the other sides: a bar like a Cyborg Commander's field. */
+/* The Xenite hive's energy, where scrap sits for the other sides: a bar like a Cyborg Commander's field. */
 #hud-scrap .energy-bar {
   display: inline-block;
   vertical-align: middle;

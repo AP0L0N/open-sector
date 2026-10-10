@@ -13,7 +13,7 @@
 
 /** A burning-fuel particle. World ground point, `h` screen pixels above the ground. */
 export interface FlameParticle {
-  /** Thrown by a Xenomorph plasma jet: drawn green, and it leaves no soot. */
+  /** Thrown by a Xenite plasma jet: drawn green, and it leaves no soot. */
   energy?: boolean;
   x: number;
   y: number;

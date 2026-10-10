@@ -6,7 +6,7 @@ import { powerOf, productionSpeed } from "./power.js";
 import type { Entity, MatchState, SimPlayer } from "./types.js";
 
 /**
- * Hive energy. The Xenomorphs pay no scrap and draw no power. Their Hive Core holds
+ * Hive energy. The Xenite pay no scrap and draw no power. Their Hive Core holds
  * HIVE_CORE_ENERGY and each standing Fusion Node FUSION_NODE_ENERGY more. Every unit, defence, and
  * base structure takes its catalog `energy` while it stands, a Laser Fence post more for each link
  * it holds. The HUD counts down from the full store: 200 / 200 with a bare Hive Core, less for each
@@ -113,7 +113,7 @@ export function hiveSpeed(cap: number, used: number): number {
   return Math.max(LOW_POWER_MIN_SPEED, cap / used);
 }
 
-/** Pace of `playerId`'s yard and factories: the hive's energy for the Xenomorphs, power for everyone else. */
+/** Pace of `playerId`'s yard and factories: the hive's energy for the Xenite, power for everyone else. */
 export function jobSpeed(state: MatchState, playerId: string): number {
   if (usesHiveEnergy(state.players.get(playerId)?.faction)) {
     const { cap, used } = hiveEnergyOf(state, playerId);
@@ -123,7 +123,7 @@ export function jobSpeed(state: MatchState, playerId: string): number {
   return productionSpeed(pow.provided, pow.used);
 }
 
-/** What a job of `p`'s costs: scrap for everyone else; nothing for the Xenomorphs, who pay in energy once it stands. */
+/** What a job of `p`'s costs: scrap for everyone else; nothing for the Xenite, who pay in energy once it stands. */
 export function jobBill(p: SimPlayer, scrapCost: number): number {
   return usesHiveEnergy(p.faction) ? 0 : scrapCost;
 }

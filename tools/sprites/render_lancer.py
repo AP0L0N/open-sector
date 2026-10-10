@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Xenomorph Lancer unit sheets — anti-armour cyborg on the Cyborg's lock.
+Xenite Lancer unit sheets — anti-armour cyborg on the Cyborg's lock.
 
 Same camera, cell, contact points, and row order as render_cyborg.py (and the
-Xenomorph Drone in render_xenodrone.py, whose palette and helpers it shares), so the
+Xenite Drone in render_xenodrone.py, whose palette and helpers it shares), so the
 client reuses the Cyborg's sprite defs with new file names. Upright and broad:
 big chitin pauldrons rimmed in pale steel, grey-green alloy limbs, a narrow
 green visor slit and a targeting monocle on the right, a sickly green capacitor
@@ -34,7 +34,7 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.dont_write_bytecode = True
-import render_xenodrone as B  # noqa: E402  (registers the Xenomorph palette on render_cyborg)
+import render_xenodrone as B  # noqa: E402  (registers the Xenite palette on render_cyborg)
 
 R = B.R
 CELL = B.CELL

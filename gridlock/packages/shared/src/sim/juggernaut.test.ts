@@ -32,7 +32,7 @@ import { snapshotFor } from "./snapshot.js";
 import { oneAtATimeTaken } from "./train.js";
 import type { Entity, MatchState } from "./types.js";
 
-/** A is Alliance, B the Xenomorphs, on bare flat ground, nothing but what a test places. */
+/** A is Alliance, B the Xenite, on bare flat ground, nothing but what a test places. */
 function field(): MatchState {
   const r = createRoom({ id: "JUG", hostId: "A", hostName: "Alpha", mapId: "yard-64", maxSlots: 8 });
   if (!r.ok) throw new Error(r.message);
@@ -65,7 +65,7 @@ function at(state: MatchState, type: Parameters<typeof makeEntity>[1], owner: st
 }
 
 describe("Juggernaut", () => {
-  it("is a Xenomorph melee giant from the Forge, plated, not a soldier", () => {
+  it("is a Xenite melee giant from the Forge, plated, not a soldier", () => {
     const def = catalog("juggernaut");
     assert.equal(def.kind, "unit");
     assert.equal(meleeOf("juggernaut"), true);

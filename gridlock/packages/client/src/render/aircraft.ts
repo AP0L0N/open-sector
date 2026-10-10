@@ -20,12 +20,12 @@ export function lerpAirAlt(prev: EntityView | undefined, curr: EntityView, t: nu
   return b + (a - b) * u;
 }
 
-/** Seconds of one slow rise and fall of a hovering Xenomorph flier, and its height in screen pixels. */
+/** Seconds of one slow rise and fall of a hovering Xenite flier, and its height in screen pixels. */
 export const HOVER_BOB_SECONDS = 1.8;
 export const HOVER_BOB_PX = 1.6;
 
 /**
- * Screen pixels a Xenomorph flier (staysAloft) bobs above its height while it hangs in the air:
+ * Screen pixels a Xenite flier (staysAloft) bobs above its height while it hangs in the air:
  * a slow rise and fall, out of step between fliers. 0 for anything else, on the ground, or going down.
  */
 export function hoverBobPx(e: Pick<EntityView, "type" | "id" | "air" | "wreck">, nowMs: number): number {
@@ -35,7 +35,7 @@ export function hoverBobPx(e: Pick<EntityView, "type" | "id" | "air" | "wreck">,
   return Math.sin((nowMs / 1000 / HOVER_BOB_SECONDS) * Math.PI * 2 + e.id * 1.3) * HOVER_BOB_PX * fade;
 }
 
-/** Which wing stroke a Xenomorph insect shows now: its wings beat all the time, out of step between fliers. */
+/** Which wing stroke a Xenite insect shows now: its wings beat all the time, out of step between fliers. */
 export function wingBeatFrame(id: number, fps: number, frames: number, nowMs: number): number {
   return Math.floor((nowMs / 1000) * fps + id * 1.37) % frames;
 }

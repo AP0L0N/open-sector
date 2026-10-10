@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Xenomorph Thrall unit sheets — melee brute cyborg on the Cyborg's lock.
+Xenite Thrall unit sheets — melee brute cyborg on the Cyborg's lock.
 
 A fork of render_simunit2.py by way of render_xenodrone.py: the Cyborg's camera,
 cell, contact points, and row order, so the client reuses the Cyborg's sprite
-defs with new file names, and the Xenomorph helpers from the Drone. The Drone's
-materials are recoloured here (this process only) to the Xenomorphs' blue-ish
+defs with new file names, and the Xenite helpers from the Drone. The Drone's
+materials are recoloured here (this process only) to the Xenite's blue-ish
 in-game look of the Seed / Cyborg Central / Fusion Node: blue-steel plating,
 a dark blue under-structure, cyan optic and seams with a darker cyan edge.
 A hulking assimilated body: a barrel chest, a chitin hump on the
@@ -41,7 +41,7 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.dont_write_bytecode = True
-import render_xenodrone as B  # noqa: E402  (registers the Xenomorph palette on render_cyborg)
+import render_xenodrone as B  # noqa: E402  (registers the Xenite palette on render_cyborg)
 
 R = B.R
 CELL = B.CELL
@@ -51,7 +51,7 @@ ellipsoid, capsule, cylinder, box = R.ellipsoid, R.capsule, R.cylinder, R.box
 rot_x, rot_y, rot_z = R.rot_x, R.rot_y, R.rot_z
 along, cable = B.along, B.cable
 
-# The Thrall wears the Xenomorphs' blue-ish in-game look (the Seed / Cyborg Central /
+# The Thrall wears the Xenite's blue-ish in-game look (the Seed / Cyborg Central /
 # Fusion Node): cool blue-steel plating on a dark blue under-structure, cyan
 # optic and seams. Recoloured in this process only; the Drone and the Lancer
 # keep their own sheets.

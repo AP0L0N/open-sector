@@ -1,5 +1,5 @@
 /**
- * Recoil on the crewless Xenomorph guns (Spine Turret, Pulse Spire). Their gun sheets carry the
+ * Recoil on the crewless Xenite guns (Spine Turret, Pulse Spire). Their gun sheets carry the
  * recoil frames as columns (tools/sprites/render_xeno_guns.py): column 0 at rest, then one column
  * per barrel with that barrel slid back. Each shot kicks the next barrel in turn, so the Spine
  * Turret's two needles slide back one after the other.

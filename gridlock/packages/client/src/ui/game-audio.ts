@@ -27,7 +27,7 @@ const UI_VOLUME = 0.5;
 
 /** Units that speak and fire with another's takes until they have their own. */
 const BORROWED_AUDIO: Partial<Record<string, string>> = {
-  // The Hive Ark: the Xenomorph sea voice and the Leech's plasma cannon.
+  // The Hive Ark: the Xenite sea voice and the Leech's plasma cannon.
   hiveark: "leech",
 };
 
@@ -99,7 +99,7 @@ const ANNOUNCE_GAP_MS: Record<string, number> = {
 const lastAnnounce = new Map<string, number>();
 const queue: string[] = [];
 let announcing = false;
-/** Xenomorph commanders hear the Hive Mind (announcer-xeno/); a line it lacks falls back to Battle Control. */
+/** Xenite commanders hear the Hive Mind (announcer-xeno/); a line it lacks falls back to Battle Control. */
 let announcerFolders: readonly string[] = ["announcer"];
 
 export function setAnnouncerFaction(faction: Faction): void {

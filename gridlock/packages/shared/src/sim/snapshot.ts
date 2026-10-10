@@ -852,7 +852,7 @@ function visibleBodies(state: MatchState, youPlayerId: string, vis: Uint8Array):
   return bodies;
 }
 
-/** Every Xenomorph weapon is an energy weapon: their shots and hits go out flagged so the client draws and voices them that way. */
+/** Every Xenite weapon is an energy weapon: their shots and hits go out flagged so the client draws and voices them that way. */
 function energyShot(state: MatchState, ownerId: string): boolean {
   return energyRound(state, ownerId);
 }

@@ -1,5 +1,5 @@
 /**
- * What a Xenomorph energy round leaves where it lands. On dirt the sim lays a
+ * What a Xenite energy round leaves where it lands. On dirt the sim lays a
  * scorch (a `ShellHoleView` with `scorch` set) in place of a crater: the fused
  * core glows as it cools for a few seconds. On water nothing is thrown up in a
  * column: the bolt flashes on the surface, flash-boils a ring of bubbles, and
@@ -66,7 +66,7 @@ export function scorchHeat(ageMs: number): number {
 }
 
 /**
- * A Xenomorph energy round strikes water at screen (x, y). `t` runs 0–1 over
+ * A Xenite energy round strikes water at screen (x, y). `t` runs 0–1 over
  * plasmaSteamMs. Flash and reflection, a boiling ring, hiss ripples, a few
  * spat droplets, then the steam plume.
  */

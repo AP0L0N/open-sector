@@ -950,7 +950,7 @@ export function bindTurntableSheets(
 export { TIGER_OPTS };
 
 
-/** The Xenomorph planes (tools/sprites/render_xeno_air.py): one hull sheet each, the Stuka's fit. */
+/** The Xenite planes (tools/sprites/render_xeno_air.py): one hull sheet each, the Stuka's fit. */
 const planeHullGlobs = {
   wasp: import.meta.glob("../assets/units/wasp/hull/*.png", { eager: true, import: "default" }) as Record<string, string>,
   scourge: import.meta.glob("../assets/units/scourge/hull/*.png", { eager: true, import: "default" }) as Record<string, string>,
@@ -966,7 +966,7 @@ const planeHullGlobs = {
 
 const planePrevious = new Map<keyof typeof planeHullGlobs, ComposedTurntable>();
 
-/** The wing strokes of the Xenomorph insects (render_xeno_air.py): the hull is the mid stroke. */
+/** The wing strokes of the Xenite insects (render_xeno_air.py): the hull is the mid stroke. */
 const wingStrokeGlobs = {
   wasp: {
     up: import.meta.glob("../assets/units/wasp/wingup/*.png", { eager: true, import: "default" }) as Record<string, string>,
@@ -988,7 +988,7 @@ export const FLUTTER_FRAMES = 4;
 const flutterPrevious = new Map<keyof typeof wingStrokeGlobs, string>();
 
 /**
- * A Xenomorph insect's flutter sheet: the hull and both wing strokes fitted in one box (the body
+ * A Xenite insect's flutter sheet: the hull and both wing strokes fitted in one box (the body
  * sits on the same pixels in all three), laid out as FLUTTER_FRAMES columns of 16 rows.
  */
 export function bindFlutterSheets(kind: keyof typeof wingStrokeGlobs, hullImage: HTMLImageElement): void {

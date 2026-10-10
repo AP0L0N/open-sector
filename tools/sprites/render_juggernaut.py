@@ -3,7 +3,7 @@
 Juggernaut unit sheets: a giant of the hive with a two-handed hammer.
 
 The Cyborg's camera, outline, and point-cloud rasterizer (render_cyborg.py), the
-Xenomorph Drone's palette (cold grey-green alloy, dark chitin, lit green conduits), on
+Xenite Drone's palette (cold grey-green alloy, dark chitin, lit green conduits), on
 the Titan's 192 cell. One model, 16 unique yaws, no mirroring, one scale on every
 sheet so nothing pops when the client swaps sheets. Team tint lands on the grey
 pauldron caps.

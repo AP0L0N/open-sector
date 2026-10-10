@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Xenomorph aircraft: the Wasp (fighter), the Scourge (dive bomber), the Gnat (spy drone), and the Overseer (hover craft). One 16-face hull each.
+"""Xenite aircraft: the Wasp (fighter), the Scourge (dive bomber), the Gnat (spy drone), and the Overseer (hover craft). One 16-face hull each.
 
-The Xenomorph answer to the Fw 190 and the Stuka (render_procedural.py), under
+The Xenite answer to the Fw 190 and the Stuka (render_procedural.py), under
 their lock: same numpy rasterizer, camera, light, outline, 0.062 px-per-meter
 share of the 256 source cell (the Stuka's), face order, composed to the 128
 cell at runtime with STUKA_OPTS (contactY 0.8, padding 2). The look is the
-Xenomorph walkers' (xeno_walker.py): cold grey-green alloy plates, dark chitin,
+Xenite walkers' (xeno_walker.py): cold grey-green alloy plates, dark chitin,
 sickly green glow, gray team plate on the back; the wings are a pale green
 membrane, translucent, with chitin spars and glowing veins.
 

@@ -93,7 +93,7 @@ function balls(state: MatchState, arkId: number): Projectile[] {
 }
 
 describe("Hive Ark catalog", () => {
-  it("is a Xenomorph hull grown at the Spawning Pool with a Neural Nexus, and leaves a hulk", () => {
+  it("is a Xenite hull grown at the Spawning Pool with a Neural Nexus, and leaves a hulk", () => {
     assert.ok(TRAIN_TYPES.includes("hiveark"));
     assert.equal(catalog("hiveark").name, "Hive Ark");
     assert.equal(factionOf("hiveark"), "xeno");

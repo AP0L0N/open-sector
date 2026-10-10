@@ -382,7 +382,7 @@ export interface Entity {
   queue: TrainJob[];
   /** Producer rally point. New units walk here on spawn. Unset means stay at the door. */
   rally?: Vec;
-  /** Xenomorph Deployment: the drop zone it was set down on. It keeps within DEPLOYMENT_LEASH_TILES of it. */
+  /** Xenite Deployment: the drop zone it was set down on. It keeps within DEPLOYMENT_LEASH_TILES of it. */
   anchor?: Vec;
   /**
    * Still loitering with the units that came out this door. A player order
@@ -581,7 +581,7 @@ export interface Entity {
    */
   shutdown?: true;
   /**
-   * Xenomorph unit or defence the hive has no energy for (sim/hive-energy.ts): a unit is also
+   * Xenite unit or defence the hive has no energy for (sim/hive-energy.ts): a unit is also
    * `shutdown`, a building `unpowered`. It wakes by itself once the hive has room for it.
    */
   hiveOffline?: true;
@@ -1042,7 +1042,7 @@ export interface SimPlayer {
   scrapCarry: number;
   /** Sim tick this side's Cyborgs lost their link (no powered Cyborg Central, no living Commander). Absent while linked. */
   cyborgLinkLostTick?: number;
-  /** Xenomorph hive: the sim tick before which no further unit or defence goes offline or wakes (sim/hive-energy.ts). */
+  /** Xenite hive: the sim tick before which no further unit or defence goes offline or wakes (sim/hive-energy.ts). */
   hiveSwitchTick?: number;
   /** The seat's faction. Missing reads as Alliance (old saves, hand-built test players). */
   faction?: Faction;

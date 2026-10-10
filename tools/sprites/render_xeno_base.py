@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Xenomorph base buildings: Hive Core, Fusion Node, Assimilator, Conversion Chamber,
+"""Xenite base buildings: Hive Core, Fusion Node, Assimilator, Conversion Chamber,
 Nanite Forge, Neural Nexus, Aerie.
 
 Each writes <id>.png, <id>-cameo.png (96 px), and <id>.json (pad metrics plus
 glow spots, source px in the image frame) into the buildings asset folder.
 
-  hivecore     t(3) x t(3)  the Xenomorph HQ: a ribbed hive dome in a crown of
+  hivecore     t(3) x t(3)  the Xenite HQ: a ribbed hive dome in a crown of
                             ringed spines, a great glowing iris on its face
   fusionnode   t(2) x t(2)  power: two coil spires on a plinth, a plasma
                             core held between their tips over a glowing well
@@ -26,7 +26,7 @@ glow spots, source px in the image frame) into the buildings asset folder.
 
 Look: forked from render_cyborgcentral.py, so the inked structure style of
 render_airfield.py (mesh, raster, ink, silhouette, key light, cast shadow),
-the same gunmetal palette family and the same concrete pad. The Xenomorph glow is
+the same gunmetal palette family and the same concrete pad. The Xenite glow is
 cyan-green, as on the Seed (render_seed.py). Pad scale matches the shipped
 sheets: a t(3) footprint at zoom 2 and a t(2) at zoom 3 both give a 384 px
 pad, like core.png, smelter.png, and dynamo.png.

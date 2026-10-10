@@ -8,9 +8,9 @@ import { JUGGERNAUT_FIST_SECONDS, JUGGERNAUT_HAMMER_SECONDS } from "@gridlock/sh
 export type JuggernautSheet = "walk" | "swing" | "fists" | "punch" | "throw" | "ram" | "ramhit";
 
 /** World px it covers in one 8-frame stride (two steps): a giant's step is long. */
-export const JUGGERNAUT_STRIDE_WORLD = 36;
+export const JUGGERNAUT_STRIDE_WORLD = 45;
 /** The charge's stride: longer, low bounding steps. */
-export const JUGGERNAUT_RAM_STRIDE_WORLD = 52;
+export const JUGGERNAUT_RAM_STRIDE_WORLD = 65;
 /** Game ms the throw sheet plays, four frames. */
 export const JUGGERNAUT_THROW_MS = 640;
 /** Game ms the slam sheet plays: the contact, rocked back, settling, on guard. */

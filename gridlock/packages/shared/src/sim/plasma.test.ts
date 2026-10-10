@@ -11,7 +11,7 @@ import { fireLaser } from "./laser.js";
 import { drawPlasma, plasmaShots, resumeShots } from "./hive-ammo.js";
 import type { EnergyShield, Entity, MatchState } from "./types.js";
 
-/** A is Alliance, B the Xenomorphs, on bare flat ground, nothing but what a test places. */
+/** A is Alliance, B the Xenite, on bare flat ground, nothing but what a test places. */
 function field(): MatchState {
   const r = createRoom({ id: "PLS", hostId: "A", hostName: "Alpha", mapId: "yard-64", maxSlots: 8 });
   if (!r.ok) throw new Error(r.message);
@@ -52,7 +52,7 @@ function still(e: Entity): Entity {
 }
 
 describe("plasma cannon energy cell", () => {
-  it("every Xenomorph plasma cannon carries a cell", () => {
+  it("every Xenite plasma cannon carries a cell", () => {
     for (const t of ["stalker", "ravager", "behemoth", "pulsespire", "leech"] as const) {
       const cell = plasmaCellOf(t);
       assert.ok(cell && cell.shots >= 1 && cell.rechargeSeconds > 0, t);
@@ -185,7 +185,7 @@ describe("plasma cannon energy cell", () => {
 });
 
 describe("plasma and lasers do not ricochet", () => {
-  it("a Xenomorph bolt the plate turns spends itself on it", () => {
+  it("a Xenite bolt the plate turns spends itself on it", () => {
     const state = field();
     const r = at(state, "ravager", "B", 20, 30);
     const tank = still(at(state, "jagdtiger", "A", 25, 30));

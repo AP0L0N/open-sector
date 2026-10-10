@@ -1,7 +1,7 @@
 /**
  * Smelter economy. A Smelter stands on a scrap field and melts it down for the
  * whole match: the field never runs out, and every Smelter adds its own share.
- * The Xenomorph Assimilator is a Smelter in every rule here.
+ * The Xenite Assimilator is a Smelter in every rule here.
  * A Smelter on diamond scrap pours DIAMOND_SCRAP_MUL times the plain rate.
  */
 

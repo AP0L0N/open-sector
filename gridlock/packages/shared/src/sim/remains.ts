@@ -32,12 +32,12 @@ export function shellHoleRadius(caliber: number): number {
   return (caliber / 75) * 14;
 }
 
-/** World-pixel radius of the scorch a Xenomorph energy round of this caliber leaves. */
+/** World-pixel radius of the scorch a Xenite energy round of this caliber leaves. */
 export function plasmaScorchRadius(caliber: number): number {
   return Math.max(PLASMA_SCORCH_MIN_RADIUS, shellHoleRadius(caliber) * PLASMA_SCORCH_SCALE);
 }
 
-/** Every Xenomorph weapon is an energy weapon: bolts, pulses, and plasma, whatever kind of round the sim flies. */
+/** Every Xenite weapon is an energy weapon: bolts, pulses, and plasma, whatever kind of round the sim flies. */
 export function energyRound(state: MatchState, ownerId: string): boolean {
   return state.players.get(ownerId)?.faction === "xeno";
 }
@@ -106,7 +106,7 @@ function scarsGround(kind: ImpactKind): boolean {
 /**
  * Water always splashes (bullets included). Dirt keeps a crater only for a
  * heavy shell that actually struck the ground — not smoke, armor sparks, or
- * a round that stopped on a building. A Xenomorph energy round of any caliber
+ * a round that stopped on a building. A Xenite energy round of any caliber
  * scorches the ground instead (`scorchGround`).
  */
 export function noteImpactSurface(
@@ -180,7 +180,7 @@ function scorchGround(state: MatchState, impact: ImpactView, caliber: number, tx
   igniteAt(state, impact.x, impact.y, impact.ownerId, { radius: fire, life: PLASMA_FIRE_SECONDS });
 }
 
-/** Craters and scorches keep separate budgets, so a Xenomorph rifle line cannot wipe out the shell holes. */
+/** Craters and scorches keep separate budgets, so a Xenite rifle line cannot wipe out the shell holes. */
 function trimHoles(state: MatchState, scorch: boolean, cap: number): void {
   let n = 0;
   for (const h of state.holes) if ((h.scorch === true) === scorch) n++;

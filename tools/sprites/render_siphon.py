@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Siphon: mid-weight Xenomorph drain walker, between the Ravager and the Stalker. Three 16-face layers.
+"""Siphon: mid-weight Xenite drain walker, between the Ravager and the Stalker. Three 16-face layers.
 
 A low hunched four-legged hull (head hung low in front, a drooping abdomen
 behind, high mantis knees) under a bulbous glowing nanite reservoir, the

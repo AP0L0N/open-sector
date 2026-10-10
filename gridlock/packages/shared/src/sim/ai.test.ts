@@ -754,7 +754,7 @@ describe("CPU types", () => {
     }
   });
 
-  it("never plans a Xenomorph building or unit for Alliance", () => {
+  it("never plans a Xenite building or unit for Alliance", () => {
     for (const rows of Object.values(CPU_ARMY)) {
       for (const row of rows) assert.equal(factionOf(row.unit), "alliance", row.unit);
     }
@@ -1421,7 +1421,7 @@ describe("easy CPU at sea", () => {
   });
 });
 
-describe("Xenomorph CPU", () => {
+describe("Xenite CPU", () => {
   function humanVsXeno(): { state: MatchState; aiId: string } {
     const made = createRoom({ id: "AIB", hostId: "A", hostName: "Alpha", mapId: "yard-64", maxSlots: 8 });
     if (!made.ok) throw new Error(made.message);
@@ -1481,7 +1481,7 @@ describe("Xenomorph CPU", () => {
     assert.ok(XENO_ARMY.some((r) => r.unit === central.queue[0]!.type));
   });
 
-  it("lists only Xenomorph units, all from the Conversion Chamber", () => {
+  it("lists only Xenite units, all from the Conversion Chamber", () => {
     for (const row of XENO_ARMY) {
       assert.equal(factionOf(row.unit), "xeno", row.unit);
       assert.equal(producerType(row.unit), "conversion", row.unit);

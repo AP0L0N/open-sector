@@ -26,7 +26,7 @@ import { powerOf } from "./power.js";
 import { snapshotFor } from "./snapshot.js";
 import type { Entity, MatchState } from "./types.js";
 
-/** A is Alliance, B the Xenomorphs, on bare flat ground with B's Seed unpacked into a Hive Core. */
+/** A is Alliance, B the Xenite, on bare flat ground with B's Seed unpacked into a Hive Core. */
 function field(): MatchState {
   const r = createRoom({ id: "HEN", hostId: "A", hostName: "Alpha", mapId: "yard-64", maxSlots: 8 });
   if (!r.ok) throw new Error(r.message);

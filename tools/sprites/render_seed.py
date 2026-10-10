@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Seed: the Xenomorph carrier that unpacks into a Hive Core. One 16-face hull.
+"""Seed: the Xenite carrier that unpacks into a Hive Core. One 16-face hull.
 
-The Xenomorph answer to the Rig (render_rig.py), under the Rig's lock: same numpy
+The Xenite answer to the Rig (render_rig.py), under the Rig's lock: same numpy
 rasterizer (render_procedural), camera, light, outline, model scale, cell 192,
 contactY 0.9, one frame, 16 faces, 72 px cameo from the ESE face.
 
@@ -46,7 +46,7 @@ ENGINE_ORDER = [
     "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
 ]
 
-# Xenomorph materials, added to the shared table: (base rgb, specular, alpha).
+# Xenite materials, added to the shared table: (base rgb, specular, alpha).
 rp.MAT.update(
     {
         "carapace": (rp.hex_rgb("#474e55"), 0.30, 1.0),

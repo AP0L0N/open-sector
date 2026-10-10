@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Xenomorph Weaver unit sheets — an unarmed nanite mender on the Cyborg's lock.
+Xenite Weaver unit sheets — an unarmed nanite mender on the Cyborg's lock.
 
 Same camera, cell, contact points, and row order as render_cyborg.py (and the
-Xenomorph Drone in render_xenodrone.py, whose palette, helpers and runner it
+Xenite Drone in render_xenodrone.py, whose palette, helpers and runner it
 shares), so the client reuses the Cyborg's sprite defs with new file names.
 Slender and upright on long thin legs, so it reads taller than the Drone at the
 Drone's scale. Grey-green alloy over dark chitin, a long crested skull with
@@ -37,7 +37,7 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.dont_write_bytecode = True
-import render_xenodrone as B  # noqa: E402  (registers the Xenomorph palette on render_cyborg)
+import render_xenodrone as B  # noqa: E402  (registers the Xenite palette on render_cyborg)
 
 R = B.R
 CELL = B.CELL

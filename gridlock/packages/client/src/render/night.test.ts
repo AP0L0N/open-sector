@@ -142,7 +142,7 @@ describe("spot beam on the ground", () => {
     assert.ok(last.a < 0.2, "faded at the end of its reach");
   });
 
-  it("sizes a Xenomorph glow to what gives it off", () => {
+  it("sizes a Xenite glow to what gives it off", () => {
     const tile = 8;
     const unit = { kind: "unit", tileW: 1, tileH: 1 };
     const small = xenoGlowRadius(unit, 7, tile);
@@ -158,7 +158,7 @@ describe("spot beam on the ground", () => {
     }
   });
 
-  it("lifts the Xenomorph glow for the shade it lies under, 20% over a lamp", () => {
+  it("lifts the Xenite glow for the shade it lies under, 20% over a lamp", () => {
     assert.equal(XENO_GLOW_BOOST, 1.2);
     assert.equal(xenoGlowUnderShade(0, 0), 1.2, "by day it is only the boost");
     const night = xenoGlowUnderShade(NIGHT_SHADE_MAX, 0.45);

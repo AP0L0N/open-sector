@@ -15,7 +15,7 @@ import { takeDamage } from "./crits.js";
 import type { MatchState } from "./types.js";
 
 /**
- * The Xenomorph Laser Fence. Each post links to its nearest post of the same owner within
+ * The Xenite Laser Fence. Each post links to its nearest post of the same owner within
  * LASER_FENCE_REACH_TILES, and to the nearest one on its far side, so a row of posts is one fence.
  * Each link holds two beams. Nothing is stopped by them: soldiers and hulls walk through, rounds
  * fly through. Any ground unit that is not the hive's burns while it touches a beam. A post short

@@ -342,7 +342,7 @@ function thinkCpu(state: MatchState, p: SimPlayer): void {
 }
 
 /**
- * Xenomorph base: Fusion Node, Conversion Chamber, a second Fusion Node, the Nanite Forge, a pair of
+ * Xenite base: Fusion Node, Conversion Chamber, a second Fusion Node, the Nanite Forge, a pair of
  * Spine Turrets, and later the Neural Nexus and its Pulse Spires. The hive pays no scrap: it raises
  * another Fusion Node whenever its energy runs low (HIVE_ENERGY_LOW).
  */
@@ -356,7 +356,7 @@ const XENO_BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
   { type: "nexus", n: 1 },
   { type: "pulsespire", n: 2 },
 ];
-/** The Xenomorph foot soldiers, from the Conversion Chamber. */
+/** The Xenite foot soldiers, from the Conversion Chamber. */
 export const XENO_ARMY: readonly { unit: TrainType; want: number }[] = [
   { unit: "xenodrone", want: 10 },
   { unit: "thrall", want: 4 },
@@ -366,7 +366,7 @@ export const XENO_ARMY: readonly { unit: TrainType; want: number }[] = [
   { unit: "shade", want: 1 },
   { unit: "simunit2", want: 3 },
 ];
-/** The Xenomorph heavy assimilators, from the Nanite Forge. */
+/** The Xenite heavy assimilators, from the Nanite Forge. */
 export const XENO_HEAVY: readonly { unit: TrainType; want: number }[] = [
   { unit: "stalker", want: 4 },
   { unit: "ravager", want: 2 },
@@ -376,7 +376,7 @@ export const XENO_HEAVY: readonly { unit: TrainType; want: number }[] = [
   { unit: "behemoth", want: 1 },
   { unit: "juggernaut", want: 1 },
 ];
-/** Each Xenomorph factory and the ranks it fills. */
+/** Each Xenite factory and the ranks it fills. */
 const XENO_FACTORIES: readonly { factory: BuildingType; army: readonly { unit: TrainType; want: number }[] }[] = [
   { factory: "conversion", army: XENO_ARMY },
   { factory: "forge", army: XENO_HEAVY },
@@ -418,10 +418,10 @@ export const BLOOM_BEASTS: readonly { unit: TrainType; want: number }[] = [
   { unit: "matriarch", want: 1 },
 ];
 
-/** How a hive-minded CPU (the Xenomorphs, the Bloom) raises its base and fills its ranks. */
+/** How a hive-minded CPU (the Xenite, the Bloom) raises its base and fills its ranks. */
 interface HiveDoctrine {
   power: BuildingType;
-  /** None for the Xenomorphs: they pay no scrap. */
+  /** None for the Xenite: they pay no scrap. */
   smelter?: BuildingType;
   /** Built again while campaigning, so the waves come faster. */
   surge: BuildingType;
@@ -443,7 +443,7 @@ const HIVE_DOCTRINE: Partial<Record<Faction, HiveDoctrine>> = {
 };
 
 /**
- * The hive CPU (the Xenomorphs, the Bloom). No towers, walls, or fleet yet: it raises its base, fills
+ * The hive CPU (the Xenite, the Bloom). No towers, walls, or fleet yet: it raises its base, fills
  * the ranks from its factories, and campaigns once the army stands or the fortify time runs out.
  */
 function thinkHive(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan, hive: HiveDoctrine): void {
@@ -496,7 +496,7 @@ function hiveHasRoom(state: MatchState, p: SimPlayer, energy: number): boolean {
   return hiveFree(state, p) >= energy;
 }
 
-/** Below this much free energy the Xenomorph CPU raises another Fusion Node, up to HIVE_MAX_NODES. */
+/** Below this much free energy the Xenite CPU raises another Fusion Node, up to HIVE_MAX_NODES. */
 const HIVE_ENERGY_LOW = 150;
 const HIVE_MAX_NODES = 10;
 
@@ -1326,7 +1326,7 @@ function scramble(state: MatchState, p: SimPlayer, hq: Entity): void {
   if (ids.length > 0) applyCommand(state, p.playerId, { type: "cmd.attackmove", ids, x: target.x, y: target.y });
 }
 
-/** Every armed dive bomber on its pad, and every idle Xenomorph flier, attack-moves at the point. */
+/** Every armed dive bomber on its pad, and every idle Xenite flier, attack-moves at the point. */
 function sortie(state: MatchState, p: SimPlayer, x: number, y: number): void {
   const ids: number[] = [];
   for (const e of state.entities.values()) {

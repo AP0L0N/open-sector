@@ -454,12 +454,12 @@ function structureReady(m: MatchSnapshot | null | undefined, type: BuildingType 
   return q?.ready === true && q.type === type;
 }
 
-/** Does this match's viewer run on hive energy (the Xenomorphs) instead of scrap and power? */
+/** Does this match's viewer run on hive energy (the Xenite) instead of scrap and power? */
 function hiveHud(m: MatchSnapshot | null | undefined): boolean {
   return !!m?.you.energy || usesHiveEnergy(m ? viewerFaction(m) : undefined);
 }
 
-/** A Xenomorph cameo: priced in hive energy, not scrap; a Fusion Node shows what it adds. */
+/** A Xenite cameo: priced in hive energy, not scrap; a Fusion Node shows what it adds. */
 function hiveCameo(id: string, type: BuildingType | TrainType | YardFieldType, building: boolean): HTMLButtonElement {
   const c = catalog(type);
   const supply = energySupplyOf(type);
@@ -1079,7 +1079,7 @@ const AIR_PHASE_LABEL: Record<NonNullable<EntityView["air"]>["phase"], string> =
 
 /** Phase, and for your own planes fuel, bomb, and belts. A fighter carries no bomb; it counts barrages. */
 function airLine(air: NonNullable<EntityView["air"]>, type: EntityType, energy?: number): string {
-  // A Xenomorph flier runs on the hive: no tank, no rack, no field to go home to. Its weapon's energy cell is all that runs low.
+  // A Xenite flier runs on the hive: no tank, no rack, no field to go home to. Its weapon's energy cell is all that runs low.
   if (staysAloft(type)) {
     const cell = energy != null ? `  ·  energy ${Math.round(energy * 100)}%` : "";
     return `  ·  ${air.phase === "crash" ? "going down" : air.phase === "takeoff" ? "lifting off" : "hovering"}${cell}`;
@@ -2658,7 +2658,7 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       disabled: mines <= 0 || clearing,
     });
   }
-  // A Xenomorph flier never lands: it has no field to return to.
+  // A Xenite flier never lands: it has no field to return to.
   if (units.some((e) => e.air && !e.drone && e.type !== "aswheli" && !staysAloft(e.type) && e.air.phase !== "parked")) {
     out.push({
       slot: "land",

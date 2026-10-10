@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Preview: the Bloom buildings over their Xenomorph equivalents at game scale, footprints outlined.
+"""Preview: the Bloom buildings over their Xenite equivalents at game scale, footprints outlined.
 
 Each sprite is scaled so its pad spans its footprint (32 screen px per tile along the pad's
 half-diagonal, like the client's buildingSpriteDestRect) and drawn with its pad-south point on a
@@ -31,7 +31,7 @@ PAIRS = [
     ("tidewomb", "spawnpool", 2.5, 2.5, False),
     ("roost", "aerie", 7.5, 3.75, True),
 ]
-# Xenomorph buildings whose footprint differs from their Bloom pair's (the Aerie is no longer an airfield).
+# Xenite buildings whose footprint differs from their Bloom pair's (the Aerie is no longer an airfield).
 XENO_FOOT = {"aerie": (3, 3)}
 
 

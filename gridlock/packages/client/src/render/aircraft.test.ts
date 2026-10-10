@@ -66,10 +66,10 @@ describe("aircraft draw", () => {
   });
 });
 
-describe("Xenomorph flier animation", () => {
+describe("Xenite flier animation", () => {
   const flier = (type: EntityView["type"], alt: number): EntityView => ({ ...plane(alt), type });
 
-  it("bobs a hovering Xenomorph flier gently, and nothing else", () => {
+  it("bobs a hovering Xenite flier gently, and nothing else", () => {
     let lo = Infinity;
     let hi = -Infinity;
     for (let t = 0; t < 4000; t += 50) {

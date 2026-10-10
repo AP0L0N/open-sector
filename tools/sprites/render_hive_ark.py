@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Hive Ark: the Xenomorph carrier. A round surfaced hull, two plasma cannons, two Wasp pods.
+"""Hive Ark: the Xenite carrier. A round surfaced hull, two plasma cannons, two Wasp pods.
 
 Same numpy rasterizer, camera, light, and outline as render_battleship.py, and the
-Xenomorph sea look of render_xeno_naval.py (cold grey-green alloy plates, dark
+Xenite sea look of render_xeno_naval.py (cold grey-green alloy plates, dark
 chitin, sickly green glow seams, gray team plate, a green glow in the water).
 
 The ship is two layers that share one camera, scale, and anchor, so the client can
@@ -215,7 +215,7 @@ def merge(*meshes: Mesh) -> Mesh:
 
 
 def write_cameo(out: Path, path: Path) -> None:
-    """72x72 cameo of the whole ship from the south-east face, brightened like the Xenomorph cameos."""
+    """72x72 cameo of the whole ship from the south-east face, brightened like the Xenite cameos."""
     tmp = out / "_cameo"
     whole = merge(build_hull(), *(placed(build_cannon(), at * HULL_R, CANNON_Z) for at in CANNON_AT))
     render_turntable(whole, tmp, "hiveark_whole", "hiveark-whole.json", SCALE_FRAC, 0.0, cy_frac=CY_FRAC, cell=CELL, ss=4, clip_z=0.0)

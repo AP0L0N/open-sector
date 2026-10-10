@@ -690,7 +690,7 @@ function fillPool(c: CanvasRenderingContext2D, p: NightPool, rgb: string, a: num
   c.restore();
 }
 
-/** A live Xenomorph or Bloom unit or structure out in the open: it glows. Not a wreck, a ruin, a passenger, or a burrowed or submerged body. */
+/** A live Xenite or Bloom unit or structure out in the open: it glows. Not a wreck, a ruin, a passenger, or a burrowed or submerged body. */
 function xenoGlows(e: EntityView): boolean {
   if (factionOf(e.type) === "alliance" || e.hp <= 0 || e.wreck || e.ruined) return false;
   if (e.garrisonedIn != null || e.burrow === "down" || e.submerged) return false;
@@ -702,7 +702,7 @@ function workLit(e: EntityView): boolean {
   if (e.kind !== "building" || e.hp <= 0 || e.wreck || e.ruined) return false;
   if (!e.ownerId || e.ownerId === NEUTRAL_OWNER || e.unpowered) return false;
   if (isGarrisonable(e.type)) return false;
-  // The Xenomorphs and the Bloom light nothing.
+  // The Xenite and the Bloom light nothing.
   if (factionOf(e.type) !== "alliance") return false;
   return isHqBuilding(e.type) || (BUILDING_TYPES as readonly string[]).includes(e.type);
 }
@@ -834,9 +834,9 @@ const EXTRUDE: Record<EntityType, number> = {
   ravager: 22,
   siphon: 24,
   assembler: 28,
-  mawcaster: 26,
+  mawcaster: 30,
   behemoth: 46,
-  juggernaut: 44,
+  juggernaut: 55,
   sporepod: 22,
   broodheart: 62,
   lumenbulb: 34,
@@ -1146,7 +1146,7 @@ export class MapView {
   private nightLayer: HTMLCanvasElement | null = null;
   /** Small layer the lamps' warm light is summed and capped on. */
   private lightLayer: HTMLCanvasElement | null = null;
-  /** This frame's Xenomorph glow pools: drawn on the ground, and cut from the night layer. */
+  /** This frame's Xenite glow pools: drawn on the ground, and cut from the night layer. */
   private xenoFrame: NightPool[] = [];
   /** Lamp heading on screen per tower, eased toward the snapshot. */
   private spotShown = new Map<number, number>();
@@ -1218,7 +1218,7 @@ export class MapView {
     torpedo?: boolean;
     /** A Flak 37 shell burst in the air at `z`: the air flash, no ground puff. */
     flak?: boolean;
-    /** A Xenomorph weapon's: drawn as green light. */
+    /** A Xenite weapon's: drawn as green light. */
     energy?: true;
   }[] = [];
   private fxIds = new Set<number>();
@@ -2092,7 +2092,7 @@ export class MapView {
     for (const e of match.entities) {
       if (e.wreck) continue;
       if (factionOf(e.type) === "xeno") {
-        // Every Xenomorph gun fires light: a green bolt from the muzzle to each hit. Lasers, plasma
+        // Every Xenite gun fires light: a green bolt from the muzzle to each hit. Lasers, plasma
         // orbs, torpedoes, and daggers draw themselves elsewhere.
         const shots = byGun.get(e.id)?.filter((i) => !i.rocket && !i.laser && !i.torpedo && !i.mortar && !i.bite && !i.downLaser && i.kind !== "crush" && (i.caliber ?? 0) > 0);
         if (!shots?.length || e.type === "simunit2" || e.type === "thrall" || e.type === "cyborgcommander" || e.type === "juggernaut") continue;
@@ -2260,7 +2260,7 @@ export class MapView {
   }
 
   /**
-   * Where a Xenomorph gun's bolts leave: the Cyborg's arm, a turret's barrel tip out along its traverse,
+   * Where a Xenite gun's bolts leave: the Cyborg's arm, a turret's barrel tip out along its traverse,
    * or the muzzle of a hull, a soldier, or a plane at about the height its sprite carries the gun.
    */
   private energyMuzzleWorld(e: EntityView, toward: { x: number; y: number }): { x: number; y: number; z: number } {
@@ -4227,7 +4227,7 @@ export class MapView {
     }
     if (!e.air && !e.jet && e.chute == null) return 0;
     const t = Math.min(1, (performance.now() - this.snapAt) / 100);
-    // A Xenomorph flier hanging in the air bobs gently on its wings.
+    // A Xenite flier hanging in the air bobs gently on its wings.
     return airLiftPx(lerpAirAlt(this.prevById.get(e.id), e, t)) + hoverBobPx(e, performance.now());
   }
 
@@ -4942,7 +4942,7 @@ export class MapView {
     items.push({ layer: GROUND_DECAL_DRAW_LAYER, z: -Infinity, run: () => drawYardWear(this.ctx, yardWear) });
     // One path under craters and unit blobs, so overlapping shadows don't stack.
     items.push({ layer: HOLE_DRAW_LAYER, z: -Infinity, run: () => drawCastShadows(this.ctx, castShadows) });
-    // The Xenomorph glow lights the ground they stand on: over craters and shadows, under everything that stands.
+    // The Xenite glow lights the ground they stand on: over craters and shadows, under everything that stands.
     const xenoGlow = lampGlow(this.daylight());
     this.xenoFrame = xenoGlow > 0 ? this.xenoPools(w, h) : [];
     if (this.xenoFrame.length) items.push({ layer: HOLE_DRAW_LAYER, z: Infinity, run: () => this.drawXenoGlow(xenoGlow) });
@@ -5294,7 +5294,7 @@ export class MapView {
         lay(e.x + Math.cos(b) * orbit, e.y + Math.sin(b) * orbit, r, 0.8, "work");
       }
     }
-    // The Xenomorph glow, laid this frame under the units (drawXenoGlow); here it only cuts the dark.
+    // The Xenite glow, laid this frame under the units (drawXenoGlow); here it only cuts the dark.
     out.push(...this.xenoFrame);
     // Gate lamps: a small pool off each post, on both sides of the boom.
     const gateSpan = fieldSpan("gate");
@@ -5326,7 +5326,7 @@ export class MapView {
   }
 
   /**
-   * The Xenomorph carry no lamps: every live unit and structure of theirs gives off
+   * The Xenite carry no lamps: every live unit and structure of theirs gives off
    * a blue glow, sized to it, as pools in screen space like nightPools.
    */
   private xenoPools(w: number, h: number): NightPool[] {
@@ -5354,7 +5354,7 @@ export class MapView {
   }
 
   /**
-   * The Xenomorph glow's blue, on the ground under units and structures. The night
+   * The Xenite glow's blue, on the ground under units and structures. The night
    * layer goes over it after, so it is lifted to make up for the shade left there.
    */
   private drawXenoGlow(glow: number): void {
@@ -5557,7 +5557,7 @@ export class MapView {
       }
     }
     ctx.save();
-    // The Xenomorph glow lifts the dark above, but its blue was laid on the ground under the units (drawXenoGlow).
+    // The Xenite glow lifts the dark above, but its blue was laid on the ground under the units (drawXenoGlow).
     const lit = pools.filter((p) => p.kind !== "xeno" && p.kind !== "bloom");
     if (lit.length) this.drawLampLight(lit, glow);
     if (pools.length) {
@@ -8464,7 +8464,7 @@ export class MapView {
       // The plumes flicker whether he hovers or flies.
       frameIndex = Math.floor((performance.now() / 1000) * def.fps + e.id) % def.frames;
     } else if ((def === WASP_SPRITE || def === SCOURGE_SPRITE || def === GNAT_SPRITE) && !e.wreck) {
-      // A Xenomorph insect is always in the air: its wings never stop beating.
+      // A Xenite insect is always in the air: its wings never stop beating.
       frameIndex = wingBeatFrame(e.id, def.fps, def.frames, performance.now());
     }
     ctx.save();
@@ -8837,7 +8837,7 @@ export class MapView {
   private drawHole(hole: ShellHoleView, alpha: number): void {
     const c = this.toScreen(hole.x, hole.y);
     const rx = this.groundSpan(hole.x, hole.y, hole.radius);
-    // A Xenomorph plasma round charred the ground instead: the scorch art, sized so its ring spans the radius.
+    // A Xenite plasma round charred the ground instead: the scorch art, sized so its ring spans the radius.
     const faces = hole.scorch ? SCORCH_FACES : CRATER_FACES;
     const face = faces[(hole.seed >>> 0) % faces.length];
     const sprite = face && face.image.naturalWidth > 0 && face.bowl > 0 ? face : null;
@@ -9909,7 +9909,7 @@ export class MapView {
       drawFlameParticle(ctx, s.x, s.y - p.h, look.r, look.heat, look.alpha);
     }
     if (plasma.length > 0) {
-      // The same fire, turned to the Xenomorphs' green.
+      // The same fire, turned to the Xenite's green.
       ctx.filter = "hue-rotate(115deg) saturate(1.4)";
       for (const p of plasma) {
         const look = flameParticleLook(p, now);
@@ -9991,7 +9991,7 @@ export class MapView {
     const ctx = this.ctx;
     const keep: typeof this.fx = [];
     for (const f of this.fx) {
-      // A Xenomorph round into water throws no column: it flashes, boils the surface, and hisses off steam.
+      // A Xenite round into water throws no column: it flashes, boils the surface, and hisses off steam.
       if (f.energy && f.splash && !f.death && !f.torpedo && (f.kind === "miss" || f.kind === "puff")) {
         const life = plasmaSteamMs(f.caliber);
         const age = now - f.at;
@@ -10005,7 +10005,7 @@ export class MapView {
         drawPlasmaSteam(ctx, s.x, s.y, age / life, f.id, f.caliber);
         continue;
       }
-      // A Xenomorph hit is light, not metal: a green burst in place of dirt, sparks, and fireball.
+      // A Xenite hit is light, not metal: a green burst in place of dirt, sparks, and fireball.
       const energyHit = !!f.energy && !f.death && !f.intercept && f.kind !== "muzzle" && f.kind !== "kill" && !f.splash;
       if (energyHit || (f.energy && f.kind === "muzzle")) {
         const life = f.kind === "muzzle" ? fxLifeMs("muzzle", false) : energyBurstMs(f.caliber);

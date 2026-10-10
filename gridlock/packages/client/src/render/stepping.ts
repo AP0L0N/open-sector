@@ -19,7 +19,7 @@ export function unitStepping(opts: {
   curr: Pos;
 }): boolean {
   const travelled = !!opts.prev && Math.hypot(opts.prev.x - opts.curr.x, opts.prev.y - opts.curr.y) > STEP_MIN_TRAVEL;
-  // Big walkers (the Xenomorph spiders and the Bloom beasts too, and the Mammoth) only stride while the hull really moves, not while turning in place.
+  // Big walkers (the Xenite spiders and the Bloom beasts too, and the Mammoth) only stride while the hull really moves, not while turning in place.
   if (opts.type === "walker" || opts.type === "titan" || opts.type === "mammoth" || opts.type === "stalker" || opts.type === "behemoth" || opts.type === "ravager" || opts.type === "juggernaut" || opts.type === "siphon" || opts.type === "assembler" || opts.type === "mawcaster" || BLOOM_BEASTS.has(opts.type)) return travelled;
   return travelled || opts.state === "move" || !!opts.swimming || opts.state === "build" || opts.state === "repair";
 }

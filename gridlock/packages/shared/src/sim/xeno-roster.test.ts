@@ -52,7 +52,7 @@ import { producerType } from "./train.js";
 import { canSeeEntity } from "./vision.js";
 import type { Entity, MatchState } from "./types.js";
 
-/** A is Alliance, B the Xenomorphs, on bare flat ground, nothing but what a test places. */
+/** A is Alliance, B the Xenite, on bare flat ground, nothing but what a test places. */
 function field(): MatchState {
   const r = createRoom({ id: "XEN", hostId: "A", hostName: "Alpha", mapId: "yard-64", maxSlots: 8 });
   if (!r.ok) throw new Error(r.message);
@@ -101,7 +101,7 @@ function uplink(state: MatchState): void {
 const CYBORGS = ["spitter", "weaver", "shade"] as const;
 const HEAVIES = ["siphon", "assembler", "mawcaster"] as const;
 
-describe("new Xenomorph roster", () => {
+describe("new Xenite roster", () => {
   it("trains the three cyborgs at the Conversion Chamber and the three heavies at the Forge", () => {
     for (const t of CYBORGS) {
       assert.ok(TRAIN_TYPES.includes(t), t);
@@ -120,7 +120,7 @@ describe("new Xenomorph roster", () => {
     assert.ok(techNeeds("assembler").includes("nexus"));
   });
 
-  it("prices hit points inside the band the existing Xenomorph roster already spans", () => {
+  it("prices hit points inside the band the existing Xenite roster already spans", () => {
     const band = (types: readonly EntityType[]) => {
       const r = types.map((t) => catalog(t).hp / catalog(t).cost);
       return [Math.min(...r), Math.max(...r)] as const;
@@ -300,7 +300,7 @@ describe("Shade cloak", () => {
     assert.equal(canSeeEntity(state, "A", shade), true, "an enemy close by");
   });
 
-  it("lands the scoped hit at the Xenomorph share and gives itself away when it shoots", () => {
+  it("lands the scoped hit at the Xenite share and gives itself away when it shoots", () => {
     const state = field();
     uplink(state);
     const shade = at(state, "shade", "B", 20, 30);

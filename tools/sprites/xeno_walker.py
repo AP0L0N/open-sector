@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Shared parts and checks for the Xenomorph heavy assimilators (Stalker, Behemoth, Ravager).
+"""Shared parts and checks for the Xenite heavy assimilators (Stalker, Behemoth, Ravager).
 
 Same numpy rasterizer, camera, light, and outline as render_procedural.py,
-with the Seed's Xenomorph materials and emissive shading (render_seed.py), retuned to
+with the Seed's Xenite materials and emissive shading (render_seed.py), retuned to
 a cold grey-green alloy over dark chitin. Each unit is three passes of one locked
 camera (hull / turret / gun), the Apocalypse's layout, so the client composes
 them with one transform (composeAligned, TIGER_OPTS) and the turret aims on its
@@ -24,7 +24,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 import render_procedural as rp
-import render_seed as rs  # noqa: F401  (Xenomorph materials + emissive shading)
+import render_seed as rs  # noqa: F401  (Xenite materials + emissive shading)
 from render_procedural import Mesh
 from render_seed import ellipsoid, knob, tube
 

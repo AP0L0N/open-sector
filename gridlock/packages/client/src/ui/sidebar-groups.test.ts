@@ -12,7 +12,7 @@ describe("sidebarGroupOf", () => {
     const bloom = Object.values(groupEntries("bloom")).flat();
     const all = Object.values(g).flat();
     const shownYard = YARD_FIELD_TYPES.filter((t) => !isHiddenField(t));
-    // The Assimilator is off the Xenomorph menu for now: the hive pays no scrap.
+    // The Assimilator is off the Xenite menu for now: the hive pays no scrap.
     assert.equal(all.length + xeno.length + bloom.length, BUILDING_TYPES.length + TRAIN_TYPES.length + shownYard.length + SHARED_TYPES.size - 1);
     assert.equal(xeno.some((e) => e.type === "assimilator"), false);
     for (const e of all) assert.equal(factionOf(e.type), "alliance", e.type);
@@ -27,7 +27,7 @@ describe("sidebarGroupOf", () => {
     assert.equal(all.some((e) => e.id === "build-teeth" || e.id === "build-trench"), false);
   });
 
-  it("gives the Xenomorphs their base, defences, cyborgs, and heavy assimilators, and nothing of the Alliance's", () => {
+  it("gives the Xenite their base, defences, cyborgs, and heavy assimilators, and nothing of the Alliance's", () => {
     const g = groupEntries("xeno");
     assert.deepEqual(g.structures.map((e) => e.type).sort(), ["aerie", "conversion", "forge", "fusionnode", "nexus", "spawnpool"]);
     assert.deepEqual(g.defences.map((e) => e.type).sort(), ["laserfence", "pulsespire", "spineturret"]);
@@ -88,14 +88,14 @@ describe("sidebarGroupOf", () => {
     assert.deepEqual(g.naval.map((e) => e.type), ["gunboat", "supplyboat", "submarine", "destroyer", "lst", "battleship"]);
   });
 
-  it("lays the Xenomorph base out as the Alliance's: energy, barracks, factory, air, sea, tech", () => {
+  it("lays the Xenite base out as the Alliance's: energy, barracks, factory, air, sea, tech", () => {
     const xeno = groupEntries("xeno").structures.map((e) => e.type);
     assert.deepEqual(xeno, ["fusionnode", "conversion", "forge", "aerie", "spawnpool", "nexus"]);
     const alliance = groupEntries().structures.map((e) => e.type);
     assert.deepEqual(alliance.slice(0, 4), ["dynamo", "smelter", "muster", "armory"]);
   });
 
-  it("charges the Xenomorphs no scrap: their structures are free, their units and defences take hive energy", () => {
+  it("charges the Xenite no scrap: their structures are free, their units and defences take hive energy", () => {
     for (const x of ["fusionnode", "conversion", "forge", "aerie", "spawnpool", "nexus", "spineturret", "pulsespire", "laserfence"] as const) {
       assert.equal(catalog(x).cost, 0, x);
       assert.equal(catalog(x).power, 0, x);

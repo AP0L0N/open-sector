@@ -2,7 +2,7 @@
 """Shared parts, materials and the bake for the Bloom beasts (render_bloom_beasts.py)
 and the Spore Pod (render_sporepod.py).
 
-The Xenomorph walkers' pipeline (xeno_walker.py): same numpy rasterizer, camera, light and
+The Xenite walkers' pipeline (xeno_walker.py): same numpy rasterizer, camera, light and
 outline (render_procedural.py), the Seed's flat emissive shading for glow, the 128 cell,
 contactY 0.92, padding 4, 16 unique yaws (row 0 = south, clockwise 22.5 deg) and an
 8-frame leg cycle where every frame is a step. Only the materials change: the Bloom

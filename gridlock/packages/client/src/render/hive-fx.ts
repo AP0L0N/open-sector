@@ -1,5 +1,5 @@
 /**
- * Xenomorph sea and air close work. Client-only: the Overseer's pulse, a green beam
+ * Xenite sea and air close work. Client-only: the Overseer's pulse, a green beam
  * from its belly straight down to the spot it burns, and the Lurker's bite, a
  * snap of jaws and a churn of white water where they close. Nothing here
  * changes the match; the sim's impacts (`downLaser`, `bite`) start each one.

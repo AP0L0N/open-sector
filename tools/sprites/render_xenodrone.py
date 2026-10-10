@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Xenomorph Drone unit sheets — a fork of render_simunit2.py under the Cyborg's lock.
+Xenite Drone unit sheets — a fork of render_simunit2.py under the Cyborg's lock.
 
-The cheap Xenomorph line cyborg: the Cyborg's camera, cell, contact points, and row
+The cheap Xenite line cyborg: the Cyborg's camera, cell, contact points, and row
 order, so the client reuses the Cyborg's sprite defs with new file names. A
 slim, hunched frame in cold grey-green alloy over dark chitin plates, no
 pauldrons, exposed cabling down the back and round the hips, a single sickly
@@ -22,7 +22,7 @@ shared pool). Writes gridlock/packages/client/src/assets/units/xenodrone-*.png
 and previews/manifests in tools/sprites/preview/. Exits 2 if a row is empty or
 clipped.
 
-The shared Xenomorph parts (materials, green flash, cables, rings, torn hips) and the
+The shared Xenite parts (materials, green flash, cables, rings, torn hips) and the
 sheet runner live here; render_lancer.py imports them.
 """
 
@@ -47,7 +47,7 @@ SRC = R.SRC
 PREVIEW = R.PREVIEW
 CELL = R.CELL
 
-# ---------------------------------------------------------------- Xenomorph palette
+# ---------------------------------------------------------------- Xenite palette
 
 XENO_MATS = {
     "alloy": ((64, 76, 68), (98, 112, 102), (138, 154, 142)),  # cold grey-green alloy
@@ -65,7 +65,7 @@ for _name, _spec in XENO_MATS.items():
         R.MAT_IDS[_name] = len(R.MAT_IDS)
 for _name in ("optic", "conduit", "gspark"):
     R.EMISSIVE.add(_name)
-# Xenomorph weapons flash green. The renderer treats these two names as un-outlined FX,
+# Xenite weapons flash green. The renderer treats these two names as un-outlined FX,
 # so recolouring them (in this process only) keeps that behaviour.
 R.MATERIALS["flash"] = (130, 255, 96)
 R.MATERIALS["flash_core"] = (232, 255, 214)

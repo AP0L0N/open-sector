@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The Bloom beasts (the faction's tanks), on the Xenomorph walker pipeline.
+"""The Bloom beasts (the faction's tanks), on the Xenite walker pipeline.
 
 Same camera, rasterizer, light, outline, 128 cell and contactY 0.92 as the Stalker /
 Ravager / Behemoth (xeno_walker.py); the Bloom palette lock from

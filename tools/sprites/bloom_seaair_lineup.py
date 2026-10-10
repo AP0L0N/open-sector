@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Bloom sea + air lineup: every unit facing east (row 12, 0013.png) at its intended map draw size,
-next to the Xenomorph Leech and Wasp. Runtime fit (composeAligned twin), then drawSize = round(N * 1.25).
+next to the Xenite Leech and Wasp. Runtime fit (composeAligned twin), then drawSize = round(N * 1.25).
 
   python3 tools/sprites/bloom_seaair_lineup.py
 

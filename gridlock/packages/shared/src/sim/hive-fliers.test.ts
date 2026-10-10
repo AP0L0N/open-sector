@@ -93,8 +93,8 @@ function wander(state: MatchState, e: Entity, n: number): number {
   return far;
 }
 
-describe("Xenomorph fliers", () => {
-  it("are every Xenomorph aircraft, and the Aerie is a plain producer with the Forge's footprint", () => {
+describe("Xenite fliers", () => {
+  it("are every Xenite aircraft, and the Aerie is a plain producer with the Forge's footprint", () => {
     const fliers = TRAIN_TYPES.filter((t) => isAircraftType(t) && factionOf(t) === "xeno");
     assert.deepEqual([...fliers].sort(), ["gnat", "overseer", "scourge", "wasp"]);
     for (const t of fliers) assert.ok(staysAloft(t), t);
@@ -230,7 +230,7 @@ describe("Xenomorph fliers", () => {
     assert.equal(w.energy, cell.shots, "it charges back up while it hangs");
   });
 
-  it("every armed Xenomorph flier carries an energy cell; the Gnat has nothing to draw on", () => {
+  it("every armed Xenite flier carries an energy cell; the Gnat has nothing to draw on", () => {
     for (const t of ["wasp", "scourge", "overseer"] as const) {
       const cell = plasmaCellOf(t);
       assert.ok(cell && cell.shots >= 1 && cell.rechargeSeconds > 0, t);

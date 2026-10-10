@@ -15,11 +15,11 @@ export type ProducerType = "muster" | "armory" | "airfield" | "aerie" | "roost" 
 
 export function producerType(unit: TrainType): ProducerType {
   const faction = factionOf(unit);
-  // Xenomorph foot soldiers come out of the Conversion Chamber; the Alliance's cyborgs out of the Cyborg Central.
+  // Xenite foot soldiers come out of the Conversion Chamber; the Alliance's cyborgs out of the Cyborg Central.
   if (isCyborg(unit)) return faction === "xeno" ? XENO_BARRACKS : "cyborgcentral";
   if (isAircraftType(unit)) return airfieldOf(faction);
   if (isNavalType(unit)) return dockOf(faction);
-  // Every other Xenomorph unit is a heavy assimilator, grown at the Nanite Forge.
+  // Every other Xenite unit is a heavy assimilator, grown at the Nanite Forge.
   if (faction === "xeno") return XENO_FACTORY;
   // The Bloom hatch their brood in the Brood Nest and grow every beast in the Gestator.
   if (faction === "bloom") return isInfantryType(unit) ? BLOOM_NEST : BLOOM_GESTATOR;
@@ -344,7 +344,7 @@ export function spawnUnit(
 ): Entity | null {
   if (!ignoreCap && ownedUnits(state, playerId) >= UNIT_CAP) return null;
   if (staysAloft(type)) {
-    // A Xenomorph flier lifts straight up out of the Aerie and hovers off to the rally point, or just outside the door.
+    // A Xenite flier lifts straight up out of the Aerie and hovers off to the rally point, or just outside the door.
     const ts = state.tileSize;
     const cx = (from.tileX + from.tileW / 2) * ts;
     const cy = (from.tileY + from.tileH / 2) * ts;

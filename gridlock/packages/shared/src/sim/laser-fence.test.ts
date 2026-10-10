@@ -20,7 +20,7 @@ import { laserFenceLinks, liveFenceLinks } from "./laser-fence.js";
 import { createMatch, step } from "./match.js";
 import type { Entity, MatchState } from "./types.js";
 
-/** A is Alliance, B the Xenomorphs, on bare flat ground, nothing but what a test places. */
+/** A is Alliance, B the Xenite, on bare flat ground, nothing but what a test places. */
 function field(): MatchState {
   const r = createRoom({ id: "LFN", hostId: "A", hostName: "Alpha", mapId: "yard-64", maxSlots: 8 });
   if (!r.ok) throw new Error(r.message);
@@ -71,7 +71,7 @@ function hiveCore(state: MatchState, tx: number, ty: number): Entity {
 }
 
 describe("Laser Fence", () => {
-  it("is a Xenomorph defence on the build list", () => {
+  it("is a Xenite defence on the build list", () => {
     assert.ok(BUILDING_TYPES.includes("laserfence"));
     assert.equal(factionOf("laserfence"), "xeno");
     assert.ok(isDefenceStructure("laserfence"));

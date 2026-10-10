@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stalker: Xenomorph turreted walker, Tiger class. Three 16-face layers from one camera.
+"""Stalker: Xenite turreted walker, Tiger class. Three 16-face layers from one camera.
 
 A low four-legged spider hull under an armoured dome turret that carries one
 long disruptor barrel with a green emitter at the muzzle. Cold grey-green

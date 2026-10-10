@@ -126,7 +126,7 @@ describe("skirmish save", () => {
     assert.equal(next.value.slots[1]?.ai, "defensive");
   });
 
-  it("loads a save from before the faction rename: Borg reads as Xenomorph, Earth United as Alliance", () => {
+  it("loads a save from before the faction rename: Borg reads as Xenite, Earth United as Alliance", () => {
     const { state, room } = skirmish();
     const saved = exportSave(state, room, 1_700_000_000_000);
     const old = JSON.parse(JSON.stringify(saved).replace(/"xenodrone"/g, '"borgdrone"'));

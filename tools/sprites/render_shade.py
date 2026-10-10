@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Xenomorph Shade unit sheets — a lean spine-sniper on the Cyborg's lock.
+Xenite Shade unit sheets — a lean spine-sniper on the Cyborg's lock.
 
 Same camera, cell, contact points, and row order as render_cyborg.py (and the
-Xenomorph Drone in render_xenodrone.py, whose palette, helpers and runner it
+Xenite Drone in render_xenodrone.py, whose palette, helpers and runner it
 shares), so the client reuses the Cyborg's sprite defs with new file names.
 Lean and long-limbed at the Drone's scale, so it reads taller and thinner.
 Smooth dark chitin skin with a faint grey-teal sheen on the lit side (the hive
@@ -37,7 +37,7 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.dont_write_bytecode = True
-import render_xenodrone as B  # noqa: E402  (registers the Xenomorph palette on render_cyborg)
+import render_xenodrone as B  # noqa: E402  (registers the Xenite palette on render_cyborg)
 
 R = B.R
 CELL = B.CELL
@@ -47,7 +47,7 @@ ellipsoid, capsule, cylinder, box = R.ellipsoid, R.capsule, R.cylinder, R.box
 rot_x, rot_y, rot_z = R.rot_x, R.rot_y, R.rot_z
 along, cable, flash_star = B.along, B.cable, B.flash_star
 
-# Shade skin: the Xenomorph chitin pushed darker, with a grey-teal sheen for the lit
+# Shade skin: the Xenite chitin pushed darker, with a grey-teal sheen for the lit
 # tone (the "chameleon" glint). Registered in this process only.
 SHADE_MATS = {
     "shskin": ((14, 17, 18), (26, 32, 33), (58, 82, 80)),

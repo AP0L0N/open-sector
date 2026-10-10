@@ -1366,7 +1366,7 @@ bindApocalypseSheets(
   APOCALYPSE_SPRITE.mount!.image,
 );
 
-/** A Xenomorph heavy assimilator on the Tiger's cell; the legs are the hull. Sized by the art's metres per cell. */
+/** A Xenite heavy assimilator on the Tiger's cell; the legs are the hull. Sized by the art's metres per cell. */
 function xenoWalker(legs: string, turret: string, gun: string, size: number, fps: number): UnitSpriteDef {
   const overlay = (src: string): TurretSpriteDef => ({ image: loadSheet(src), dirs: TANK_FACE_DIRS, frames: 1, frameSize: 128 });
   return {
@@ -1387,7 +1387,7 @@ export const BEHEMOTH_SPRITE = xenoWalker(behemothLegsUrl, behemothTurretUrl, be
 export const RAVAGER_SPRITE = xenoWalker(ravagerLegsUrl, ravagerTurretUrl, ravagerGunUrl, 29, 12);
 export const SIPHON_SPRITE = xenoWalker(siphonLegsUrl, siphonTurretUrl, siphonGunUrl, 32, 10);
 export const ASSEMBLER_SPRITE = xenoWalker(assemblerLegsUrl, assemblerTurretUrl, assemblerGunUrl, 32, 9);
-export const MAWCASTER_SPRITE = xenoWalker(mawcasterLegsUrl, mawcasterTurretUrl, mawcasterGunUrl, 33, 9);
+export const MAWCASTER_SPRITE = xenoWalker(mawcasterLegsUrl, mawcasterTurretUrl, mawcasterGunUrl, 38, 9);
 
 /**
  * Juggernaut (tools/sprites/render_juggernaut.py): one model on the Titan's 192 cell, the
@@ -1396,7 +1396,7 @@ export const MAWCASTER_SPRITE = xenoWalker(mawcasterLegsUrl, mawcasterTurretUrl,
  * (frame 0 is the hit); throw plays once.
  */
 const JUGGERNAUT_CELL = 192;
-const JUGGERNAUT_DRAW = Math.round(62 * UNIT_VISUAL_SCALE);
+const JUGGERNAUT_DRAW = Math.round(77.5 * UNIT_VISUAL_SCALE);
 function juggernautSheet(src: string, frames: number, contactY = 0.82): UnitSpriteDef {
   return { image: loadSheet(src), dirs: 16, frames, frameSize: JUGGERNAUT_CELL, fps: 8, drawSize: JUGGERNAUT_DRAW, contactY, facingSpace: "world" };
 }
@@ -1669,7 +1669,7 @@ export const FW190_SPRITE: UnitSpriteDef = {
 };
 bindFighterSheets(FW190_SPRITE.image);
 
-/** Leech: the Xenomorph attack boat, on the Attack Boat's cell and scale. */
+/** Leech: the Xenite attack boat, on the Attack Boat's cell and scale. */
 export const LEECH_SPRITE: UnitSpriteDef = {
   image: new Image(),
   dirs: TANK_FACE_DIRS,
@@ -1682,7 +1682,7 @@ export const LEECH_SPRITE: UnitSpriteDef = {
 };
 bindNavalSheets("leech", LEECH_SPRITE.image);
 
-/** Lurker: the Xenomorph sea beast, at the Submarine's px per meter (render_xeno_naval.py check). */
+/** Lurker: the Xenite sea beast, at the Submarine's px per meter (render_xeno_naval.py check). */
 export const LURKER_SPRITE: UnitSpriteDef = {
   image: new Image(),
   dirs: TANK_FACE_DIRS,
@@ -1712,10 +1712,10 @@ export const HIVEARK_SPRITE: UnitSpriteDef = {
 export const HIVEARK_CANNON: TurretSpriteDef = { image: new Image(), dirs: TANK_FACE_DIRS, frames: 1, frameSize: HIVEARK_MODEL.cell };
 bindHiveArkSheets({ hull: HIVEARK_SPRITE.image, cannon: HIVEARK_CANNON.image });
 
-/** Wing-stroke frames a second on the Xenomorph insects: a blur of a beat at play size. */
+/** Wing-stroke frames a second on the Xenite insects: a blur of a beat at play size. */
 export const WING_BEAT_FPS = 24;
 
-/** Wasp: the Xenomorph fighter, the Fw 190's camera and scale. Its wings beat all the time (FLUTTER_FRAMES, see wingBeatFrame). */
+/** Wasp: the Xenite fighter, the Fw 190's camera and scale. Its wings beat all the time (FLUTTER_FRAMES, see wingBeatFrame). */
 export const WASP_SPRITE: UnitSpriteDef = {
   image: new Image(),
   dirs: TANK_FACE_DIRS,
@@ -1728,7 +1728,7 @@ export const WASP_SPRITE: UnitSpriteDef = {
 };
 bindFlutterSheets("wasp", WASP_SPRITE.image);
 
-/** Scourge: the Xenomorph dive bomber, the Stuka's camera and scale. Its wings beat all the time (FLUTTER_FRAMES, see wingBeatFrame). */
+/** Scourge: the Xenite dive bomber, the Stuka's camera and scale. Its wings beat all the time (FLUTTER_FRAMES, see wingBeatFrame). */
 export const SCOURGE_SPRITE: UnitSpriteDef = {
   image: new Image(),
   dirs: TANK_FACE_DIRS,
@@ -1741,7 +1741,7 @@ export const SCOURGE_SPRITE: UnitSpriteDef = {
 };
 bindFlutterSheets("scourge", SCOURGE_SPRITE.image);
 
-/** Gnat: the Xenomorph spy fly, the Fw 190's camera at true scale beside the Wasp: tiny on the map. Its wings beat all the time (FLUTTER_FRAMES, see wingBeatFrame). */
+/** Gnat: the Xenite spy fly, the Fw 190's camera at true scale beside the Wasp: tiny on the map. Its wings beat all the time (FLUTTER_FRAMES, see wingBeatFrame). */
 export const GNAT_SPRITE: UnitSpriteDef = {
   image: new Image(),
   dirs: TANK_FACE_DIRS,
@@ -1755,7 +1755,7 @@ export const GNAT_SPRITE: UnitSpriteDef = {
 bindFlutterSheets("gnat", GNAT_SPRITE.image);
 
 /**
- * Overseer: the Xenomorph hover craft, the Stuka's camera and fit. At the Fw 190's px per meter
+ * Overseer: the Xenite hover craft, the Stuka's camera and fit. At the Fw 190's px per meter
  * it would be 41 (render_xeno_air.py check); drawn a little larger so the bell reads at play zoom.
  */
 export const OVERSEER_SPRITE: UnitSpriteDef = {
@@ -1961,7 +1961,7 @@ export const RIG_SPRITE: UnitSpriteDef = {
   facingSpace: "world",
 };
 
-/** Xenomorph carrier that unpacks into a Hive Core. The Rig's lock: tools/sprites/render_seed.py. */
+/** Xenite carrier that unpacks into a Hive Core. The Rig's lock: tools/sprites/render_seed.py. */
 export const SEED_SPRITE: UnitSpriteDef = {
   image: loadSheet(seedSheetUrl),
   dirs: 16,
@@ -2235,18 +2235,18 @@ const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   research: building(researchUrl, 384, 210, 324, 150, 70),
   // Assembly hall, uplink mast, reactor annex. Metrics from tools/sprites/render_cyborgcentral.py (cyborgcentral.json).
   cyborgcentral: building(cyborgCentralUrl, 384, 210, 348, 204, 60),
-  // Xenomorph. Metrics from tools/sprites/render_xeno_base.py (<type>.json).
-  // Hive dome, ringed spines, iris: the Xenomorph HQ, t(3) like the Core.
+  // Xenite. Metrics from tools/sprites/render_xeno_base.py (<type>.json).
+  // Hive dome, ringed spines, iris: the Xenite HQ, t(3) like the Core.
   hivecore: building(hiveCoreUrl, 384, 204, 274.2, 204, 62.2),
-  // Twin coil spires and a plasma core: the Xenomorph power plant, t(2) like the Dynamo.
+  // Twin coil spires and a plasma core: the Xenite power plant, t(2) like the Dynamo.
   fusionnode: building(fusionNodeUrl, 384, 210, 277.9, 210, 10.9),
-  // Claw-rig over a glowing intake pit: the Xenomorph scrap smelter, t(3) like the Smelter.
+  // Claw-rig over a glowing intake pit: the Xenite scrap smelter, t(3) like the Smelter.
   assimilator: building(assimilatorUrl, 384, 204, 256.2, 204, 54.2),
-  // Ribbed hangar, glowing maw, nanite vats, crane claw: the Xenomorph vehicle factory, t(3) like the Machine Shop.
+  // Ribbed hangar, glowing maw, nanite vats, crane claw: the Xenite vehicle factory, t(3) like the Machine Shop.
   forge: building(forgeUrl, 384, 204, 232.2, 188, 22.2),
-  // Neural core in a rib cage under a sensor crown: Xenomorph tech and radar, t(2).
+  // Neural core in a rib cage under a sensor crown: Xenite tech and radar, t(2).
   nexus: building(nexusUrl, 384, 210, 322.9, 210, 19.9),
-  // Chitin dome, a ring of conversion pods, synapse spire: the Xenomorph barracks, t(2) like the Barracks.
+  // Chitin dome, a ring of conversion pods, synapse spire: the Xenite barracks, t(2) like the Barracks.
   conversion: building(conversionUrl, 384, 210, 299.2, 216, 8.2),
   // Ops hut, lattice mast, dish. Metrics from tools/sprites/render_radar.py (radar.json); the stack hangs over the dish.
   radar: building(radarUrl, 384, 210, 354, 216, 58),
@@ -2254,7 +2254,7 @@ const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   dock: building(dockUrl, 384, 210, 354, 214, 92, false),
   // Chitin ring round a birthing pool, floating on open water like the Marine Base (render_xeno_harbour.py).
   spawnpool: building(spawnPoolUrl, 384, 210, 240.1, 163.3, 28.1, false),
-  // Brood spire, wing fins, launch maw, cradles: the Xenomorph flier hive, t(3) like the Forge. Metrics from tools/sprites/render_xeno_base.py (aerie.json).
+  // Brood spire, wing fins, launch maw, cradles: the Xenite flier hive, t(3) like the Forge. Metrics from tools/sprites/render_xeno_base.py (aerie.json).
   aerie: building(aerieUrl, 384, 204, 294.4, 204, 35.2),
   // Concrete pillbox. Metrics from tools/sprites/render_bunker.py (bunker.json). Turned faces in TURNED_FACES.
   bunker: building(bunkerUrl, 384, 222, 264, 222, 99),
@@ -2703,7 +2703,7 @@ export const CRATER_FACES: CraterSprite[] = [
   crater(crater5Url, 270, 135, 240),
   crater(crater6Url, 270, 135, 240),
 ];
-/** Plasma scorch from a Xenomorph energy round. `bowl` is the charred ring's width in source pixels. */
+/** Plasma scorch from a Xenite energy round. `bowl` is the charred ring's width in source pixels. */
 export const SCORCH_FACES: CraterSprite[] = [
   // tools/sprites/render_scorch.py prints these.
   crater(scorch1Url, 190, 95, 200),
@@ -3351,7 +3351,7 @@ export function broodSheetsFor(type: EntityType): BroodSheets | undefined {
 }
 
 /**
- * A Bloom beast (tools/sprites/render_bloom_beasts.py): the Xenomorph walkers' cell and contact, an
+ * A Bloom beast (tools/sprites/render_bloom_beasts.py): the Xenite walkers' cell and contact, an
  * 8-frame leg (or undulation) cycle on the body, and a turret and gun only where it has one.
  */
 function bloomBeast(id: string, size: number, fps: number, turret = false): UnitSpriteDef {

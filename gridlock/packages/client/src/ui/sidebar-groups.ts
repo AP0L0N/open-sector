@@ -27,7 +27,7 @@ interface GroupLook {
 
 /**
  * `short` fits six tabs across the sidebar; `icon` is a 16×16 SVG path. `byFaction` renames a
- * tab for one faction: the Xenomorphs field cyborgs and heavy assimilators, not infantry and tanks.
+ * tab for one faction: the Xenite field cyborgs and heavy assimilators, not infantry and tanks.
  */
 export const SIDEBAR_GROUPS: readonly { id: SidebarGroup; label: string; short: string; icon: string; byFaction?: Partial<Record<Faction, GroupLook>> }[] = [
   { id: "structures", label: "Structures", short: "Base", icon: "M1 15V8l4-3v3l4-3v3l4-3v2h2v8z" },
@@ -76,7 +76,7 @@ export interface GroupEntry {
 const PRICE_SORTED_GROUPS: readonly SidebarGroup[] = ["defences", "infantry", "tanks", "naval", "aircraft"];
 
 /**
- * The Xenomorph base laid out as the Alliance's reads: energy, foot soldiers, hulls, air, sea,
+ * The Xenite base laid out as the Alliance's reads: energy, foot soldiers, hulls, air, sea,
  * then tech. The Conversion Chamber is their barracks, so it comes second.
  */
 const XENO_STRUCTURE_ORDER: readonly BuildingType[] = ["fusionnode", "conversion", "forge", "aerie", "spawnpool", "nexus"];

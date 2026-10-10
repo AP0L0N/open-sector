@@ -20,7 +20,7 @@ import type { Entity, MatchState } from "./types.js";
 /**
  * The Weaver's mend. Every WEAVER_PULSE_SECONDS a working Weaver sends HP into each hive unit of
  * its side within WEAVER_REACH_TILES: WEAVER_MEND_CYBORG to a cyborg, WEAVER_MEND_HEAVY to any
- * other Xenomorph body. A unit in reach of two Weavers on the same tick mends once; a Weaver never
+ * other Xenite body. A unit in reach of two Weavers on the same tick mends once; a Weaver never
  * mends itself. Torn cyborg legs come back through syncCyborgLegs once the HP is there.
  */
 
@@ -33,7 +33,7 @@ function mending(e: Entity): boolean {
   return isWeaver(e.type) && e.hp > 0 && !e.wreck && !e.shutdown && !e.dormant && e.garrisonedIn == null;
 }
 
-/** May `w` mend `o`: a live Xenomorph unit of its side, not inside, not itself, hurt; in the air only a Xenomorph flier, which has no nest to mend on. */
+/** May `w` mend `o`: a live Xenite unit of its side, not inside, not itself, hurt; in the air only a Xenite flier, which has no nest to mend on. */
 export function weaverMends(state: MatchState, w: Entity, o: Entity): boolean {
   if (o === w || o.kind !== "unit" || o.hp <= 0 || o.wreck || o.hp >= o.hpMax) return false;
   if (factionOf(o.type) !== "xeno" || o.garrisonedIn != null || (isAirborne(o) && !staysAloft(o.type))) return false;

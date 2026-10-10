@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Xenomorph sea: the Leech (plasma skiff) and the Lurker (sea beast). One 16-face hull each.
+"""Xenite sea: the Leech (plasma skiff) and the Lurker (sea beast). One 16-face hull each.
 
-The Xenomorph answer to the Attack Boat and the Submarine (render_naval.py), under
+The Xenite answer to the Attack Boat and the Submarine (render_naval.py), under
 their lock: same numpy rasterizer (render_procedural), camera, light, outline,
 meters -> px (NAVAL_SCALE), z mid, centring, waterline cut over a wake, 256
 source cell composed to 128 at runtime with NAVAL_OPTS (contactY 0.74,
-padding 2). The look is the Xenomorph walkers' (xeno_walker.py): cold grey-green
+padding 2). The look is the Xenite walkers' (xeno_walker.py): cold grey-green
 alloy plates, dark chitin, sickly green glow seams, gray team plate.
 
   leech   a fast plasma skiff: a low, ribbed eel hull riding on four
@@ -56,7 +56,7 @@ UNITS = ROOT / "gridlock/packages/client/src/assets/units"
 PREVIEW = Path(__file__).resolve().parent / "preview"
 NAMES = bw.NAMES
 
-# Glow in the water under a Xenomorph hull: dimmer than the seams, lit flat.
+# Glow in the water under a Xenite hull: dimmer than the seams, lit flat.
 rp.MAT.update(
     {
         "uglow": (rp.hex_rgb("#2fb57c"), 0.0, 1.0),
@@ -141,7 +141,7 @@ def check(unit: str, folder: Path, contact_y: float, padding: int, ref: str | No
 
 
 def cameo72(faces: Path, path: Path, face: str = "0015", gain: float = 1.25, lift: float = 0.03) -> None:
-    """72 px static cameo (the gunboat's size) from the south-east face, brightened like the Xenomorph cameos."""
+    """72 px static cameo (the gunboat's size) from the south-east face, brightened like the Xenite cameos."""
     im = Image.open(faces / f"{face}.png").convert("RGBA")
     crop = im.crop(bw.bbox(im))
     px = np.asarray(crop).astype(np.float64) / 255

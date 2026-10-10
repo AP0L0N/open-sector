@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assembler: small Xenomorph walking nanite forge that builds Thralls. Three 16-face layers.
+"""Assembler: small Xenite walking nanite forge that builds Thralls. Three 16-face layers.
 
 A low four-legged hull carrying a Nanite Forge in miniature: a telescoping
 chitin vault with glow seams between its plates, an open bay at the rear that

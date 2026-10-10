@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Wing-stroke previews and the body-stability check for the Xenomorph fliers.
+"""Wing-stroke previews and the body-stability check for the Xenite fliers.
 
   python3 tools/sprites/preview_xeno_strokes.py [wasp scourge gnat] [--faces 1,3,13]
 
