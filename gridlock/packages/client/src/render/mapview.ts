@@ -388,6 +388,10 @@ import { ROOF_CIWS_LIFT } from "./roof-ciws.js";
 /** Gatling barrels above the ground point, as a share of the drawn cell. The Walker matches gatling-flash ARM_LIFT. */
 const WALKER_ARM_LIFT = 0.45;
 const CYBORG_ARM_LIFT = 0.3;
+/** How high a vaulting Thrall clears sandbags or a wall, in tiles of screen height. */
+const THRALL_VAULT_TILES = 0.55;
+/** Time constant of its spring up and drop down, ms. */
+const THRALL_VAULT_EASE_MS = 55;
 /** The Cyborg Commander's force-field bar, over his health bar. */
 const FIELD_BAR_FILL = "#7cc8ff";
 import { INTERCEPT_BURST_SIZE, RAM_MISS_BURST_SIZE, interceptorTrail } from "./ram.js";
@@ -461,6 +465,14 @@ import { beamEnd, beamShare, drawForceField, drawLaserBeam } from "./laser-beam.
 import { drawShutdownMark, drawUplink, SHUTDOWN_UNIT_FILTER } from "./cyborg-link-fx.js";
 import { BLINK_FX_MS, drawBlinkFx, drawPurgeMark } from "./blink-fx.js";
 import { SIMUNIT2_CRAWL_FIRE_SPRITE, SIMUNIT2_CRAWL_SPRITE, SIMUNIT2_DIE_SPRITE, SIMUNIT2_FIRE_SPRITE, SIMUNIT2_SPRITE, UNIT_SPRITE_DRAW_SIZE } from "./sprites.js";
+import {
+  THRALL_CRAWL_FIRE_SPRITE,
+  THRALL_CRAWL_SPRITE,
+  THRALL_DIE_SPRITE,
+  THRALL_FIRE_SPRITE,
+  THRALL_HIT_SPRITE,
+  THRALL_SPRITE,
+} from "./sprites.js";
 import {
   BORGDRONE_CRAWL_FIRE_SPRITE,
   BORGDRONE_CRAWL_SPRITE,
@@ -689,6 +701,7 @@ const EXTRUDE: Record<EntityType, number> = {
   cyborgcommander: 26,
   simunit2: 26,
   borgdrone: 24,
+  thrall: 27,
   lancer: 27,
   stalker: 28,
   ravager: 22,
@@ -1085,6 +1098,10 @@ export class MapView {
   private gunRecoil = new Map<number, GunRecoil>();
   /** When an Apocalypse began riding over a hull it rolled flat (ms), by its id. */
   private crushBumps = new Map<number, number>();
+  /** When each Thrall's current stagger began (performance.now()), for its hit sheet. */
+  private staggerAt = new Map<number, number>();
+  /** Each vaulting Thrall's lift over the obstacle, screen px, and when it was last eased. */
+  private vaultLift = new Map<number, { h: number; at: number }>();
   private crushBumpSeen = new Set<number>();
   private muzzleSmokes: MuzzleSmokePuff[] = [];
   private fieldGunSmokes: FieldGunSmokePuff[] = [];
@@ -1464,6 +1481,7 @@ export class MapView {
         if (!was || was.a0 !== e.laser.a0 || e.laser.u < was.u) this.beamSeen.set(e.id, { a0: e.laser.a0, at: now, u: e.laser.u });
       } else this.beamSeen.delete(e.id);
       this.lastHp.set(e.id, e.hp);
+      if (e.stagger && !this.prevById.get(e.id)?.stagger) this.staggerAt.set(e.id, now);
       const scoutHp = e.scout?.hp;
       if (scoutHp !== undefined) {
         const prevScout = this.lastScoutHp.get(e.id);
@@ -1576,7 +1594,9 @@ export class MapView {
         continue;
       }
       this.snapHullFx(fx);
-      if (i.kind === "kill" && i.blast) fx.death = this.deathBlastAt(i.x, i.y, i.caliber);
+      // A Thrall going off on a hull is the hive's light, not a fireball: one big green burst.
+      if (i.blast && i.energy && i.fromId != null && this.prevById.get(i.fromId)?.type === "thrall") fx.kind = "hit";
+      else if (i.kind === "kill" && i.blast) fx.death = this.deathBlastAt(i.x, i.y, i.caliber);
       else if (i.torpedo && torpedoStruckHull(i.kind)) fx.death = heBurstSpec();
       else if (i.heBurst && !i.splash) fx.death = heBurstSpec();
       this.addFx(fx);
@@ -1840,7 +1860,7 @@ export class MapView {
         // Every Borg gun fires light: a green bolt from the muzzle to each hit. Lasers, plasma
         // orbs, torpedoes, and daggers draw themselves elsewhere.
         const shots = byGun.get(e.id)?.filter((i) => !i.rocket && !i.laser && !i.torpedo && !i.mortar && i.kind !== "crush" && (i.caliber ?? 0) > 0);
-        if (!shots?.length || e.type === "simunit2" || e.type === "cyborgcommander") continue;
+        if (!shots?.length || e.type === "simunit2" || e.type === "thrall" || e.type === "cyborgcommander") continue;
         const muzzle = this.energyMuzzleWorld(e, shots[0]!);
         for (const bolt of energyBolts(muzzle, shots, ground, now, ts)) {
           this.tracers.push(bolt);
@@ -3844,6 +3864,7 @@ export class MapView {
 
   /** Screen pixels a plane (or a Jump Jet) sits above its ground point. 0 for everything on the ground. */
   private airLift(e: EntityView): number {
+    if (e.type === "thrall") return this.vaultLiftPx(e);
     // A Behemoth on a lunge rides its arc; between snapshots it eases toward the next height.
     if (e.lungeAlt != null) {
       const prev = this.prevById.get(e.id)?.lungeAlt ?? 0;
@@ -7234,6 +7255,22 @@ export class MapView {
       if (sheet === "swim") return spriteFor("simunit2", "stand", true);
       return SIMUNIT2_SPRITE;
     }
+    if (e.type === "thrall") {
+      const sheet = cyborgSheet({
+        swimming: e.swimming,
+        wreck: e.wreck,
+        stance: e.stance,
+        shotAgeMs: this.infantryShotAge(e.id),
+      });
+      if (sheet === "die") return THRALL_DIE_SPRITE;
+      if (sheet === "crawl-fire") return THRALL_CRAWL_FIRE_SPRITE;
+      if (sheet === "crawl") return THRALL_CRAWL_SPRITE;
+      if (sheet === "swim") return spriteFor("thrall", "stand", true);
+      // A bullet in the shoulder rocks it back, even mid-blow.
+      if (e.stagger || this.staggerAge(e.id) != null) return THRALL_HIT_SPRITE;
+      if (sheet === "fire") return THRALL_FIRE_SPRITE;
+      return THRALL_SPRITE;
+    }
     if (e.type === "borgdrone" || e.type === "lancer") {
       const drone = e.type === "borgdrone";
       const sheet = cyborgSheet({
@@ -7280,6 +7317,35 @@ export class MapView {
       return null;
     }
     return age;
+  }
+
+  /** Game ms since the Thrall's stagger began, while its hit sheet still plays. Null otherwise. */
+  private staggerAge(id: number): number | null {
+    const at = this.staggerAt.get(id);
+    if (at == null) return null;
+    const age = (performance.now() - at) * (this.curr.gameSpeed || 1);
+    const sheetMs = (THRALL_HIT_SPRITE.frames / THRALL_HIT_SPRITE.fps) * 1000;
+    if (age > sheetMs && !this.currById.get(id)?.stagger) {
+      this.staggerAt.delete(id);
+      return null;
+    }
+    return age;
+  }
+
+  /**
+   * How high a Thrall rides over the sandbags or wall it is vaulting, screen px. It springs up
+   * as it reaches the top and drops off the far side, eased frame to frame.
+   */
+  private vaultLiftPx(e: EntityView): number {
+    const now = performance.now();
+    const was = this.vaultLift.get(e.id);
+    const goal = e.vault && !e.wreck ? this.ts() * THRALL_VAULT_TILES : 0;
+    const h0 = was?.h ?? 0;
+    const k = 1 - Math.exp(-Math.max(0, now - (was?.at ?? now)) / THRALL_VAULT_EASE_MS);
+    const h = h0 + (goal - h0) * k;
+    if (goal === 0 && h < 0.2) this.vaultLift.delete(e.id);
+    else this.vaultLift.set(e.id, { h, at: now });
+    return h;
   }
 
   private corpseAge(id: number): number {
@@ -7582,9 +7648,11 @@ export class MapView {
     // A hulk has its own burnt-out sheet on the same cell and contact; without one it greys the live art.
     const sheet = this.drawnSheet(e, def);
     let frameIndex: number | undefined;
-    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ROCKETER_DIE_SPRITE || def === PYRO_DIE_SPRITE || def === MORTARMAN_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE || def === DRONEOP_DIE_SPRITE || def === CYBORG_DIE_SPRITE || def === CYBORGCOMMANDER_DIE_SPRITE || def === SIMUNIT2_DIE_SPRITE || def === BORGDRONE_DIE_SPRITE || def === LANCER_DIE_SPRITE || def === JUMPJET_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
+    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ROCKETER_DIE_SPRITE || def === PYRO_DIE_SPRITE || def === MORTARMAN_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE || def === DRONEOP_DIE_SPRITE || def === CYBORG_DIE_SPRITE || def === CYBORGCOMMANDER_DIE_SPRITE || def === SIMUNIT2_DIE_SPRITE || def === BORGDRONE_DIE_SPRITE || def === LANCER_DIE_SPRITE || def === THRALL_DIE_SPRITE || def === JUMPJET_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
     else if (def === TROOPER_RIFLE_FIRE_SPRITE || def === GUNNER_FIRE_SPRITE || def === SNIPER_FIRE_SPRITE || def === ATINFANTRY_FIRE_SPRITE || def === ROCKETER_FIRE_SPRITE || def === PYRO_FIRE_SPRITE || def === JUMPJET_FIRE_SPRITE) {
       frameIndex = heldFrame(this.infantryShotAge(e.id) ?? 0, def.fps, def.frames);
+    } else if (def === THRALL_HIT_SPRITE) {
+      frameIndex = heldFrame(this.staggerAge(e.id) ?? 0, def.fps, def.frames);
     } else if (def === JUMPJET_FLY_SPRITE) {
       // The plumes flicker whether he hovers or flies.
       frameIndex = Math.floor((performance.now() / 1000) * def.fps + e.id) % def.frames;

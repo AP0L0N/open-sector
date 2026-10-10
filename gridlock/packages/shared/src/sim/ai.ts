@@ -250,7 +250,7 @@ const FACES_ENEMY: ReadonlySet<string> = new Set(["mgnest", "pak36", "pak43", "f
 /** Long guns: they walk two ranks back and fire over the line. */
 const BACK_RANK: ReadonlySet<string> = new Set(["sniper", "mortarman", "nebelwerfer", "jagdtiger", "artillery"]);
 /** Short reach and thick skin: the front rank beside the hulls. */
-const FRONT_INFANTRY: ReadonlySet<string> = new Set(["cyborg", "cyborgcommander", "simunit2", "borgdrone", "lancer", "pyro"]);
+const FRONT_INFANTRY: ReadonlySet<string> = new Set(["cyborg", "cyborgcommander", "simunit2", "borgdrone", "thrall", "lancer", "pyro"]);
 
 type Rank = "front" | "mid" | "back";
 interface Site {
@@ -350,6 +350,7 @@ const BORG_BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
 /** The Borg cyborgs, from the Cyborg Central. */
 export const BORG_ARMY: readonly { unit: TrainType; want: number }[] = [
   { unit: "borgdrone", want: 6 },
+  { unit: "thrall", want: 4 },
   { unit: "cyborg", want: 6 },
   { unit: "lancer", want: 3 },
   { unit: "simunit2", want: 2 },

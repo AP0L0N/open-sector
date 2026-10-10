@@ -405,6 +405,12 @@ Human infantry and the Cyborg are the procedural model in Animation. The turntab
 | All infantry | cameo | 1 | crop of the east stand, 72×72, feet near the bottom |
 | Cyborg | swim | 8 | chest-deep in the shared pool (`render_cyborg.py`) |
 | Sim Unit II | walk, fire, crawl, crawl-fire, die, swim | 8, 4, 8, 4, 4, 8 | light cyborg frame on the Cyborg's lock, about 8% lighter: graphite plating, teal trim, cyan visor band, a flat drive pack with two lit slots, an energy dagger in each hand, no gun (`tools/sprites/render_simunit2.py`). Fire is the slash: one blade thrust then the other, the lit blade longest on frames 1 and 3. Crawl drags on the left blade with the right forward; die lays both blades dark beside him |
+| Thrall | walk | 8 | Borg melee brute on the Cyborg's lock at 0.96 of his scale, the Borg's blue-ish in-game look (Seed / Cyborg Central / Fusion Node), recoloured in its own script: blue-steel plating (#34485e / #5a7590 / #7f9fb8), dark blue under-structure (#1e2a36), cyan optic and seams (#5fe8f0, #3fd8e0, edge #2aa8c0). Barrel chest, chitin hump with slack cables, small head sunk between layered chitin pauldrons rimmed in pale steel with a cyan seam, thick plated forearms, big armoured fists with steel knuckles, no gun (`tools/sprites/render_thrall.py`). Walk is a sprint: torso well forward, long strides, fists pumping; every frame is a step, column 0 included |
+| Thrall | fire | 4 | the pummel from a planted stance: left fist thrust out, recover, right fist thrust out, recover |
+| Thrall | hit | 4 | walk's cell and contact (`0.88`). A bullet in the **left** shoulder on every facing: torso twisted and jerked back with a white-hot spark on the left pauldron, twisted further and staggering (right foot lifted back, small ember), coming back, nearly upright |
+| Thrall | crawl, crawl-fire | 8, 4 | legs torn off: chest on the dirt, dragging on the left fist, the right fist forward; crawl-fire raises the right fist and slams it into the ground ahead (raised / slam / raised / slam), grit at the slam. Prone scale |
+| Thrall | die | 4 | knees buckle, falls forward, nearly flat, face down; frame 3 is the corpse (cyan optic and seams dark). Every frame shares the corpse's footprint centre, so the body does not slide |
+| Thrall | swim | 8 | chest-deep in the shared pool, stood straight so the head and pauldrons stay above water |
 | Rifleman | swim | 8 | `infantry-swim.png` (also the fallback) |
 | Other human infantry | swim | 8 | `render_infantry.py`: chest-deep in the same pool, arms paddling |
 

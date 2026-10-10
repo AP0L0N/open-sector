@@ -12,6 +12,7 @@ import {
   STANCE_AIM_SPREAD,
   STANCE_SPEED,
   SWIM_SPEED,
+  THRALL_STAGGER_SPEED,
   WALKER_CHARGE_SPEED,
   addCrit,
   catalog,
@@ -39,6 +40,11 @@ import { hasHeadlight, hasSpotlight } from "./night.js";
 import type { Entity } from "./types.js";
 
 export function moveSpeedMul(e: Entity, swimming = false): number {
+  // A bullet in the shoulder: the Thrall's run falters for a moment.
+  return e.staggered ? THRALL_STAGGER_SPEED * baseMoveSpeedMul(e, swimming) : baseMoveSpeedMul(e, swimming);
+}
+
+function baseMoveSpeedMul(e: Entity, swimming: boolean): number {
   if (e.braced || hasCrit(e, "tracks") || hasCrit(e, "engine")) return 0;
   if (e.type === "artillery") return artilleryHaulMul(e);
   if (e.towing != null) return ARTILLERY_TOW_SPEED;

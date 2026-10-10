@@ -67,9 +67,10 @@ export type SoundEvent =
   /**
    * A unit's own effect at a point, played without an order: the ASW helicopter settling back on
    * its deck, one of your defences going up (sandbags thumped down, a gun set in its pit),
-   * (crush) an Apocalypse rolling a hull flat, or (dive) a Stuka's siren as it tips over into its dive.
+   * (crush) an Apocalypse rolling a hull flat, (dive) a Stuka's siren as it tips over into its dive, or
+   * a Thrall going off on a hull (detonate), leaping sandbags or a wall (vault), or rocked by a bullet (stagger).
    */
-  | { kind: "unitsfx"; type: string; cue: "special" | "crush" | "dive" | "lunge" | "burrow" | "unburrow" | LinkSfx; x: number; y: number }
+  | { kind: "unitsfx"; type: string; cue: "special" | "crush" | "dive" | "lunge" | "burrow" | "unburrow" | ThrallSfx | LinkSfx; x: number; y: number }
   | { kind: "announce"; event: AnnounceEvent };
 
 /**
@@ -77,6 +78,8 @@ export type SoundEvent =
  * (`reboot`); a Cyborg Commander's uplink opening on one (`uplink`, from his folder).
  */
 export type LinkSfx = "shutdown" | "reboot" | "uplink";
+/** The Thrall's own sounds: its detonation, a vault, and a bullet ringing off its shoulder. */
+export type ThrallSfx = "detonate" | "vault" | "stagger";
 /** A Cyborg of yours going dark or waking up yours; your Commander starting a takeover. */
 export type LinkVoice = "shutdown" | "online" | "takeover";
 
@@ -285,6 +288,12 @@ export class SoundTracker {
       }
       // The laser's burn is heard when the beam opens (below), not again where it lands.
       if (i.laser) continue;
+      // A Thrall went off against a hull: its own blast, and your own one's last words.
+      const bomber = i.blast && i.fromId != null ? this.prevById.get(i.fromId) : undefined;
+      if (bomber?.type === "thrall") {
+        out.push({ kind: "unitsfx", type: "thrall", cue: "detonate", x: i.x, y: i.y });
+        if (bomber.ownerId === me) out.push({ kind: "voice", type: "thrall", event: "special" });
+      }
       // Hitscan rounds and shells too quick for a snapshot are only seen landing.
       // A flak burst is heard where it bursts (flak_burst); its gun was heard when the shell left.
       if (i.fromId != null && !i.intercept && !i.cookoff && !i.blast && !i.rocket && !i.torpedo && !i.bomb && !i.flak) {
@@ -342,6 +351,8 @@ export class SoundTracker {
       }
       // A Behemoth's legs fire it into the air; a Stalker digs in or bursts out.
       if (prev && prev.lungeAlt == null && e.lungeAlt != null) out.push({ kind: "unitsfx", type: e.type, cue: "lunge", x: e.x, y: e.y });
+      if (prev && !prev.vault && e.vault) out.push({ kind: "unitsfx", type: e.type, cue: "vault", x: e.x, y: e.y });
+      if (prev && !prev.stagger && e.stagger) out.push({ kind: "unitsfx", type: e.type, cue: "stagger", x: e.x, y: e.y });
       if (prev && prev.burrow !== e.burrow) {
         if (e.burrow === "digging") out.push({ kind: "unitsfx", type: e.type, cue: "burrow", x: e.x, y: e.y });
         else if (e.burrow === "rising") out.push({ kind: "unitsfx", type: e.type, cue: "unburrow", x: e.x, y: e.y });

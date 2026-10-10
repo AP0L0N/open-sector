@@ -32,6 +32,7 @@ import { ejectParatroopers, loseRiders, syncPlaneRiders, tickChutes, tickCrates,
 import { tickDrones } from "./drone.js";
 import { beginJetCrash, tickJets } from "./jet.js";
 import { detonateNuke } from "./nuke.js";
+import { tickThralls } from "./thrall.js";
 import { tickCapture } from "./capture.js";
 import { detachGarrisoned, enterGarrison, killGarrison, manGun, spillGarrison, tickGarrison, tickGarrisonCare } from "./garrison.js";
 import { buildPatrolRoute } from "./patrol.js";
@@ -370,6 +371,7 @@ function stepHeld(state: MatchState, dt: number): void {
   tickPlaneBoarding(state);
   tickMineLaunchers(state, dt);
   tickSimUnits(state);
+  tickThralls(state);
   tickLunges(state);
   tickBurrows(state);
   tickOrderQueue(state);
