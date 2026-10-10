@@ -78,6 +78,7 @@ import { spotFacingOf, spotlightManned } from "./night.js";
 import type { Entity, LaserBeam, MatchState, Order, QueueableCommand, StructureJob } from "./types.js";
 import type {
   CorpseView,
+  EnergyShieldView,
   EntityView,
   MatchSnapshot,
   PlanKind,
@@ -731,6 +732,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       life: c.life,
       lifeMax: c.lifeMax,
     })),
+    shields: shieldViews(state, youPlayerId, vis),
     fires: state.fires
       .filter((f) => allies(state, youPlayerId, f.ownerId) || canSeeWorld(state, vis, f.x, f.y))
       .map((f) => ({ id: f.id, x: f.x, y: f.y, radius: f.radius, life: f.life, lifeMax: f.lifeMax })),
@@ -814,4 +816,29 @@ function visibleBodies(state: MatchState, youPlayerId: string, vis: Uint8Array):
 /** Every Borg weapon is an energy weapon: their shots and hits go out flagged so the client draws and voices them that way. */
 function energyShot(state: MatchState, ownerId: string): boolean {
   return energyRound(state, ownerId);
+}
+
+/** Ticks a struck energy wall flares for. */
+const SHIELD_FLASH_TICKS = 4;
+
+function shieldViews(state: MatchState, youPlayerId: string, vis: Uint8Array): EnergyShieldView[] | undefined {
+  const walls = state.energyShields;
+  if (!walls || walls.length === 0) return undefined;
+  const out: EnergyShieldView[] = [];
+  for (const w of walls) {
+    if (!allies(state, youPlayerId, w.ownerId) && !canSeeWorld(state, vis, w.x + Math.cos(w.angle) * w.r, w.y + Math.sin(w.angle) * w.r)) continue;
+    out.push({
+      id: w.id,
+      ownerId: w.ownerId,
+      x: w.x,
+      y: w.y,
+      angle: w.angle,
+      half: w.half,
+      r: w.r,
+      hp: Math.ceil(w.hp),
+      hpMax: w.hpMax,
+      hit: w.hitTick != null && state.tick - w.hitTick < SHIELD_FLASH_TICKS ? true : undefined,
+    });
+  }
+  return out.length > 0 ? out : undefined;
 }

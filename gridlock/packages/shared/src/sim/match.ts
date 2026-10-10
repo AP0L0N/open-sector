@@ -63,6 +63,7 @@ import { tickSupply } from "./supply.js";
 import { tickMineLaunchers } from "./minelauncher.js";
 import { tickSimUnits } from "./simunit.js";
 import { tickJuggernauts } from "./juggernaut.js";
+import { holdShieldLines, shieldWatch, tickEnergyShields } from "./energy-shield.js";
 import { tickLunges } from "./lunge.js";
 import { tickBurrows } from "./burrow.js";
 import type { BlinkView } from "../protocol.js";
@@ -114,6 +115,7 @@ export function createMatch(
     entities: new Map(),
     projectiles: [],
     smokeClouds: [],
+    energyShields: [],
     fires: [],
     mines: [],
     crates: [],
@@ -386,6 +388,7 @@ function stepHeld(state: MatchState, dt: number): void {
   tickOrderQueue(state);
   tickPatrol(state);
   groundLstBows(state);
+  const shieldLines = shieldWatch(state);
   tickMovement(state, dt);
   state.phaseRev++;
   // After movement, before collision, so a charging walker detonates on
@@ -400,6 +403,8 @@ function stepHeld(state: MatchState, dt: number): void {
   tickJets(state, dt);
   state.phaseRev++;
   tickCollision(state, dt);
+  // No enemy walks through a hive energy wall, whatever moved him this tick.
+  holdShieldLines(state, shieldLines);
   syncTowedGuns(state);
   tickThermal(state);
   state.phaseRev++;
@@ -412,6 +417,7 @@ function stepHeld(state: MatchState, dt: number): void {
   tickBuild(state, dt);
   tickTrain(state, dt);
   state.phaseRev++;
+  tickEnergyShields(state, dt);
   tickShades(state);
   tickCombat(state, dt);
   tickLasers(state);
@@ -575,6 +581,7 @@ function eliminate(state: MatchState, playerId: string): void {
     if (e.ownerId === playerId) destroyEntity(state, e);
   }
   state.projectiles = state.projectiles.filter((pr) => pr.ownerId !== playerId);
+  if (state.energyShields) state.energyShields = state.energyShields.filter((s) => s.ownerId !== playerId);
 }
 
 function checkWin(state: MatchState): void {

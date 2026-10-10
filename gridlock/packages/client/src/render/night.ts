@@ -257,6 +257,17 @@ export function spotBeamGround(
 
 /** The xenomorphs' own light: a cold blue glow off every live Borg unit and structure, in place of lamps. */
 export const XENO_GLOW_RGB = "70, 140, 255";
+/** Extra strength on the blue, over a lamp pool's. */
+export const XENO_GLOW_BOOST = 1.2;
+/**
+ * Gain on the Borg glow for the night shade it now lies under: it paints on
+ * the ground, beneath units and structures, and the night layer goes on top.
+ * `cut` is how much of the shade one glow lifts (its pool cut times lamp glow).
+ */
+export function xenoGlowUnderShade(shade: number, cut: number): number {
+  const left = Math.min(0.95, Math.max(0, shade * (1 - cut)));
+  return XENO_GLOW_BOOST / (1 - left);
+}
 /** Glow radius against a unit's body radius, and against half a structure's footprint. */
 export const XENO_GLOW_UNIT_SCALE = 3.5;
 export const XENO_GLOW_BUILDING_SCALE = 2;
