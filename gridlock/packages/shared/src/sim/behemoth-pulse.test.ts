@@ -93,12 +93,13 @@ describe("Behemoth pulse", () => {
     assert.ok(near[0]! > far[0]! * 2, `near ${near[0]} > far ${far[0]}`);
   });
 
-  it("Light Pulse fires far more bolts, each far lighter", () => {
-    const high = volley(false, 20);
-    const light = volley(true, 20);
+  it("Light Pulse is rapid fire of light bolts that never runs the cell dry", () => {
+    const high = volley(false, 60);
+    const light = volley(true, 60);
     assert.ok(high.length > 0, "High Pulse fires");
-    assert.ok(light.length >= high.length * 2.5, `light ${light.length} vs high ${high.length}`);
-    assert.ok(Math.max(...light) < Math.min(...high) * 0.5, "each light bolt is far weaker");
+    assert.ok(light.length >= high.length * 6, `light ${light.length} vs high ${high.length}`);
+    assert.ok(light.length >= 80, `over a bolt a second: ${light.length} in 60 s`);
+    assert.ok(Math.max(...light) < Math.min(...high) * 0.2, "each light bolt is far weaker");
   });
 });
 
