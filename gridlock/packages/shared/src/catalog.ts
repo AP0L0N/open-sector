@@ -6112,6 +6112,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rangeTiles: t(10),
     sightTiles: t(9),
     cooldown: TICK_DT,
+    plasmaCell: { shots: 60, rechargeSeconds: 0.2 },
     damage: 8,
     projectileSpeed: SMALL_ARMS_SPEED,
     turnInPlace: true,
@@ -6127,7 +6128,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     mgAmmo: HULL_FLAMER_FUEL,
     leavesWreck: true,
     wreckHp: 28,
-    blurb: `Fast heavy assimilator built to hunt soldiers. A pulse repeater on a quick turret draws on its own core and never runs dry; tank plate turns the bolts, and they do not bring a building down. A plasma jet in the jaw fires on its own at soldiers and soft vehicles inside a short reach, but only where the nose points, and burns every soldier in its path, friends too. The jet never runs dry either. Lighter plate than a Stalker.`,
+    blurb: `Fast heavy assimilator built to hunt soldiers. A pulse repeater on a quick turret; tank plate turns the bolts, and they do not bring a building down. Each bolt draws on an energy cell that holds 60 and regrows five a second: three seconds of full fire, then a quarter of that while the cell refills. A plasma jet in the jaw fires on its own at soldiers and soft vehicles inside a short reach, but only where the nose points, and burns every soldier in its path, friends too. The jet never runs dry. Lighter plate than a Stalker.`,
   },
   /** Xenomorph heavy assimilator: six legs, twin disruptors, a carapace that sheds shells. */
   behemoth: {
