@@ -437,6 +437,26 @@ input[type="range"] { padding: 0; }
   100% { color: var(--amber); }
 }
 #hud-scrap.scrap-denied b { color: var(--danger); }
+/* The Xenomorph hive's energy, where scrap sits for the other sides: a bar like a Cyborg Commander's field. */
+#hud-scrap .energy-bar {
+  display: inline-block;
+  vertical-align: middle;
+  width: 7.5em;
+  height: 0.62em;
+  margin: 0 0.25em;
+  border: 1px solid rgba(96, 226, 214, 0.55);
+  background: rgba(8, 20, 20, 0.85);
+  position: relative;
+  overflow: hidden;
+}
+#hud-scrap .energy-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: rgba(96, 226, 214, 0.95);
+  transition: width 0.2s linear;
+}
+#hud-scrap .energy-bar.is-full i { background: var(--amber); }
+#hud-scrap.low-power .energy-bar i { background: var(--danger); }
 /* The Smelters' pour, beside the scrap count. */
 #hud-scrap .pour {
   font-style: normal;
@@ -2225,8 +2245,8 @@ input[type="range"] { padding: 0; }
   }
   .sidebar { border-left: none; border-top: 3px solid var(--rust); }
 }
-
-/* The Bloom: sidebar cameos, the selection strip, and production jobs. */
+
+/* The Bloom: sidebar cameos, the selection strip, and production jobs. */
 #train-spawnling,
 #train-gobber,
 #train-quillback,
@@ -2264,216 +2284,216 @@ input[type="range"] { padding: 0; }
   background-size: cover;
   background-position: right 10% center;
   min-height: 3.1rem;
-}
+}
 #train-spawnling {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/spawnling-cameo.png");
-}
+}
 .config-type[data-type="spawnling"],
-.prod-job[data-type="spawnling"] { background-image: url("../assets/units/spawnling-cameo.png"); }
+.prod-job[data-type="spawnling"] { background-image: url("../assets/units/spawnling-cameo.png"); }
 #train-gobber {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/gobber-cameo.png");
-}
+}
 .config-type[data-type="gobber"],
-.prod-job[data-type="gobber"] { background-image: url("../assets/units/gobber-cameo.png"); }
+.prod-job[data-type="gobber"] { background-image: url("../assets/units/gobber-cameo.png"); }
 #train-quillback {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/quillback-cameo.png");
-}
+}
 .config-type[data-type="quillback"],
-.prod-job[data-type="quillback"] { background-image: url("../assets/units/quillback-cameo.png"); }
+.prod-job[data-type="quillback"] { background-image: url("../assets/units/quillback-cameo.png"); }
 #train-bloater {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/bloater-cameo.png");
-}
+}
 .config-type[data-type="bloater"],
-.prod-job[data-type="bloater"] { background-image: url("../assets/units/bloater-cameo.png"); }
+.prod-job[data-type="bloater"] { background-image: url("../assets/units/bloater-cameo.png"); }
 #train-longspine {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/longspine-cameo.png");
-}
+}
 .config-type[data-type="longspine"],
-.prod-job[data-type="longspine"] { background-image: url("../assets/units/longspine-cameo.png"); }
+.prod-job[data-type="longspine"] { background-image: url("../assets/units/longspine-cameo.png"); }
 #train-mender {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/mender-cameo.png");
-}
+}
 .config-type[data-type="mender"],
-.prod-job[data-type="mender"] { background-image: url("../assets/units/mender-cameo.png"); }
+.prod-job[data-type="mender"] { background-image: url("../assets/units/mender-cameo.png"); }
 #train-skitter {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/skitter-cameo.png");
-}
+}
 .config-type[data-type="skitter"],
-.prod-job[data-type="skitter"] { background-image: url("../assets/units/skitter-cameo.png"); }
+.prod-job[data-type="skitter"] { background-image: url("../assets/units/skitter-cameo.png"); }
 #train-goretusk {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/goretusk-cameo.png");
-}
+}
 .config-type[data-type="goretusk"],
-.prod-job[data-type="goretusk"] { background-image: url("../assets/units/goretusk-cameo.png"); }
+.prod-job[data-type="goretusk"] { background-image: url("../assets/units/goretusk-cameo.png"); }
 #train-mantis {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/mantis-cameo.png");
-}
+}
 .config-type[data-type="mantis"],
-.prod-job[data-type="mantis"] { background-image: url("../assets/units/mantis-cameo.png"); }
+.prod-job[data-type="mantis"] { background-image: url("../assets/units/mantis-cameo.png"); }
 #train-bileworm {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/bileworm-cameo.png");
-}
+}
 .config-type[data-type="bileworm"],
-.prod-job[data-type="bileworm"] { background-image: url("../assets/units/bileworm-cameo.png"); }
+.prod-job[data-type="bileworm"] { background-image: url("../assets/units/bileworm-cameo.png"); }
 #train-sporemaw {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/sporemaw-cameo.png");
-}
+}
 .config-type[data-type="sporemaw"],
-.prod-job[data-type="sporemaw"] { background-image: url("../assets/units/sporemaw-cameo.png"); }
+.prod-job[data-type="sporemaw"] { background-image: url("../assets/units/sporemaw-cameo.png"); }
 #train-matriarch {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/matriarch-cameo.png");
-}
+}
 .config-type[data-type="matriarch"],
-.prod-job[data-type="matriarch"] { background-image: url("../assets/units/matriarch-cameo.png"); }
+.prod-job[data-type="matriarch"] { background-image: url("../assets/units/matriarch-cameo.png"); }
 #train-driftjelly {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/driftjelly-cameo.png");
-}
+}
 .config-type[data-type="driftjelly"],
-.prod-job[data-type="driftjelly"] { background-image: url("../assets/units/driftjelly-cameo.png"); }
+.prod-job[data-type="driftjelly"] { background-image: url("../assets/units/driftjelly-cameo.png"); }
 #train-spineback {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/spineback-cameo.png");
-}
+}
 .config-type[data-type="spineback"],
-.prod-job[data-type="spineback"] { background-image: url("../assets/units/spineback-cameo.png"); }
+.prod-job[data-type="spineback"] { background-image: url("../assets/units/spineback-cameo.png"); }
 #train-abyssray {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/abyssray-cameo.png");
-}
+}
 .config-type[data-type="abyssray"],
-.prod-job[data-type="abyssray"] { background-image: url("../assets/units/abyssray-cameo.png"); }
+.prod-job[data-type="abyssray"] { background-image: url("../assets/units/abyssray-cameo.png"); }
 #train-leviathan {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/leviathan-cameo.png");
-}
+}
 .config-type[data-type="leviathan"],
-.prod-job[data-type="leviathan"] { background-image: url("../assets/units/leviathan-cameo.png"); }
+.prod-job[data-type="leviathan"] { background-image: url("../assets/units/leviathan-cameo.png"); }
 #train-broodbarge {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/broodbarge-cameo.png");
-}
+}
 .config-type[data-type="broodbarge"],
-.prod-job[data-type="broodbarge"] { background-image: url("../assets/units/broodbarge-cameo.png"); }
+.prod-job[data-type="broodbarge"] { background-image: url("../assets/units/broodbarge-cameo.png"); }
 #train-moth {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/moth-cameo.png");
-}
+}
 .config-type[data-type="moth"],
-.prod-job[data-type="moth"] { background-image: url("../assets/units/moth-cameo.png"); }
+.prod-job[data-type="moth"] { background-image: url("../assets/units/moth-cameo.png"); }
 #train-razorwing {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/razorwing-cameo.png");
-}
+}
 .config-type[data-type="razorwing"],
-.prod-job[data-type="razorwing"] { background-image: url("../assets/units/razorwing-cameo.png"); }
+.prod-job[data-type="razorwing"] { background-image: url("../assets/units/razorwing-cameo.png"); }
 #train-gasbag {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/gasbag-cameo.png");
-}
+}
 .config-type[data-type="gasbag"],
-.prod-job[data-type="gasbag"] { background-image: url("../assets/units/gasbag-cameo.png"); }
+.prod-job[data-type="gasbag"] { background-image: url("../assets/units/gasbag-cameo.png"); }
 #train-drifter {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/drifter-cameo.png");
-}
+}
 .config-type[data-type="drifter"],
-.prod-job[data-type="drifter"] { background-image: url("../assets/units/drifter-cameo.png"); }
+.prod-job[data-type="drifter"] { background-image: url("../assets/units/drifter-cameo.png"); }
 #train-harpy {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/harpy-cameo.png");
-}
+}
 .config-type[data-type="harpy"],
-.prod-job[data-type="harpy"] { background-image: url("../assets/units/harpy-cameo.png"); }
+.prod-job[data-type="harpy"] { background-image: url("../assets/units/harpy-cameo.png"); }
 #build-lumenbulb {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/buildings/lumenbulb-cameo.png");
-}
+}
 #build-gorger {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/buildings/gorger-cameo.png");
-}
+}
 #build-broodnest {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/buildings/broodnest-cameo.png");
-}
+}
 #build-gestator {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/buildings/gestator-cameo.png");
-}
+}
 #build-braincoral {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/buildings/braincoral-cameo.png");
-}
+}
 #build-tidewomb {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/buildings/tidewomb-cameo.png");
-}
+}
 #build-roost {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/buildings/roost-cameo.png");
-}
+}
 #build-thornspitter {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/buildings/thornspitter-cameo.png");
-}
+}
 #build-bilelance {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/buildings/bilelance-cameo.png");
-}
+}
 #build-puffcap {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/buildings/puffcap-cameo.png");
-}
+}
 #build-eyestalk {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/buildings/eyestalk-cameo.png");
-}
+}
 #build-husk {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),

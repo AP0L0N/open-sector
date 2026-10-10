@@ -424,6 +424,8 @@ export interface Entity {
   rocketSalvo?: number;
   /** Player switched the pods off. Missing means on. */
   rocketsOff?: boolean;
+  /** Set to Air attacks: fires its air rack (rocketRackFor) and lays only on what flies. Missing means Ground attacks. */
+  airMode?: boolean;
   /** CIWS or RAM set to Max range (RADAR_LONG_RANGE_MUL). Missing means normal reach. */
   longRange?: boolean;
   /** Building whose owner uses more power than they provide: its lamps are dark and a CIWS or RAM is silent. Set each tick. */
@@ -576,6 +578,11 @@ export interface Entity {
    * Cyborg Commander takes him over.
    */
   shutdown?: true;
+  /**
+   * Xenomorph unit or defence the hive has no energy for (sim/hive-energy.ts): a unit is also
+   * `shutdown`, a building `unpowered`. It wakes by itself once the hive has room for it.
+   */
+  hiveOffline?: true;
   /** Shut-down Cyborg only: the Cyborg Commander taking him over, and ticks of uplink so far. */
   takeover?: { by: number; ticks: number };
   /** Cyborg only: fires on what his side's thermal and APS read, seen or not, inside his reach. */
@@ -604,8 +611,6 @@ export interface Entity {
   lungeRing?: number;
   /** Juggernaut running at what it is going for (sim/juggernaut.ts). */
   sprint?: true;
-  /** Armored hull coated by a Spitter (sim/acid.ts): mm off every face, and the tick the coat dries. */
-  acid?: { mm: number; until: number };
   /** Shade (sim/shade.ts): the tick its skin settles again after a shot or a hurt; HP last tick. */
   revealUntil?: number;
   shadeHpSeen?: number;
@@ -627,6 +632,8 @@ export interface Entity {
   field?: number;
   /** Cyborg Commander only: weapons power diverted to the field. The laser is dark; he does not fire. */
   fieldDivert?: true;
+  /** Behemoth only: Light Pulse, quick light bolts. Unset is High Pulse. */
+  lightPulse?: true;
   /** Cyborg Commander only: tick of the last hit on him, field or body. The recharge waits on it. */
   fieldHitTick?: number;
   /** Cyborg Commander only: the laser beam he is cutting with now. */
@@ -746,8 +753,6 @@ export interface Projectile {
    * Set by the scoped rifle and the PTRD. Omitted for every other gun.
    */
   hpFraction?: number;
-  /** A Spitter's glob: coats an armored hull (sim/acid.ts) and never ricochets. */
-  acid?: boolean;
   /** A Siphon's bolt: what it takes off an enemy unit mends the Siphon. */
   drain?: boolean;
   /** Elevation units at the current point. Omit in tests for ground-level. */
@@ -786,6 +791,8 @@ export interface Projectile {
   aloft?: boolean;
   /** Rocket only: the carrier type whose rack (rocketRackOf) sets its splash and armor dent. */
   launcher?: EntityType;
+  /** Rocket only: left the carrier's air rack (airRackOf), not its own. */
+  airRack?: true;
   /** Lobbed rocket only: height it left the tubes at. `apex` rides on top of the line from here to the ground. */
   launchZ?: number;
   /** Rocket only: CIWS mounts that already fired a burst at it. An ordinary rocket gets one try. */

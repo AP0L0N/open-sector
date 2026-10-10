@@ -35,7 +35,6 @@ import { detonateNuke } from "./nuke.js";
 import { tickThralls } from "./thrall.js";
 import { tickWeaverShields, tickWeavers } from "./weaver.js";
 import { tickBrood } from "./brood.js";
-import { tickAcid } from "./acid.js";
 import { tickShades } from "./shade.js";
 import { tickCapture } from "./capture.js";
 import { detachGarrisoned, enterGarrison, killGarrison, manGun, spillGarrison, tickGarrison, tickGarrisonCare } from "./garrison.js";
@@ -85,6 +84,7 @@ import { toWreck } from "./wreck.js";
 import { freshClutterHp } from "./clutter.js";
 import { tickPower } from "./power.js";
 import { tickCyborgLink } from "./cyborg-link.js";
+import { tickHiveEnergy } from "./hive-energy.js";
 import { holdSightKeys } from "./vision.js";
 
 export function createMatch(
@@ -365,6 +365,7 @@ function stepHeld(state: MatchState, dt: number): void {
   // Only rounds aimed at a bridge hurt it; every other knock this step is undone below.
   const bridgeHp = guardBridges(state);
   tickPower(state);
+  tickHiveEnergy(state);
   tickCyborgLink(state);
   tickSmoke(state, dt);
   tickSpotlights(state, dt);
@@ -387,7 +388,6 @@ function stepHeld(state: MatchState, dt: number): void {
   tickThralls(state);
   tickWeavers(state);
   tickBrood(state);
-  tickAcid(state);
   tickLunges(state);
   tickBurrows(state);
   tickMatriarchs(state, dt);

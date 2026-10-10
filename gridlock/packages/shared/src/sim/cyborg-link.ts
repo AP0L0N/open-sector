@@ -24,9 +24,12 @@ function commanderUp(state: MatchState, e: Entity): boolean {
   return e.type === "cyborgcommander" && live(e) && e.garrisonedIn == null && !!state.players.get(e.ownerId)?.alive;
 }
 
-/** A Cyborg the link rule reaches: any cyborg but the Commander, on the field. One aboard waits until he steps off. */
+/**
+ * A Cyborg the link rule reaches: any cyborg but the Commander, on the field. One aboard waits until he steps off.
+ * One the hive has no energy for is the hive's to wake (sim/hive-energy.ts), and no Commander's to take.
+ */
 function fieldCyborg(e: Entity): boolean {
-  return onUplink(e.type) && e.kind === "unit" && live(e) && e.garrisonedIn == null;
+  return onUplink(e.type) && e.kind === "unit" && live(e) && e.garrisonedIn == null && !e.hiveOffline;
 }
 
 /** This side's Cyborg Central (a Xenomorph's Conversion Chamber) stands and its power is not short. */

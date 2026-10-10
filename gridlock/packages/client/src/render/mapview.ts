@@ -7,10 +7,12 @@ import {
   WEAVER_REACH_TILES,
   LASER_FENCE_REACH_TILES,
   costFor,
+  energyOf,
   factionOf,
   fencePostTile,
   isFenceLine,
   laserFenceLinks,
+  totalFenceLinkEnergy,
   AIRFIELD_BACK_DEPTH,
   BUILDING_TURN_STEP,
   buildingRect,
@@ -399,7 +401,7 @@ import {
 import { roofCiwsMuzzle } from "./roof-ciws.js";
 import { CIWS_INTERCEPT_LIFT, CIWS_MUZZLE_REACH, CIWS_SOURCE_ZOOM, ciwsMuzzleLift, ciwsTurretCell, ciwsTurretRow } from "./ciws.js";
 import { ciwsBurstTracers, ciwsTracers } from "./ciws-tracer.js";
-import { drawEnergyBolt, drawEnergyBurst, drawEnergyMuzzle, drawPlasmaOrb, energyBolts, energyBurstMs } from "./energy-fx.js";
+import { drawEnergyBolt, drawEnergyBurst, drawEnergyMuzzle, drawPlasmaOrb, energyBolts, energyBurstMs, plasmaOrbScale } from "./energy-fx.js";
 import { SCORCH_GLOW_MS, SCORCH_SMOKE_RADIUS, drawPlasmaSteam, drawScorchFallback, drawScorchGlow, plasmaSteamMs } from "./plasma-ground.js";
 import { PTRD_MUZZLE_LIFT, ptrdTracers } from "./ptrd-tracer.js";
 import { ROOF_CIWS_LIFT } from "./roof-ciws.js";
@@ -537,8 +539,6 @@ import {
 
 /** A cloaked Shade as its own side sees it. */
 const CLOAKED_UNIT_FILTER = "opacity(0.38) saturate(0.5) brightness(1.35)";
-/** An armored hull coated in a Spitter's acid. */
-const ACID_HULL_FILTER = "sepia(0.55) hue-rotate(28deg) saturate(1.7) brightness(0.92)";
 
 /** The hive cyborgs that share the Drone's sheet set: stand, fire, crawl, crawl-fire, die. */
 const HIVE_SHEETS: Partial<Record<string, { stand: UnitSpriteDef; fire: UnitSpriteDef; crawl: UnitSpriteDef; crawlFire: UnitSpriteDef; die: UnitSpriteDef }>> = {
@@ -5682,7 +5682,11 @@ export class MapView {
     ctx.restore();
   }
 
-  /** Lunge armed: a dashed green ring of the legs' reach round each selected Behemoth. */
+  /**
+   * Lunge armed: a dashed green ring of the legs' reach round each selected Behemoth. With no
+   * Sim Unit selected the blink cursor never draws, so the lunge draws its own crosshair here:
+   * the armed mode hides the system cursor.
+   */
   private drawLungeReach(): void {
     const units = this.ownLungerIds()
       .map((id) => this.currById.get(id))
@@ -5704,6 +5708,37 @@ export class MapView {
       }
       ctx.stroke();
     }
+    ctx.restore();
+    if (this.ownSimUnitIds().length === 0) this.drawLungeCursor(units);
+  }
+
+  /** The lunge's crosshair and word at the mouse: green in reach, orange where it comes down short. */
+  private drawLungeCursor(units: EntityView[]): void {
+    if (this.overControl || this.mouseX < 0 || this.mouseY < 0) return;
+    const reach = BEHEMOTH_LUNGE_RANGE_TILES * this.ts();
+    const w = this.screenToWorld(this.mouseX, this.mouseY);
+    const inReach = units.some((e) => Math.hypot(w.x - e.x, w.y - e.y) <= reach);
+    const charged = units.some((e) => (e.lungeCharge ?? 1) >= 1);
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.setLineDash([]);
+    ctx.font = "11px 'Share Tech Mono', monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    const word = !charged ? "LUNGE (CHARGING)" : inReach ? "LUNGE" : "LUNGE (SHORT)";
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#140e0a";
+    ctx.fillStyle = inReach && charged ? "#6effb4" : "#dc7850";
+    ctx.strokeText(word, this.mouseX + 12, this.mouseY + 8);
+    ctx.fillText(word, this.mouseX + 12, this.mouseY + 8);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = ctx.fillStyle;
+    ctx.beginPath();
+    ctx.moveTo(this.mouseX, this.mouseY - 8);
+    ctx.lineTo(this.mouseX, this.mouseY + 8);
+    ctx.moveTo(this.mouseX - 8, this.mouseY);
+    ctx.lineTo(this.mouseX + 8, this.mouseY);
+    ctx.stroke();
     ctx.restore();
   }
 
@@ -8286,8 +8321,6 @@ export class MapView {
     else if (!e.wreck && (e.shutdown || e.dormant)) ctx.filter = SHUTDOWN_UNIT_FILTER;
     // Your Shade with its skin settled: a faint shimmer only its own side sees.
     else if (!e.wreck && e.cloaked) ctx.filter = CLOAKED_UNIT_FILTER;
-    // A hull under a Spitter's acid coat: the plate goes a sick yellow-green.
-    else if (!e.wreck && (e.acid ?? 0) > 0) ctx.filter = ACID_HULL_FILTER;
     // A map's neutral unit is grey: no one's colours, everyone's enemy.
     else if (!e.wreck && !e.ownerId) ctx.filter = NEUTRAL_UNIT_FILTER;
     // The ship's mounts are placed on the sim's own spots: no ground sink under the hull.
@@ -9074,7 +9107,7 @@ export class MapView {
     const now = performance.now();
     const blend = Math.min(1, (now - this.snapAt) / 100);
     const live = new Set<number>();
-    const heads: { x: number; y: number; dx: number; dy: number; id: number; heavy: boolean; energy: boolean }[] = [];
+    const heads: { x: number; y: number; dx: number; dy: number; id: number; heavy: boolean; energy: boolean; caliber: number }[] = [];
     for (const p of this.curr.projectiles) {
       if (!p.rocket) continue;
       live.add(p.id);
@@ -9100,6 +9133,7 @@ export class MapView {
         id: p.id,
         heavy: !!p.heavy,
         energy: !!p.energy,
+        caliber: p.caliber,
       });
     }
     for (const id of [...this.rocketLast.keys()]) {
@@ -9129,7 +9163,7 @@ export class MapView {
     ctx.restore();
     this.rocketPuffs = keep;
     for (const h of heads) {
-      if (h.energy) drawPlasmaOrb(ctx, h.x, h.y, h.dx, h.dy, h.heavy);
+      if (h.energy) drawPlasmaOrb(ctx, h.x, h.y, h.dx, h.dy, h.heavy, plasmaOrbScale(h.caliber));
       else drawRocketHead(ctx, h.x, h.y, h.dx, h.dy, h.id, h.heavy);
     }
   }
@@ -11312,6 +11346,11 @@ export class MapView {
     const each = costFor("laserfence", faction);
     const count = this.fencePosts.length + (next && nextOk ? 1 : 0);
     const bill = each * count;
+    // The hive pays in energy: each post's own, and the links the line adds, more the longer they reach.
+    const hive = this.curr.you.energy;
+    const reach = LASER_FENCE_REACH_TILES * ts;
+    const links = hive ? totalFenceLinkEnergy(all, reach, ts) - totalFenceLinkEnergy(standing, reach, ts) : 0;
+    const energy = count * energyOf("laserfence") + Math.max(0, links);
     const s = this.toScreen(centre(tip).x, centre(tip).y);
     ctx.save();
     ctx.font = "11px 'Share Tech Mono', monospace";
@@ -11319,8 +11358,8 @@ export class MapView {
     ctx.textBaseline = "middle";
     ctx.lineWidth = 3;
     ctx.strokeStyle = "#140e0a";
-    ctx.fillStyle = this.curr.you.scrap >= bill ? "#e8b84a" : "#ff5a4a";
-    const label = `${count} × ${each} = ${bill}`;
+    ctx.fillStyle = (hive ? hive.cap - hive.used >= energy : this.curr.you.scrap >= bill) ? "#e8b84a" : "#ff5a4a";
+    const label = hive ? `${count} posts + links = ${energy} EN` : `${count} × ${each} = ${bill}`;
     ctx.strokeText(label, s.x + 14, s.y - 14);
     ctx.fillText(label, s.x + 14, s.y - 14);
     ctx.font = "10px 'Share Tech Mono', monospace";
