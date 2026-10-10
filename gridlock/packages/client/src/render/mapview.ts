@@ -89,6 +89,8 @@ import {
   TICK_DT,
   burnVariant,
   DRONE_LEASH_TILES,
+  DEPLOYMENT_LEASH_TILES,
+  HIVE_DROP_SECONDS,
   HEIGHT_BASE,
   PATROL_POINTS_MAX,
   connectPatrolPoints,
@@ -315,6 +317,7 @@ import { drawTorpedoBody } from "./torpedo-draw.js";
 import { drawRadarContact, drawRadarOffline, radarContactLit } from "./radar-panel.js";
 import { drawSonarContact, drawWaterMine } from "./sonar-fx.js";
 import { drawHeatContact, drawScanContact } from "./thermal-fx.js";
+import { drawDeploymentGrid, drawHiveComet, drawHiveImpact, HIVE_IMPACT_MS } from "./hive-drop-fx.js";
 import {
   drawTrackKick,
   spawnTrackKickPuffs,
@@ -1035,6 +1038,10 @@ export class MapView {
   private prevProjById = new Map<number, ProjectileView>();
   private prevSonarById = new Map<number, NonNullable<MatchSnapshot["sonar"]>[number]>();
   private prevThermalById = new Map<number, NonNullable<MatchSnapshot["thermal"]>[number]>();
+  /** Hive Cores on their way down: when the fall began here, and the landing spot (world). */
+  private hiveDrops = new Map<number, { startMs: number; x: number; y: number }>();
+  /** Hive Cores that just landed: when, and where (world). */
+  private hiveImpacts: { atMs: number; x: number; y: number }[] = [];
   private prevCrateById = new Map<number, MatchSnapshot["crates"][number]>();
   /** Walker legs: ground walked so far and where the hull was last frame. */
   private walkerOdo = new Map<number, { x: number; y: number; d: number }>();
@@ -4934,6 +4941,7 @@ export class MapView {
     this.drawRallyOverlay();
     this.drawPlanOverlay();
     this.drawDroneLeash();
+    this.drawDeploymentLeash();
     this.drawRadarReach();
     this.drawMineLayReach();
     this.drawBlinkReach();
@@ -4942,6 +4950,73 @@ export class MapView {
     this.drawHiveFx();
     this.drawSonarContacts();
     this.drawThermalContacts();
+    this.drawHiveDrops();
+  }
+
+  /** Real ms the Hive Core takes to fall at the current game speed. */
+  private hiveDropMs(): number {
+    return (HIVE_DROP_SECONDS * 1000) / Math.max(1, this.curr.gameSpeed || 1);
+  }
+
+  /** The Deployment: a radial landing grid the size of the Hive Core's footprint, brightening as the core comes down. */
+  private drawDeployment(e: EntityView): void {
+    const p = this.lerpEnt(e);
+    const ts = this.ts();
+    const now = performance.now();
+    const drop = this.hiveDrops.get(e.id);
+    const charge = e.state === "deploy" ? (drop ? Math.min(1, (now - drop.startMs) / this.hiveDropMs()) : (e.deployProgress ?? 0)) : 0;
+    const radius = (catalog("hivecore").tileW * ts) / 2;
+    drawDeploymentGrid(this.ctx, (x, y) => this.toScreen(x, y), p.x, p.y, { nowMs: now, radius, charge });
+    const s = this.toScreen(p.x, p.y);
+    const top = this.toScreen(p.x - radius, p.y - radius).y - 6;
+    if (e.ownerId === this.curr.youPlayerId) {
+      const ctx = this.ctx;
+      const name = this.curr.players.find((pl) => pl.playerId === e.ownerId)?.name ?? "";
+      ctx.font = "12px 'Share Tech Mono', monospace";
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#e8dcc4";
+      ctx.fillText(name, s.x, top - 12);
+    }
+    this.maybeHp(e, s.x - 20, top - 8, 40);
+  }
+
+  /**
+   * The Hive Core falling onto a deploying Deployment, then its landing. The sim
+   * swaps the Deployment for the whole Hive Core when the fall ends; the flash
+   * and shockwave cover the swap.
+   */
+  private drawHiveDrops(): void {
+    const now = performance.now();
+    const dur = this.hiveDropMs();
+    const live = new Set<number>();
+    for (const e of this.curr.entities) {
+      if (e.type !== "seed" || e.state !== "deploy" || e.hp <= 0) continue;
+      live.add(e.id);
+      const p = this.lerpEnt(e);
+      const was = this.hiveDrops.get(e.id);
+      if (was) {
+        was.x = p.x;
+        was.y = p.y;
+      } else {
+        this.hiveDrops.set(e.id, { startMs: now - (e.deployProgress ?? 0) * dur, x: p.x, y: p.y });
+      }
+    }
+    for (const [id, d] of this.hiveDrops) {
+      if (live.has(id)) continue;
+      this.hiveDrops.delete(id);
+      // Landed: the same id now stands as a Hive Core. Anything else (killed, cancelled) just ends.
+      if (this.currById.get(id)?.type === "hivecore") this.hiveImpacts.push({ atMs: now, x: d.x, y: d.y });
+    }
+    const unit = this.ts() * 2;
+    for (const d of this.hiveDrops.values()) {
+      const s = this.toScreen(d.x, d.y);
+      drawHiveComet(this.ctx, s.x, s.y, { u: (now - d.startMs) / dur, unit, nowMs: now });
+    }
+    this.hiveImpacts = this.hiveImpacts.filter((h) => now - h.atMs < HIVE_IMPACT_MS);
+    for (const h of this.hiveImpacts) {
+      const s = this.toScreen(h.x, h.y);
+      drawHiveImpact(this.ctx, s.x, s.y, { age: (now - h.atMs) / HIVE_IMPACT_MS, unit });
+    }
   }
 
   /** What your Cyborgs read through the fog: a soldier's heat, or a hull under the APS scan grid. */
@@ -5409,6 +5484,30 @@ export class MapView {
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(layer, 0, 0, lw * S, lh * S);
     ctx.restore();
+  }
+
+  /** Dashed ring round the drop zone while your Deployment is selected: how far it may creep. */
+  private drawDeploymentLeash(): void {
+    const you = this.curr.youPlayerId;
+    const r = DEPLOYMENT_LEASH_TILES * this.ts();
+    const ctx = this.ctx;
+    for (const e of this.curr.entities) {
+      if (e.type !== "seed" || !e.anchor || e.ownerId !== you || !this.selected.has(e.id)) continue;
+      const a0 = e.anchor;
+      ctx.save();
+      ctx.setLineDash([6, 5]);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "rgba(120, 225, 255, 0.55)";
+      ctx.beginPath();
+      for (let i = 0; i <= 64; i++) {
+        const a = (i / 64) * Math.PI * 2;
+        const s = this.toScreen(a0.x + Math.cos(a) * r, a0.y + Math.sin(a) * r);
+        if (i === 0) ctx.moveTo(s.x, s.y);
+        else ctx.lineTo(s.x, s.y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   /** Dashed ring of the operator's reach while he or his drone is selected. */
@@ -7810,6 +7909,10 @@ export class MapView {
   }
 
   private drawUnitAt(e: EntityView): void {
+    if (e.type === "seed") {
+      this.drawDeployment(e);
+      return;
+    }
     if (isTorpedoBody(e.type)) {
       this.drawTorpedo(e);
       return;

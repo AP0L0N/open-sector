@@ -19,7 +19,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 138;
+export const PROTOCOL_VERSION = 139;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -269,6 +269,8 @@ export interface EntityView {
   dive?: { air: number; airMax: number; winded?: boolean };
   /** Titan outriggers down: stationary, braced max HP. Omitted when false. */
   braced?: boolean;
+  /** Xenomorph Deployment: the drop zone its leash runs round. Friendly-only. */
+  anchor?: { x: number; y: number };
   /** Seconds until the Titan's pods can fire the next rocket. Friendly snapshots; omitted when ready. */
   rocketReload?: number;
   /** Rockets left in the Titan's rack. Friendly snapshots. */
