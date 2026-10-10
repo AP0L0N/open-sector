@@ -1089,7 +1089,7 @@ function fireShip(state: MatchState, e: Entity, dt: number): void {
 /** A Hive Ark cannon lets go once it is laid within this of the aim. */
 const ARK_CANNON_LAY_DEG = 4;
 /** Barrel tip ahead of the cannon's pivot, world px. Matches the cannon art (render_hive_ark.py). */
-export const ARK_MUZZLE_REACH = 15;
+export const ARK_MUZZLE_REACH = 28;
 
 /**
  * The Hive Ark's two plasma cannons. Each trains on its own toward the target (or the

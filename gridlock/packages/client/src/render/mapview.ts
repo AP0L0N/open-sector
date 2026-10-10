@@ -246,6 +246,8 @@ import {
   spriteReady,
   BATTLESHIP_LAYERS,
   BATTLESHIP_SPRITE,
+  HIVEARK_CANNON,
+  HIVEARK_SPRITE,
   FEUERWIRBEL_CIWS_SHEET,
   FEUERWIRBEL_SPRITE,
   unitSpritePaintRect,
@@ -367,6 +369,7 @@ import {
 import { bumpTilt, crushBump } from "./crush-bump.js";
 import { drawFieldGunSmoke, fieldGunSmokePose, spawnFieldGunSmoke, type FieldGunSmokePuff } from "./field-gun-smoke.js";
 import { emplacementShotLook, facingConeDegOf, PAK43_FX_CALIBER_MUL } from "./emplacement-fx.js";
+import { drawArkDome, drawArkPlasmaBall, hiveArkLayers, hiveArkMuzzle } from "./hive-ark.js";
 import {
   BATTLESHIP_WORLD_PER_UNIT,
   battleshipLayers,
@@ -857,6 +860,7 @@ const EXTRUDE: Record<EntityType, number> = {
   supplyboat: 9,
   submarine: 7,
   lurker: 7,
+  hiveark: 20,
   battleship: 20,
   destroyer: 14,
   lst: 16,
@@ -1787,6 +1791,7 @@ export class MapView {
         if (shooter?.type === "mortarman" && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
         if (p.big && shooter?.type === "artillery" && !shooter.wreck) this.noteFieldGunShot(shooter, p, now);
         if (p.shipBarrel != null && shooter?.ship && !shooter.wreck) this.noteShipShot(shooter, p.shipBarrel, p, now);
+        if (p.arkCannon != null && shooter?.ark && !shooter.wreck) this.noteArkShot(shooter, p.arkCannon, p, now);
         continue;
       }
       if (p.rocket) {
@@ -2392,6 +2397,25 @@ export class MapView {
   }
 
   /** Field gun: flash and a big smoke puff at the muzzle, a thick blast cloud behind the shield, and the carriage jumps back. */
+  /** One Hive Ark cannon: a big green flash at its muzzle, no smoke. */
+  private noteArkShot(shooter: EntityView, i: number, shot: { id: number; caliber: number }, now: number): void {
+    const cannon = shooter.ark?.cannons[i];
+    if (!cannon) return;
+    const m = hiveArkMuzzle(shooter, i, cannon.facing, HIVEARK_SPRITE.drawSize);
+    this.addFx({
+      id: shot.id + 8_000_000,
+      kind: "muzzle",
+      energy: true,
+      x: m.x,
+      y: m.y,
+      vx: Math.cos(cannon.facing),
+      vy: Math.sin(cannon.facing),
+      at: now,
+      caliber: shot.caliber,
+      lift: Math.round(m.lift),
+    });
+  }
+
   private noteFieldGunShot(shooter: EntityView, shot: { id: number; caliber: number }, now: number): void {
     const spr = spriteFor(shooter.type);
     // The barrel sits at 45°: the muzzle is short of the axle on the ground and high above it.
@@ -4286,7 +4310,10 @@ export class MapView {
   }
 
   private clickSelect(px: number, py: number, shift: boolean): void {
-    const hit = this.hit(px, py);
+    const picked = this.hit(px, py);
+    // A Wasp off a Hive Ark's pod takes no orders: a click on your own picks its Ark.
+    const ark = picked?.arkOf != null && picked.ownerId === this.curr.youPlayerId ? this.currById.get(picked.arkOf) : undefined;
+    const hit = ark ?? picked;
     const prev = this.lastClick;
     this.lastClick = null;
     if (!hit) {
@@ -4337,7 +4364,8 @@ export class MapView {
       if (e.kind !== "unit" || e.ownerId !== this.curr.youPlayerId || e.wreck || e.garrisonedIn) continue;
       // A shut-down Cyborg takes no orders; a running torpedo is nobody's to command.
       if (e.shutdown) continue;
-      if (isTorpedoBody(e.type)) continue;
+      // Nor is a Wasp off a Hive Ark's pod: the Ark flies it.
+      if (isTorpedoBody(e.type) || e.arkOf != null) continue;
       const p = this.lerpEnt(e);
       const s = this.toScreen(p.x, p.y);
       // Aloft, the box has to take the plane itself, not the shadow under it.
@@ -7960,6 +7988,40 @@ export class MapView {
     if (!e.wreck) this.drawShipLamp(e, facing, ox, oy, size);
   }
 
+  /**
+   * Hive Ark cannons and the Wasps docked on its pods, over its hull, far first. (ox, oy) is the
+   * model origin on screen. A docked Wasp is the Wasp's own sheet, small, wings folded (frame 0).
+   */
+  private drawArkLayers(e: EntityView, facing: number, ox: number, oy: number, size: number): void {
+    const ark = e.ark;
+    if (!ark) return;
+    const ctx = this.ctx;
+    const layers = hiveArkLayers(
+      facing,
+      ark.cannons.map((c) => c.facing),
+      e.wreck ? [] : ark.pods.map((p) => p.docked),
+      size,
+      this.ts(),
+    );
+    const left = ox - size / 2;
+    const top = oy - size * HIVEARK_SPRITE.contactY;
+    const wasp = WASP_SPRITE;
+    const waspSize = wasp.drawSize * 0.62;
+    for (const l of layers) {
+      if (l.layer === "cannon") {
+        if (!spriteReady(HIVEARK_CANNON)) continue;
+        const cell = HIVEARK_CANNON.frameSize;
+        ctx.drawImage(HIVEARK_CANNON.image, 0, l.row * cell, cell, cell, left + l.dx, top + l.dy, size, size);
+        continue;
+      }
+      if (!spriteReady(wasp)) continue;
+      const cell = wasp.frameSize;
+      const x = ox + l.dx - waspSize / 2;
+      const y = oy + l.dy - waspSize * wasp.contactY;
+      ctx.drawImage(wasp.image, 0, l.row * cell, cell, cell, x, y, waspSize, waspSize);
+    }
+  }
+
   /** The Feuerwirbel's two CIWS mounts, each on its ring and its own facing row, far one first. */
   private drawTwinMounts(mounts: NonNullable<EntityView["mounts"]>, facing: number, ox: number, oy: number, size: number): void {
     const sheet = FEUERWIRBEL_CIWS_SHEET;
@@ -8092,7 +8154,7 @@ export class MapView {
     // A map's neutral unit is grey: no one's colours, everyone's enemy.
     else if (!e.wreck && !e.ownerId) ctx.filter = NEUTRAL_UNIT_FILTER;
     // The ship's mounts are placed on the sim's own spots: no ground sink under the hull.
-    if (e.ship || def === BATTLESHIP_SPRITE) hullShiftY -= unitGroundSink(size);
+    if (e.ship || def === BATTLESHIP_SPRITE || e.ark || def === HIVEARK_SPRITE) hullShiftY -= unitGroundSink(size);
     const stepping = unitStepping({ type: e.type, state: e.state, swimming: e.swimming, prev: this.prevById.get(e.id), curr: e });
     if (e.type === "juggernaut" && !e.wreck) {
       const pose = this.juggernautPose(e);
@@ -8133,6 +8195,7 @@ export class MapView {
     }
     // A sunk hulk has its superstructure and turrets baked in; the grey stand-in still needs them.
     if (drawn && e.ship && (!e.wreck || sheet === def)) this.drawShipLayers(e, p.facing, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size);
+    if (drawn && e.ark && (!e.wreck || sheet === def)) this.drawArkLayers(e, p.facing, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size);
     // A wrecked Feuerwirbel's mounts are torn off; its hulk sheet shows the empty rings.
     if (drawn && e.mounts && !e.wreck) this.drawTwinMounts(e.mounts, p.facing, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size);
     if (drawn && e.type === "titan" && !e.wreck) this.drawTitanLamp(e, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size, def);
@@ -9185,6 +9248,21 @@ export class MapView {
     for (const s of walls) {
       const mid = this.toScreen(s.x, s.y);
       if (mid.x < -120 || mid.y < -120 || mid.x > w + 120 || mid.y > h + 120) continue;
+      if (s.dome) {
+        // A Hive Ark's dome: the far rim just behind the hull, the glass bubble just in front of it.
+        // It rides the Ark, so it follows the hull's smoothed position, not the snapshot's.
+        const ark = this.curr.entities.find((e) => e.ark && Math.abs(e.x - s.x) < 1 && Math.abs(e.y - s.y) < 1);
+        const at = ark ? this.lerpEnt(ark) : { x: s.x, y: s.y };
+        const c = this.toScreen(at.x, at.y);
+        const edge = this.toScreen(at.x + s.r / Math.SQRT2, at.y - s.r / Math.SQRT2);
+        const rx = Math.hypot(edge.x - c.x, edge.y - c.y);
+        const share = s.hpMax > 0 ? s.hp / s.hpMax : 0;
+        const z = isoDepth(at.x, at.y);
+        const spot = { x: at.x, y: at.y };
+        items.push({ layer: STANDING_DRAW_LAYER, z: z - 1e-3, at: spot, run: () => drawArkDome(this.ctx, c.x, c.y, rx, share, !!s.hit, now, true) });
+        items.push({ layer: STANDING_DRAW_LAYER, z: z + 1e-3, at: spot, run: () => drawArkDome(this.ctx, c.x, c.y, rx, share, !!s.hit, now, false) });
+        continue;
+      }
       const glow = shieldGlow(s, now, s.id);
       const rise = shieldHeightElev(s.r);
       const pts = shieldCurve(s).map((g) => {
@@ -9464,6 +9542,11 @@ export class MapView {
         steps: 18,
       });
       const pts = world.map((pt) => ({ x: pt.x, y: pt.y, z: pt.z, u: pt.u }));
+      // A Hive Ark's plasma ball: no smoke, a big glowing orb with a short tail.
+      if (p.arkCannon != null) {
+        drawArkPlasmaBall(ctx, this.mortarSmokeScreen(pts), now, p.id);
+        continue;
+      }
       // A 16-inch shell drags a much heavier trail than a mortar bomb, and it hangs longer.
       const thick = p.shipBarrel != null ? SHIP_SHELL_SMOKE_THICK : 1;
       drawMortarSmoke(ctx, this.mortarSmokeScreen(pts), p.id, 1, thick);
@@ -9979,7 +10062,8 @@ export class MapView {
       ctx.fillStyle = "rgba(8, 6, 4, 0.72)";
       ctx.fillRect(x, by, w, h);
       ctx.globalAlpha = alpha;
-      ctx.fillStyle = i === 0 ? (e.energy != null ? ENERGY_FILL : AMMO_PRIMARY_FILL) : AMMO_SECONDARY_FILL;
+      // A Hive Ark shows one energy cell per cannon.
+      ctx.fillStyle = e.ark || (i === 0 && e.energy != null) ? ENERGY_FILL : i === 0 ? AMMO_PRIMARY_FILL : AMMO_SECONDARY_FILL;
       ctx.fillRect(x, by, w * ratios[i]!, h);
     }
   }

@@ -404,6 +404,7 @@ import {
   bindSupplySheets,
   bindNavalSheets,
   bindBattleshipSheets,
+  bindHiveArkSheets,
   bindApocalypseSheets,
   bindPlaneSheets,
   bindFlutterSheets,
@@ -414,6 +415,7 @@ import {
 } from "./turntable-sheet.js";
 import { engineRowFromFacing, engineRowFromScreen } from "./turntable.js";
 import { BATTLESHIP_MODEL, battleshipDrawSize } from "./battleship.js";
+import { HIVEARK_MODEL, hiveArkDrawSize } from "./hive-ark.js";
 import scoutHeadUrl from "../assets/units/scout-head.png";
 import rigSheetUrl from "../assets/units/rig-move.png";
 import seedSheetUrl from "../assets/units/seed-move.png";
@@ -1673,6 +1675,23 @@ export const LURKER_SPRITE: UnitSpriteDef = {
 };
 bindNavalSheets("lurker", LURKER_SPRITE.image);
 
+/**
+ * Hive Ark hull, cut at the waterline over its wake. Both cannons and the docked Wasps are drawn
+ * over it by render/hive-ark.ts, each on its own pivot. Drawn at the sim's width, not UNIT_VISUAL_SCALE.
+ */
+export const HIVEARK_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: HIVEARK_MODEL.cell,
+  fps: 8,
+  drawSize: Math.round(hiveArkDrawSize(TILE_SIZE)),
+  contactY: HIVEARK_MODEL.cyFrac,
+  facingSpace: "world",
+};
+export const HIVEARK_CANNON: TurretSpriteDef = { image: new Image(), dirs: TANK_FACE_DIRS, frames: 1, frameSize: HIVEARK_MODEL.cell };
+bindHiveArkSheets({ hull: HIVEARK_SPRITE.image, cannon: HIVEARK_CANNON.image });
+
 /** Wing-stroke frames a second on the Xenomorph insects: a blur of a beat at play size. */
 export const WING_BEAT_FPS = 24;
 
@@ -2023,6 +2042,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   supplyboat: SUPPLYBOAT_SPRITE,
   submarine: SUBMARINE_SPRITE,
   lurker: LURKER_SPRITE,
+  hiveark: HIVEARK_SPRITE,
   battleship: BATTLESHIP_SPRITE,
   destroyer: DESTROYER_SPRITE,
   lst: LST_SPRITE,

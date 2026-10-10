@@ -976,11 +976,13 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
         ? jetLine(e.jet)
         : e.type === "aswheli"
           ? "  ·  on the hunt"
+          : e.arkOf != null
+            ? "  ·  off its Hive Ark"
           : e.air
             ? airLine(e.air, e.type)
             : "";
   const pads = e.pads ? `  ·  planes ${e.pads.used}/${e.pads.cap}` : "";
-  const depth = e.dive ? diveLine(e.dive, !!e.submerged) : e.asw ? aswLine(e.asw) : "";
+  const depth = e.dive ? diveLine(e.dive, !!e.submerged) : e.asw ? aswLine(e.asw) : e.ark?.cannons[0]?.energy != null ? arkLine(e.ark) : "";
   box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${field}${plates}${injuries}${posture}${mag}${rack}${rockets}${mg}${flight}${depth}  ·  ${who}${q}${cart}${smoke}${dep}${special}${garrison}${scout}${bed}${pads}${capturing}${holding}${selfDestroy}${tending}`;
   box.style.borderColor = occ ? colorHex(occ.colorId) : "#b08968";
 }
@@ -1030,6 +1032,18 @@ function aswLine(a: NonNullable<EntityView["asw"]>): string {
           ? `helicopter loading${a.rearm != null ? ` ${Math.ceil(a.rearm)}s` : ""}`
           : "helicopter ready";
   return `  ·  ${heli}  ·  mines ${a.mines}/${a.minesMax}`;
+}
+
+/** Your own Hive Ark: each cannon's cell, the dome, and the Wasps on the pods. */
+function arkLine(a: NonNullable<EntityView["ark"]>): string {
+  const cells = a.cannons
+    .map((c, i) => `${i === 0 ? "fore" : "aft"} cannon ${Math.round((c.energy ?? 0) * 100)}%${c.drained ? " recharging" : ""}`)
+    .join(", ");
+  const dome = a.domeDown != null ? `dome down ${a.domeDown}s` : "dome up";
+  const wasps = a.pods
+    .map((p) => (p.docked ? "docked" : p.regrow != null ? `regrowing ${p.regrow}s` : "up"))
+    .join(" / ");
+  return `  ·  ${cells}  ·  ${dome}  ·  Wasps ${wasps}`;
 }
 
 /** Mode, and for your own drone the battery and a recall. */
@@ -1250,6 +1264,7 @@ const TYPE_ORDER: EntityType[] = [
   "gunboat",
   "leech",
   "lurker",
+  "hiveark",
   "leviathan",
   "spineback",
   "abyssray",

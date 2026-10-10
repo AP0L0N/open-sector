@@ -25,8 +25,14 @@ const UNIT_VOICE_VOLUME = 0.95;
 const ANNOUNCE_VOLUME = 1.0;
 const UI_VOLUME = 0.5;
 
+/** Units that speak and fire with another's takes until they have their own. */
+const BORROWED_AUDIO: Partial<Record<string, string>> = {
+  // The Hive Ark: the Xenomorph sea voice and the Leech's plasma cannon.
+  hiveark: "leech",
+};
+
 function unitFolder(type: string): string {
-  return `units/${type}`;
+  return `units/${BORROWED_AUDIO[type] ?? type}`;
 }
 
 function pick(folder: string, cue: string): string | null {
