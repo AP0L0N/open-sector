@@ -84,7 +84,8 @@ describe("Gnat", () => {
     const g = catalog("gnat");
     for (const t of OTHER_PLANES) {
       const c = catalog(t);
-      assert.ok(g.cost < c.cost / 2, `costs well under ${t}`);
+      if (factionOf(t) === "xeno") assert.ok((g.energy ?? 0) < (c.energy ?? 0) / 2, `takes well under ${t}'s energy`);
+      else assert.ok(g.cost < c.cost / 2, `costs well under ${t}`);
       assert.ok(g.buildSeconds < c.buildSeconds / 2, `grows well faster than ${t}`);
       assert.ok(g.hp < c.hp / 2, `far frailer than ${t}`);
       if (t !== "horten") assert.ok(flyingSight("gnat") > flyingSight(t), `sees farther than ${t}`);

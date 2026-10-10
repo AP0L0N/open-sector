@@ -2,6 +2,9 @@ import {
   canLunge,
   canBurrow,
   costFor,
+  energyOf,
+  energySupplyOf,
+  usesHiveEnergy,
   isAirfieldType,
   BUILDING_TYPES,
   YARD_FIELD_TYPES,
@@ -183,7 +186,7 @@ export function mountBattlefield(
   const top = el("div", { class: "topbar", attrs: { id: "topbar" } });
   top.append(
     el("span", { attrs: { id: "hud-scrap" }, html: "SCRAP <b>0</b>" }),
-    el("span", { class: "scrap-toast", attrs: { id: "scrap-toast" }, text: "INSUFFICIENT SCRAP" }),
+    el("span", { class: "scrap-toast", attrs: { id: "scrap-toast" }, text: hiveHud(ctx.match) ? "INSUFFICIENT ENERGY" : "INSUFFICIENT SCRAP" }),
     el("span", { attrs: { id: "hud-power" }, html: "POWER <b>0 / 0</b>" }),
     el("span", { attrs: { id: "hud-speed" }, html: "SPEED <b>×1</b>" }),
     el("span", { class: "tiny", attrs: { id: "hud-map" }, text: getMap(ctx.match.mapId)?.name ?? ctx.match.mapId }),
@@ -243,6 +246,10 @@ export function mountBattlefield(
     const grid = el("div", { class: "cameos", attrs: { id: "cameos-" + g.id, role: "tabpanel" } });
     for (const { id, type } of entries[g.id]) {
       const c = catalog(type);
+      if (usesHiveEnergy(hudFaction)) {
+        grid.append(hiveCameo(id, type, c.kind === "building"));
+        continue;
+      }
       grid.append(
         c.kind === "building"
           ? cameoButton(id, c.name, costFor(type, hudFaction), c.power, true)
@@ -435,6 +442,25 @@ function structureReady(m: MatchSnapshot | null | undefined, type: BuildingType 
   return q?.ready === true && q.type === type;
 }
 
+/** Does this match's viewer run on hive energy (the Xenomorphs) instead of scrap and power? */
+function hiveHud(m: MatchSnapshot | null | undefined): boolean {
+  return !!m?.you.energy || usesHiveEnergy(m ? viewerFaction(m) : undefined);
+}
+
+/** A Xenomorph cameo: priced in hive energy, not scrap; a Fusion Node shows what it adds. */
+function hiveCameo(id: string, type: BuildingType | TrainType | YardFieldType, building: boolean): HTMLButtonElement {
+  const c = catalog(type);
+  const supply = energySupplyOf(type);
+  const take = energyOf(type);
+  const price = supply > 0 ? `+${supply} EN` : take > 0 ? `${take} EN${type === "laserfence" ? " + link" : ""}` : "FREE";
+  const b = building ? cameoButton(id, c.name, 0, 0, true) : cameoButton(id, c.name, 0, 0, false, true);
+  const meta = b.querySelector(".cameo-meta");
+  if (meta) meta.textContent = price;
+  const deny = b.querySelector(".cameo-deny");
+  if (deny) deny.textContent = "NO ENERGY";
+  return b;
+}
+
 function cameoButton(
   id: string,
   name: string,
@@ -620,11 +646,34 @@ function scrapYieldLookup(cells: readonly ScrapCell[]): (x: number, y: number) =
   return (x, y) => found.get(`${x},${y}`) ?? 0;
 }
 
+/** Nothing left to pay the next step of a job with: scrap, or the hive's free energy. */
+function outOfFunds(m: MatchSnapshot): boolean {
+  const hive = m.you.energy;
+  return hive ? hive.used >= hive.cap : m.you.scrap <= 0;
+}
+
+/** The hive's store as a bar, like a Cyborg Commander's field: what is taken against what the hive holds. */
+function hiveEnergyHtml(hive: { cap: number; used: number; offline: number }): string {
+  const share = hive.cap > 0 ? Math.min(1, hive.used / hive.cap) : 1;
+  const full = hive.used >= hive.cap;
+  const offline = hive.offline > 0 ? ` <b class="cyborg-link">${hive.offline} OFFLINE</b>` : "";
+  return (
+    `ENERGY <span class="energy-bar${full ? " is-full" : ""}" role="meter" aria-valuemin="0" aria-valuemax="${hive.cap}" aria-valuenow="${hive.used}">` +
+    `<i style="width:${Math.round(share * 100)}%"></i></span> <b>${hive.used} / ${hive.cap}</b>${offline}`
+  );
+}
+
 export function paintBattleHud(ctx: Ctx): void {
   const m = ctx.match;
   if (!m) return;
   const scrap = document.getElementById("hud-scrap");
-  if (scrap) {
+  const hive = m.you.energy;
+  if (scrap && hive) {
+    const next = hiveEnergyHtml(hive);
+    if (scrap.innerHTML !== next) scrap.innerHTML = next;
+    scrap.classList.toggle("hive-energy", true);
+    scrap.classList.toggle("low-power", hive.offline > 0);
+  } else if (scrap) {
     const yieldAt = scrapYieldLookup(m.scrap ?? []);
     let rate = 0;
     for (const e of m.entities) {
@@ -637,7 +686,8 @@ export function paintBattleHud(ctx: Ctx): void {
     if (scrap.innerHTML !== next) scrap.innerHTML = next;
   }
   const power = document.getElementById("hud-power");
-  if (power) {
+  power?.classList.toggle("hidden", !!hive);
+  if (power && !hive) {
     const spd = productionSpeed(m.you.provided, m.you.used);
     const slow = m.you.lowPower ? ` · SLOW ×${spd.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}` : "";
     // No powered Cyborg Central and no Commander: your Cyborgs are about to go dark.
@@ -682,7 +732,7 @@ export function paintBattleHud(ctx: Ctx): void {
     } else if (pip) pip.style.width = "0";
     const ready = job?.ready === true;
     const paused = !!job && job.paused && !job.ready;
-    const stalled = !!job && !job.ready && !job.paused && m.you.scrap <= 0;
+    const stalled = !!job && !job.ready && !job.paused && outOfFunds(m);
     const siting = isYardField(type) && viewRef?.yardArm === type && !!viewRef.placeMode;
     btn.classList.toggle("is-ready", ready);
     btn.classList.toggle("is-building", !!job && !ready);
@@ -734,7 +784,7 @@ export function paintBattleHud(ctx: Ctx): void {
               : canContinuousTrain(unit) && unitJobs.length === 0
                 ? `${name} — Left: train. Right: build continuously.`
                 : btn.dataset.baseTitle;
-    btn.classList.toggle("unaffordable", training && m.you.scrap <= 0);
+    btn.classList.toggle("unaffordable", training && outOfFunds(m));
     btn.classList.toggle("slow-power", m.you.lowPower && training);
     btn.classList.toggle("is-training", unitJobs.length > 0);
     btn.classList.toggle("is-paused", paused);

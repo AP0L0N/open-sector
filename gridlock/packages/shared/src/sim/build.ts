@@ -20,6 +20,7 @@ import {
   isHqBuilding,
   isSmelterType,
   HQ_OF,
+  usesHiveEnergy,
 } from "../catalog.js";
 import { NOT_YOUR_FACTION } from "./train.js";
 import {
@@ -55,7 +56,8 @@ import {
 } from "./field.js";
 import { repathIfBlocked } from "./orders.js";
 import { powerOf, productionSpeed } from "./power.js";
-import { advancePaidJob, jobFullyPaid, refundPaid } from "./production.js";
+import { advancePaidJob, jobFullyPaid } from "./production.js";
+import { fenceEnergyToAdd, hiveEnergyWallet, jobBill, refundJob } from "./hive-energy.js";
 import { smelterCrowded, smelterSiteOk } from "./smelter.js";
 import type { Entity, MatchState, SimPlayer, StructureJob } from "./types.js";
 
@@ -154,7 +156,7 @@ export function cancelStructure(
   const p = state.players.get(playerId);
   const job = p ? resolveJob(p, building) : null;
   if (!p || !job) return "Nothing to cancel.";
-  refundPaid(p, job);
+  refundJob(p, job);
   dropJob(p, job);
   return null;
 }
@@ -175,9 +177,9 @@ function advanceStructure(state: MatchState, p: SimPlayer, job: StructureJob | n
     finishYardField(state, p, job);
     return;
   }
-  const cost = costFor(job.type, p.faction ?? "alliance");
+  const { wallet, cost } = jobBill(state, p, job.type, costFor(job.type, p.faction ?? "alliance"));
   const pow = powerOf(state, p.playerId);
-  advancePaidJob(p, job, cost, productionSpeed(pow.provided, pow.used));
+  advancePaidJob(wallet, job, cost, productionSpeed(pow.provided, pow.used));
   if (jobFullyPaid(job, cost)) {
     job.ready = true;
     job.progressTicks = job.totalTicks;
@@ -247,6 +249,13 @@ export function placeBuilding(
   const box = turnedBox(type, facing);
   if (!inBuildRadius(state, playerId, tx, ty, box.w, box.h, buildRadiusOf(type))) {
     return "Too far from your base.";
+  }
+  // A Laser Fence post's links take hive energy by their length: the hive must have it free.
+  if (type === "laserfence" && usesHiveEnergy(p.faction)) {
+    const site = buildingSite(type, tx, ty, facing, state.tileSize);
+    const need = fenceEnergyToAdd(state, playerId, site.x, site.y);
+    const free = hiveEnergyWallet(state, p).scrap;
+    if (need > free) return `Not enough energy: that link takes ${need}, the hive has ${free} free.`;
   }
   raiseBuilding(state, playerId, type, tx, ty, facing);
   dropJob(p, job);

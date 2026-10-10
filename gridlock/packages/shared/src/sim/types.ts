@@ -574,6 +574,11 @@ export interface Entity {
    * Cyborg Commander takes him over.
    */
   shutdown?: true;
+  /**
+   * Xenomorph unit or defence the hive has no energy for (sim/hive-energy.ts): a unit is also
+   * `shutdown`, a building `unpowered`. It wakes by itself once the hive has room for it.
+   */
+  hiveOffline?: true;
   /** Shut-down Cyborg only: the Cyborg Commander taking him over, and ticks of uplink so far. */
   takeover?: { by: number; ticks: number };
   /** Cyborg only: fires on what his side's thermal and APS read, seen or not, inside his reach. */

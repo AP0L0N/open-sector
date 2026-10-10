@@ -1158,14 +1158,39 @@ export function factionOf(type: string): Faction {
  * the Alliance's late cyborg works but the Xenomorphs' only barracks, so the hive pays a Barracks' price.
  */
 const FACTION_COST: Partial<Record<EntityType, Partial<Record<Faction, number>>>> = {
-  cyborgcentral: { xeno: 500 },
+  cyborgcentral: { xeno: 0 },
 };
+/**
+ * Fielded by a faction but off its build menu for now: the Xenomorphs pay no scrap, so the
+ * Assimilator has nothing to pour into.
+ */
+const SHELVED_TYPES: ReadonlySet<EntityType> = new Set<EntityType>(["assimilator"]);
+/**
+ * Hive energy (sim/hive-energy.ts): the Xenomorphs pay no scrap and draw no power. Their Hive Core
+ * holds HIVE_CORE_ENERGY and each Fusion Node FUSION_NODE_ENERGY more; every unit and defence takes
+ * its catalog `energy` while it lives. Asked for more than the hive holds, the newest go offline.
+ */
+export const HIVE_CORE_ENERGY = 200;
+export const FUSION_NODE_ENERGY = 500;
+/** Does `faction` run on hive energy instead of scrap and power? */
+export function usesHiveEnergy(faction: Faction | undefined): boolean {
+  return faction === "xeno";
+}
+/** Hive energy `type` takes while it lives: 0 for everything but Xenomorph units and defences. */
+export function energyOf(type: string): number {
+  return catalog(type as EntityType).energy ?? 0;
+}
+/** Hive energy `type` adds to the hive's store while it stands. */
+export function energySupplyOf(type: string): number {
+  return type === "hivecore" ? HIVE_CORE_ENERGY : type === "fusionnode" ? FUSION_NODE_ENERGY : 0;
+}
 /** Scrap `type` costs a player of `faction`. */
 export function costFor(type: EntityType, faction: Faction): number {
   return FACTION_COST[type]?.[faction] ?? catalog(type).cost;
 }
 /** May a player of `faction` queue, place, or train `type`? */
 export function inFaction(type: string, faction: Faction): boolean {
+  if (SHELVED_TYPES.has(type as EntityType)) return false;
   if (SHARED_TYPES.has(type as EntityType)) return faction !== "bloom";
   return factionOf(type) === faction;
 }
@@ -1505,6 +1530,11 @@ export interface CatalogEntry {
    * one shot of energy, and the cell regrows one shot each `rechargeSeconds`. Empty, the gun waits.
    */
   plasmaCell?: PlasmaCellDef;
+  /**
+   * Hive energy this Xenomorph unit or defence holds while it lives (sim/hive-energy.ts). The
+   * Xenomorphs pay no scrap: each one takes a share of the Hive Core's and Fusion Nodes' energy.
+   */
+  energy?: number;
   /**
    * A radar-laid 20mm mount on the turret roof (the Apocalypse). It traverses and
    * picks targets on its own, apart from the main gun. Incoming missiles come
@@ -2116,6 +2146,13 @@ export const LASER_BEAM_HALF_WIDTH = 2;
 export const LASER_FENCE_REACH_TILES = t(6);
 export const LASER_FENCE_BURN_SHARE = 0.6;
 export const LASER_FENCE_BURN_MIN = 60;
+/**
+ * The Spine Turret's cell: it fires at an MG42's pace (20 rounds a second), so 60 rounds is a
+ * 3-second burst, and it regrows 10 rounds a second: held on a target, it settles at half pace.
+ */
+export const SPINE_TURRET_CELL = { shots: 60, rechargeSeconds: 0.1 };
+/** Hive energy a fence link holds per cell of its length, on top of each post's own (sim/hive-energy.ts). */
+export const LASER_FENCE_ENERGY_PER_CELL = 5;
 /** World px either side of a fence beam that a body still touches. */
 export const LASER_FENCE_BEAM_HALF_WIDTH = 2;
 /**
@@ -4383,7 +4420,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     cost: 0,
     buildSeconds: DEPLOY_SECONDS,
     hp: 2500,
-    power: 50,
+    power: 0,
     tileW: t(3),
     tileH: t(3),
     radius: 0,
@@ -4468,10 +4505,10 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "building",
     name: "Fusion Node",
     letter: "F",
-    cost: 500,
+    cost: 0,
     buildSeconds: 12,
     hp: 650,
-    power: 110,
+    power: 0,
     tileW: t(2),
     tileH: t(2),
     radius: 0,
@@ -4483,17 +4520,17 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "Twin coils around a caged plasma core. Powers the hive: a little more than a Power Plant gives, on a thinner shell.",
+    blurb: `Twin coils around a caged plasma core. Feeds the hive: each Fusion Node adds ${FUSION_NODE_ENERGY} energy to the store your Hive Core starts with. Every Xenomorph unit and defence takes a share while it lives; asked for more than the hive holds, the newest go offline until there is room again. Costs nothing to grow.`,
   },
   assimilator: {
     type: "assimilator",
     kind: "building",
     name: "Assimilator",
     letter: "A",
-    cost: 1600,
+    cost: 0,
     buildSeconds: 24,
     hp: 1200,
-    power: -40,
+    power: 0,
     tileW: t(3),
     tileH: t(3),
     radius: 0,
@@ -5880,7 +5917,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Sim Unit II",
     letter: "I",
-    cost: 1400,
+    cost: 0,
+    energy: 60,
     buildSeconds: 14,
     hp: 220,
     power: 0,
@@ -5905,7 +5943,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Drone",
     letter: "o",
-    cost: 350,
+    cost: 0,
+    energy: 25,
     buildSeconds: 10,
     hp: 150,
     power: 0,
@@ -5930,7 +5969,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Thrall",
     letter: "a",
-    cost: 250,
+    cost: 0,
+    energy: 20,
     buildSeconds: 6,
     hp: 200,
     power: 0,
@@ -5955,7 +5995,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Lancer",
     letter: "j",
-    cost: 900,
+    cost: 0,
+    energy: 50,
     buildSeconds: 14,
     hp: 240,
     power: 0,
@@ -5981,7 +6022,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Spitter",
     letter: "i",
-    cost: 550,
+    cost: 0,
+    energy: 35,
     buildSeconds: 11,
     hp: 170,
     power: 0,
@@ -6007,7 +6049,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Weaver",
     letter: "w",
-    cost: 600,
+    cost: 0,
+    energy: 35,
     buildSeconds: 11,
     hp: 160,
     power: 0,
@@ -6030,7 +6073,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Shade",
     letter: "h",
-    cost: 750,
+    cost: 0,
+    energy: 40,
     buildSeconds: 12,
     hp: 110,
     power: 0,
@@ -6057,7 +6101,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Stalker",
     letter: "y",
-    cost: 650,
+    cost: 0,
+    energy: 60,
     buildSeconds: 15,
     hp: 135,
     power: 0,
@@ -6092,7 +6137,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Ravager",
     letter: "v",
-    cost: 500,
+    cost: 0,
+    energy: 50,
     buildSeconds: 13,
     hp: 115,
     power: 0,
@@ -6127,7 +6173,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Behemoth",
     letter: "b",
-    cost: 4000,
+    cost: 0,
+    energy: 200,
     buildSeconds: 26,
     hp: 240,
     power: 0,
@@ -6165,7 +6212,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Juggernaut",
     letter: "z",
-    cost: 2800,
+    cost: 0,
+    energy: 150,
     buildSeconds: 24,
     hp: 4200,
     power: 0,
@@ -6197,7 +6245,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Siphon",
     letter: "s",
-    cost: 850,
+    cost: 0,
+    energy: 70,
     buildSeconds: 16,
     hp: 140,
     power: 0,
@@ -6232,7 +6281,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Broodmother",
     letter: "m",
-    cost: 1800,
+    cost: 0,
+    energy: 120,
     buildSeconds: 22,
     hp: 300,
     power: 0,
@@ -6263,7 +6313,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Mawcaster",
     letter: "c",
-    cost: 1500,
+    cost: 0,
+    energy: 80,
     buildSeconds: 18,
     hp: 100,
     power: 0,
@@ -6299,10 +6350,10 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "building",
     name: "Nanite Forge",
     letter: "N",
-    cost: 800,
+    cost: 0,
     buildSeconds: 20,
     hp: 1000,
-    power: -35,
+    power: 0,
     tileW: t(3),
     tileH: t(3),
     radius: 0,
@@ -6322,10 +6373,10 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "building",
     name: "Neural Nexus",
     letter: "X",
-    cost: 5000,
+    cost: 0,
     buildSeconds: 26,
     hp: 900,
-    power: -70,
+    power: 0,
     tileW: t(2),
     tileH: t(2),
     radius: 0,
@@ -6337,7 +6388,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "A neural core in a cage of ribs under a crown of sensor spines: the hive thinks here. It unlocks the Behemoth and the Pulse Spire, and it lights the radar panel like a Radar Station: an enemy plane or drone nobody can see shows as a blinking contact on the panel. Costs about what a Research Facility does, and draws more power.",
+    blurb: "A neural core in a cage of ribs under a crown of sensor spines: the hive thinks here. It unlocks the Behemoth and the Pulse Spire, and it lights the radar panel like a Radar Station: an enemy plane or drone nobody can see shows as a blinking contact on the panel. Costs nothing to grow.",
   },
   /** Xenomorph anti-infantry gun: crewless, runs on base power. */
   spineturret: {
@@ -6345,10 +6396,11 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "building",
     name: "Spine Turret",
     letter: "s",
-    cost: 500,
+    cost: 0,
+    energy: 40,
     buildSeconds: 9,
     hp: 500,
-    power: -15,
+    power: 0,
     tileW: t(1),
     tileH: t(1),
     radius: 0,
@@ -6367,9 +6419,10 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     caliber: MG42.caliber,
     spreadDeg: 3,
     shotsPerTick: MG42.shotsPerTick,
+    plasmaCell: SPINE_TURRET_CELL,
     poweredGun: true,
     capturable: false,
-    blurb: "A chitin bulb rooted in the ground with a twin pulse repeater for a head. Nobody works it: it lays itself all the way round and cuts down soldiers at an MG42's pace from a little short of an MG Nest's reach, and draws its charge from the hive, so it never runs dry. Tank plate turns them, and they do not bring a building down. Short on power, it falls silent. Cannot move.",
+    blurb: "A chitin bulb rooted in the ground with a twin pulse repeater for a head. Nobody works it: it lays itself all the way round and cuts down soldiers at an MG42's pace from a little short of an MG Nest's reach, and draws its charge from the hive: a cell that holds 3 seconds of fire and regrows at half the pace it fires, so a long burst slows to a stutter. Tank plate turns them, and they do not bring a building down. Takes hive energy while it stands; offline, it falls silent. Cannot move.",
   },
   /** Xenomorph fence post: links to the posts beside it with two laser beams (sim/laser-fence.ts). */
   laserfence: {
@@ -6377,10 +6430,11 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "building",
     name: "Laser Fence",
     letter: "f",
-    cost: 150,
+    cost: 0,
+    energy: 10,
     buildSeconds: 6,
     hp: 300,
-    power: -8,
+    power: 0,
     tileW: 2,
     tileH: 2,
     radius: 0,
@@ -6393,7 +6447,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     capturable: false,
-    blurb: `A chitin post with two emitters. Set posts in a row: each links to the nearest post of yours up to ${LASER_FENCE_REACH_TILES / TILE_SUBDIV} cells away, and to the next one on its far side, with two laser beams between them. The beams stop nothing: soldiers and hulls walk through, and rounds fly through. Any ground unit that is not the hive's burns while it touches a beam: soldiers fall almost at once, a tank loses most of its hull crossing. Your own units pass unharmed. Short on power, the beams go dark. Shoot a post down to open the fence. Cannot move.`,
+    blurb: `A chitin post with two emitters. Set posts in a row: each links to the nearest post of yours up to ${LASER_FENCE_REACH_TILES / TILE_SUBDIV} cells away, and to the next one on its far side, with two laser beams between them. The beams stop nothing: soldiers and hulls walk through, and rounds fly through. Any ground unit that is not the hive's burns while it touches a beam: soldiers fall almost at once, a tank loses most of its hull crossing. Your own units pass unharmed. Each post takes a little hive energy, and each link more the longer it reaches; offline, a post's beams go dark. Shoot a post down to open the fence. Cannot move.`,
   },
   /** Xenomorph anti-armor gun: crewless, runs on base power. */
   pulsespire: {
@@ -6401,10 +6455,11 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "building",
     name: "Pulse Spire",
     letter: "q",
-    cost: 1600,
+    cost: 0,
+    energy: 100,
     buildSeconds: 14,
     hp: 800,
-    power: -30,
+    power: 0,
     tileW: t(1),
     tileH: t(1),
     radius: 0,
@@ -6429,7 +6484,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     armorFirst: true,
     poweredGun: true,
     capturable: false,
-    blurb: `A tall spire with a long emitter and a ring of green fire. Nobody works it: it turns all the way round, slowly, and throws a piercing energy pulse through a Tiger's front plate from farther than a Pak 36 reaches. Tanks first. Each pulse draws on an energy cell that holds 8 and regrows one every 6 seconds. Short on power, it falls silent. Needs a Neural Nexus. Cannot move.`,
+    blurb: `A tall spire with a long emitter and a ring of green fire. Nobody works it: it turns all the way round, slowly, and throws a piercing energy pulse through a Tiger's front plate from farther than a Pak 36 reaches. Tanks first. Each pulse draws on an energy cell that holds 8 and regrows one every 6 seconds. Takes hive energy while it stands; offline, it falls silent. Needs a Neural Nexus. Cannot move.`,
   },
   /** Xenomorph shipyard: grows the Leech and the Lurker. Stands on open water like a Marine Base. */
   spawnpool: {
@@ -6437,10 +6492,10 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "building",
     name: "Spawning Pool",
     letter: "W",
-    cost: 1200,
+    cost: 0,
     buildSeconds: 20,
     hp: 1000,
-    power: -35,
+    power: 0,
     tileW: t(2.5),
     tileH: t(2.5),
     radius: 0,
@@ -6461,10 +6516,10 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "building",
     name: "Aerie",
     letter: "E",
-    cost: 3000,
+    cost: 0,
     buildSeconds: 26,
     hp: 1100,
-    power: -45,
+    power: 0,
     tileW: t(7.5),
     tileH: t(3.75),
     radius: 0,
@@ -6484,7 +6539,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Leech",
     letter: "h",
-    cost: 500,
+    cost: 0,
+    energy: 45,
     buildSeconds: 10,
     hp: 75,
     power: 0,
@@ -6519,7 +6575,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Lurker",
     letter: "k",
-    cost: 1000,
+    cost: 0,
+    energy: 80,
     buildSeconds: 16,
     hp: 160,
     power: 0,
@@ -6554,7 +6611,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Wasp",
     letter: "w",
-    cost: 900,
+    cost: 0,
+    energy: 60,
     buildSeconds: 22,
     hp: 90,
     power: 0,
@@ -6583,7 +6641,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Scourge",
     letter: "g",
-    cost: 2000,
+    cost: 0,
+    energy: 100,
     buildSeconds: 20,
     hp: 115,
     power: 0,
@@ -6611,7 +6670,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Overseer",
     letter: "z",
-    cost: 1800,
+    cost: 0,
+    energy: 90,
     buildSeconds: 22,
     hp: 130,
     power: 0,
@@ -6638,7 +6698,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Gnat",
     letter: "q",
-    cost: 350,
+    cost: 0,
+    energy: 15,
     buildSeconds: 6,
     hp: 22,
     power: 0,
@@ -6656,7 +6717,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     aircraft: true,
     recon: true,
     wreckHp: 6,
-    blurb: `A spy fly the size of a man, grown in an Aerie nest in a few seconds and for a handful of scrap. No weapon: one great sensor eye. It flies as high as the Horten VII and sees almost as far from up there, ${(t(11) + HORTEN_FLYING_SIGHT_BONUS) / TILE_SUBDIV} tiles around it. Only anti-air guns and a fighter that climbs after it can reach it, but its shell is paper: one burst brings it down. Its charge holds ${HORTEN_FUEL_SECONDS} seconds of flight. Send it at a point or a unit and it flies over and circles there; on guard or patrol it keeps watching the area. It comes home to its nest to recharge when it runs low.`,
+    blurb: `A spy fly the size of a man, grown in an Aerie nest in a few seconds for a sliver of hive energy. No weapon: one great sensor eye. It flies as high as the Horten VII and sees almost as far from up there, ${(t(11) + HORTEN_FLYING_SIGHT_BONUS) / TILE_SUBDIV} tiles around it. Only anti-air guns and a fighter that climbs after it can reach it, but its shell is paper: one burst brings it down. Its charge holds ${HORTEN_FUEL_SECONDS} seconds of flight. Send it at a point or a unit and it flies over and circles there; on guard or patrol it keeps watching the area. It comes home to its nest to recharge when it runs low.`,
   },
   // ── The Bloom ───────────────────────────────────────────────────────────────────────────
   /** Bloom HQ on the move: a fat seed-pod on root legs. */

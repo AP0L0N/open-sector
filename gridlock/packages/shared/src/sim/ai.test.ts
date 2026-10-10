@@ -1462,12 +1462,12 @@ describe("Xenomorph CPU", () => {
     assert.ok(hiveOf(state, aiId));
   });
 
-  it("raises a Fusion Node, then an Assimilator", () => {
+  it("raises a Fusion Node, then the Cyborg Central, and never an Assimilator", () => {
     const { state, aiId } = humanVsXeno();
     waitCore(state, aiId);
     assert.equal(nextStructure(state, aiId), "fusionnode");
     standBy(state, aiId, ["fusionnode"]);
-    assert.equal(nextStructure(state, aiId), "assimilator");
+    assert.equal(nextStructure(state, aiId), "cyborgcentral");
   });
 
   it("raises the Cyborg Central once power and an Assimilator stand", () => {

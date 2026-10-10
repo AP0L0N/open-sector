@@ -105,8 +105,10 @@ describe("Laser Fence", () => {
     assert.equal(s.hp, s.hpMax);
   });
 
-  it("goes dark without power", () => {
+  it("goes dark when the hive has no energy for it", () => {
     const state = field();
+    at(state, "fusionnode", "B", 40, 50);
+    for (const t of ["behemoth", "behemoth", "lancer", "lancer"] as const) still(at(state, t, "B", 50, 50));
     at(state, "laserfence", "B", 20, 30);
     at(state, "laserfence", "B", 24, 30);
     const man = still(at(state, "rifleman", "A", 22, 30));

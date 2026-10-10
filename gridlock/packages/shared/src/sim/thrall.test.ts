@@ -90,7 +90,7 @@ describe("Thrall catalog", () => {
     assert.ok(isInfantryType("thrall") && isCyborg("thrall") && meleeOf("thrall") && vaultsWalls("thrall"));
     assert.equal(TECH_REQUIRES.thrall, "cyborgcentral");
     assert.equal(infantryGunFor({ type: "thrall", crits: [] })?.id, "fists");
-    assert.ok(d.cost < catalog("xenodrone").cost && d.buildSeconds < catalog("xenodrone").buildSeconds, "cheaper and quicker than the Drone");
+    assert.ok(d.energy! < catalog("xenodrone").energy! && d.buildSeconds < catalog("xenodrone").buildSeconds, "cheaper and quicker than the Drone");
     assert.ok(d.hp > catalog("xenodrone").hp, "tankier than the Drone");
     assert.ok(d.moveTilesPerSec > catalog("simunit2").moveTilesPerSec, "runs faster than the Sim Unit");
     assert.equal(vaultsWalls("rifleman"), false);

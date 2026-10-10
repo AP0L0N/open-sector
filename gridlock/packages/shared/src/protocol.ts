@@ -19,7 +19,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 138;
+export const PROTOCOL_VERSION = 139;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -433,6 +433,12 @@ export interface YouState {
   provided: number;
   used: number;
   lowPower: boolean;
+  /**
+   * Xenomorph hive energy (sim/hive-energy.ts), shown where scrap is for the other sides: what the
+   * Hive Core and Fusion Nodes hold, what units, defences, and jobs take, and how many sit offline.
+   * Omitted for sides that pay scrap.
+   */
+  energy?: { cap: number; used: number; offline: number };
   structureQueue: StructureQueueView | null;
   /** Guns and garrisons build beside `structureQueue`. Null when that lane is idle. */
   defenceQueue: StructureQueueView | null;

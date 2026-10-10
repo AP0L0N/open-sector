@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { BUILDING_TYPES, SHARED_TYPES, TRAIN_TYPES, YARD_FIELD_TYPES, catalog, costFor, factionOf, isHiddenField } from "@gridlock/shared";
+import { BUILDING_TYPES, SHARED_TYPES, TRAIN_TYPES, YARD_FIELD_TYPES, catalog, costFor, energyOf, factionOf, isHiddenField } from "@gridlock/shared";
 import { groupEntries, groupState, sidebarGroupOf, type CameoFlags } from "./sidebar-groups.js";
 
 const idle: CameoFlags = { disabled: false, ready: false, working: false, paused: false };
@@ -12,7 +12,9 @@ describe("sidebarGroupOf", () => {
     const bloom = Object.values(groupEntries("bloom")).flat();
     const all = Object.values(g).flat();
     const shownYard = YARD_FIELD_TYPES.filter((t) => !isHiddenField(t));
-    assert.equal(all.length + xeno.length + bloom.length, BUILDING_TYPES.length + TRAIN_TYPES.length + shownYard.length + SHARED_TYPES.size);
+    // The Assimilator is off the Xenomorph menu for now: the hive pays no scrap.
+    assert.equal(all.length + xeno.length + bloom.length, BUILDING_TYPES.length + TRAIN_TYPES.length + shownYard.length + SHARED_TYPES.size - 1);
+    assert.equal(xeno.some((e) => e.type === "assimilator"), false);
     for (const e of all) assert.equal(factionOf(e.type), "alliance", e.type);
     for (const e of xeno) if (!SHARED_TYPES.has(e.type)) assert.equal(factionOf(e.type), "xeno", e.type);
     for (const e of bloom) assert.equal(factionOf(e.type), "bloom", e.type);
@@ -27,7 +29,7 @@ describe("sidebarGroupOf", () => {
 
   it("gives the Xenomorphs their base, defences, cyborgs, and heavy assimilators, and nothing of the Alliance's but the Central", () => {
     const g = groupEntries("xeno");
-    assert.deepEqual(g.structures.map((e) => e.type).sort(), ["aerie", "assimilator", "cyborgcentral", "forge", "fusionnode", "nexus", "spawnpool"]);
+    assert.deepEqual(g.structures.map((e) => e.type).sort(), ["aerie", "cyborgcentral", "forge", "fusionnode", "nexus", "spawnpool"]);
     assert.deepEqual(g.defences.map((e) => e.type).sort(), ["laserfence", "pulsespire", "spineturret"]);
     assert.deepEqual(g.infantry.map((e) => e.type).sort(), ["lancer", "shade", "simunit2", "spitter", "thrall", "weaver", "xenodrone"]);
     assert.deepEqual(g.tanks.map((e) => e.type).sort(), ["behemoth", "broodmother", "juggernaut", "mawcaster", "ravager", "siphon", "stalker"]);
@@ -85,25 +87,26 @@ describe("sidebarGroupOf", () => {
     assert.deepEqual(g.naval.map((e) => e.type), ["gunboat", "supplyboat", "submarine", "destroyer", "lst", "battleship"]);
   });
 
-  it("lays the Xenomorph base out as the Alliance's: power, scrap, barracks, factory, air, sea, tech", () => {
+  it("lays the Xenomorph base out as the Alliance's: energy, barracks, factory, air, sea, tech", () => {
     const xeno = groupEntries("xeno").structures.map((e) => e.type);
-    assert.deepEqual(xeno, ["fusionnode", "assimilator", "cyborgcentral", "forge", "aerie", "spawnpool", "nexus"]);
+    assert.deepEqual(xeno, ["fusionnode", "cyborgcentral", "forge", "aerie", "spawnpool", "nexus"]);
     const alliance = groupEntries().structures.map((e) => e.type);
     assert.deepEqual(alliance.slice(0, 4), ["dynamo", "smelter", "muster", "armory"]);
   });
 
-  it("prices each Xenomorph structure as its Alliance counterpart", () => {
-    const pairs = [
-      ["fusionnode", "dynamo"],
-      ["assimilator", "smelter"],
-      ["forge", "armory"],
-      ["aerie", "airfield"],
-      ["spawnpool", "dock"],
-      ["nexus", "research"],
-    ] as const;
-    for (const [x, a] of pairs) assert.equal(catalog(x).cost, catalog(a).cost, x);
-    assert.equal(costFor("cyborgcentral", "xeno"), catalog("muster").cost);
+  it("charges the Xenomorphs no scrap: their structures are free, their units and defences take hive energy", () => {
+    for (const x of ["fusionnode", "forge", "aerie", "spawnpool", "nexus", "spineturret", "pulsespire", "laserfence"] as const) {
+      assert.equal(catalog(x).cost, 0, x);
+      assert.equal(catalog(x).power, 0, x);
+    }
+    assert.equal(costFor("cyborgcentral", "xeno"), 0);
     assert.equal(costFor("cyborgcentral", "alliance"), catalog("cyborgcentral").cost);
+    for (const e of Object.values(groupEntries("xeno")).flat()) {
+      if (catalog(e.type).kind === "unit") assert.ok(energyOf(e.type) > 0, e.type);
+    }
+    for (const d of ["spineturret", "pulsespire", "laserfence"] as const) assert.ok(energyOf(d) > 0, d);
+    const tanks = groupEntries("xeno").tanks.map((e) => energyOf(e.type));
+    assert.deepEqual(tanks, [...tanks].sort((a, b) => a - b), "cheapest energy first");
   });
 });
 
