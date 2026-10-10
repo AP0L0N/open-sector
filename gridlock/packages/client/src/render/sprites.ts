@@ -70,6 +70,10 @@ import juggernautSwingWadeUrl from "../assets/units/juggernaut-swing-wade.png";
 import juggernautFistsWadeUrl from "../assets/units/juggernaut-fists-wade.png";
 import juggernautPunchWadeUrl from "../assets/units/juggernaut-punch-wade.png";
 import juggernautThrowWadeUrl from "../assets/units/juggernaut-throw-wade.png";
+import juggernautRamUrl from "../assets/units/juggernaut-ram.png";
+import juggernautRamFistsUrl from "../assets/units/juggernaut-ram-fists.png";
+import juggernautRamhitUrl from "../assets/units/juggernaut-ramhit.png";
+import juggernautRamhitFistsUrl from "../assets/units/juggernaut-ramhit-fists.png";
 import ravagerLegsUrl from "../assets/units/ravager-legs.png";
 import ravagerTurretUrl from "../assets/units/ravager-turret.png";
 import ravagerGunUrl from "../assets/units/ravager-gun.png";
@@ -1405,6 +1409,11 @@ export const JUGGERNAUT_SWING_WADE_SPRITE = juggernautSheet(juggernautSwingWadeU
 export const JUGGERNAUT_FISTS_WADE_SPRITE = juggernautSheet(juggernautFistsWadeUrl, 8);
 export const JUGGERNAUT_PUNCH_WADE_SPRITE = juggernautSheet(juggernautPunchWadeUrl, 8);
 export const JUGGERNAUT_THROW_WADE_SPRITE = juggernautSheet(juggernautThrowWadeUrl, 4);
+/** The ram: the charge strides by ground covered, the slam plays once. No wading twins: it never charges in water. */
+export const JUGGERNAUT_RAM_SPRITE = juggernautSheet(juggernautRamUrl, 8);
+export const JUGGERNAUT_RAM_FISTS_SPRITE = juggernautSheet(juggernautRamFistsUrl, 8);
+export const JUGGERNAUT_RAMHIT_SPRITE = juggernautSheet(juggernautRamhitUrl, 4);
+export const JUGGERNAUT_RAMHIT_FISTS_SPRITE = juggernautSheet(juggernautRamhitFistsUrl, 4);
 
 const ss3Gun: TurretSpriteDef = {
   image: new Image(),

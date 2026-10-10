@@ -110,6 +110,7 @@ const ICONS: Record<string, string> = {
   "sub-dive": '<path d="M1 4c1.5 0 1.5-1 3-1s1.5 1 3 1 1.5-1 3-1 1.5 1 3 1 1.5-1 2-1"/><path d="M8 6.5V14.5M5 11.5l3 3 3-3"/>',
   blink: '<path d="M3 2.5v11M13 2.5v11"/><path d="M5 8h6M8.5 5.5L11 8l-2.5 2.5"/>',
   lunge: '<path d="M2 13.5C4 6 9 3 14 3"/><path d="M10.5 2.5L14 3l-1 3.5"/><path d="M1.5 14.5h4"/>',
+  ram: '<path d="M2 8h7"/><path d="M1.5 5.5h4M1.5 10.5h4"/><path d="M9 4.5h3.5v7H9z"/><path d="M14.5 3.5v9"/>',
   burrow: '<path d="M1.5 9.5h13"/><path d="M8 2v9M5 8.5l3 3 3-3"/><path d="M3 12.5h10M5 14.5h6"/>',
   unburrow: '<path d="M1.5 9.5h13"/><path d="M8 14V3M5 5.5l3-3 3 3"/><path d="M3 12.5h3M10 12.5h3"/>',
   "power-off": '<circle cx="8" cy="8.5" r="5.5"/><path d="M8 2v6"/><path d="M2.5 13.5L13.5 2.5"/>',

@@ -1157,8 +1157,8 @@ function canFight(e: Entity): boolean {
   if (e.type === "artillery" && gunCrewOf(e) === 0) return false;
   // A shut-down Cyborg fires at nothing; nor does one powered down, or a Sim Unit inside a garrison on a purge.
   if (e.shutdown || e.dormant || e.purge) return false;
-  // A Behemoth in the air on a lunge, or a Stalker digging in, down, or rising, fires nothing.
-  if (e.lunge || e.burrow) return false;
+  // A Behemoth in the air on a lunge, a Juggernaut on a charge, or a Stalker digging in, down, or rising, fires nothing.
+  if (e.lunge || e.ram || e.burrow) return false;
   // A Cyborg Commander with the laser's power in his field fires nothing.
   if (e.fieldDivert) return false;
   // An emplaced gun with nobody at it is silent, and so is one whose crew lies low.

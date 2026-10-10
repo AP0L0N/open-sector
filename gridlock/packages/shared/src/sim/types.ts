@@ -619,6 +619,13 @@ export interface Entity {
   broodOf?: number;
   /** Juggernaut has thrown its hammer: it fights with its fists from now on. */
   fists?: true;
+  /**
+   * Juggernaut charging (sim/juggernaut.ts): what it rams, the tick it gives up, and the ids it
+   * has already run down on the way.
+   */
+  ram?: { targetId: number; until: number; hit: number[] };
+  /** Juggernaut: the tick it can ram again. Unset or past means ready. */
+  ramReady?: number;
   /** Stalker under the ground or on its way (sim/burrow.ts). Down, no enemy sees it. */
   burrow?: { phase: "digging" | "down" | "rising"; until: number };
   /** Sim Unit II inside a hostile garrison: the host, where he came from, and the tick he is done. */

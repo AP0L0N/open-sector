@@ -63,7 +63,7 @@ export type SoundEvent =
    * One of your units speaks without being clicked: it just left the factory, (special) did its work
    * on its own, or (load) took someone aboard.
    */
-  | { kind: "voice"; type: string; event: "ready" | "special" | "load" | LinkVoice | SensorVoice }
+  | { kind: "voice"; type: string; event: "ready" | "special" | "load" | "ram" | LinkVoice | SensorVoice }
   /**
    * A unit's own effect at a point, played without an order: the ASW helicopter settling back on
    * its deck, one of your defences going up (sandbags thumped down, a gun set in its pit),
@@ -82,9 +82,10 @@ export type LinkSfx = "shutdown" | "reboot" | "uplink";
 export type ThrallSfx = "detonate" | "vault" | "stagger";
 /**
  * Juggernaut cues: a hammer blow landing (`smash`), a fist (`punch`), the hammer leaving its
- * hands (`throw`) and coming down (`throw_land`), and the giant breaking into a run (`charge`).
+ * hands (`throw`) and coming down (`throw_land`), the giant breaking into a run (`charge`), and its
+ * ram: the charge (`ram`) and the slam (`ram_hit`).
  */
-export type JuggernautSfx = "smash" | "punch" | "throw" | "throw_land" | "charge";
+export type JuggernautSfx = "smash" | "punch" | "throw" | "throw_land" | "charge" | "ram" | "ram_hit";
 /** A Cyborg of yours going dark or waking up yours; your Commander starting a takeover. */
 export type LinkVoice = "shutdown" | "online" | "takeover";
 
@@ -125,6 +126,8 @@ const DEFAULT_FIRE_GAP_MS = 140;
 const DIVE_GAP_MS = 4000;
 /** A Juggernaut's charge is heard once per run, not on every hop between targets. */
 const CHARGE_GAP_MS = 5000;
+/** Your Juggernaut's war cry on a ram: now and then, not on every charge. */
+const RAM_CRY_GAP_MS = 30000;
 /** How far under cruise height a plane may already be and still be starting its dive. */
 const DIVE_FROM_BELOW_CRUISE = 1;
 /** An LST loading a column calls it once, not once a soldier. */
@@ -183,6 +186,7 @@ export class SoundTracker {
   private lastLoadLine = new Map<number, number>();
   private lastDive = new Map<number, number>();
   private lastCharge = new Map<number, number>();
+  private lastRamCry = new Map<number, number>();
   /** Share of health left, not raw hp: bracing or packing up rescales both hp and hpMax. */
   private lastHp = new Map<number, number>();
   private lowPower = false;
@@ -311,6 +315,12 @@ export class SoundTracker {
         out.push({ kind: "unitsfx", type: "juggernaut", cue, x: i.x, y: i.y });
         continue;
       }
+      // A Juggernaut's ram: the slam is its own crash; running into a wall, a hammer's thud.
+      // Someone run down on the way is drowned out by the charge.
+      if (i.ram) {
+        if (i.ram !== "trample") out.push({ kind: "unitsfx", type: "juggernaut", cue: i.ram === "slam" ? "ram_hit" : "smash", x: i.x, y: i.y });
+        continue;
+      }
       // The laser's burn is heard when the beam opens (below), not again where it lands.
       if (i.laser) continue;
       // A Thrall went off against a hull: its own blast, and your own one's last words.
@@ -382,6 +392,14 @@ export class SoundTracker {
       if (prev && !prev.sprint && e.sprint && now - (this.lastCharge.get(e.id) ?? -Infinity) >= CHARGE_GAP_MS) {
         this.lastCharge.set(e.id, now);
         out.push({ kind: "unitsfx", type: e.type, cue: "charge", x: e.x, y: e.y });
+      }
+      // A Juggernaut lowers its shoulder and charges; yours roars as it goes.
+      if (prev && !prev.ram && e.ram) {
+        out.push({ kind: "unitsfx", type: e.type, cue: "ram", x: e.x, y: e.y });
+        if (e.ownerId === me && now - (this.lastRamCry.get(e.id) ?? -Infinity) >= RAM_CRY_GAP_MS) {
+          this.lastRamCry.set(e.id, now);
+          out.push({ kind: "voice", type: e.type, event: "ram" });
+        }
       }
       // A Behemoth's legs fire it into the air; a Stalker digs in or bursts out.
       if (prev && prev.lungeAlt == null && e.lungeAlt != null) out.push({ kind: "unitsfx", type: e.type, cue: "lunge", x: e.x, y: e.y });

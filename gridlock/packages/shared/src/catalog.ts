@@ -994,7 +994,7 @@ export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper"
  * cannot be queued; only one can sit in the queues at once. Destroyed, it can be
  * trained again.
  */
-export const ONE_AT_A_TIME: readonly TrainType[] = ["titan", "cyborgcommander"];
+export const ONE_AT_A_TIME: readonly TrainType[] = ["titan", "cyborgcommander", "juggernaut"];
 export function isOneAtATime(type: string): boolean {
   return (ONE_AT_A_TIME as readonly string[]).includes(type);
 }
@@ -1975,6 +1975,24 @@ export const JUGGERNAUT_FIST_HULL = 22;
 export const JUGGERNAUT_FIST_BUILDING = 55;
 /** Without the hammer it moves this much faster, sprint or walk. */
 export const JUGGERNAUT_FIST_PACE_MUL = 1.35;
+/**
+ * Ram (sim/juggernaut.ts): by itself, every JUGGERNAUT_RAM_RECHARGE_SECONDS, it charges an
+ * enemy armored hull between JUGGERNAUT_RAM_MIN_TILES and JUGGERNAUT_RAM_RANGE_TILES off, or the
+ * enemy building it is ordered to attack, never a soldier. Reach counts from its centre to the body or wall.
+ */
+export const JUGGERNAUT_RAM_MIN_TILES = t(3);
+export const JUGGERNAUT_RAM_RANGE_TILES = t(10);
+/** Pace of the charge, cells a second: several times its sprint. */
+export const JUGGERNAUT_RAM_SPEED_TILES = t(8);
+export const JUGGERNAUT_RAM_RECHARGE_SECONDS = 12;
+/** The slam: on the hull it charged (plate does not turn it), and on a building. */
+export const JUGGERNAUT_RAM_HULL = 170;
+export const JUGGERNAUT_RAM_BUILDING = 1400;
+/** Each enemy it runs through on the way, once a charge: a soldier, a hull. */
+export const JUGGERNAUT_RAM_TRAMPLE_SOLDIER = 90;
+export const JUGGERNAUT_RAM_TRAMPLE_HULL = 45;
+/** How far the slam throws the hull it hits back, when there is ground to throw it onto. */
+export const JUGGERNAUT_RAM_SHOVE_TILES = t(1.2);
 /** The Juggernaut: hammer, sprint, and the throw at low HP. */
 export function isJuggernaut(type: EntityType): boolean {
   return type === "juggernaut";
@@ -6260,7 +6278,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     wades: true,
     wadeSpeed: JUGGERNAUT_WADE_SPEED,
     fightsWading: true,
-    blurb: `A giant of the hive on two legs, swinging a two-handed hammer. It fights only at arm's reach, and runs at what it goes for at ${JUGGERNAUT_SPRINT_MUL} times its walk. It strides straight through woods, felling every tree it brushes, and wades through water thigh-deep, slower, still swinging: from there it hammers a boat on the surface, but not a submarine running below. Every blow lands in an area: it kills a soldier outright, staves in a tank's plate whatever its armor, and knocks whole walls out of a building. Only its own side is spared. Plated like a light tank and slow to fall. Brought down to ${Math.round(JUGGERNAUT_RAGE_HP * 100)}% it hurls the hammer at the strongest enemy within ${JUGGERNAUT_THROW_RANGE_TILES / TILE_SUBDIV} cells, a heavy blast where it lands, then fights on with its fists: lighter blows, three for every swing of the hammer, and it moves faster. Needs a Neural Nexus.`,
+    blurb: `A giant of the hive on two legs, swinging a two-handed hammer. It fights only at arm's reach, and runs at what it goes for at ${JUGGERNAUT_SPRINT_MUL} times its walk. It strides straight through woods, felling every tree it brushes, and wades through water thigh-deep, slower, still swinging: from there it hammers a boat on the surface, but not a submarine running below. Every blow lands in an area: it kills a soldier outright, staves in a tank's plate whatever its armor, and knocks whole walls out of a building. Only its own side is spared. Plated like a light tank and slow to fall. Brought down to ${Math.round(JUGGERNAUT_RAGE_HP * 100)}% it hurls the hammer at the strongest enemy within ${JUGGERNAUT_THROW_RANGE_TILES / TILE_SUBDIV} cells, a heavy blast where it lands, then fights on with its fists: lighter blows, three for every swing of the hammer, and it moves faster. Every ${JUGGERNAUT_RAM_RECHARGE_SECONDS} seconds it rams by itself: it lowers its shoulder and charges an enemy armored hull ${JUGGERNAUT_RAM_MIN_TILES / TILE_SUBDIV} to ${JUGGERNAUT_RAM_RANGE_TILES / TILE_SUBDIV} cells off, or an enemy building you order it to attack, and slams into it: a heavy blow that throws a hull back, and massive damage to a building. Everything of the enemy's in its path is run down on the way. It never charges a soldier. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered. Needs a Neural Nexus.`,
   },
   /** Xenomorph heavy assimilator: four legs and a draining disruptor that feeds its own body. */
   siphon: {
