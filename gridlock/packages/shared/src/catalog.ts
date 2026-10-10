@@ -577,6 +577,7 @@ export type EntityType =
   | "mawcaster"
   | "leech"
   | "lurker"
+  | "hiveark"
   | "wasp"
   | "scourge"
   | "overseer"
@@ -821,7 +822,7 @@ export function bridgeBuildSeconds(type: BridgeType, length = bridgeBrickLength(
 export const BRIDGE_SHIP_CLEARANCE = 2;
 /** Boats too big to pass under any bridge. */
 export function tooTallForBridge(type: EntityType): boolean {
-  return type === "lst" || type === "battleship";
+  return type === "lst" || type === "battleship" || type === "hiveark";
 }
 export const BRIDGE_ROUND_MUL = { ap: 0.5, heat: 0.75, he: 1.5, mortar: 1, artillery: 2, rocket: 1 } as const;
 /**
@@ -862,7 +863,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "shed",
   "boiler",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "simunit2" | "xenodrone" | "thrall" | "lancer" | "spitter" | "weaver" | "shade" | "stalker" | "ravager" | "behemoth" | "juggernaut" | "siphon" | "broodmother" | "mawcaster" | "leech" | "lurker" | "wasp" | "scourge" | "gnat" | "overseer" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "horten" | "droneop" | "jumpjet" | "spawnling" | "gobber" | "quillback" | "bloater" | "longspine" | "mender" | "skitter" | "goretusk" | "mantis" | "bileworm" | "sporemaw" | "matriarch" | "driftjelly" | "spineback" | "abyssray" | "leviathan" | "broodbarge" | "moth" | "razorwing" | "gasbag" | "drifter" | "harpy";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "simunit2" | "xenodrone" | "thrall" | "lancer" | "spitter" | "weaver" | "shade" | "stalker" | "ravager" | "behemoth" | "juggernaut" | "siphon" | "broodmother" | "mawcaster" | "leech" | "lurker" | "hiveark" | "wasp" | "scourge" | "gnat" | "overseer" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "horten" | "droneop" | "jumpjet" | "spawnling" | "gobber" | "quillback" | "bloater" | "longspine" | "mender" | "skitter" | "goretusk" | "mantis" | "bileworm" | "sporemaw" | "matriarch" | "driftjelly" | "spineback" | "abyssray" | "leviathan" | "broodbarge" | "moth" | "razorwing" | "gasbag" | "drifter" | "harpy";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -987,7 +988,7 @@ export const BUILDING_FACINGS = 24;
 export function isRotatableBuilding(type: string): type is BuildingType {
   return (ROTATABLE_BUILDINGS as readonly string[]).includes(type);
 }
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "simunit2", "xenodrone", "thrall", "lancer", "spitter", "weaver", "shade", "stalker", "ravager", "behemoth", "juggernaut", "siphon", "broodmother", "mawcaster", "leech", "lurker", "wasp", "scourge", "gnat", "overseer", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "horten", "droneop", "jumpjet", "spawnling", "gobber", "quillback", "bloater", "longspine", "mender", "skitter", "goretusk", "mantis", "bileworm", "sporemaw", "matriarch", "driftjelly", "spineback", "abyssray", "leviathan", "broodbarge", "moth", "razorwing", "gasbag", "drifter", "harpy"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "simunit2", "xenodrone", "thrall", "lancer", "spitter", "weaver", "shade", "stalker", "ravager", "behemoth", "juggernaut", "siphon", "broodmother", "mawcaster", "leech", "lurker", "hiveark", "wasp", "scourge", "gnat", "overseer", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "horten", "droneop", "jumpjet", "spawnling", "gobber", "quillback", "bloater", "longspine", "mender", "skitter", "goretusk", "mantis", "bileworm", "sporemaw", "matriarch", "driftjelly", "spineback", "abyssray", "leviathan", "broodbarge", "moth", "razorwing", "gasbag", "drifter", "harpy"];
 
 /**
  * A player fields only one of each of these at a time. While it lives, another
@@ -1025,6 +1026,7 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly Bu
   juggernaut: "nexus",
   broodmother: "nexus",
   lurker: "nexus",
+  hiveark: "nexus",
   scourge: "nexus",
   overseer: "nexus",
   matriarch: "braincoral",
@@ -1097,6 +1099,7 @@ export const XENO_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([
   "aerie",
   "leech",
   "lurker",
+  "hiveark",
   "wasp",
   "scourge",
   "overseer",
@@ -4354,6 +4357,60 @@ export const BATTLESHIP_REARM_TILES = t(3);
 export const BATTLESHIP_REARM_SECONDS = 4;
 export const BATTLESHIP_REARM_ROUNDS = 50;
 
+/**
+ * Hive Ark (sim/hive-ark.ts). A round chitin carrier, the Xenomorph answer to the Battle Ship.
+ * Two plasma cannons, fore and aft, each lob one huge plasma ball on a high arc, farther than
+ * the Battle Ship reaches. Each cannon has its own energy cell: ARK_CANNON_CELL balls full, one
+ * regrown every ARK_CANNON_RECHARGE_SECONDS; emptied, that cannon holds fire until its cell is
+ * full again. An energy dome over the whole hull stops enemy rounds, beams, rockets, and shells
+ * that come at it from outside; broken, it rises again after ARK_DOME_DOWN_SECONDS. Two Wasps
+ * sit on its landing pods, port and starboard: they lift by themselves when an enemy unit
+ * shows inside the Ark's sight, fight it, and come back to their pods once nothing is left.
+ * Nobody commands them. A lost Wasp regrows on its pod after ARK_WASP_REGROW_SECONDS.
+ */
+export const ARK_RANGE_TILES = t(31);
+export const ARK_MIN_RANGE_TILES = t(6);
+export const ARK_PLASMA_BALL: LobShellDef = {
+  damage: 420,
+  penetration: 70,
+  caliber: 420,
+  splashTiles: t(4.2),
+  scatterNearTiles: t(0.5),
+  scatterFarTiles: t(1.7),
+  flightNear: 2.8,
+  flightFar: 5.4,
+  apexNear: 90,
+  apexFar: 160,
+  armorChip: 0.3,
+  trackChance: 0.4,
+};
+/** Seconds one cannon takes to charge its next ball after it fires. */
+export const ARK_CANNON_RELOAD = 6;
+/** Balls in one cannon's full cell, and the seconds it takes to regrow one. */
+export const ARK_CANNON_CELL = 4;
+export const ARK_CANNON_RECHARGE_SECONDS = 10;
+export const ARK_CANNON_TURN_DEG_PER_SEC = 30;
+/** Where the cannons and pods sit, as a share of ARK_HULL_RADIUS from the middle. Cannons on the keel line, pods abeam. */
+export const ARK_CANNON_AT: readonly number[] = [0.48, -0.48];
+export const ARK_POD_AT = 0.56;
+/** The hull's radius in world px: its hitbox, and the scale the art and the mounts are laid on. */
+export const ARK_HULL_RADIUS = 40;
+/** The dome over it: radius in world px, hit points, and its regrowth once it has gone quiet. */
+export const ARK_DOME_RADIUS = 54;
+export const ARK_DOME_HP = 3000;
+export const ARK_DOME_REGROW_PER_SEC = 30;
+export const ARK_DOME_QUIET_SECONDS = 5;
+/** Seconds a broken dome stays down before it rises again, full. */
+export const ARK_DOME_DOWN_SECONDS = 30;
+/** Seconds a lost Wasp takes to regrow on its pod. */
+export const ARK_WASP_REGROW_SECONDS = 40;
+/** Seconds with no enemy in sight before the Wasps fly home. */
+export const ARK_WASP_CALM_SECONDS = 3;
+/** The Wasps never chase farther than this past the Ark's sight. */
+export const ARK_WASP_LEASH_TILES = t(5);
+/** A Wasp this close over its pod sets down and is stowed. */
+export const ARK_WASP_DOCK_TILES = t(0.8);
+
 const ENTRIES: Record<EntityType, CatalogEntry> = {
   rig: {
     type: "rig",
@@ -6503,7 +6560,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     onWater: true,
-    blurb: "A ring of ribbed chitin around a glowing birthing pool. It can only grow on water: every tile under it must be open water. Grows the Leech and, with a Neural Nexus standing, the Lurker, which slip into the water beside it and never come ashore.",
+    blurb: "A ring of ribbed chitin around a glowing birthing pool. It can only grow on water: every tile under it must be open water. Grows the Leech and, with a Neural Nexus standing, the Lurker and the Hive Ark, which slip into the water beside it and never come ashore.",
   },
   /** Xenomorph flier hive: grows the fliers, which lift straight out of it. No strip, no pads; the Nanite Forge's footprint. */
   aerie: {
@@ -6597,6 +6654,40 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     leavesWreck: true,
     wreckHp: 40,
     blurb: `A sea beast the hive grew in its pool: a long plated body that swims like an eel, a crest of spines, glowing eyes, and a split jaw of hooked fangs. No gun: it hunts with its jaws. It leaves the pool surfaced; Dive and Surface set its depth, and it holds ${SUB_DIVE_SECONDS} seconds of breath below. Submerged, the enemy sees it only while one of their Destroyers hears it on sonar, or for ${SUB_REVEAL_SECONDS} seconds after it bites. Up or down, it bites whatever it reaches, ${LURKER_REACH_TILES / TILE_SUBDIV} cells from its body: one bite kills a soldier, swimming or standing at the water's edge, and tears into a boat's hull; a tank's plate gives slowly, a wall slower. It never comes ashore. Dead, its carcass sinks and blocks the water until it is shot apart. Needs a Neural Nexus.`,
+  },
+  /** Xenomorph carrier: a round chitin hull, two plasma cannons, two Wasp pods, an energy dome. */
+  hiveark: {
+    type: "hiveark",
+    kind: "unit",
+    name: "Hive Ark",
+    letter: "a",
+    cost: 8000,
+    buildSeconds: 34,
+    hp: 7500,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: ARK_HULL_RADIUS,
+    moveTilesPerSec: paced(1.3),
+    turnDegPerSec: 22,
+    noReverse: true,
+    turnInPlace: true,
+    turretTurnDegPerSec: ARK_CANNON_TURN_DEG_PER_SEC,
+    rangeTiles: ARK_RANGE_TILES,
+    sightTiles: t(20),
+    cooldown: ARK_CANNON_RELOAD,
+    damage: ARK_PLASMA_BALL.damage,
+    projectileSpeed: 0,
+    armorFront: 115,
+    armorSide: 115,
+    armorRear: 115,
+    penetration: ARK_PLASMA_BALL.penetration,
+    caliber: ARK_PLASMA_BALL.caliber,
+    spreadDeg: 0,
+    naval: true,
+    leavesWreck: true,
+    wreckHp: 100,
+    blurb: `A round chitin carrier the hive grows in its pool, the Xenomorph answer to the Battle Ship. Water only. Two plasma cannons, fore and aft, each throw one huge plasma ball on a high arc, out to ${ARK_RANGE_TILES / TILE_SUBDIV} tiles, farther than the Battle Ship reaches, but never inside ${ARK_MIN_RANGE_TILES / TILE_SUBDIV} tiles; the burst is wide and burns through soldiers, boats, and buildings alike. Each cannon draws on its own energy cell: ${ARK_CANNON_CELL} balls full, one regrown every ${ARK_CANNON_RECHARGE_SECONDS} seconds. Empty, that cannon falls silent until its cell is full again. An energy dome stands over the whole hull: enemy rounds, beams, rockets, and shells that come at it from outside stop on the dome until it breaks, even fire from overhead, and ${ARK_DOME_DOWN_SECONDS} seconds later it rises again. Torpedoes and jaws pass under it. Two Wasps sit on its landing pods: when an enemy unit shows inside its sight they lift by themselves, hunt it, and come home to their pods when nothing is left. Nobody commands them, and a lost Wasp regrows on its pod after ${ARK_WASP_REGROW_SECONDS} seconds. Needs a Neural Nexus. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.`,
   },
   /** Xenomorph fighter: insect wings, twin pulse cannons. Lives in an Aerie nest. */
   wasp: {
@@ -9489,6 +9580,11 @@ export function hullFlamerOf(type: EntityType): boolean {
 /** The Battle Ship: two triple turrets and two CIWS mounts, each on its own clock (sim/battleship.ts). */
 export function isBattleship(type: EntityType): boolean {
   return type === "battleship";
+}
+
+/** The Hive Ark: two plasma cannons on their own cells, two Wasp pods, and a dome (sim/hive-ark.ts). */
+export function isHiveArk(type: EntityType): boolean {
+  return type === "hiveark";
 }
 
 /** Main-gun barrels on the mount. A twin fires them in succession, one reload for the pair. */

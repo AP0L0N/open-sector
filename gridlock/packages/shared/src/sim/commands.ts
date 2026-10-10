@@ -749,7 +749,8 @@ function owned(state: MatchState, playerId: string, ids: number[]) {
     const e = state.entities.get(id);
     // A paratrooper takes orders once he is on the ground. A running torpedo takes none.
     // A powered-down machine takes only Power up (cmdPowerDown); one mid-purge takes nothing.
-    if (e && e.ownerId === playerId && e.hp > 0 && e.kind === "unit" && !e.wreck && !e.chute && !isTorpedoBody(e.type) && !e.dormant && !e.purge) out.push(e);
+    // A Wasp off a Hive Ark's pod answers only to the Ark (sim/hive-ark.ts).
+    if (e && e.ownerId === playerId && e.hp > 0 && e.kind === "unit" && !e.wreck && !e.chute && !isTorpedoBody(e.type) && !e.dormant && !e.purge && e.arkOf == null) out.push(e);
   }
   return out;
 }

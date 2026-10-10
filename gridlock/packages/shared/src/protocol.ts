@@ -19,7 +19,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 140;
+export const PROTOCOL_VERSION = 141;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -223,6 +223,18 @@ export interface EntityView {
     turrets: { facing: number; ammo?: number[] }[];
     ciws: { facing: number; fire?: true; ammo?: number }[];
   };
+  /**
+   * Hive Ark: each cannon's bearing (fore, aft), whether it just fired, and for its own side
+   * the cell's charge 0–1 and whether it ran dry; each pod's Wasp (docked: sitting on it).
+   */
+  ark?: {
+    cannons: { facing: number; fire?: true; energy?: number; drained?: true }[];
+    pods: { docked: boolean; regrow?: number }[];
+    /** Seconds until a broken dome rises again. Own side only. */
+    domeDown?: number;
+  };
+  /** A Wasp off a Hive Ark's pod: the Ark's id. It takes no orders and cannot be selected. */
+  arkOf?: number;
   /** Seconds left on a magazine change. Allied infantry. Omitted when idle. */
   reload?: number;
   /** Seconds until a planted support weapon can fire. Gunner bipod, or the mortar tube. Omitted once it is set. */
@@ -524,6 +536,8 @@ export interface ProjectileView {
   big?: boolean;
   /** A Battle Ship's shell: the barrel it left, turret × 3 + gun. */
   shipBarrel?: number;
+  /** A Hive Ark's plasma ball: the cannon it left, 0 fore or 1 aft. */
+  arkCannon?: number;
   /** Peak air height in elevation units. Mortar bombs only. */
   apex?: number;
   /** 0 at the tube, 1 at the ground. Mortar bombs and flamethrower globs. */
@@ -713,6 +727,8 @@ export interface EnergyShieldView {
   hpMax: number;
   /** A round struck it in the last few ticks. */
   hit?: true;
+  /** A Hive Ark's dome: a whole circle that rides with the Ark (drawn as a dome, not a wall). */
+  dome?: true;
 }
 
 /** Burning ground from a flamethrower or a Pyro's tanks. Burns every soldier standing in it. */

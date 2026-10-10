@@ -37,6 +37,12 @@ function crossArc(s: EnergyShield, x0: number, y0: number, x1: number, y1: numbe
   const disc = b * b - 4 * a * c;
   if (disc < 0) return -1;
   const q = Math.sqrt(disc);
+  // A dome is met only on the way in: what starts under it is already inside.
+  if (s.dome) {
+    if (c <= 0) return -1;
+    const t = (-b - q) / (2 * a);
+    return t >= 0 && t <= 1 ? t : -1;
+  }
   for (const t of [(-b - q) / (2 * a), (-b + q) / (2 * a)]) {
     if (t < 0 || t > 1) continue;
     const ang = Math.atan2(fy + dy * t, fx + dx * t);
@@ -45,18 +51,35 @@ function crossArc(s: EnergyShield, x0: number, y0: number, x1: number, y1: numbe
   return -1;
 }
 
-/** The first standing wall not on `ownerId`'s side that the line meets. */
-export function shieldSweep(state: MatchState, ownerId: string, x0: number, y0: number, x1: number, y1: number): ShieldHit | null {
+/**
+ * The first standing wall not on `ownerId`'s side that the line meets. `only: "domes"`: fire
+ * from overhead, which falls past the walls and meets only a Hive Ark's dome. `only: "walls"`:
+ * a step on foot, which a dome never holds.
+ */
+export function shieldSweep(
+  state: MatchState,
+  ownerId: string,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  only?: "domes" | "walls",
+): ShieldHit | null {
   const shields = state.energyShields;
   if (!shields || shields.length === 0) return null;
   let best: ShieldHit | null = null;
   for (const s of shields) {
-    if (s.hp <= 0 || allies(state, s.ownerId, ownerId)) continue;
+    if (s.hp <= 0 || (only === "domes" && !s.dome) || (only === "walls" && s.dome) || allies(state, s.ownerId, ownerId)) continue;
     const t = crossArc(s, x0, y0, x1, y1);
     if (t < 0 || (best && t >= best.t)) continue;
     best = { s, t, x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t };
   }
   return best;
+}
+
+/** Whether any standing dome is up: the overhead checks are skipped without one. */
+export function anyDome(state: MatchState): boolean {
+  return !!state.energyShields?.some((s) => s.dome && s.hp > 0);
 }
 
 /** A round stops on the wall: the wall loses the round's damage and the round is spent. */
@@ -129,7 +152,7 @@ export function tickEnergyShields(state: MatchState, dt: number): void {
 
 /** Ground units that could walk into an enemy wall this tick, and where they stood. Null with no walls up. */
 export function shieldWatch(state: MatchState): Map<Entity, { x: number; y: number }> | null {
-  if (!state.energyShields || state.energyShields.length === 0) return null;
+  if (!state.energyShields || !state.energyShields.some((s) => !s.dome)) return null;
   const at = new Map<Entity, { x: number; y: number }>();
   for (const e of state.entities.values()) {
     if (e.kind !== "unit" || e.hp <= 0 || e.garrisonedIn != null || e.air || e.jet || e.drone) continue;
@@ -143,7 +166,7 @@ export function holdShieldLines(state: MatchState, watch: Map<Entity, { x: numbe
   if (!watch) return;
   for (const [e, from] of watch) {
     if (e.hp <= 0 || e.lunge || (from.x === e.x && from.y === e.y)) continue;
-    if (!shieldSweep(state, e.ownerId, from.x, from.y, e.x, e.y)) continue;
+    if (!shieldSweep(state, e.ownerId, from.x, from.y, e.x, e.y, "walls")) continue;
     e.x = from.x;
     e.y = from.y;
     e.tileX = worldToTile(e.x, state.tileSize);

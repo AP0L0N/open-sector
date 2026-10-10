@@ -654,6 +654,10 @@ export interface Entity {
   asw?: AswDeck;
   /** ASW helicopter only. */
   heli?: HeliState;
+  /** Hive Ark only: its cannons' cells, its Wasp pods, and its dome (sim/hive-ark.ts). */
+  ark?: ArkState;
+  /** A Wasp off a Hive Ark's pod: the Ark it flies from. It takes no orders from anyone. */
+  arkOf?: number;
   /** Paratrooper on the way down. No orders, no fire; small arms can reach him. */
   chute?: Chute;
   /** Jump Jet, and the Titan's leg jets. */
@@ -700,6 +704,38 @@ export interface TwinCiwsMount {
   overheat: number;
   /** Sim tick it last fired. */
   fireTick?: number;
+}
+
+/** One Hive Ark plasma cannon: its own traverse, reload, and energy cell. */
+export interface ArkCannon {
+  facing: number;
+  /** Balls in its cell, fractional while one regrows. */
+  energy: number;
+  /** Seconds until the next ball is charged. */
+  cooldown: number;
+  /** Its cell ran dry: it holds fire until the cell is full again. */
+  drained: boolean;
+  /** Sim tick it last fired. Missing until it first does. */
+  firedTick?: number;
+}
+
+/** One Hive Ark landing pod and the Wasp that lives on it. */
+export interface ArkPod {
+  /** The Wasp while it flies. Null while it sits on the pod, or is regrowing. */
+  waspId: number | null;
+  /** Seconds until a lost Wasp has regrown on the pod. 0 while it has one. */
+  regrow: number;
+}
+
+export interface ArkState {
+  cannons: ArkCannon[];
+  pods: ArkPod[];
+  /** The dome standing in `MatchState.energyShields`, or null while it is down. */
+  domeId: number | null;
+  /** Seconds until a broken dome rises again. */
+  domeDown: number;
+  /** Seconds since no enemy unit was in sight. The Wasps come home past ARK_WASP_CALM_SECONDS. */
+  calm: number;
 }
 
 export interface ShipState {
@@ -756,6 +792,8 @@ export interface Projectile {
   big?: boolean;
   /** A Battle Ship's shell: `big`, on the ship's low, fast arc (BATTLESHIP_SHELL). Its barrel: turret × 3 + gun. */
   shipBarrel?: number;
+  /** A Hive Ark's plasma ball (ARK_PLASMA_BALL), from cannon 0 (fore) or 1 (aft). */
+  arkCannon?: number;
   /**
    * Arcing mortar bomb, a bomb falling from a plane, or a Titan rocket (straight
    * and fast, bursts at its fused point or on whatever it meets first).
@@ -829,6 +867,11 @@ export interface EnergyShield {
   life: number;
   /** Tick a round last struck it. */
   hitTick?: number;
+  /**
+   * A Hive Ark's dome: a whole circle that rides with the Ark and never times out. It stops only
+   * what comes in from outside, overhead fire too; nothing walking is held by it.
+   */
+  dome?: true;
 }
 
 export interface SmokeCloud {

@@ -22,6 +22,10 @@ import {
   BATTLESHIP_HALF_LENGTH,
   BATTLESHIP_MIN_RANGE_TILES,
   BATTLESHIP_SHELL,
+  ARK_CANNON_RELOAD,
+  ARK_MIN_RANGE_TILES,
+  ARK_PLASMA_BALL,
+  isHiveArk,
   BATTLESHIP_TURRET_AT,
   BATTLESHIP_TURRET_BLIND_DEG,
   isBattleship,
@@ -221,7 +225,7 @@ import {
   weaponRangeWorld,
   worldTileHeight,
 } from "./elevation.js";
-import { absorbRound, shieldSweep } from "./energy-shield.js";
+import { absorbRound, anyDome, shieldSweep } from "./energy-shield.js";
 import { drawPlasma, plasmaShots } from "./hive-ammo.js";
 import {
   ownerless,
@@ -288,6 +292,7 @@ import { nightSightMul, nightTiles } from "./night.js";
 import { getMap } from "../maps.js";
 import { afloat, armTorpedo, diving, hiddenSubmarine, surface, surfaceToStrike, torpedoCannotReach } from "./naval.js";
 import { shipHullT, shipKeelDist, shipMountPoint, turretBearing } from "./battleship.js";
+import { arkCannonPoint } from "./hive-ark.js";
 import { syncLstCrew } from "./lst.js";
 import type { Entity, MatchState, Order, Projectile, ShipCiws } from "./types.js";
 
@@ -1081,6 +1086,71 @@ function fireShip(state: MatchState, e: Entity, dt: number): void {
   if (fired && e.order?.once && ship.turrets.every((t) => t.volley.length === 0)) clearOrder(e);
 }
 
+/** A Hive Ark cannon lets go once it is laid within this of the aim. */
+const ARK_CANNON_LAY_DEG = 4;
+/** Barrel tip ahead of the cannon's pivot, world px. Matches the cannon art (render_hive_ark.py). */
+export const ARK_MUZZLE_REACH = 15;
+
+/**
+ * The Hive Ark's two plasma cannons. Each trains on its own toward the target (or the
+ * force-attack point), all the way round, and lobs one plasma ball once laid, its reload
+ * done, and its cell holding a ball. A cannon whose cell ran dry holds fire until the cell
+ * is full again (sim/hive-ark.ts regrows it). Aircraft are the Wasps' work, not the cannons'.
+ */
+function fireArk(state: MatchState, e: Entity, dt: number): void {
+  const ark = e.ark!;
+  const picked = currentTarget(state, e);
+  const target = picked && !isAirborne(picked) ? picked : undefined;
+  const ground =
+    !picked && e.order?.kind === "forceattack" && e.order.x != null && e.order.y != null
+      ? { x: e.order.x, y: e.order.y }
+      : null;
+  const aim = ground ?? (target && target.hp > 0 ? { x: target.x, y: target.y } : null);
+  const range = weaponRangeWorld(state, e);
+  const dist = aim ? Math.hypot(aim.x - e.x, aim.y - e.y) : 0;
+  const tooClose = !!aim && dist < ARK_MIN_RANGE_TILES * state.tileSize;
+  if (tooClose && e.order?.auto) {
+    e.order = null;
+    e.state = "idle";
+  }
+  const lay = aim && !tooClose ? aim : null;
+  const step = ((catalog(e.type).turretTurnDegPerSec ?? 0) * Math.PI) / 180 * dt;
+  const left = ark.cannons.map((c, i) => {
+    const at = arkCannonPoint(e, i);
+    // At rest the fore cannon looks over the bow, the aft one over the stern.
+    const want = lay ? Math.atan2(lay.y - at.y, lay.x - at.x) : e.facing + (i === 0 ? 0 : Math.PI);
+    const d = Math.atan2(Math.sin(want - c.facing), Math.cos(want - c.facing));
+    c.facing += Math.max(-step, Math.min(step, d));
+    return (Math.abs(d) - Math.min(step, Math.abs(d))) * (180 / Math.PI);
+  });
+  e.turretFacing = ark.cannons[0]!.facing;
+  if (!lay) {
+    if (tooClose && e.order?.kind !== "attack" && e.order?.kind !== "forceattack") e.attackTarget = null;
+    return;
+  }
+  e.state = "attack";
+  if (dist > range) return;
+  if (e.waypoints.length > 0 && !travelFights(e) && !backingHop(e)) return;
+  let fired = false;
+  ark.cannons.forEach((c, i) => {
+    if (left[i]! > ARK_CANNON_LAY_DEG || c.cooldown > 0 || c.drained || c.energy < 1) return;
+    const at = arkCannonPoint(e, i);
+    const muzzle: Entity = { ...e, x: at.x + Math.cos(c.facing) * ARK_MUZZLE_REACH, y: at.y + Math.sin(c.facing) * ARK_MUZZLE_REACH };
+    launchMortar(state, muzzle, lay.x, lay.y, range, Math.hypot(lay.x - muzzle.x, lay.y - muzzle.y), target, ARK_PLASMA_BALL);
+    const ball = state.projectiles[state.projectiles.length - 1];
+    if (ball) {
+      ball.arkCannon = i;
+      ball.damage = factionDamage(e.type, ball.damage);
+    }
+    c.energy -= 1;
+    if (c.energy < 1) c.drained = true;
+    c.cooldown = ARK_CANNON_RELOAD;
+    c.firedTick = state.tick;
+    fired = true;
+  });
+  if (fired && e.order?.once) clearOrder(e);
+}
+
 /**
  * RAM against rockets. The nearest hostile rocket in reach that this mount has
  * not tried draws one interceptor off the rack, RAM_INTERCEPT_INTERVAL apart,
@@ -1221,6 +1291,7 @@ export function forceAimHolds(state: MatchState, e: Entity, aim: { x: number; y:
   const dist = Math.hypot(aim.x - e.x, aim.y - e.y);
   if (dist > weaponRangeWorld(state, e)) return false;
   if (e.ship && dist < BATTLESHIP_MIN_RANGE_TILES * state.tileSize) return false;
+  if (e.ark && dist < ARK_MIN_RANGE_TILES * state.tileSize) return false;
   if (e.type === "mortarman" && dist < MORTAR_MIN_RANGE_TILES * state.tileSize) return false;
   const bearing = Math.atan2(aim.y - e.y, aim.x - e.x);
   if (e.ship) {
@@ -1636,7 +1707,7 @@ export function concreteProof(state: MatchState, e: Entity, o: Entity): boolean 
 
 /** Tank shells and bursts chip concrete. Bullets, belts, and the flame stream stop on it. */
 export function chipsConcrete(e: Entity): boolean {
-  if (hasAmmo(e.type) || rocketsOf(e.type) || e.type === "artillery" || e.ship) return true;
+  if (hasAmmo(e.type) || rocketsOf(e.type) || e.type === "artillery" || e.ship || e.ark) return true;
   const gun = infantryGunFor(e)?.id;
   return gun === "mortar" || gun === "launcher" || gun === "penetrator" || gun === "laser";
 }
@@ -1763,6 +1834,10 @@ function settleTwin(state: MatchState, e: Entity): void {
 function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   if (e.ship) {
     fireShip(state, e, dt);
+    return;
+  }
+  if (e.ark) {
+    fireArk(state, e, dt);
     return;
   }
   settleTwin(state, e);
@@ -2650,7 +2725,14 @@ function stepRocket(state: MatchState, p: Projectile, dt: number, rand: () => nu
   // A forced Nebelwerfer rocket is fused on the point. It clears walls, trees,
   // and hulls on the way and bursts where it was aimed. Any other rocket flies
   // low, so the first thing in the path takes the burst.
-  if (!(p.harmAllies && (p.launcher === "nebelwerfer" || p.launcher === "mawcaster"))) {
+  if (p.harmAllies && (p.launcher === "nebelwerfer" || p.launcher === "mawcaster")) {
+    // Fused on the point, it clears everything on the way but a Hive Ark's dome.
+    const dome = shieldSweep(state, p.ownerId, x0, y0, p.x, p.y, "domes");
+    if (dome) {
+      absorbRound(state, p, dome);
+      return false;
+    }
+  } else {
     const wallHit = wallSweep(state, x0, y0, p.x, p.y);
     const struck = nearestSweepHit(state, x0, y0, p, z0, p.z);
     const tree = nearestTreeSweep(state, x0, y0, p, z0, p.z, rand);
@@ -2762,7 +2844,7 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
   // A Mawcaster pod now and then leaves its bile burning where it bursts.
   if (!inAir && p.launcher === "mawcaster" && rand() < MAWCASTER_BILE_CHANCE) igniteAt(state, p.x, p.y, p.ownerId);
   const rack = p.heavy ? PENETRATOR_RACK : rocketRackOf(p.launcher ?? "titan");
-  const lob = p.shipBarrel != null ? BATTLESHIP_SHELL : p.big ? ARTILLERY_SHELL : MORTAR_LOB;
+  const lob = p.arkCannon != null ? ARK_PLASMA_BALL : p.shipBarrel != null ? BATTLESHIP_SHELL : p.big ? ARTILLERY_SHELL : MORTAR_LOB;
   const radius = (rocket ? rack.splashTiles : p.big ? lob.splashTiles : MORTAR_SPLASH_TILES) * state.tileSize;
   // A barrage laid on a bridge brick counts wherever its blast reaches the deck.
   if (!inAir) strikeBridge(state, p, p.x, p.y, radius);
@@ -3427,6 +3509,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
   const rand = () => nextRand(state);
   tagBridgeRounds(state);
   const flying = state.projectiles;
+  const domes = anyDome(state);
   for (const p of state.projectiles) {
     if (p.flight === "bomb") {
       if (stepBomb(state, p, dt)) keep.push(p);
@@ -3458,11 +3541,19 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     if (p.flight === "mortar") {
       const total = p.flightTime ?? Math.max(0.05, p.life);
       const stepDt = p.life > 0 ? Math.min(dt, p.life) : 0;
+      const mx0 = p.x;
+      const my0 = p.y;
       p.x += p.vx * stepDt;
       p.y += p.vy * stepDt;
       p.life -= dt;
       const u = Math.min(1, Math.max(0, (total - Math.max(0, p.life)) / total));
       p.z = mortarAirZ(u, p.apex ?? 0);
+      // A shell or bomb falling into a Hive Ark's dome bursts on it, high over the hull.
+      const dome = domes ? shieldSweep(state, p.ownerId, mx0, my0, p.x, p.y, "domes") : null;
+      if (dome) {
+        absorbRound(state, p, dome);
+        continue;
+      }
       if (p.life > 0) {
         keep.push(p);
         continue;
@@ -3492,7 +3583,14 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     const struck = nearestSweepHit(state, x0, y0, p, z0, z1);
     const blocker = concrete && (!bagHit || concrete.t < bagHit.t) ? concrete : bagHit;
     // An enemy energy wall stops the round where it meets it. A barrage from overhead falls past it.
-    const guard = p.fromAbove || p.torpedo || p.aloft ? null : shieldSweep(state, p.ownerId, x0, y0, p.x, p.y);
+    // A Hive Ark's dome stops that too; a torpedo runs under everything.
+    const guard = p.torpedo
+      ? null
+      : p.fromAbove || p.aloft
+        ? domes
+          ? shieldSweep(state, p.ownerId, x0, y0, p.x, p.y, "domes")
+          : null
+        : shieldSweep(state, p.ownerId, x0, y0, p.x, p.y);
     if (guard && (!struck || guard.t <= struck.t) && (!blocker || guard.t <= blocker.t)) {
       absorbRound(state, p, guard);
       continue;
@@ -4031,6 +4129,7 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     if (launcherOnlyOf(e.type) && !inLauncherBand(state, e, o.x, o.y)) continue;
     if (e.type === "artillery" && d < (ARTILLERY_MIN_RANGE_TILES * state.tileSize) ** 2) continue;
     if (isBattleship(e.type) && d < (BATTLESHIP_MIN_RANGE_TILES * state.tileSize) ** 2) continue;
+    if (isHiveArk(e.type) && d < (ARK_MIN_RANGE_TILES * state.tileSize) ** 2) continue;
     if (coneOnly && !inGuardCone(e, o)) continue;
     if (!canEngage(state, e, o)) continue;
     if (!canAimWeapon(state, e, o.x, o.y, o)) continue;

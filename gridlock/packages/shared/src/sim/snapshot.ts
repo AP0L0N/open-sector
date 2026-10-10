@@ -46,6 +46,7 @@ import {
   forceFieldMax,
   hasForceField,
   TICK_DT,
+  ARK_CANNON_CELL,
 } from "../catalog.js";
 import { padsTaken } from "./air.js";
 import { bridgeOrderSpan } from "./bridge.js";
@@ -153,6 +154,26 @@ function shipView(state: MatchState, e: Entity, friendly: boolean): EntityView["
         ...(friendly ? { ammo: m.ammo } : {}),
       };
     }),
+  };
+}
+
+/** Hive Ark cannons and pods. Cell charge and the dome's clock only for the Ark's own side. */
+function arkView(state: MatchState, e: Entity, friendly: boolean): EntityView["ark"] {
+  const ark = e.ark;
+  if (!ark) return undefined;
+  const window = Math.max(1, clampGameSpeed(state.gameSpeed));
+  return {
+    cannons: ark.cannons.map((c) => ({
+      facing: c.facing,
+      ...(!e.wreck && c.firedTick != null && state.tick - c.firedTick < window ? { fire: true as const } : {}),
+      ...(friendly ? { energy: Math.round((c.energy / ARK_CANNON_CELL) * 100) / 100 } : {}),
+      ...(friendly && c.drained ? { drained: true as const } : {}),
+    })),
+    pods: ark.pods.map((p) => ({
+      docked: !e.wreck && p.waspId == null && p.regrow <= 0,
+      ...(friendly && p.regrow > 0 ? { regrow: Math.ceil(p.regrow) } : {}),
+    })),
+    ...(friendly && ark.domeDown > 0 ? { domeDown: Math.ceil(ark.domeDown) } : {}),
   };
 }
 
@@ -543,6 +564,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       ciws: ciwsView(state, e),
       mounts: twinCiwsView(state, e, friendly),
       ship: shipView(state, e, friendly),
+      ark: arkView(state, e, friendly),
+      arkOf: e.arkOf,
       reload: friendly && (isInfantryType(e.type) || beltOf(e.type)) && e.reload > 0 ? e.reload : undefined,
       bipod: plantRemaining(e, friendly),
       garrisonedIn: friendly && e.garrisonedIn ? e.garrisonedIn : undefined,
@@ -690,6 +713,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
         mortar: p.flight === "mortar" ? true : undefined,
         big: p.flight === "mortar" && p.big ? true : undefined,
         shipBarrel: p.flight === "mortar" ? p.shipBarrel : undefined,
+        arkCannon: p.flight === "mortar" ? p.arkCannon : undefined,
         apex: p.flight === "mortar" ? p.apex : undefined,
         arc:
           p.flight === "mortar" && (p.flightTime ?? 0) > 0
@@ -841,6 +865,7 @@ function shieldViews(state: MatchState, youPlayerId: string, vis: Uint8Array): E
       hp: Math.ceil(w.hp),
       hpMax: w.hpMax,
       hit: w.hitTick != null && state.tick - w.hitTick < SHIELD_FLASH_TICKS ? true : undefined,
+      dome: w.dome,
     });
   }
   return out.length > 0 ? out : undefined;

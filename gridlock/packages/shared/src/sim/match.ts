@@ -47,6 +47,7 @@ import { raiseWallCrest, restampForts, tickField } from "./field.js";
 import { syncTorpedoes, tickCombat, tickPatrol, tickProjectiles } from "./combat.js";
 import { tickSubmarines } from "./naval.js";
 import { tickDestroyers } from "./destroyer.js";
+import { tickHiveArks } from "./hive-ark.js";
 import { groundLstBows } from "./lst.js";
 import { tickSmoke } from "./smoke.js";
 import { maybeCookOff, tickFires } from "./flame.js";
@@ -406,6 +407,7 @@ function stepHeld(state: MatchState, dt: number): void {
   tickDrones(state, dt);
   tickSubmarines(state, dt);
   tickDestroyers(state, dt);
+  tickHiveArks(state, dt);
   tickJets(state, dt);
   state.phaseRev++;
   tickCollision(state, dt);
