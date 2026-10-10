@@ -2255,6 +2255,27 @@ export const PYRO_COOKOFF_FIRES = 7;
  */
 export const HE_FIRE_RADIUS = t(1.4) * TILE_SIZE;
 export const HE_FIRE_PATCHES = 4;
+/**
+ * A Borg energy round that lands in the dirt digs no crater: it scorches the
+ * ground, burns the trees in reach, and leaves a small fire at the heart. The
+ * scorch is PLASMA_SCORCH_SCALE times the hole the same caliber would dig, never
+ * under PLASMA_SCORCH_MIN_RADIUS world pixels, so a rifle bolt leaves a dot and
+ * a 75mm plasma shell a patch two cells across.
+ */
+export const PLASMA_SCORCH_SCALE = 1.2;
+export const PLASMA_SCORCH_MIN_RADIUS = 2.5;
+/**
+ * From this caliber up the scorch keeps a fire burning at its heart (and a
+ * bolt that meets a tree in flight sets it alight). Small arms only char the
+ * ground: a fire under every missed bolt would burn half the field.
+ */
+export const PLASMA_FIRE_CALIBER = 20;
+/** The fire's radius as a share of the scorch, held between 3 world pixels and FIRE_RADIUS. */
+export const PLASMA_FIRE_SHARE = 0.45;
+/** Seconds the fire burns. Short: it is the round's heat, not spilled fuel. */
+export const PLASMA_FIRE_SECONDS = 4;
+/** Scorch marks kept at once, apart from the shell craters. The oldest fades first. */
+export const MAX_SCORCH_MARKS = 240;
 
 /**
  * Medic. He walks to wounded infantry inside this disk, then has to stand

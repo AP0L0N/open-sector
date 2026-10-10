@@ -56,6 +56,7 @@ import { laserProgress } from "./laser.js";
 import { garrisonBars, garrisonOwner } from "./garrison.js";
 import { deckLoad } from "./lst.js";
 import { allies, unitInWater } from "./geo.js";
+import { energyRound } from "./remains.js";
 import { brokenClutter } from "./clutter.js";
 import { diving, hiddenSubmarine, sonarSpotted } from "./naval.js";
 import { medicTendView } from "./heal.js";
@@ -802,5 +803,5 @@ function visibleBodies(state: MatchState, youPlayerId: string, vis: Uint8Array):
 
 /** Every Borg weapon is an energy weapon: their shots and hits go out flagged so the client draws and voices them that way. */
 function energyShot(state: MatchState, ownerId: string): boolean {
-  return state.players.get(ownerId)?.faction === "borg";
+  return energyRound(state, ownerId);
 }

@@ -19,7 +19,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 130;
+export const PROTOCOL_VERSION = 131;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -644,7 +644,7 @@ export interface CorpseView {
   burned?: true;
 }
 
-/** Persistent crater from a heavy shell on dirt. */
+/** Persistent crater from a heavy shell on dirt, or the scorch a Borg energy round leaves instead. */
 export interface ShellHoleView {
   id: number;
   x: number;
@@ -656,6 +656,8 @@ export interface ShellHoleView {
   seed: number;
   /** Vertical hit. The scar is a circle on the ground, not a gouge. */
   round?: boolean;
+  /** Plasma scorch: charred ground with a fused core, nothing dug out. `radius` is the charred ring. */
+  scorch?: true;
 }
 
 /** Lasting artillery smoke screen. Blocks vision for every player. */
