@@ -19,7 +19,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 150;
+export const PROTOCOL_VERSION = 151;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -230,11 +230,12 @@ export interface EntityView {
     ciws: { facing: number; fire?: true; ammo?: number }[];
   };
   /**
-   * Hive Ark: each cannon's bearing (fore, aft), whether it just fired, and for its own side
-   * the cell's charge 0–1 and whether it ran dry; each pod's Wasp (docked: sitting on it).
+   * Hive Ark: each cannon's bearing (fore, aft), whether it just fired, how far it has glowed
+   * up toward its next shot 0–1 (charge), and for its own side the cell's charge 0–1 and
+   * whether it ran dry; each pod's Wasp (docked: sitting on it).
    */
   ark?: {
-    cannons: { facing: number; fire?: true; energy?: number; drained?: true }[];
+    cannons: { facing: number; fire?: true; charge?: number; energy?: number; drained?: true }[];
     pods: { docked: boolean; regrow?: number }[];
     /** Seconds until a broken dome rises again. Own side only. */
     domeDown?: number;
