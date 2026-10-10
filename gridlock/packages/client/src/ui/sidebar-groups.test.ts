@@ -1,20 +1,20 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { BUILDING_TYPES, TRAIN_TYPES, YARD_FIELD_TYPES, catalog, factionOf, isHiddenField } from "@gridlock/shared";
+import { BUILDING_TYPES, SHARED_TYPES, TRAIN_TYPES, YARD_FIELD_TYPES, catalog, factionOf, isHiddenField } from "@gridlock/shared";
 import { groupEntries, groupState, sidebarGroupOf, type CameoFlags } from "./sidebar-groups.js";
 
 const idle: CameoFlags = { disabled: false, ready: false, working: false, paused: false };
 
 describe("sidebarGroupOf", () => {
-  it("files every buildable and trainable type into exactly one group of one faction", () => {
+  it("files every buildable and trainable type into exactly one group of one faction, shared ones into both", () => {
     const g = groupEntries();
-    const borg = Object.values(groupEntries("borg")).flat();
+    const xeno = Object.values(groupEntries("xeno")).flat();
     const bloom = Object.values(groupEntries("bloom")).flat();
     const all = Object.values(g).flat();
     const shownYard = YARD_FIELD_TYPES.filter((t) => !isHiddenField(t));
-    assert.equal(all.length + borg.length + bloom.length, BUILDING_TYPES.length + TRAIN_TYPES.length + shownYard.length);
-    for (const e of all) assert.equal(factionOf(e.type), "eu", e.type);
-    for (const e of borg) assert.equal(factionOf(e.type), "borg", e.type);
+    assert.equal(all.length + xeno.length + bloom.length, BUILDING_TYPES.length + TRAIN_TYPES.length + shownYard.length + SHARED_TYPES.size);
+    for (const e of all) assert.equal(factionOf(e.type), "alliance", e.type);
+    for (const e of xeno) if (!SHARED_TYPES.has(e.type)) assert.equal(factionOf(e.type), "xeno", e.type);
     for (const e of bloom) assert.equal(factionOf(e.type), "bloom", e.type);
     assert.equal(new Set(all.map((e) => e.id)).size, all.length);
     const defenceTypes = g.defences.map((e) => e.type);
@@ -25,17 +25,18 @@ describe("sidebarGroupOf", () => {
     assert.equal(all.some((e) => e.id === "build-teeth" || e.id === "build-trench"), false);
   });
 
-  it("gives the Borg their base, defences, cyborgs, and heavy assimilators, and nothing of Earth United's", () => {
-    const g = groupEntries("borg");
+  it("gives the Xenomorphs their base, defences, cyborgs, and heavy assimilators, and nothing of the Alliance's but the Central", () => {
+    const g = groupEntries("xeno");
     assert.deepEqual(g.structures.map((e) => e.type).sort(), ["aerie", "assimilator", "cyborgcentral", "forge", "fusionnode", "nexus", "spawnpool"]);
     assert.deepEqual(g.defences.map((e) => e.type).sort(), ["pulsespire", "spineturret"]);
-    assert.deepEqual(g.infantry.map((e) => e.type).sort(), ["borgdrone", "cyborg", "cyborgcommander", "lancer", "shade", "simunit2", "spitter", "thrall", "weaver"]);
+    assert.deepEqual(g.infantry.map((e) => e.type).sort(), ["lancer", "shade", "simunit2", "spitter", "thrall", "weaver", "xenodrone"]);
     assert.deepEqual(g.tanks.map((e) => e.type).sort(), ["behemoth", "broodmother", "juggernaut", "mawcaster", "ravager", "siphon", "stalker"]);
     assert.deepEqual(g.naval.map((e) => e.type).sort(), ["leech", "lurker"]);
     assert.deepEqual(g.aircraft.map((e) => e.type).sort(), ["gnat", "overseer", "scourge", "wasp"]);
-    const eu = Object.values(groupEntries("eu")).flat().map((e) => e.type);
-    assert.equal(eu.includes("cyborg"), false);
-    assert.equal(eu.includes("cyborgcentral"), false);
+    const alliance = groupEntries("alliance");
+    assert.deepEqual(alliance.infantry.map((e) => e.type).filter((t) => t.startsWith("cyborg")).sort(), ["cyborg", "cyborgcommander"]);
+    assert.ok(alliance.structures.some((e) => e.type === "cyborgcentral"));
+    assert.equal(Object.values(alliance).flat().some((e) => e.type === "xenodrone" || e.type === "simunit2"), false);
   });
 
   it("gives the Bloom at least five of everything, and nothing of anyone else's", () => {

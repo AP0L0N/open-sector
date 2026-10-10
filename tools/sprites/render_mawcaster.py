@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Mawcaster: Borg spore-pod rocket artillery, the Borg answer to the Nebelwerfer. Three 16-face layers.
+"""Mawcaster: Xenomorph spore-pod rocket artillery, the Xenomorph answer to the Nebelwerfer. Three 16-face layers.
 
 A long, narrow hull on four thin stilt legs (light armour: bare limbs, no
 shin plates), carrying a ribbed launcher carapace with a cluster of six
 organic launch tubes in front of it, a lotus-seed head angled up steeply,
 each maw glowing green inside. Cold grey-green alloy, dark chitin, the Seed's
-glow (borg_walker.py). The Apocalypse's layout: hull / turret / gun are passes
+glow (xeno_walker.py). The Apocalypse's layout: hull / turret / gun are passes
 of one locked camera, one scale, one origin, composed by the client with
 composeAligned (TIGER_OPTS: cell 128, contactY 0.92). The carapace and the pod
 cluster turn on the model origin. bw.bake() then writes mawcaster-legs.png
@@ -30,8 +30,8 @@ from pathlib import Path
 import numpy as np
 from render_procedural import Mesh, render_turntable
 
-import borg_walker as bw
-from borg_walker import ellipsoid, knob, leg, shell, tube, tube_x
+import xeno_walker as bw
+from xeno_walker import ellipsoid, knob, leg, shell, tube, tube_x
 
 # Meters. +x nose, +y left, +z up. Feet on z = 0. Origin = turret ring centre.
 BODY = (-0.35, 0.0, 1.5)

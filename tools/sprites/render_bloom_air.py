@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Bloom aircraft (Skybrood): Watcher Moth, Razorwing, Gasbag, Drifter, Harpy. One 16-face hull each.
 
-A fork of render_borg_air.py under the air lock (render_procedural.py): same numpy
+A fork of render_xeno_air.py under the air lock (render_procedural.py): same numpy
 rasterizer, camera, light, outline, face order, 256 source cell composed to the
 128 cell at runtime with STUKA_OPTS (contactY 0.8, padding 2), the lowest point
 (legs, sac, tendril tips, the clutched eel) at z = 0 as the plane's wheels. Meters

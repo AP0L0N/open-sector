@@ -27,7 +27,7 @@ function twoPlayerMatch(): MatchState {
   if (!r.ok) throw new Error(r.message);
   const room = r.value;
   assert.equal(joinRoom(room, "B", "Bravo").ok, true);
-  updateSelf(room, "A", { ready: true, spawnId: 1, faction: "borg" });
+  updateSelf(room, "A", { ready: true, spawnId: 1, faction: "xeno" });
   updateSelf(room, "B", { ready: true, spawnId: 4 });
   const started = startMatch(room, "A", () => 0);
   if (!started.ok) throw new Error(started.message);
@@ -66,7 +66,7 @@ function nest(state: MatchState): { aerie: Entity; craft: Entity } {
 }
 
 describe("Overseer", () => {
-  it("is a Borg hover craft grown at the Aerie", () => {
+  it("is a Xenomorph hover craft grown at the Aerie", () => {
     assert.ok(isAircraftType("overseer"));
     assert.ok(isHoverType("overseer"));
     assert.equal(isHoverType("scourge"), false);

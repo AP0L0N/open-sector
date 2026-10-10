@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Preview: the Bloom buildings over their Borg equivalents at game scale, footprints outlined.
+"""Preview: the Bloom buildings over their Xenomorph equivalents at game scale, footprints outlined.
 
 Each sprite is scaled so its pad spans its footprint (32 screen px per tile along the pad's
 half-diagonal, like the client's buildingSpriteDestRect) and drawn with its pad-south point on a
@@ -20,7 +20,7 @@ B = ROOT / "gridlock/packages/client/src/assets/buildings"
 OUT = Path(__file__).resolve().parent / "preview" / "bloom-base-lineup.png"
 TILE = 32.0
 
-# (bloom, borg, tiles W, tiles H, ground layer?)
+# (bloom, xeno, tiles W, tiles H, ground layer?)
 PAIRS = [
     ("broodheart", "hivecore", 3, 3, False),
     ("lumenbulb", "fusionnode", 2, 2, False),
@@ -68,13 +68,13 @@ def main() -> None:
     H = 560
     canvas = Image.new("RGBA", (W, H), (74, 107, 50, 255))
     dr = ImageDraw.Draw(canvas)
-    for (bloom, borg, tw, th, gnd), sx in zip(PAIRS, xs):
+    for (bloom, xeno, tw, th, gnd), sx in zip(PAIRS, xs):
         if bloom == "tidewomb":
             # On water: paint a pond behind the harbour pair.
             for base_y in (250, 520):
                 dr.rectangle((sx - tw * TILE - 10, base_y - 150, sx + th * TILE + 10, base_y + 4), fill=(44, 74, 98, 255))
         place(canvas, dr, bloom, tw, th, gnd, sx, 250)
-        place(canvas, dr, borg, tw, th, gnd, sx, 520)
+        place(canvas, dr, xeno, tw, th, gnd, sx, 520)
     OUT.parent.mkdir(exist_ok=True)
     canvas.save(OUT)
     print("wrote", OUT, canvas.size)

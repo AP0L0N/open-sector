@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Bloom sea + air lineup: every unit facing east (row 12, 0013.png) at its intended map draw size,
-next to the Borg Leech and Wasp. Runtime fit (composeAligned twin), then drawSize = round(N * 1.25).
+next to the Xenomorph Leech and Wasp. Runtime fit (composeAligned twin), then drawSize = round(N * 1.25).
 
   python3 tools/sprites/bloom_seaair_lineup.py
 
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from PIL import Image, ImageDraw
 
-import borg_walker as bw
+import xeno_walker as bw
 from bloom_seaair_common import PREVIEW, UNITS
 
 UNIT_VISUAL_SCALE = 1.25

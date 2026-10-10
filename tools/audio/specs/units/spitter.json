@@ -2,9 +2,9 @@
   "key": "spitter",
   "out": "units/spitter",
   "voice": {
-    "name": "Open Sector - Borg Drone",
+    "name": "Open Sector - Xenomorph Drone",
     "voice_id": "502QtipFv6YOD230VZTi",
-    "note": "Shares the Borg Drone voice (voices/borgdrone.json): the account holds more than 20 custom voices, all in use, so no new one is designed. A little looser and hungrier than the plain drone.",
+    "note": "Shares the Xenomorph Drone voice (voices/xenodrone.json): the account holds more than 20 custom voices, all in use, so no new one is designed. A little looser and hungrier than the plain drone.",
     "description": "A thin, flat, hollow chorus of many young androgynous voices speaking the same words in perfect unison, like a single drone of an alien cyborg hive: lighter and younger than a commander, emotionless and obedient, airy and slightly metallic with a faint electronic buzz and a hollow tube-like resonance, quick clipped machine cadence, no personality of its own.",
     "stability": 0.6,
     "similarity": 0.8,

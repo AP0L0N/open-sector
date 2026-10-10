@@ -3,7 +3,7 @@
 Juggernaut unit sheets: a giant of the hive with a two-handed hammer.
 
 The Cyborg's camera, outline, and point-cloud rasterizer (render_cyborg.py), the
-Borg Drone's palette (cold grey-green alloy, dark chitin, lit green conduits), on
+Xenomorph Drone's palette (cold grey-green alloy, dark chitin, lit green conduits), on
 the Titan's 192 cell. One model, 16 unique yaws, no mirroring, one scale on every
 sheet so nothing pops when the client swaps sheets. Team tint lands on the grey
 pauldron caps.
@@ -52,7 +52,7 @@ CONTACT_Y = 0.82
 # Wreck on the ground: the body's footprint centre, like the infantry corpses.
 WRECK_CONTACT_Y = 0.62
 
-BORG_MATS = {
+XENO_MATS = {
     "alloy": ((60, 72, 64), (92, 106, 96), (124, 140, 128)),  # cold grey-green alloy, a step under the Drone's
     "chitin": ((20, 24, 22), (36, 42, 38), (58, 66, 60)),  # dark chitin plates
     "cable": ((30, 32, 32), (48, 52, 50), (70, 76, 72)),  # exposed cabling
@@ -67,7 +67,7 @@ BORG_MATS = {
     "gplate_worn": ((62, 70, 66), (90, 98, 92), (116, 124, 118)),
     "chitin_worn": ((30, 34, 30), (50, 56, 50), (74, 82, 74)),
 }
-for _name, _spec in BORG_MATS.items():
+for _name, _spec in XENO_MATS.items():
     R.MATERIALS[_name] = _spec
     if _name not in R.MAT_IDS:
         R.MAT_IDS[_name] = len(R.MAT_IDS)

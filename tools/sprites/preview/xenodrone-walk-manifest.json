@@ -1,5 +1,5 @@
 {
-  "id": "borgdrone-walk",
+  "id": "xenodrone-walk",
   "cell": 96,
   "cols": 8,
   "rows": 16,
@@ -24,7 +24,7 @@
   ],
   "contactY": 0.88,
   "scale": 1.128,
-  "out": "gridlock/packages/client/src/assets/units/borgdrone-walk.png",
+  "out": "gridlock/packages/client/src/assets/units/xenodrone-walk.png",
   "size_pop_dirs": [],
   "empty_dirs": [],
   "clipped_dirs": [],
@@ -254,5 +254,5 @@
       "pop": false
     }
   ],
-  "source": "render_borgdrone.py (16 unique yaws, no mirror)"
+  "source": "render_xenodrone.py (16 unique yaws, no mirror)"
 }

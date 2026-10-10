@@ -162,7 +162,7 @@ import {
   biteOf,
   factionDamage,
   factionOf,
-  BORG_DAMAGE_MUL,
+  XENO_DAMAGE_MUL,
   SIPHON_DRAIN,
   MAWCASTER_BILE_CHANCE,
   LURKER_BITE_DAMAGE,
@@ -1141,7 +1141,7 @@ function flightStowsGun(e: Entity): boolean {
   return rocketsOf(e.type) && jetAloft(e);
 }
 
-/** A CIWS or RAM runs on its radar, a Borg gun on base power. Short on power, it neither lays nor fires. */
+/** A CIWS or RAM runs on its radar, a Xenomorph gun on base power. Short on power, it neither lays nor fires. */
 function powerSilences(e: Entity): boolean {
   return e.kind === "building" && !!e.unpowered && (radarLaidOf(e.type) || poweredGunOf(e.type));
 }
@@ -3348,7 +3348,7 @@ function fireRound(
     fromId: e.id,
     bounced: false,
     shell: opts?.shell ?? null,
-    hpFraction: gunId === "scoped" || gunId === "ptrd" ? scopedHpFraction(dist, range) * (factionOf(e.type) === "borg" ? BORG_DAMAGE_MUL : 1) : undefined,
+    hpFraction: gunId === "scoped" || gunId === "ptrd" ? scopedHpFraction(dist, range) * (factionOf(e.type) === "xeno" ? XENO_DAMAGE_MUL : 1) : undefined,
     antiAir:
       opts?.radar ||
       (!opts?.shell && (e.type === "walker" || radarLaidOf(e.type) || antiAirGunOf(e.type) || !!infantryGunFor(e)?.antiAir))

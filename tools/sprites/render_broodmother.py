@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Broodmother: slow Borg living hatchery, between the Stalker and the Behemoth. Three 16-face layers.
+"""Broodmother: slow Xenomorph living hatchery, between the Stalker and the Behemoth. Three 16-face layers.
 
 A low six-legged hull on short legs carrying a huge brood sac on its back: a
 translucent green egg skin over a glowing yolk with dark curled embryos
 inside, held in a chitin cradle and a few ribs. No weapon. Cold grey-green
-alloy, dark chitin, the Seed's glow (borg_walker.py). The Apocalypse's
+alloy, dark chitin, the Seed's glow (xeno_walker.py). The Apocalypse's
 layout: hull / turret / gun are passes of one locked camera, one scale, one
 origin, composed by the client with composeAligned (TIGER_OPTS: cell 128,
 contactY 0.92). The sac and the crown turn on the model origin (the client
@@ -35,8 +35,8 @@ import render_seed as rs
 from render_procedural import Mesh, render_turntable
 from render_seed import arch
 
-import borg_walker as bw
-from borg_walker import dome, ellipsoid, knob, leg, shell, tube, tube_x
+import xeno_walker as bw
+from xeno_walker import dome, ellipsoid, knob, leg, shell, tube, tube_x
 
 # The brood sac: a lit translucent egg skin, a glowing yolk, dark embryos.
 rp.MAT.update(

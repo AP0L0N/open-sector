@@ -589,8 +589,8 @@ input[type="range"] { padding: 0; }
 .prod-job[data-type="simunit2"] {
   background-image: url("../assets/units/simunit2-cameo.png");
 }
-.prod-job[data-type="borgdrone"] {
-  background-image: url("../assets/units/borgdrone-cameo.png");
+.prod-job[data-type="xenodrone"] {
+  background-image: url("../assets/units/xenodrone-cameo.png");
 }
 .prod-job[data-type="thrall"] {
   background-image: url("../assets/units/thrall-cameo.png");
@@ -945,7 +945,7 @@ input[type="range"] { padding: 0; }
 #train-scourge,
 #train-overseer,
 #train-gnat,
-#train-borgdrone,
+#train-xenodrone,
 #train-thrall,
 #train-lancer,
 #train-spitter,
@@ -1107,10 +1107,10 @@ input[type="range"] { padding: 0; }
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/simunit2-cameo.png");
 }
-#train-borgdrone {
+#train-xenodrone {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
-    url("../assets/units/borgdrone-cameo.png");
+    url("../assets/units/xenodrone-cameo.png");
 }
 #train-thrall {
   background-image:
@@ -1722,7 +1722,7 @@ input[type="range"] { padding: 0; }
 .config-type[data-type="spawnpool"] { background-image: url("../assets/buildings/spawnpool-cameo.png"); }
 .config-type[data-type="aerie"] { background-image: url("../assets/buildings/aerie-cameo.png"); }
 .config-type[data-type="apocalypse"] { background-image: url("../assets/units/apocalypse-cameo.png"); }
-.config-type[data-type="borgdrone"] { background-image: url("../assets/units/borgdrone-cameo.png"); }
+.config-type[data-type="xenodrone"] { background-image: url("../assets/units/xenodrone-cameo.png"); }
 .config-type[data-type="thrall"] { background-image: url("../assets/units/thrall-cameo.png"); }
 .config-type[data-type="lancer"] { background-image: url("../assets/units/lancer-cameo.png"); }
 .config-type[data-type="stalker"] { background-image: url("../assets/units/stalker-cameo.png"); }

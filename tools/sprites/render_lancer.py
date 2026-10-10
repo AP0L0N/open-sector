@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Borg Lancer unit sheets — anti-armour cyborg on the Cyborg's lock.
+Xenomorph Lancer unit sheets — anti-armour cyborg on the Cyborg's lock.
 
 Same camera, cell, contact points, and row order as render_cyborg.py (and the
-Borg Drone in render_borgdrone.py, whose palette and helpers it shares), so the
+Xenomorph Drone in render_xenodrone.py, whose palette and helpers it shares), so the
 client reuses the Cyborg's sprite defs with new file names. Upright and broad:
 big chitin pauldrons rimmed in pale steel, grey-green alloy limbs, a narrow
 green visor slit and a targeting monocle on the right, a sickly green capacitor
@@ -34,7 +34,7 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.dont_write_bytecode = True
-import render_borgdrone as B  # noqa: E402  (registers the Borg palette on render_cyborg)
+import render_xenodrone as B  # noqa: E402  (registers the Xenomorph palette on render_cyborg)
 
 R = B.R
 CELL = B.CELL
@@ -233,7 +233,7 @@ def pose_crawl(tt: float, flash: int = 0) -> Cloud:
     box(c, (2.0, 0, 12.5 + z0), (5.0, 0.7, 0.2), "conduit")
     for i in range(3):
         cylinder(c, (-7.0 - i * 1.6, 0, 5.4 + z0), (-8.0 - i * 1.6, 0, 5.4 + z0), 4.2 - 0.3 * i, "cable")
-    B.borg_stumps(c, np.array([-12.6, 0, 5.0 + z0]), np.array([-1.0, 0, -0.1]), tt, half=5.0)
+    B.xeno_stumps(c, np.array([-12.6, 0, 5.0 + z0]), np.array([-1.0, 0, -0.1]), tt, half=5.0)
     box(c, (-11.6, 0, 5.2 + z0), (2.2, 6.6, 2.6), "chitin")
     # Capacitor lying flat on the back.
     box(c, (-1.6, 0, 13.6 + z0), (4.6, 4.4, 1.6), "chitin")
@@ -270,7 +270,7 @@ def pose_dead() -> Cloud:
     c = Cloud()
     ellipsoid(c, (0, 0, 4.6), (11.0, 9.0, 4.8), "alloy")
     box(c, (1.0, 0, 9.0), (6.6, 4.4, 1.0), "chitin")
-    B.borg_stumps(c, np.array([-12.0, 0, 3.6]), np.array([-1.0, 0, -0.05]), 0.5, half=5.0)
+    B.xeno_stumps(c, np.array([-12.0, 0, 3.6]), np.array([-1.0, 0, -0.05]), 0.5, half=5.0)
     box(c, (-11.0, 0, 3.8), (2.2, 6.6, 2.2), "chitin")
     box(c, (-3.0, 0, 10.4), (4.4, 4.4, 1.6), "chitin")
     capacitor(c, (-3.0, 0, 12.6), (0.15, 0.3, 1.0), "dead_glow", radius=5.2)

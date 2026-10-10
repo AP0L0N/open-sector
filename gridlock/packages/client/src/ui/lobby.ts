@@ -85,7 +85,7 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
       const sel = el("select", { class: "faction-select", attrs: { "data-slot": String(slot.index) } });
       for (const f of FACTIONS) {
         const o = el("option", { text: FACTION_NAMES[f], attrs: { value: f } });
-        if ((slot.faction ?? "eu") === f) o.selected = true;
+        if ((slot.faction ?? "alliance") === f) o.selected = true;
         sel.append(o);
       }
       const canEdit = slot.playerId === you || (isHost && slot.status === "ai");

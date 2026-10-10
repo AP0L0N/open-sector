@@ -7,7 +7,7 @@ frogs, eels, beetles, the dead in their trenches. The Bloom is not an army that
 builds; it is a garden that fights. It grows its structures out of the ground,
 gestates its soldiers in sacs, and every wound it takes it slowly closes.
 
-Earth United fields steel and crews. The Borg field machines on an uplink.
+Alliance fields steel and crews. The Xenomorphs field machines on an uplink.
 The Bloom fields **flesh**: thin-skinned, cheap, fast, and always healing.
 
 ## Identity
@@ -18,7 +18,7 @@ The Bloom fields **flesh**: thin-skinned, cheap, fast, and always healing.
 | On screen | **The Bloom** |
 | Silhouette | Hunched, many-legged, sac-backed, spined. Nothing has a straight edge. |
 | Materials | Wet flesh, bone-ivory chitin plates, dark membrane, glowing amber sacs |
-| Tell at a glance | **Amber bioluminescence** (Borg glow green, EU has none) |
+| Tell at a glance | **Amber bioluminescence** (Xenomorph glow green, EU has none) |
 
 ### Palette lock (every Bloom sprite)
 
@@ -38,8 +38,8 @@ The Bloom fields **flesh**: thin-skinned, cheap, fast, and always healing.
    max HP each second (units faster than structures). There is no repair
    truck and no engineer: the Mender is the only thing that speeds it up.
 2. **Living glands.** Spines, acid and spores grow back: no Bloom weapon runs
-   dry and none needs a truck, pad or pool to rearm (shared with the Borg's
-   endless-ammo rule, without the Borg's damage penalty).
+   dry and none needs a truck, pad or pool to rearm (shared with the Xenomorphs'
+   endless-ammo rule, without the Xenomorphs' damage penalty).
 3. **Soft bodies.** Bloom hulls carry thin plate for their price and leave no
    wreck: a dead beast melts into the soil.
 4. **Brood instinct.** Brood infantry take no stance orders and suffer no
@@ -119,4 +119,4 @@ Costs and numbers live in `packages/shared/src/catalog.ts`; this table is the in
 
 - Audio falls back to Battle Control / generic cues for now; a Bloom announcer ("the Choir") and creature voices are the obvious next pass.
 - Shots draw as the default tracers; amber acid/spore FX are the next client pass.
-- Balance is a first guess around the Borg's price bands.
+- Balance is a first guess around the Xenomorphs' price bands.

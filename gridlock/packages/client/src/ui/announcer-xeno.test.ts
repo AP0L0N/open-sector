@@ -13,15 +13,15 @@ function cues(folder: string): Set<string> {
   return out;
 }
 
-describe("Borg announcer", () => {
-  it("voices every cue Battle Control voices, so a Borg commander never falls back mid-match", () => {
+describe("Xenomorph announcer", () => {
+  it("voices every cue Battle Control voices, so a Xenomorph commander never falls back mid-match", () => {
     const eu = cues("announcer");
-    const borg = cues("announcer-borg");
+    const xeno = cues("announcer-xeno");
     assert.ok(eu.size > 0);
-    for (const cue of eu) assert.ok(borg.has(cue), cue);
+    for (const cue of eu) assert.ok(xeno.has(cue), cue);
   });
 
-  it("gives the Seed and the Borg structures their own sounds", () => {
+  it("gives the Seed and the Xenomorph structures their own sounds", () => {
     assert.ok(cues("units/seed").has("voice-select"));
     for (const t of ["hivecore", "fusionnode", "assimilator"]) {
       const files = readdirSync(new URL(`units/${t}/`, AUDIO));

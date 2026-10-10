@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Behemoth: Borg heavy assault walker, Jagdtiger / Apocalypse class. Three 16-face layers.
+"""Behemoth: Xenomorph heavy assault walker, Jagdtiger / Apocalypse class. Three 16-face layers.
 
 A big six-legged carapace under a wide turret with twin disruptor barrels.
-Cold grey-green alloy, dark chitin, the Seed's glow (borg_walker.py). The
+Cold grey-green alloy, dark chitin, the Seed's glow (xeno_walker.py). The
 Apocalypse's layout and twin-gun convention: hull / turret / gun are passes of
 one locked camera, one scale, one origin; both barrels sit in the gun layer
 (side by side, GUN_Y off the centre line) so they recoil together. The client
@@ -28,8 +28,8 @@ from pathlib import Path
 from render_procedural import Mesh, render_turntable
 from render_seed import arch
 
-import borg_walker as bw
-from borg_walker import dome, ellipsoid, knob, leg, shell, tube, tube_x
+import xeno_walker as bw
+from xeno_walker import dome, ellipsoid, knob, leg, shell, tube, tube_x
 
 # Meters. +x nose, +y left, +z up. Feet on z = 0. Origin = turret ring centre.
 BODY = (-0.4, 0.0, 1.85)

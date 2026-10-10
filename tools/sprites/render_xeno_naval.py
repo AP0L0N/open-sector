@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Borg sea: the Leech (plasma skiff) and the Lurker (sea beast). One 16-face hull each.
+"""Xenomorph sea: the Leech (plasma skiff) and the Lurker (sea beast). One 16-face hull each.
 
-The Borg answer to the Attack Boat and the Submarine (render_naval.py), under
+The Xenomorph answer to the Attack Boat and the Submarine (render_naval.py), under
 their lock: same numpy rasterizer (render_procedural), camera, light, outline,
 meters -> px (NAVAL_SCALE), z mid, centring, waterline cut over a wake, 256
 source cell composed to 128 at runtime with NAVAL_OPTS (contactY 0.74,
-padding 2). The look is the Borg walkers' (borg_walker.py): cold grey-green
+padding 2). The look is the Xenomorph walkers' (xeno_walker.py): cold grey-green
 alloy plates, dark chitin, sickly green glow seams, gray team plate.
 
   leech   a fast plasma skiff: a low, ribbed eel hull riding on four
@@ -23,9 +23,9 @@ alloy plates, dark chitin, sickly green glow seams, gray team plate.
 
 Row 0 = bow screen-south, then clockwise 22.5 deg through row 15. No insignia.
 
-  python3 tools/sprites/render_borg_naval.py leech
-  python3 tools/sprites/render_borg_naval.py lurker
-  python3 tools/sprites/render_borg_naval.py all
+  python3 tools/sprites/render_xeno_naval.py leech
+  python3 tools/sprites/render_xeno_naval.py lurker
+  python3 tools/sprites/render_xeno_naval.py all
 
 Writes gridlock/packages/client/src/assets/units/<id>/hull/0001..0016.png,
 <id>/<id>-hull.json, <id>-cameo.png (72 px), and previews in
@@ -46,9 +46,9 @@ from PIL import Image, ImageDraw
 import render_procedural as rp
 from render_procedural import Mesh, render_turntable
 
-import borg_walker as bw
+import xeno_walker as bw
 import render_seed as rs
-from borg_walker import dome, ellipsoid, knob, leg, shell, tube, tube_x
+from xeno_walker import dome, ellipsoid, knob, leg, shell, tube, tube_x
 from render_naval import NAVAL_SCALE, NAVAL_Z_MID, build_wake, ellipse, ring, write_cameo as _unused  # noqa: F401
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -56,7 +56,7 @@ UNITS = ROOT / "gridlock/packages/client/src/assets/units"
 PREVIEW = Path(__file__).resolve().parent / "preview"
 NAMES = bw.NAMES
 
-# Glow in the water under a Borg hull: dimmer than the seams, lit flat.
+# Glow in the water under a Xenomorph hull: dimmer than the seams, lit flat.
 rp.MAT.update(
     {
         "uglow": (rp.hex_rgb("#2fb57c"), 0.0, 1.0),
@@ -141,7 +141,7 @@ def check(unit: str, folder: Path, contact_y: float, padding: int, ref: str | No
 
 
 def cameo72(faces: Path, path: Path, face: str = "0015", gain: float = 1.25, lift: float = 0.03) -> None:
-    """72 px static cameo (the gunboat's size) from the south-east face, brightened like the Borg cameos."""
+    """72 px static cameo (the gunboat's size) from the south-east face, brightened like the Xenomorph cameos."""
     im = Image.open(faces / f"{face}.png").convert("RGBA")
     crop = im.crop(bw.bbox(im))
     px = np.asarray(crop).astype(np.float64) / 255
@@ -160,7 +160,7 @@ def cameo72(faces: Path, path: Path, face: str = "0015", gain: float = 1.25, lif
 # ---------------------------------------------------------------- wake with a green glow under the hull
 
 
-def borg_wake(length: float, beam: float, glow_len: float, glow_beam: float, cx: float = 0.0) -> Mesh:
+def xeno_wake(length: float, beam: float, glow_len: float, glow_beam: float, cx: float = 0.0) -> Mesh:
     m = Mesh()
     ellipse(m, 0.02, cx, 0.0, length, beam, "water")
     ellipse(m, 0.03, cx, 0.0, glow_len, glow_beam, "uglow")
@@ -302,7 +302,7 @@ UNITS_SPEC = {
     # id: (builder, wake, EU ref, EU ref drawSize base (before UNIT_VISUAL_SCALE), meters -> px share of NAVAL_SCALE)
     # The Lurker is drawn at 0.66 of NAVAL_SCALE so its 25 m with the wake fits the 256 source cell
     # (the EU Submarine runs off its cell at east / west); drawSize puts the px per meter back.
-    "leech": (build_leech, lambda: borg_wake(7.6, 3.6, 6.0, 1.95, -0.3), "gunboat", 48.0, 1.0),
+    "leech": (build_leech, lambda: xeno_wake(7.6, 3.6, 6.0, 1.95, -0.3), "gunboat", 48.0, 1.0),
     "lurker": (build_lurker, lurker_wake, "submarine", 64.0 * 1.2, 0.66),
 }
 

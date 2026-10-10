@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Bloom sea (Deep Brood): Drift Jelly, Spineback, Abyss Ray, Leviathan, Brood Barge. One 16-face hull each.
 
-A fork of render_borg_naval.py under the naval lock (render_naval.py): same numpy
+A fork of render_xeno_naval.py under the naval lock (render_naval.py): same numpy
 rasterizer, camera, light, outline, meters -> px (NAVAL_SCALE x a per-unit share),
 z mid, centring (cy_frac 0.56), waterline cut (clip_z 0) over a wake, 256 source
 cell composed to 128 at runtime with NAVAL_OPTS (contactY 0.74, padding 2).

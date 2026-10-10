@@ -5,7 +5,7 @@ import { allies } from "./geo.js";
 import { entityOnMask } from "./vision.js";
 import type { Entity, MatchState } from "./types.js";
 
-/** A Radar Station (or Borg Neural Nexus) this side reads: allied, standing, not a wreck. */
+/** A Radar Station (or Xenomorph Neural Nexus) this side reads: allied, standing, not a wreck. */
 function radarStands(state: MatchState, playerId: string, e: Entity): boolean {
   return isRadarStation(e.type) && e.kind === "building" && e.hp > 0 && !e.wreck && allies(state, playerId, e.ownerId);
 }

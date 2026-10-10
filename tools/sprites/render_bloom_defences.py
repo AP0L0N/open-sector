@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The Bloom's defences: Thorn Spitter, Bile Lance, Puffcap (crewless guns), Eye Stalk, Husk Burrow.
 
-The guns use render_ww2_guns.py's file set and JSON schema (as render_borg_guns.py does), so the
+The guns use render_ww2_guns.py's file set and JSON schema (as render_xeno_guns.py does), so the
 client draws them through FORT_TYPES:
   <id>.png            the static pad (creep, roots, stem), with its cast shadow
   <id>.json           pad metrics + rows, crewCols, order, gunZ, muzzleReach, pivotX/pivotY, cell

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Borg Drone unit sheets — a fork of render_simunit2.py under the Cyborg's lock.
+Xenomorph Drone unit sheets — a fork of render_simunit2.py under the Cyborg's lock.
 
-The cheap Borg line cyborg: the Cyborg's camera, cell, contact points, and row
+The cheap Xenomorph line cyborg: the Cyborg's camera, cell, contact points, and row
 order, so the client reuses the Cyborg's sprite defs with new file names. A
 slim, hunched frame in cold grey-green alloy over dark chitin plates, no
 pauldrons, exposed cabling down the back and round the hips, a single sickly
@@ -11,18 +11,18 @@ pulse carbine in place of the right forearm (three green coils, green flash).
 The left hand is a thin three-finger claw. About 6% lighter than the Cyborg and
 hunched, so it stands roughly four fifths of his height.
 
-  python tools/sprites/render_borgdrone.py            # every sheet
-  python tools/sprites/render_borgdrone.py walk fire  # some sheets
+  python tools/sprites/render_xenodrone.py            # every sheet
+  python tools/sprites/render_xenodrone.py walk fire  # some sheets
 
 Sheets: walk (8, a stride every frame), fire (4, carbine flash big / small /
 big / tiny with a short recoil), crawl (8, legs torn off, dragging on the left
 claw, carbine forward), crawl-fire (4), die (4), swim (8, chest-deep in the
-shared pool). Writes gridlock/packages/client/src/assets/units/borgdrone-*.png
-(plus borgdrone-cameo.png), the east lock at tools/sprites/src/borgdrone-east.png,
+shared pool). Writes gridlock/packages/client/src/assets/units/xenodrone-*.png
+(plus xenodrone-cameo.png), the east lock at tools/sprites/src/xenodrone-east.png,
 and previews/manifests in tools/sprites/preview/. Exits 2 if a row is empty or
 clipped.
 
-The shared Borg parts (materials, green flash, cables, rings, torn hips) and the
+The shared Xenomorph parts (materials, green flash, cables, rings, torn hips) and the
 sheet runner live here; render_lancer.py imports them.
 """
 
@@ -47,9 +47,9 @@ SRC = R.SRC
 PREVIEW = R.PREVIEW
 CELL = R.CELL
 
-# ---------------------------------------------------------------- Borg palette
+# ---------------------------------------------------------------- Xenomorph palette
 
-BORG_MATS = {
+XENO_MATS = {
     "alloy": ((64, 76, 68), (98, 112, 102), (138, 154, 142)),  # cold grey-green alloy
     "chitin": ((20, 24, 22), (36, 42, 38), (58, 66, 60)),  # dark chitin plates
     "cable": ((30, 32, 32), (48, 52, 50), (70, 76, 72)),  # exposed cabling
@@ -59,13 +59,13 @@ BORG_MATS = {
     "gspark": (190, 255, 120),  # torn-cable spark
     "dead_glow": ((32, 44, 32), (46, 62, 44), (62, 82, 58)),  # dark optic / ring
 }
-for _name, _spec in BORG_MATS.items():
+for _name, _spec in XENO_MATS.items():
     R.MATERIALS[_name] = _spec
     if _name not in R.MAT_IDS:
         R.MAT_IDS[_name] = len(R.MAT_IDS)
 for _name in ("optic", "conduit", "gspark"):
     R.EMISSIVE.add(_name)
-# Borg weapons flash green. The renderer treats these two names as un-outlined FX,
+# Xenomorph weapons flash green. The renderer treats these two names as un-outlined FX,
 # so recolouring them (in this process only) keeps that behaviour.
 R.MATERIALS["flash"] = (130, 255, 96)
 R.MATERIALS["flash_core"] = (232, 255, 214)
@@ -104,7 +104,7 @@ def ring(c: Cloud, center, axis, radius: float, r: float, mat: str, n: int = 28)
         capsule(c, p0, p1, r, mat=mat)
 
 
-def borg_stumps(c: Cloud, pelvis, back: np.ndarray, t: float, half: float = 4.4) -> None:
+def xeno_stumps(c: Cloud, pelvis, back: np.ndarray, t: float, half: float = 4.4) -> None:
     """Torn hips: ragged alloy struts, cut cables, a green spark that flickers with `t`."""
     pelvis = np.asarray(pelvis, float)
     for s in (1, -1):
@@ -328,7 +328,7 @@ def pose_crawl(t: float, flash: int = 0) -> Cloud:
     capsule(c, (-7.0, 0, 9.4 + z0), (4.0, 0, 9.6 + z0), 0.55, mat="conduit")
     for i in range(3):
         cylinder(c, (-6.0 - i * 1.4, 0, 4.6 + z0), (-6.8 - i * 1.4, 0, 4.6 + z0), 3.0 - 0.3 * i, "cable")
-    borg_stumps(c, np.array([-10.6, 0, 4.2 + z0]), np.array([-1.0, 0, -0.1]), t, half=3.8)
+    xeno_stumps(c, np.array([-10.6, 0, 4.2 + z0]), np.array([-1.0, 0, -0.1]), t, half=3.8)
     box(c, (-9.6, 0, 4.4 + z0), (1.8, 4.8, 2.0), "chitin")
     for s in (1, -1):
         cable(c, (-4.0, s * 3.0, 9.0 + z0), (-10.0, s * 4.0, 5.2 + z0), (-8.0, s * 6.4, 9.0 + z0), 0.55, n=6)
@@ -367,7 +367,7 @@ def pose_dead() -> Cloud:
     for k in range(4):
         box(c, (-6.0 + k * 2.8, 0, 8.0), (1.0, 0.5, 1.0), "chitin")
     capsule(c, (-7.0, 0, 7.4), (4.0, 0, 7.6), 0.5, mat="dead_glow")
-    borg_stumps(c, np.array([-10.2, 0, 3.0]), np.array([-1.0, 0, -0.05]), 0.5, half=3.8)
+    xeno_stumps(c, np.array([-10.2, 0, 3.0]), np.array([-1.0, 0, -0.05]), 0.5, half=3.8)
     box(c, (-9.2, 0, 3.2), (1.8, 4.8, 1.8), "chitin")
     dr_head(c, (11.6, 1.0, 4.0), rot_x(math.radians(-25)), lit=False)
     # Carbine arm flung out to the right.
@@ -464,7 +464,7 @@ def run(uid: str, sheets, source: str, argv: list[str]) -> int:
 
 
 def main() -> int:
-    return run("borgdrone", SHEETS, "render_borgdrone.py", sys.argv[1:])
+    return run("xenodrone", SHEETS, "render_xenodrone.py", sys.argv[1:])
 
 
 if __name__ == "__main__":

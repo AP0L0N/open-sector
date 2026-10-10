@@ -2,7 +2,7 @@
 """Shared parts, materials and the bake for the Bloom beasts (render_bloom_beasts.py)
 and the Spore Pod (render_sporepod.py).
 
-The Borg walkers' pipeline (borg_walker.py): same numpy rasterizer, camera, light and
+The Xenomorph walkers' pipeline (xeno_walker.py): same numpy rasterizer, camera, light and
 outline (render_procedural.py), the Seed's flat emissive shading for glow, the 128 cell,
 contactY 0.92, padding 4, 16 unique yaws (row 0 = south, clockwise 22.5 deg) and an
 8-frame leg cycle where every frame is a step. Only the materials change: the Bloom
@@ -11,7 +11,7 @@ membrane, amber glow, a gray team-tint carapace plate. No metal.
 
 The legs / turret / gun layers are passes of one camera with one origin (the turret
 ring centre), placed with one transform (bw.fit, the runtime's composeAligned), so the
-client's borgWalker() composes them like the Stalker's.
+client's xenoWalker() composes them like the Stalker's.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 import render_procedural as rp
-import borg_walker as bw  # noqa: F401  (camera helpers, fit/place, the Seed's emissive shade)
+import xeno_walker as bw  # noqa: F401  (camera helpers, fit/place, the Seed's emissive shade)
 from render_procedural import Mesh
 
 ROOT = Path(__file__).resolve().parents[2]

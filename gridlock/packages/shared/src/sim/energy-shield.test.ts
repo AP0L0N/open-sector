@@ -11,14 +11,14 @@ import { createMatch, step } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
 
-/** A is Earth United, B the Borg, on bare flat ground. */
+/** A is Alliance, B the Xenomorphs, on bare flat ground. */
 function field(): MatchState {
   const r = createRoom({ id: "SHD", hostId: "A", hostName: "Alpha", mapId: "yard-64", maxSlots: 8 });
   if (!r.ok) throw new Error(r.message);
   const room = r.value;
   assert.equal(joinRoom(room, "B", "Bravo").ok, true);
   updateSelf(room, "A", { ready: true, spawnId: 1 });
-  updateSelf(room, "B", { ready: true, spawnId: 4, faction: "borg" });
+  updateSelf(room, "B", { ready: true, spawnId: 4, faction: "xeno" });
   const started = startMatch(room, "A", () => 0);
   if (!started.ok) throw new Error(started.message);
   const state = createMatch(room, started.value);
@@ -138,7 +138,7 @@ describe("hive energy wall", () => {
     const watch = shieldWatch(state);
     const from = { x: foe.x, y: foe.y };
     foe.x -= 8;
-    const mate = makeEntity(state, "borgdrone", "B", b.x + w.r + 3, b.y - 6);
+    const mate = makeEntity(state, "xenodrone", "B", b.x + w.r + 3, b.y - 6);
     watch!.set(mate, { x: mate.x, y: mate.y });
     mate.x -= 8;
     holdShieldLines(state, watch);
@@ -163,7 +163,7 @@ describe("hive energy wall", () => {
   });
 
   it("the Drone and the Lancer raise the same wall, far weaker than the Behemoth's", () => {
-    const drone = energyShieldOf("borgdrone")!;
+    const drone = energyShieldOf("xenodrone")!;
     const lancer = energyShieldOf("lancer")!;
     const big = energyShieldOf("behemoth")!;
     assert.deepEqual(drone, lancer);

@@ -2,7 +2,7 @@
 """The Bloom harbour and airfield: the Tide Womb (shipyard) and the Roost (airfield).
 
   tidewomb  t(2.5) x t(2.5), on open water, like the Spawning Pool
-            (render_borg_harbour.py) and the Marine Base: a ring of fleshy
+            (render_xeno_harbour.py) and the Marine Base: a ring of fleshy
             lily-pads round a glowing amber pool, open to the south-east face
             (the slip the boats leave by), tendrils trailing in the water, two
             curled fronds with lit bulbs hanging from them, and a brood clutch

@@ -255,12 +255,12 @@ export function spotBeamGround(
   return beamBlobs(reach, halfRad, { count: 24, widen: 1.15 }).map((b) => ({ x: x + c * b.d, y: y + s * b.d, r: b.r, a: b.a }));
 }
 
-/** The xenomorphs' own light: a cold blue glow off every live Borg unit and structure, in place of lamps. */
+/** The xenomorphs' own light: a cold blue glow off every live Xenomorph unit and structure, in place of lamps. */
 export const XENO_GLOW_RGB = "70, 140, 255";
 /** Extra strength on the blue, over a lamp pool's. */
 export const XENO_GLOW_BOOST = 1.2;
 /**
- * Gain on the Borg glow for the night shade it now lies under: it paints on
+ * Gain on the Xenomorph glow for the night shade it now lies under: it paints on
  * the ground, beneath units and structures, and the night layer goes on top.
  * `cut` is how much of the shade one glow lifts (its pool cut times lamp glow).
  */
@@ -275,7 +275,7 @@ export const XENO_GLOW_UNIT_SCALE = 3.5;
 export const XENO_GLOW_BUILDING_SCALE = 2;
 
 /**
- * Radius of a Borg glow on the ground, world px, by the size of what gives it
+ * Radius of a Xenomorph glow on the ground, world px, by the size of what gives it
  * off: a unit by its body radius, a structure by its footprint (fine tiles of
  * `tile` px). Never smaller than one fine tile.
  */

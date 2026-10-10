@@ -198,7 +198,7 @@ export function fellTreesInDisk(state: MatchState, x: number, y: number, radius:
   return n;
 }
 
-/** Same disk as `fellTreesInDisk`, but the trees inside go up in flames (a Borg plasma scorch). */
+/** Same disk as `fellTreesInDisk`, but the trees inside go up in flames (a Xenomorph plasma scorch). */
 export function burnTreesInDisk(state: MatchState, x: number, y: number, radius: number): number {
   const ts = state.tileSize;
   const reach = Math.max(0, radius);

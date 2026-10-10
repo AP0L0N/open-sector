@@ -126,6 +126,28 @@ describe("skirmish save", () => {
     assert.equal(next.value.slots[1]?.ai, "defensive");
   });
 
+  it("loads a save from before the faction rename: Borg reads as Xenomorph, Earth United as Alliance", () => {
+    const { state, room } = skirmish();
+    const saved = exportSave(state, room, 1_700_000_000_000);
+    const old = JSON.parse(JSON.stringify(saved).replace(/"xenodrone"/g, '"borgdrone"'));
+    old.seats.find((s: { status: string }) => s.status === "ai").faction = "borg";
+    old.seats.find((s: { status: string }) => s.status === "human").faction = "eu";
+    old.players.find((p: { playerId: string }) => p.playerId === "ai:1").faction = "borg";
+    old.players.find((p: { playerId: string }) => p.playerId === "A").faction = "eu";
+    const rig = old.entities.find((e: { type: string; ownerId: string }) => e.type === "rig" && e.ownerId === "A");
+    old.entities.push({ ...rig, id: old.nextId++, type: "borgdrone", kind: "unit" });
+    const back = restoreMatch(old, { roomId: "OLD", humanPlayerId: "A" });
+    assert.equal(back.ok, true, !back.ok ? back.message : "");
+    if (!back.ok) return;
+    assert.equal(back.value.state.players.get("ai:1")?.faction, "xeno");
+    assert.equal(back.value.state.players.get("A")?.faction, "alliance");
+    assert.ok([...back.value.state.entities.values()].some((e) => e.type === "xenodrone"));
+    const next = createRoom({ id: "OLD", hostId: "A", hostName: "Alpha", mapId: saved.mapId, maxSlots: 8, mode: "skirmish" });
+    if (!next.ok) throw new Error(next.message);
+    applySaveSeats(next.value, back.value.save, "A", "Alpha");
+    assert.equal(next.value.slots[1]?.faction, "xeno");
+  });
+
   it("holds the sim while paused and rejects orders", () => {
     const { state } = skirmish();
     const tick = state.tick;

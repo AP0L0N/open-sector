@@ -477,14 +477,15 @@ describe("research gate", () => {
     makeEntity(state, "armory", "A", tileCenter(20, ts), tileCenter(4, ts), { tileX: 20, tileY: 4 });
     seedMuster(state, 20, 10);
     const gated = (Object.keys(TECH_REQUIRES) as TrainType[]).filter((u) => factionOf(u) !== "bloom");
-    assert.deepEqual([...gated].sort(), ["apocalypse", "battleship", "behemoth", "borgdrone", "broodmother", "bv222", "cyborg", "cyborgcommander", "destroyer", "droneop", "he111", "horten", "jagdtiger", "juggernaut", "jumpjet", "lancer", "lurker", "mammoth", "nebelwerfer", "overseer", "scourge", "shade", "simunit2", "spitter", "stuka", "submarine", "thrall", "titan", "warden", "weaver"]);
-    const cyborgs = new Set<TrainType>(["cyborg", "cyborgcommander", "simunit2", "borgdrone", "thrall", "lancer", "spitter", "weaver"]);
+    assert.deepEqual([...gated].sort(), ["apocalypse", "battleship", "behemoth", "broodmother", "bv222", "cyborg", "cyborgcommander", "destroyer", "droneop", "he111", "horten", "jagdtiger", "juggernaut", "jumpjet", "lancer", "lurker", "mammoth", "nebelwerfer", "overseer", "scourge", "shade", "simunit2", "spitter", "stuka", "submarine", "thrall", "titan", "warden", "weaver", "xenodrone"]);
+    const cyborgs = new Set<TrainType>(["cyborg", "cyborgcommander", "simunit2", "xenodrone", "thrall", "lancer", "spitter", "weaver"]);
     // Ships ask for the Marine Base first, bombers for the Airfield; their gates are checked on their own.
     for (const unit of gated.filter((u) => producerType(u) !== "dock" && producerType(u) !== "airfield")) {
       const r = applyCommand(state, "A", { type: "cmd.train", unit });
       assert.equal(r.ok, false, unit);
-      // The cyborgs and heavy assimilators are Borg: Earth United cannot train them at all.
-      if (!r.ok) assert.equal(r.message, factionOf(unit) === "borg" ? "Not available to your faction." : "Need a Research Facility.", unit);
+      // The Xenomorph units are not the Alliance's to train at all; its own cyborgs want a Cyborg Central.
+      const want = factionOf(unit) === "xeno" ? "Not available to your faction." : unit === "cyborg" || unit === "cyborgcommander" ? "Need a Cyborg Central." : "Need a Research Facility.";
+      if (!r.ok) assert.equal(r.message, want, unit);
     }
     assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "ss3" }).ok, true);
     // The Feuerwirbel needs only the Machine Shop.
@@ -593,13 +594,12 @@ describe("naval tech gate", () => {
 });
 
 describe("one at a time", () => {
-  /** Two of the unit's factories for A. A cyborg's are Cyborg Centrals, and A is Borg. */
+  /** Two of the unit's factories for A. A cyborg's are Cyborg Centrals. */
   function armed(unit: TrainType = "titan"): { state: MatchState; shops: ReturnType<typeof makeEntity>[] } {
     const { state } = twoPlayerMatch();
     seedCore(state);
     const ts = state.tileSize;
     const shop = producerType(unit);
-    if (shop === "cyborgcentral") state.players.get("A")!.faction = "borg";
     const shops = [
       makeEntity(state, shop, "A", tileCenter(20, ts), tileCenter(4, ts), { tileX: 20, tileY: 4 }),
       makeEntity(state, shop, "A", tileCenter(30, ts), tileCenter(4, ts), { tileX: 30, tileY: 4 }),

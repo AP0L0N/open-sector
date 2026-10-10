@@ -19,7 +19,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 136;
+export const PROTOCOL_VERSION = 137;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -61,7 +61,7 @@ export interface Slot {
   ready: boolean;
   /** Set when status is ai. */
   ai?: AiDifficulty;
-  /** Earth United or Borg. Missing reads as Earth United. */
+  /** Alliance or Xenomorph. Missing reads as Alliance. */
   faction?: Faction;
 }
 
@@ -420,7 +420,7 @@ export interface PlayerPublic {
   colorId: number;
   team: number;
   alive: boolean;
-  /** Missing reads as Earth United. */
+  /** Missing reads as Alliance. */
   faction?: Faction;
 }
 
@@ -501,7 +501,7 @@ export interface ProjectileView {
   y: number;
   vx: number;
   vy: number;
-  /** Fired by the Borg: drawn and heard as an energy bolt, pulse, or plasma shot. The sim treats it as its round kind. */
+  /** Fired by the Xenomorphs: drawn and heard as an energy bolt, pulse, or plasma shot. The sim treats it as its round kind. */
   energy?: true;
   /** A Spitter's acid glob. */
   acid?: true;
@@ -561,7 +561,7 @@ export interface ImpactView {
   id: number;
   ownerId: string;
   kind: ImpactKind;
-  /** Landed by a Borg weapon: an energy burst rather than a bullet strike or a shell blast. */
+  /** Landed by a Xenomorph weapon: an energy burst rather than a bullet strike or a shell blast. */
   energy?: true;
   x: number;
   y: number;
@@ -664,7 +664,7 @@ export interface CorpseView {
   burned?: true;
 }
 
-/** Persistent crater from a heavy shell on dirt, or the scorch a Borg energy round leaves instead. */
+/** Persistent crater from a heavy shell on dirt, or the scorch a Xenomorph energy round leaves instead. */
 export interface ShellHoleView {
   id: number;
   x: number;

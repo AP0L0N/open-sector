@@ -79,7 +79,7 @@ describe("Horten VII", () => {
     assert.equal(catalog("horten").rangeTiles, 0);
     assert.deepEqual(airLoadoutOf("horten"), { bombs: 0, rounds: 0 });
     assert.deepEqual([...techNeeds("horten")], ["research", "radar"]);
-    // The Borg Gnat is the only other recon flyer.
+    // The Xenomorph Gnat is the only other recon flyer.
     for (const t of PLANES) assert.equal(isReconType(t), t === "gnat", t);
   });
 

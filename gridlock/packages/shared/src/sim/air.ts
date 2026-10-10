@@ -461,7 +461,7 @@ function secondsHome(state: MatchState, e: Entity, home: Entity): number {
 
 function spent(state: MatchState, e: Entity): boolean {
   if (isTransportType(e.type)) return !hasCargo(state, e);
-  // A recon plane has nothing to spend: only the tank sends it home. Nor does a Borg one: the hive refills it in the air.
+  // A recon plane has nothing to spend: only the tank sends it home. Nor does a Xenomorph one: the hive refills it in the air.
   if (isReconType(e.type) || endlessAmmo(e.type)) return false;
   // Once the bomb is gone the sortie is over; the belts are only for the way in.
   if (e.air!.bombed) return true;
@@ -1306,7 +1306,7 @@ function detonateBomb(state: MatchState, p: Projectile): void {
   if (isTree(state, tx, ty)) fellTreeAt(state, tx, ty);
   const radius = BOMB_SPLASH_TILES * ts;
   const direct = BOMB_DIRECT_TILES * ts;
-  // A Borg bomb was laid at its lighter damage: the whole burst scales with it.
+  // A Xenomorph bomb was laid at its lighter damage: the whole burst scales with it.
   const mul = p.damage / BOMB_DAMAGE;
   let killed = false;
   for (const e of [...state.entities.values()]) {

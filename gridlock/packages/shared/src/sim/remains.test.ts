@@ -442,15 +442,15 @@ describe("blasts sink the ground", () => {
 });
 
 describe("plasma scorch", () => {
-  function borgMatch(): MatchState {
+  function xenoMatch(): MatchState {
     const { state } = twoPlayerMatch();
-    state.players.get("A")!.faction = "borg";
+    state.players.get("A")!.faction = "xeno";
     clearCover(state);
     return state;
   }
 
   it("chars the ground instead of digging, sized to the round, and does not sink it", () => {
-    const state = borgMatch();
+    const state = xenoMatch();
     const tile = landTile(state);
     const x = tileCenter(tile.x, state.tileSize);
     const y = tileCenter(tile.y, state.tileSize);
@@ -469,7 +469,7 @@ describe("plasma scorch", () => {
   });
 
   it("leaves a small, short fire at the heart from cannon caliber up, none for small arms", () => {
-    const state = borgMatch();
+    const state = xenoMatch();
     const tile = landTile(state);
     const x = tileCenter(tile.x, state.tileSize);
     const y = tileCenter(tile.y, state.tileSize);
@@ -484,7 +484,7 @@ describe("plasma scorch", () => {
   });
 
   it("burns the trees in reach instead of felling them", () => {
-    const state = borgMatch();
+    const state = xenoMatch();
     const tile = landTile(state);
     const i = tile.y * state.width + tile.x;
     state.terrain[i] = TILE_TREE;
@@ -496,7 +496,7 @@ describe("plasma scorch", () => {
   });
 
   it("lets a rifle bolt char the ground under a tree without burning it", () => {
-    const state = borgMatch();
+    const state = xenoMatch();
     const tile = landTile(state);
     const i = tile.y * state.width + tile.x;
     state.terrain[i] = TILE_TREE;
@@ -506,9 +506,9 @@ describe("plasma scorch", () => {
     assert.equal(state.holes[0]!.scorch, true);
   });
 
-  it("keeps Earth United shells digging craters", () => {
-    const state = borgMatch();
-    state.players.get("A")!.faction = "eu";
+  it("keeps Alliance shells digging craters", () => {
+    const state = xenoMatch();
+    state.players.get("A")!.faction = "alliance";
     const tile = landTile(state);
     dropRound(state, tileCenter(tile.x, state.tileSize), tileCenter(tile.y, state.tileSize), 75, "ap");
     assert.equal(state.holes.length, 1);
@@ -517,7 +517,7 @@ describe("plasma scorch", () => {
   });
 
   it("still splashes on water with no scorch or fire", () => {
-    const state = borgMatch();
+    const state = xenoMatch();
     const tile = landTile(state);
     state.terrain[tile.y * state.width + tile.x] = TILE_WATER;
     dropRound(state, tileCenter(tile.x, state.tileSize), tileCenter(tile.y, state.tileSize), 75, "ap");
@@ -527,14 +527,14 @@ describe("plasma scorch", () => {
   });
 
   it("caps scorches apart from craters, so bolts never erase a shell hole", () => {
-    const state = borgMatch();
+    const state = xenoMatch();
     const tile = landTile(state);
     const x = tileCenter(tile.x, state.tileSize);
     const y = tileCenter(tile.y, state.tileSize);
-    state.players.get("A")!.faction = "eu";
+    state.players.get("A")!.faction = "alliance";
     dropRound(state, x, y, 75, "ap");
     const craterId = state.holes[0]!.id;
-    state.players.get("A")!.faction = "borg";
+    state.players.get("A")!.faction = "xeno";
     for (let n = 0; n < MAX_SCORCH_MARKS + 5; n++) {
       state.projectiles = [];
       dropRound(state, x + (n % 5), y, 8);
@@ -544,7 +544,7 @@ describe("plasma scorch", () => {
   });
 
   it("goes out flagged in the snapshot", () => {
-    const state = borgMatch();
+    const state = xenoMatch();
     const tile = landTile(state);
     dropRound(state, tileCenter(tile.x, state.tileSize), tileCenter(tile.y, state.tileSize), 40);
     const snap = snapshotFor(state, "A");

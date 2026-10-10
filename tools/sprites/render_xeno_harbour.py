@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Borg harbour and airfield: the Spawning Pool (shipyard) and the Aerie (airfield).
+"""Xenomorph harbour and airfield: the Spawning Pool (shipyard) and the Aerie (airfield).
 
   spawnpool  t(2.5) x t(2.5), on water, like the Marine Base (render_dock.py):
              a floating ribbed chitin ring round a glowing birthing pool, open
@@ -9,10 +9,10 @@
              the ring. The water outside the ring stays empty: the map's water
              shows through. Writes spawnpool.png, spawnpool.json (pad metrics
              and glow spots, source px), spawnpool-cameo.png (96 px), the
-             render_borg_base.py format, at the dock's 3x zoom (384 px pad).
+             render_xeno_base.py format, at the dock's 3x zoom (384 px pad).
   aerie      t(7.5) x t(3.75), the Airfield's footprint and layout fractions
              (catalog.ts AIRFIELD_*), not rotatable. Like render_airfield.py it
-             is two images on one canvas: aerie-ground.png (Borg creep, the
+             is two images on one canvas: aerie-ground.png (Xenomorph creep, the
              fused-chitin launch spine with glowing guide lights, taxi paths,
              and four cradle nests at AIRFIELD_PAD_X x AIRFIELD_PAD_Y with low
              claw ribs round their south side, open to the strip) that the
@@ -22,11 +22,11 @@
              pylons, a sensor stalk). aerie.json carries the pad metrics, the
              back depth, and glow spots. aerie-cameo.png (96 px).
 
-Look: render_borg_base.py's (the inked structure pipeline of
-render_airfield.py, the Borg gunmetal and chitin, the green glow).
+Look: render_xeno_base.py's (the inked structure pipeline of
+render_airfield.py, the Xenomorph gunmetal and chitin, the green glow).
 
-  python3 tools/sprites/render_borg_harbour.py --out gridlock/packages/client/src/assets/buildings
-  python3 tools/sprites/render_borg_harbour.py --out ... --only aerie
+  python3 tools/sprites/render_xeno_harbour.py --out gridlock/packages/client/src/assets/buildings
+  python3 tools/sprites/render_xeno_harbour.py --out ... --only aerie
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-import render_borg_base as rbb
+import render_xeno_base as rbb
 
 ra = rbb.ra
 SS = ra.SS

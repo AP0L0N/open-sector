@@ -83,12 +83,12 @@ function setHpShare(e: Entity, share: number): void {
 }
 
 describe("cyborg", () => {
-  it("is a Borg infantry type from the Cyborg Central with one gatling and a drum that never reloads", () => {
+  it("is an Alliance infantry type from the Cyborg Central with one gatling and a drum that never reloads", () => {
     const def = catalog("cyborg");
     assert.equal(def.name, "Cyborg");
     assert.ok(TRAIN_TYPES.includes("cyborg"));
     assert.equal(producerType("cyborg"), "cyborgcentral");
-    assert.equal(factionOf("cyborg"), "borg");
+    assert.equal(factionOf("cyborg"), "alliance");
     assert.equal(isInfantryType("cyborg"), true);
     assert.equal(isRepairableUnit("cyborg"), true);
     assert.equal(isRepairableUnit("rifleman"), false);
@@ -104,8 +104,8 @@ describe("cyborg", () => {
     assert.equal(GATLING.bulky, true);
     const trained = applyCommand(match().state, "A", { type: "cmd.train", unit: "cyborg" });
     assert.equal(trained.ok, false);
-    // The Cyborg is Borg; this Earth United commander cannot train one.
-    if (!trained.ok) assert.equal(trained.message, "Not available to your faction.");
+    // The Cyborg is Alliance; this Alliance commander still needs a Cyborg Central.
+    if (!trained.ok) assert.equal(trained.message, "Need a Cyborg Central.");
   });
 
   it("spawns with a full drum, fires one gatling's burst, and stays dry at empty", () => {
@@ -228,15 +228,20 @@ describe("cyborg", () => {
     assert.equal(full.ok, false);
   });
 
-  it("never runs the drum dry: the hive fills it, no truck needed", () => {
+  it("gets the drum topped up by a supply truck", () => {
     const { state, a } = match();
     clearCover(state);
     const ts = state.tileSize;
+    const truck = makeEntity(state, "supply", a, tileCenter(40, ts), tileCenter(40, ts));
     const cy = makeEntity(state, "cyborg", a, tileCenter(43, ts), tileCenter(40, ts));
     cy.holdPosition = true;
+    assert.equal(applyCommand(state, a, { type: "cmd.supply", ids: [truck.id], targetId: cy.id }).ok, false);
     cy.clip = 0;
-    ticks(state, 1);
-    assert.equal(cy.clip, CYBORG_DRUM);
+    const cargo = truck.supply;
+    assert.equal(applyCommand(state, a, { type: "cmd.supply", ids: [truck.id], targetId: cy.id }).ok, true);
+    ticks(state, 40);
+    assert.ok(cy.clip > 0 && cy.clip <= CYBORG_DRUM, `clip ${cy.clip}`);
+    assert.ok(truck.supply < cargo);
     assert.equal(cy.reload, 0);
   });
 });

@@ -24,14 +24,14 @@ import { reversing } from "./orders.js";
 import { snapshotFor } from "./snapshot.js";
 import type { Entity, MatchState } from "./types.js";
 
-/** A is Earth United, B the Borg, on bare flat ground, nothing but what a test places. */
+/** A is Alliance, B the Xenomorphs, on bare flat ground, nothing but what a test places. */
 function field(): MatchState {
   const r = createRoom({ id: "JUG", hostId: "A", hostName: "Alpha", mapId: "yard-64", maxSlots: 8 });
   if (!r.ok) throw new Error(r.message);
   const room = r.value;
   assert.equal(joinRoom(room, "B", "Bravo").ok, true);
   updateSelf(room, "A", { ready: true, spawnId: 1 });
-  updateSelf(room, "B", { ready: true, spawnId: 4, faction: "borg" });
+  updateSelf(room, "B", { ready: true, spawnId: 4, faction: "xeno" });
   const started = startMatch(room, "A", () => 0);
   if (!started.ok) throw new Error(started.message);
   const state = createMatch(room, started.value);
@@ -57,7 +57,7 @@ function at(state: MatchState, type: Parameters<typeof makeEntity>[1], owner: st
 }
 
 describe("Juggernaut", () => {
-  it("is a Borg melee giant from the Forge, plated, not a soldier", () => {
+  it("is a Xenomorph melee giant from the Forge, plated, not a soldier", () => {
     const def = catalog("juggernaut");
     assert.equal(def.kind, "unit");
     assert.equal(meleeOf("juggernaut"), true);
@@ -105,7 +105,7 @@ describe("Juggernaut", () => {
     // Unarmed enemies, so nothing but the hammer can touch the friend.
     const tank = at(state, "supply", "A", 31.5, 30);
     const men = [at(state, "engineer", "A", 31.5, 30.8), at(state, "medic", "A", 32, 29.6)];
-    const friend = at(state, "borgdrone", "B", 31.2, 29.3);
+    const friend = at(state, "xenodrone", "B", 31.2, 29.3);
     const friendHp = friend.hp;
     const tankHp = tank.hp;
     assert.equal(applyCommand(state, "B", { type: "cmd.attack", ids: [j.id], targetId: tank.id }).ok, true);

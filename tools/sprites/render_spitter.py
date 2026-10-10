@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Borg Spitter unit sheets — an acid-spitting taken body on the Cyborg's lock.
+Xenomorph Spitter unit sheets — an acid-spitting taken body on the Cyborg's lock.
 
 Same camera, cell, contact points, and row order as render_cyborg.py (and the
-Borg Drone in render_borgdrone.py, whose palette, helpers and runner it
+Xenomorph Drone in render_xenodrone.py, whose palette, helpers and runner it
 shares), so the client reuses the Cyborg's sprite defs with new file names.
 The Drone's height class and frame: a deeply hunched taken body in grey-green
 alloy over dark chitin, no gun, two thin claw arms hanging forward. The head
@@ -36,7 +36,7 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.dont_write_bytecode = True
-import render_borgdrone as B  # noqa: E402  (registers the Borg palette on render_cyborg)
+import render_xenodrone as B  # noqa: E402  (registers the Xenomorph palette on render_cyborg)
 
 R = B.R
 CELL = B.CELL
@@ -209,7 +209,7 @@ def pose_crawl(t: float, flash: int = 0) -> Cloud:
     box(c, (1.6, 0, 9.0 + z0), (5.0, 3.2, 0.8), "chitin")
     for i in range(3):
         cylinder(c, (-6.0 - i * 1.4, 0, 4.6 + z0), (-6.8 - i * 1.4, 0, 4.6 + z0), 3.0 - 0.3 * i, "cable")
-    B.borg_stumps(c, np.array([-10.6, 0, 4.2 + z0]), np.array([-1.0, 0, -0.1]), t, half=3.8)
+    B.xeno_stumps(c, np.array([-10.6, 0, 4.2 + z0]), np.array([-1.0, 0, -0.1]), t, half=3.8)
     box(c, (-9.6, 0, 4.4 + z0), (1.8, 4.8, 2.0), "chitin")
     bright = flash in (1, 3)
     ports = bladder(c, (-2.0, 0, 12.6 + z0), rot_y(math.pi / 2 - 0.15), bright=bright)
@@ -244,7 +244,7 @@ def pose_dead() -> Cloud:
     c = Cloud()
     ellipsoid(c, (0, 0, 3.8), (9.0, 6.8, 3.8), "alloy")
     box(c, (1.0, 0, 7.2), (5.0, 3.2, 0.8), "chitin")
-    B.borg_stumps(c, np.array([-10.2, 0, 3.0]), np.array([-1.0, 0, -0.05]), 0.5, half=3.8)
+    B.xeno_stumps(c, np.array([-10.2, 0, 3.0]), np.array([-1.0, 0, -0.05]), 0.5, half=3.8)
     box(c, (-9.2, 0, 3.2), (1.8, 4.8, 1.8), "chitin")
     bladder(c, (-2.4, 1.6, 9.0), rot_y(math.pi / 2 - 0.1) @ rot_x(0.3), lit=False, sac_mat="dead_sac")
     sp_head(c, (12.4, -1.0, 3.6), rot_z(math.radians(-15)) @ rot_x(math.radians(-70)), jaw=0.5, lit=False, sac_mat="dead_sac")

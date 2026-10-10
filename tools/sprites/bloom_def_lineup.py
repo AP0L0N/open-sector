@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Lineup of the Bloom defences beside the Borg Spine Turret / Pulse Spire, at shipped scale, on grass.
+"""Lineup of the Bloom defences beside the Xenomorph Spine Turret / Pulse Spire, at shipped scale, on grass.
 
 Each building is placed with its pad south corner (padSouthX/Y) on a common baseline, so heights
 compare. Guns are drawn with head row 14 (SE) over the pad.

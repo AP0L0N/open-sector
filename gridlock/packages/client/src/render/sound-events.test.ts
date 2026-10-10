@@ -56,18 +56,18 @@ describe("SoundTracker", () => {
 
   it("lets the Cyborg that read a new contact call it, radar before heat, once per gap", () => {
     const t = new SoundTracker();
-    const borg = unit(1, "cyborg");
+    const xeno = unit(1, "cyborg");
     const boss = unit(2, "cyborgcommander");
     const heat = (id: number, by: number) => ({ id, x: 0, y: 0, by });
     const armor = (id: number, by: number) => ({ id, x: 0, y: 0, by, armored: true as const });
     const calls = (evs: SoundEvent[]) => kinds(evs, "voice").filter((e) => ["thermal", "radar"].includes((e as { event: string }).event));
-    t.step(snap({ entities: [borg, boss], thermal: [heat(7, 1)] } as never), 0);
-    assert.deepEqual(calls(t.step(snap({ entities: [borg, boss], thermal: [heat(7, 1)] } as never), 100)), [], "already read at the start");
-    assert.deepEqual(calls(t.step(snap({ entities: [borg, boss], thermal: [heat(7, 1), heat(8, 1), armor(9, 2)] } as never), 200)), [
+    t.step(snap({ entities: [xeno, boss], thermal: [heat(7, 1)] } as never), 0);
+    assert.deepEqual(calls(t.step(snap({ entities: [xeno, boss], thermal: [heat(7, 1)] } as never), 100)), [], "already read at the start");
+    assert.deepEqual(calls(t.step(snap({ entities: [xeno, boss], thermal: [heat(7, 1), heat(8, 1), armor(9, 2)] } as never), 200)), [
       { kind: "voice", type: "cyborgcommander", event: "radar" },
     ]);
-    assert.deepEqual(calls(t.step(snap({ entities: [borg, boss], thermal: [heat(10, 1)] } as never), 300)), [], "inside the gap");
-    assert.deepEqual(calls(t.step(snap({ entities: [borg, boss], thermal: [heat(11, 1)] } as never), 300 + SENSOR_CALL_GAP_MS)), [
+    assert.deepEqual(calls(t.step(snap({ entities: [xeno, boss], thermal: [heat(10, 1)] } as never), 300)), [], "inside the gap");
+    assert.deepEqual(calls(t.step(snap({ entities: [xeno, boss], thermal: [heat(11, 1)] } as never), 300 + SENSOR_CALL_GAP_MS)), [
       { kind: "voice", type: "cyborg", event: "thermal" },
     ]);
   });
@@ -275,7 +275,7 @@ describe("SoundTracker", () => {
 
 describe("impactSound", () => {
   const base = { id: 1, ownerId: ME, x: 0, y: 0, vx: 0, vy: 0 };
-  it("gives a Borg bolt an energy sound: a burst for a cannon or a lance, a zap for one pulse in four", () => {
+  it("gives a Xenomorph bolt an energy sound: a burst for a cannon or a lance, a zap for one pulse in four", () => {
     assert.equal(impactSound({ ...base, kind: "pen", caliber: 75, energy: true }), "energy_burst");
     assert.equal(impactSound({ ...base, kind: "miss", caliber: 60, rocket: true, energy: true }), "energy_burst");
     assert.equal(impactSound({ ...base, id: 4, kind: "miss", caliber: 8, energy: true }), "energy_hit");

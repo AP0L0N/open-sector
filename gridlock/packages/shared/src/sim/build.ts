@@ -14,7 +14,7 @@ import {
   type BuildingType,
   type YardFieldType,
   yardBuildSeconds,
-  factionOf,
+  inFaction,
   isHq,
   isHqBuilding,
   isSmelterType,
@@ -111,8 +111,8 @@ export function buildTechMissing(state: MatchState, playerId: string, type: Buil
 export function startBuild(state: MatchState, playerId: string, type: BuildingType | YardFieldType): string | null {
   const p = state.players.get(playerId);
   if (!p || !p.alive) return "You are out of the fight.";
-  const faction = p.faction ?? "eu";
-  if (factionOf(type) !== faction) return NOT_YOUR_FACTION;
+  const faction = p.faction ?? "alliance";
+  if (!inFaction(type, faction)) return NOT_YOUR_FACTION;
   if (!hasCore(state, playerId)) return `Deploy the ${catalog(HQ_OF[faction].rig).name}.`;
   const slot = slotOf(type);
   if (jobIn(p, slot)) return "Construction already underway.";

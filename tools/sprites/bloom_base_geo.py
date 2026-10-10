@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Shared geometry, materials and the render step for the Bloom buildings.
 
-Forked from render_borg_base.py: the same inked structure pipeline of
+Forked from render_xeno_base.py: the same inked structure pipeline of
 render_airfield.py (mesh, raster, ink, silhouette, key light, cast shadow), the
 same camera, canvas and pad metrics, but grown, not built: swept tubes, lumpy
 ellipsoids and lathed bodies instead of boxes, and the Bloom palette lock from
@@ -20,7 +20,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-import render_borg_base as rbb
+import render_xeno_base as rbb
 
 ra = rbb.ra
 SS = ra.SS
@@ -540,7 +540,7 @@ def glowing_mask(c: np.ndarray) -> np.ndarray:
 
 
 def render_building(out_dir: Path, bid: str, W: float, H: float, zoom: float, build, spots, bg=(74, 107, 50)) -> dict:
-    """render_borg_base.render_building with the amber glow test; also a preview on grass (or water)."""
+    """render_xeno_base.render_building with the amber glow test; also a preview on grass (or water)."""
     ra.ZOOM = zoom
     props = build(False)
     full = build(True)

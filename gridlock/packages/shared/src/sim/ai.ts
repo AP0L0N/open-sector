@@ -160,7 +160,7 @@ const STATION_TILES = 12;
  * offers its row furthest below its share, neediest first, so the ranks fill evenly.
  * Order breaks ties. Riflemen and rocketmen rise with empty slits and enemy planes.
  */
-export const CPU_ARMY: Readonly<Record<"muster" | "armory" | "airfield" | "dock", readonly { unit: TrainType; want: number }[]>> = {
+export const CPU_ARMY: Readonly<Record<"muster" | "armory" | "cyborgcentral" | "airfield" | "dock", readonly { unit: TrainType; want: number }[]>> = {
   muster: [
     { unit: "rifleman", want: 8 },
     { unit: "gunner", want: 3 },
@@ -186,6 +186,10 @@ export const CPU_ARMY: Readonly<Record<"muster" | "armory" | "airfield" | "dock"
     { unit: "titan", want: 1 },
     { unit: "nebelwerfer", want: 1 },
   ],
+  cyborgcentral: [
+    { unit: "cyborg", want: 2 },
+    { unit: "cyborgcommander", want: 1 },
+  ],
   airfield: [
     { unit: "stuka", want: 2 },
     { unit: "fw190", want: 1 },
@@ -204,7 +208,7 @@ export const CPU_ARMY: Readonly<Record<"muster" | "armory" | "airfield" | "dock"
 /**
  * Base structures, one after another, each until the side owns `n`. Smelter second so its scrap
  * funds the Barracks and the first towers, and a second Smelter right behind the Barracks to pay
- * for the army. The Machine Shop waits for a tower; the Marine Base, Research, air, and the Radar
+ * for the army. The Machine Shop waits for a tower; the Marine Base, Research, Cyborg Central, air, and the Radar
  * Station wait until the base is fortified. With all of that standing, more Smelters up to the type's wantSmelters.
  */
 const BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
@@ -216,6 +220,7 @@ const BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
   // Only with water in the yard that reaches the enemy or the middle (wantDock).
   { type: "dock", n: 1 },
   { type: "research", n: 1 },
+  { type: "cyborgcentral", n: 1 },
   { type: "airfield", n: 1 },
   { type: "radar", n: 1 },
 ];
@@ -224,7 +229,7 @@ const CORE_BUILDINGS: readonly BuildingType[] = ["dynamo", "smelter", "muster"];
 /** Troops train only once these stand, so scrap is held for them while they go up. */
 const FACTORIES: readonly BuildingType[] = [...CORE_BUILDINGS, "armory"];
 /** Extras that wait for a fortified base. */
-const AFTER_FORTIFY: readonly BuildingType[] = ["dock", "research", "airfield", "radar"];
+const AFTER_FORTIFY: readonly BuildingType[] = ["dock", "research", "cyborgcentral", "airfield", "radar"];
 
 /** Unarmed units that walk out with a wave beside a fighter. */
 const ESCORTS: ReadonlySet<string> = new Set(["medic", "supply", "droneop"]);
@@ -251,7 +256,7 @@ const FACES_ENEMY: ReadonlySet<string> = new Set(["mgnest", "pak36", "pak43", "f
 /** Long guns: they walk two ranks back and fire over the line. */
 const BACK_RANK: ReadonlySet<string> = new Set(["sniper", "mortarman", "nebelwerfer", "jagdtiger", "artillery", "shade", "mawcaster", "broodmother", "longspine", "sporemaw"]);
 /** Short reach and thick skin: the front rank beside the hulls. */
-const FRONT_INFANTRY: ReadonlySet<string> = new Set(["cyborg", "cyborgcommander", "simunit2", "borgdrone", "thrall", "lancer", "spitter", "pyro", "spawnling", "quillback", "bloater"]);
+const FRONT_INFANTRY: ReadonlySet<string> = new Set(["cyborg", "cyborgcommander", "simunit2", "xenodrone", "thrall", "lancer", "spitter", "pyro", "spawnling", "quillback", "bloater"]);
 
 type Rank = "front" | "mid" | "back";
 interface Site {
@@ -333,11 +338,11 @@ function thinkCpu(state: MatchState, p: SimPlayer): void {
 }
 
 /**
- * Borg base: Fusion Node, Assimilator, Cyborg Central, then a second Assimilator and more power,
+ * Xenomorph base: Fusion Node, Assimilator, Cyborg Central, then a second Assimilator and more power,
  * the Nanite Forge, a pair of Spine Turrets, and later the Neural Nexus and its Pulse Spires.
  * With all of that standing, more Assimilators up to the type's wantSmelters.
  */
-const BORG_BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
+const XENO_BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
   { type: "fusionnode", n: 1 },
   { type: "assimilator", n: 1 },
   { type: "cyborgcentral", n: 1 },
@@ -349,20 +354,18 @@ const BORG_BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
   { type: "nexus", n: 1 },
   { type: "pulsespire", n: 2 },
 ];
-/** The Borg cyborgs, from the Cyborg Central. */
-export const BORG_ARMY: readonly { unit: TrainType; want: number }[] = [
-  { unit: "borgdrone", want: 6 },
+/** The Xenomorph cyborgs, from the Cyborg Central. */
+export const XENO_ARMY: readonly { unit: TrainType; want: number }[] = [
+  { unit: "xenodrone", want: 10 },
   { unit: "thrall", want: 4 },
-  { unit: "cyborg", want: 6 },
-  { unit: "lancer", want: 3 },
+  { unit: "lancer", want: 4 },
   { unit: "spitter", want: 2 },
   { unit: "weaver", want: 2 },
   { unit: "shade", want: 1 },
-  { unit: "simunit2", want: 2 },
-  { unit: "cyborgcommander", want: 1 },
+  { unit: "simunit2", want: 3 },
 ];
-/** The Borg heavy assimilators, from the Nanite Forge. */
-export const BORG_HEAVY: readonly { unit: TrainType; want: number }[] = [
+/** The Xenomorph heavy assimilators, from the Nanite Forge. */
+export const XENO_HEAVY: readonly { unit: TrainType; want: number }[] = [
   { unit: "stalker", want: 4 },
   { unit: "ravager", want: 2 },
   { unit: "siphon", want: 2 },
@@ -371,10 +374,10 @@ export const BORG_HEAVY: readonly { unit: TrainType; want: number }[] = [
   { unit: "behemoth", want: 1 },
   { unit: "juggernaut", want: 1 },
 ];
-/** Each Borg factory and the ranks it fills. */
-const BORG_FACTORIES: readonly { factory: BuildingType; army: readonly { unit: TrainType; want: number }[] }[] = [
-  { factory: "cyborgcentral", army: BORG_ARMY },
-  { factory: "forge", army: BORG_HEAVY },
+/** Each Xenomorph factory and the ranks it fills. */
+const XENO_FACTORIES: readonly { factory: BuildingType; army: readonly { unit: TrainType; want: number }[] }[] = [
+  { factory: "cyborgcentral", army: XENO_ARMY },
+  { factory: "forge", army: XENO_HEAVY },
 ];
 
 /**
@@ -413,7 +416,7 @@ export const BLOOM_BEASTS: readonly { unit: TrainType; want: number }[] = [
   { unit: "matriarch", want: 1 },
 ];
 
-/** How a hive-minded CPU (the Borg, the Bloom) raises its base and fills its ranks. */
+/** How a hive-minded CPU (the Xenomorphs, the Bloom) raises its base and fills its ranks. */
 interface HiveDoctrine {
   power: BuildingType;
   smelter: BuildingType;
@@ -423,7 +426,7 @@ interface HiveDoctrine {
   factories: readonly { factory: BuildingType; army: readonly { unit: TrainType; want: number }[] }[];
 }
 const HIVE_DOCTRINE: Partial<Record<Faction, HiveDoctrine>> = {
-  borg: { power: "fusionnode", smelter: "assimilator", surge: "cyborgcentral", order: BORG_BUILD_ORDER, factories: BORG_FACTORIES },
+  xeno: { power: "fusionnode", smelter: "assimilator", surge: "cyborgcentral", order: XENO_BUILD_ORDER, factories: XENO_FACTORIES },
   bloom: {
     power: "lumenbulb",
     smelter: "gorger",
@@ -437,7 +440,7 @@ const HIVE_DOCTRINE: Partial<Record<Faction, HiveDoctrine>> = {
 };
 
 /**
- * The hive CPU (the Borg, the Bloom). No towers, walls, or fleet yet: it raises its base, fills
+ * The hive CPU (the Xenomorphs, the Bloom). No towers, walls, or fleet yet: it raises its base, fills
  * the ranks from its factories, and campaigns once the army stands or the fortify time runs out.
  */
 function thinkHive(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan, hive: HiveDoctrine): void {
@@ -576,7 +579,7 @@ function trainCpu(state: MatchState, p: SimPlayer): void {
   // One job per factory, neediest rank first. Stop at the first pick scrap cannot cover and save
   // for it, so a trickle of income does not all go to cheap riflemen ahead of a Titan or a Stuka.
   const picks: { unit: TrainType; want: number; share: number }[] = [];
-  for (const factory of ["armory", "muster", "airfield", "dock"] as const) {
+  for (const factory of ["armory", "muster", "cyborgcentral", "airfield", "dock"] as const) {
     if (!ownsLive(state, p.playerId, factory)) continue;
     if (queuedOn(state, p.playerId, factory) >= TRAIN_QUEUE_SOFT * countType(state, p.playerId, factory)) continue;
     const pick = neediest(state, p, CPU_ARMY[factory]);
@@ -2498,7 +2501,7 @@ export function findBuildTile(
   // yard may have no other footprint on the field in range.
   const smelter = catalog("smelter");
   const owner = state.players.get(playerId);
-  const keep = countType(state, playerId, smelterOf(owner?.faction ?? "eu")) < aiProfile(owner?.ai).wantSmelters ? findSmelterTile(state, playerId) : null;
+  const keep = countType(state, playerId, smelterOf(owner?.faction ?? "alliance")) < aiProfile(owner?.ai).wantSmelters ? findSmelterTile(state, playerId) : null;
   for (let r = 1; r <= maxR; r++) {
     const ring: { tx: number; ty: number; inward: number }[] = [];
     for (let dy = -r; dy <= r; dy++) {

@@ -481,11 +481,11 @@ import {
   THRALL_SPRITE,
 } from "./sprites.js";
 import {
-  BORGDRONE_CRAWL_FIRE_SPRITE,
-  BORGDRONE_CRAWL_SPRITE,
-  BORGDRONE_DIE_SPRITE,
-  BORGDRONE_FIRE_SPRITE,
-  BORGDRONE_SPRITE,
+  XENODRONE_CRAWL_FIRE_SPRITE,
+  XENODRONE_CRAWL_SPRITE,
+  XENODRONE_DIE_SPRITE,
+  XENODRONE_FIRE_SPRITE,
+  XENODRONE_SPRITE,
   LANCER_CRAWL_FIRE_SPRITE,
   LANCER_CRAWL_SPRITE,
   LANCER_DIE_SPRITE,
@@ -516,7 +516,7 @@ const ACID_HULL_FILTER = "sepia(0.55) hue-rotate(28deg) saturate(1.7) brightness
 
 /** The hive cyborgs that share the Drone's sheet set: stand, fire, crawl, crawl-fire, die. */
 const HIVE_SHEETS: Partial<Record<string, { stand: UnitSpriteDef; fire: UnitSpriteDef; crawl: UnitSpriteDef; crawlFire: UnitSpriteDef; die: UnitSpriteDef }>> = {
-  borgdrone: { stand: BORGDRONE_SPRITE, fire: BORGDRONE_FIRE_SPRITE, crawl: BORGDRONE_CRAWL_SPRITE, crawlFire: BORGDRONE_CRAWL_FIRE_SPRITE, die: BORGDRONE_DIE_SPRITE },
+  xenodrone: { stand: XENODRONE_SPRITE, fire: XENODRONE_FIRE_SPRITE, crawl: XENODRONE_CRAWL_SPRITE, crawlFire: XENODRONE_CRAWL_FIRE_SPRITE, die: XENODRONE_DIE_SPRITE },
   lancer: { stand: LANCER_SPRITE, fire: LANCER_FIRE_SPRITE, crawl: LANCER_CRAWL_SPRITE, crawlFire: LANCER_CRAWL_FIRE_SPRITE, die: LANCER_DIE_SPRITE },
   spitter: { stand: SPITTER_SPRITE, fire: SPITTER_FIRE_SPRITE, crawl: SPITTER_CRAWL_SPRITE, crawlFire: SPITTER_CRAWL_FIRE_SPRITE, die: SPITTER_DIE_SPRITE },
   // The Weaver's "fire" sheet is its mending pose.
@@ -643,9 +643,9 @@ function fillPool(c: CanvasRenderingContext2D, p: NightPool, rgb: string, a: num
   c.restore();
 }
 
-/** A live Borg or Bloom unit or structure out in the open: it glows. Not a wreck, a ruin, a passenger, or a burrowed or submerged body. */
+/** A live Xenomorph or Bloom unit or structure out in the open: it glows. Not a wreck, a ruin, a passenger, or a burrowed or submerged body. */
 function xenoGlows(e: EntityView): boolean {
-  if (factionOf(e.type) === "eu" || e.hp <= 0 || e.wreck || e.ruined) return false;
+  if (factionOf(e.type) === "alliance" || e.hp <= 0 || e.wreck || e.ruined) return false;
   if (e.garrisonedIn != null || e.burrow === "down" || e.submerged) return false;
   return e.kind === "unit" || e.kind === "building";
 }
@@ -655,8 +655,8 @@ function workLit(e: EntityView): boolean {
   if (e.kind !== "building" || e.hp <= 0 || e.wreck || e.ruined) return false;
   if (!e.ownerId || e.ownerId === NEUTRAL_OWNER || e.unpowered) return false;
   if (isGarrisonable(e.type)) return false;
-  // The Borg and the Bloom light nothing.
-  if (factionOf(e.type) !== "eu") return false;
+  // The Xenomorphs and the Bloom light nothing.
+  if (factionOf(e.type) !== "alliance") return false;
   return isHqBuilding(e.type) || (BUILDING_TYPES as readonly string[]).includes(e.type);
 }
 import {
@@ -775,7 +775,7 @@ const EXTRUDE: Record<EntityType, number> = {
   cyborg: 26,
   cyborgcommander: 26,
   simunit2: 26,
-  borgdrone: 24,
+  xenodrone: 24,
   thrall: 27,
   lancer: 27,
   spitter: 24,
@@ -1087,7 +1087,7 @@ export class MapView {
   private nightLayer: HTMLCanvasElement | null = null;
   /** Small layer the lamps' warm light is summed and capped on. */
   private lightLayer: HTMLCanvasElement | null = null;
-  /** This frame's Borg glow pools: drawn on the ground, and cut from the night layer. */
+  /** This frame's Xenomorph glow pools: drawn on the ground, and cut from the night layer. */
   private xenoFrame: NightPool[] = [];
   /** Lamp heading on screen per tower, eased toward the snapshot. */
   private spotShown = new Map<number, number>();
@@ -1153,7 +1153,7 @@ export class MapView {
     torpedo?: boolean;
     /** A Flak 37 shell burst in the air at `z`: the air flash, no ground puff. */
     flak?: boolean;
-    /** A Borg weapon's: drawn as green light. */
+    /** A Xenomorph weapon's: drawn as green light. */
     energy?: true;
   }[] = [];
   private fxIds = new Set<number>();
@@ -2005,8 +2005,8 @@ export class MapView {
     const ground = (x: number, y: number) => this.elevAt(x, y);
     for (const e of match.entities) {
       if (e.wreck) continue;
-      if (factionOf(e.type) === "borg") {
-        // Every Borg gun fires light: a green bolt from the muzzle to each hit. Lasers, plasma
+      if (factionOf(e.type) === "xeno") {
+        // Every Xenomorph gun fires light: a green bolt from the muzzle to each hit. Lasers, plasma
         // orbs, torpedoes, and daggers draw themselves elsewhere.
         const shots = byGun.get(e.id)?.filter((i) => !i.rocket && !i.laser && !i.torpedo && !i.mortar && !i.bite && !i.downLaser && i.kind !== "crush" && (i.caliber ?? 0) > 0);
         if (!shots?.length || e.type === "simunit2" || e.type === "thrall" || e.type === "cyborgcommander" || e.type === "juggernaut") continue;
@@ -2170,7 +2170,7 @@ export class MapView {
   }
 
   /**
-   * Where a Borg gun's bolts leave: the Cyborg's arm, a turret's barrel tip out along its traverse,
+   * Where a Xenomorph gun's bolts leave: the Cyborg's arm, a turret's barrel tip out along its traverse,
    * or the muzzle of a hull, a soldier, or a plane at about the height its sprite carries the gun.
    */
   private energyMuzzleWorld(e: EntityView, toward: { x: number; y: number }): { x: number; y: number; z: number } {
@@ -2274,7 +2274,7 @@ export class MapView {
       return;
     }
     this.gunRecoil.set(shooter.id, { at: now });
-    const energy = factionOf(shooter.type) === "borg";
+    const energy = factionOf(shooter.type) === "xeno";
     // A plasma cannon throws no powder smoke.
     if (!energy) {
       this.muzzleSmokes.push(
@@ -2339,7 +2339,7 @@ export class MapView {
       );
     }
     this.gunRecoil.set(shooter.id, { at: now });
-    const energy = factionOf(shooter.type) === "borg";
+    const energy = factionOf(shooter.type) === "xeno";
     if (!energy) {
       this.fieldGunSmokes.push(
         ...spawnFieldGunSmoke({
@@ -4723,7 +4723,7 @@ export class MapView {
     items.push({ layer: GROUND_DECAL_DRAW_LAYER, z: -Infinity, run: () => drawYardWear(this.ctx, yardWear) });
     // One path under craters and unit blobs, so overlapping shadows don't stack.
     items.push({ layer: HOLE_DRAW_LAYER, z: -Infinity, run: () => drawCastShadows(this.ctx, castShadows) });
-    // The Borg glow lights the ground they stand on: over craters and shadows, under everything that stands.
+    // The Xenomorph glow lights the ground they stand on: over craters and shadows, under everything that stands.
     const xenoGlow = lampGlow(this.daylight());
     this.xenoFrame = xenoGlow > 0 ? this.xenoPools(w, h) : [];
     if (this.xenoFrame.length) items.push({ layer: HOLE_DRAW_LAYER, z: Infinity, run: () => this.drawXenoGlow(xenoGlow) });
@@ -4966,7 +4966,7 @@ export class MapView {
         lay(e.x + Math.cos(b) * orbit, e.y + Math.sin(b) * orbit, r, 0.8, "work");
       }
     }
-    // The Borg glow, laid this frame under the units (drawXenoGlow); here it only cuts the dark.
+    // The Xenomorph glow, laid this frame under the units (drawXenoGlow); here it only cuts the dark.
     out.push(...this.xenoFrame);
     // Gate lamps: a small pool off each post, on both sides of the boom.
     const gateSpan = fieldSpan("gate");
@@ -4998,7 +4998,7 @@ export class MapView {
   }
 
   /**
-   * The Borg carry no lamps: every live unit and structure of theirs gives off
+   * The Xenomorph carry no lamps: every live unit and structure of theirs gives off
    * a blue glow, sized to it, as pools in screen space like nightPools.
    */
   private xenoPools(w: number, h: number): NightPool[] {
@@ -5026,7 +5026,7 @@ export class MapView {
   }
 
   /**
-   * The Borg glow's blue, on the ground under units and structures. The night
+   * The Xenomorph glow's blue, on the ground under units and structures. The night
    * layer goes over it after, so it is lifted to make up for the shade left there.
    */
   private drawXenoGlow(glow: number): void {
@@ -5212,7 +5212,7 @@ export class MapView {
       }
     }
     ctx.save();
-    // The Borg glow lifts the dark above, but its blue was laid on the ground under the units (drawXenoGlow).
+    // The Xenomorph glow lifts the dark above, but its blue was laid on the ground under the units (drawXenoGlow).
     const lit = pools.filter((p) => p.kind !== "xeno" && p.kind !== "bloom");
     if (lit.length) this.drawLampLight(lit, glow);
     if (pools.length) {
@@ -7566,7 +7566,7 @@ export class MapView {
     const reach = WEAVER_REACH_TILES * this.ts();
     for (const o of this.currById.values()) {
       if (o === w || o.kind !== "unit" || o.ownerId !== w.ownerId || o.hp <= 0 || o.wreck || o.hp >= o.hpMax) continue;
-      if (factionOf(o.type) !== "borg") continue;
+      if (factionOf(o.type) !== "xeno") continue;
       if (Math.abs(o.x - w.x) <= reach && Math.abs(o.y - w.y) <= reach && Math.hypot(o.x - w.x, o.y - w.y) <= reach) return true;
     }
     return false;
@@ -7912,7 +7912,7 @@ export class MapView {
     // A hulk has its own burnt-out sheet on the same cell and contact; without one it greys the live art.
     const sheet = this.drawnSheet(e, def);
     let frameIndex: number | undefined;
-    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ROCKETER_DIE_SPRITE || def === PYRO_DIE_SPRITE || def === MORTARMAN_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE || def === DRONEOP_DIE_SPRITE || def === CYBORG_DIE_SPRITE || def === CYBORGCOMMANDER_DIE_SPRITE || def === SIMUNIT2_DIE_SPRITE || def === BORGDRONE_DIE_SPRITE || def === LANCER_DIE_SPRITE || def === THRALL_DIE_SPRITE || def === JUMPJET_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
+    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ROCKETER_DIE_SPRITE || def === PYRO_DIE_SPRITE || def === MORTARMAN_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE || def === DRONEOP_DIE_SPRITE || def === CYBORG_DIE_SPRITE || def === CYBORGCOMMANDER_DIE_SPRITE || def === SIMUNIT2_DIE_SPRITE || def === XENODRONE_DIE_SPRITE || def === LANCER_DIE_SPRITE || def === THRALL_DIE_SPRITE || def === JUMPJET_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
     else if (def === TROOPER_RIFLE_FIRE_SPRITE || def === GUNNER_FIRE_SPRITE || def === SNIPER_FIRE_SPRITE || def === ATINFANTRY_FIRE_SPRITE || def === ROCKETER_FIRE_SPRITE || def === PYRO_FIRE_SPRITE || def === JUMPJET_FIRE_SPRITE) {
       frameIndex = heldFrame(this.infantryShotAge(e.id) ?? 0, def.fps, def.frames);
     } else if (def === THRALL_HIT_SPRITE) {
@@ -8011,7 +8011,7 @@ export class MapView {
     if (drawn && e.gatling && !e.wreck) {
       const now = performance.now();
       const muzzles = gatlingMuzzles(s.x, s.y, size, p.turretFacing ?? p.facing, e.gatling.arms, e.gatling.off);
-      const energy = factionOf(e.type) === "borg";
+      const energy = factionOf(e.type) === "xeno";
       muzzles.forEach((m, i) => drawGatlingFlash(ctx, m, size, now, e.id + i * 2, energy));
     }
     if (drawn && e.mounts && !e.wreck) {
@@ -8024,7 +8024,7 @@ export class MapView {
         drawGatlingFlash(ctx, muzzle, size * 0.45, now, e.id + i * 7);
       });
     }
-    if (drawn && hullFlamerOf(e.type) && !e.wreck && e.mgAmmo !== 0 && factionOf(e.type) !== "borg") {
+    if (drawn && hullFlamerOf(e.type) && !e.wreck && e.mgAmmo !== 0 && factionOf(e.type) !== "xeno") {
       // The igniter at the bow projector stays lit while there is fuel to light.
       const m = feuerwirbelNozzle(s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), p.facing, size, this.ts());
       drawPilotLight(ctx, m.x, m.y, performance.now(), e.id);
@@ -8291,7 +8291,7 @@ export class MapView {
   private drawHole(hole: ShellHoleView, alpha: number): void {
     const c = this.toScreen(hole.x, hole.y);
     const rx = this.groundSpan(hole.x, hole.y, hole.radius);
-    // A Borg plasma round charred the ground instead: the scorch art, sized so its ring spans the radius.
+    // A Xenomorph plasma round charred the ground instead: the scorch art, sized so its ring spans the radius.
     const faces = hole.scorch ? SCORCH_FACES : CRATER_FACES;
     const face = faces[(hole.seed >>> 0) % faces.length];
     const sprite = face && face.image.naturalWidth > 0 && face.bowl > 0 ? face : null;
@@ -8602,7 +8602,7 @@ export class MapView {
     if (host) this.flashAperture(host, p, now, false);
     else {
       this.rocketFrom.set(p.id, { x: p.x, y: p.y, z: p.z ?? 0 });
-      const energy = !!shooter && factionOf(shooter.type) === "borg";
+      const energy = !!shooter && factionOf(shooter.type) === "xeno";
       if (shooter && !shooter.wreck && !energy) {
         this.rocketPuffs.push(
           ...backblastPuffs({
@@ -9157,7 +9157,7 @@ export class MapView {
       if (!nozzle) continue;
       const born = jetParticles({ nozzle, land: jet.land, now, dtMs, seed: (id * 2654435761 + Math.floor(now * 7)) >>> 0 });
       // The Ravager's nanite jet is plasma: green, and no soot.
-      if (e && factionOf(e.type) === "borg") for (const fp of born) fp.energy = true;
+      if (e && factionOf(e.type) === "xeno") for (const fp of born) fp.energy = true;
       this.flameParticles.push(...born);
     }
     if (this.flameParticles.length > FLAME_PARTICLE_CAP) {
@@ -9242,7 +9242,7 @@ export class MapView {
       drawFlameParticle(ctx, s.x, s.y - p.h, look.r, look.heat, look.alpha);
     }
     if (plasma.length > 0) {
-      // The same fire, turned to the Borg's green.
+      // The same fire, turned to the Xenomorphs' green.
       ctx.filter = "hue-rotate(115deg) saturate(1.4)";
       for (const p of plasma) {
         const look = flameParticleLook(p, now);
@@ -9319,7 +9319,7 @@ export class MapView {
     const ctx = this.ctx;
     const keep: typeof this.fx = [];
     for (const f of this.fx) {
-      // A Borg round into water throws no column: it flashes, boils the surface, and hisses off steam.
+      // A Xenomorph round into water throws no column: it flashes, boils the surface, and hisses off steam.
       if (f.energy && f.splash && !f.death && !f.torpedo && (f.kind === "miss" || f.kind === "puff")) {
         const life = plasmaSteamMs(f.caliber);
         const age = now - f.at;
@@ -9333,7 +9333,7 @@ export class MapView {
         drawPlasmaSteam(ctx, s.x, s.y, age / life, f.id, f.caliber);
         continue;
       }
-      // A Borg hit is light, not metal: a green burst in place of dirt, sparks, and fireball.
+      // A Xenomorph hit is light, not metal: a green burst in place of dirt, sparks, and fireball.
       const energyHit = !!f.energy && !f.death && !f.intercept && f.kind !== "muzzle" && f.kind !== "kill" && !f.splash;
       if (energyHit || (f.energy && f.kind === "muzzle")) {
         const life = f.kind === "muzzle" ? fxLifeMs("muzzle", false) : energyBurstMs(f.caliber);

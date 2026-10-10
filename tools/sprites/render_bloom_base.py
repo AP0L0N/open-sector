@@ -3,7 +3,7 @@
 
 Each writes <id>.png, <id>-cameo.png (96 px), and <id>.json (pad metrics plus
 glow spots, source px in the image frame) into the buildings asset folder,
-the render_borg_base.py contract, at the same camera and pad scale (a t(3)
+the render_xeno_base.py contract, at the same camera and pad scale (a t(3)
 footprint at zoom 2 and a t(2) or t(2.5) at zoom 3 both give a 384 px pad).
 
   broodheart  t(3)    HQ (Hive Core): a beating heart-mound half sunk in the

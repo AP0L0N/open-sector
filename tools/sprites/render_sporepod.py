@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Spore Pod: the Bloom's HQ on the move (mirrors the Borg Seed). One 16-face hull.
+"""Spore Pod: the Bloom's HQ on the move (mirrors the Xenomorph Seed). One 16-face hull.
 
 A fork of render_seed.py under the same lock (the Rig's): same numpy rasterizer,
 camera, light, outline, model scale, cell 192, contactY 0.9, one frame, 16 faces,

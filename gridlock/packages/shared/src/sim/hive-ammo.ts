@@ -6,7 +6,7 @@ import type { Entity, MatchState } from "./types.js";
 const TOP_UP_CAP = 4000;
 
 /**
- * Borg weapons draw on the hive. Every tick, before anything fires, each Borg unit and gun
+ * Xenomorph weapons draw on the hive. Every tick, before anything fires, each Xenomorph unit and gun
  * gets back whatever it spent: shells, rockets, a belt, a drum, a jet's fuel, a plane's bomb
  * and rounds. So none of them ever runs dry, and none needs a truck, a pad, or a pool.
  * A magazine that reloads by itself still reloads: that is the gun's pace, not its stock.

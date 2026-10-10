@@ -23,7 +23,7 @@ function twoPlayerMatch(): MatchState {
   const room = r.value;
   assert.equal(joinRoom(room, "B", "Bravo").ok, true);
   updateSelf(room, "A", { ready: true, spawnId: 1 });
-  updateSelf(room, "B", { ready: true, spawnId: 4, faction: "borg" });
+  updateSelf(room, "B", { ready: true, spawnId: 4, faction: "xeno" });
   const started = startMatch(room, "A", () => 0);
   if (!started.ok) throw new Error(started.message);
   const state = createMatch(room, started.value);

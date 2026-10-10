@@ -5,7 +5,7 @@ import {
   ACID_CORRODE_MAX_SHARE,
   ACID_CORRODE_MM,
   ACID_CORRODE_SECONDS,
-  BORG_DAMAGE_MUL,
+  XENO_DAMAGE_MUL,
   BROOD_FIRST_SECONDS,
   BROOD_MAX,
   MAWCASTER_POD,
@@ -41,14 +41,14 @@ import { producerType } from "./train.js";
 import { canSeeEntity } from "./vision.js";
 import type { Entity, MatchState } from "./types.js";
 
-/** A is Earth United, B the Borg, on bare flat ground, nothing but what a test places. */
+/** A is Alliance, B the Xenomorphs, on bare flat ground, nothing but what a test places. */
 function field(): MatchState {
   const r = createRoom({ id: "XEN", hostId: "A", hostName: "Alpha", mapId: "yard-64", maxSlots: 8 });
   if (!r.ok) throw new Error(r.message);
   const room = r.value;
   assert.equal(joinRoom(room, "B", "Bravo").ok, true);
   updateSelf(room, "A", { ready: true, spawnId: 1 });
-  updateSelf(room, "B", { ready: true, spawnId: 4, faction: "borg" });
+  updateSelf(room, "B", { ready: true, spawnId: 4, faction: "xeno" });
   const started = startMatch(room, "A", () => 0);
   if (!started.ok) throw new Error(started.message);
   const state = createMatch(room, started.value);
@@ -88,17 +88,17 @@ function uplink(state: MatchState): void {
 const CYBORGS = ["spitter", "weaver", "shade"] as const;
 const HEAVIES = ["siphon", "broodmother", "mawcaster"] as const;
 
-describe("new Borg roster", () => {
+describe("new Xenomorph roster", () => {
   it("trains the three cyborgs at the Central and the three heavies at the Forge", () => {
     for (const t of CYBORGS) {
       assert.ok(TRAIN_TYPES.includes(t), t);
-      assert.equal(factionOf(t), "borg");
+      assert.equal(factionOf(t), "xeno");
       assert.ok(isInfantryType(t) && isCyborg(t) && onUplink(t), t);
       assert.equal(producerType(t), "cyborgcentral");
     }
     for (const t of HEAVIES) {
       assert.ok(TRAIN_TYPES.includes(t), t);
-      assert.equal(factionOf(t), "borg");
+      assert.equal(factionOf(t), "xeno");
       assert.ok(!isInfantryType(t), t);
       assert.equal(producerType(t), "forge");
       assert.ok(catalog(t).armorFront > 0 && catalog(t).leavesWreck, t);
@@ -107,12 +107,12 @@ describe("new Borg roster", () => {
     assert.ok(techNeeds("broodmother").includes("nexus"));
   });
 
-  it("prices hit points inside the band the existing Borg roster already spans", () => {
+  it("prices hit points inside the band the existing Xenomorph roster already spans", () => {
     const band = (types: readonly EntityType[]) => {
       const r = types.map((t) => catalog(t).hp / catalog(t).cost);
       return [Math.min(...r), Math.max(...r)] as const;
     };
-    const [cLo, cHi] = band(["borgdrone", "thrall", "cyborg", "lancer", "simunit2", "cyborgcommander"]);
+    const [cLo, cHi] = band(["xenodrone", "thrall", "cyborg", "lancer", "simunit2", "cyborgcommander"]);
     const [hLo, hHi] = band(["stalker", "ravager", "behemoth", "juggernaut"]);
     for (const t of CYBORGS) {
       const r = catalog(t).hp / catalog(t).cost;
@@ -175,9 +175,9 @@ describe("Weaver mend", () => {
     uplink(state);
     const w1 = at(state, "weaver", "B", 20, 30);
     const w2 = at(state, "weaver", "B", 20, 31);
-    const drone = still(at(state, "borgdrone", "B", 21, 30));
+    const drone = still(at(state, "xenodrone", "B", 21, 30));
     const stalker = still(at(state, "stalker", "B", 21, 32));
-    const far = still(at(state, "borgdrone", "B", 40, 30));
+    const far = still(at(state, "xenodrone", "B", 40, 30));
     const foe = still(at(state, "rifleman", "A", 22, 31));
     drone.hp = 60;
     stalker.hp = 50;
@@ -197,7 +197,7 @@ describe("Weaver mend", () => {
   it("mends nothing shut down", () => {
     const state = field();
     const w = at(state, "weaver", "B", 20, 30);
-    const drone = still(at(state, "borgdrone", "B", 21, 30));
+    const drone = still(at(state, "xenodrone", "B", 21, 30));
     drone.hp = 60;
     w.shutdown = true;
     drone.shutdown = true;
@@ -239,7 +239,7 @@ describe("Shade cloak", () => {
     assert.equal(canSeeEntity(state, "A", shade), true, "an enemy close by");
   });
 
-  it("lands the scoped hit at the Borg share and gives itself away when it shoots", () => {
+  it("lands the scoped hit at the Xenomorph share and gives itself away when it shoots", () => {
     const state = field();
     uplink(state);
     const shade = at(state, "shade", "B", 20, 30);
@@ -257,7 +257,7 @@ describe("Shade cloak", () => {
     }
     const pool = catalog("rifleman").hp;
     assert.ok(lost > 0, "it fired");
-    assert.ok(lost <= Math.round(pool * BORG_DAMAGE_MUL) && lost >= Math.floor(pool * 0.9 * BORG_DAMAGE_MUL), `took ${lost} of ${pool}`);
+    assert.ok(lost <= Math.round(pool * XENO_DAMAGE_MUL) && lost >= Math.floor(pool * 0.9 * XENO_DAMAGE_MUL), `took ${lost} of ${pool}`);
     assert.equal(shown, true, "the shot shows it");
   });
 });
@@ -313,7 +313,7 @@ describe("Mawcaster", () => {
     n.holdPosition = true;
     const foe = still(at(state, "rifleman", "A", 26, 30));
     foe.hp = foe.hpMax = 1e9;
-    still(at(state, "borgdrone", "B", 25, 31)); // spotter
+    still(at(state, "xenodrone", "B", 25, 31)); // spotter
     assert.equal(applyCommand(state, "B", { type: "cmd.attack", ids: [n.id], targetId: foe.id }).ok, true);
     const seen = new Set<number>();
     for (let i = 0; i < secondsToTicks(MAWCASTER_POD.reload * 2 + 6); i++) {

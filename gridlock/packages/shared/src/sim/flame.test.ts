@@ -228,11 +228,11 @@ describe("pyro", () => {
     const x = me.x;
     const foe = makeEntity(state, "rifleman", "B", tileCenter(78, ts), tileCenter(y, ts));
     const friend = makeEntity(state, "gunner", "A", tileCenter(74, ts), tileCenter(y, ts));
-    const borg = makeEntity(state, "cyborg", "B", tileCenter(76, ts), tileCenter(y, ts));
+    const xeno = makeEntity(state, "cyborg", "B", tileCenter(76, ts), tileCenter(y, ts));
     const flank = makeEntity(state, "rifleman", "B", tileCenter(76, ts), tileCenter(y + 3, ts));
     const past = makeEntity(state, "rifleman", "B", tileCenter(82, ts), tileCenter(y, ts));
     const tank = makeEntity(state, "warden", "B", tileCenter(77, ts), tileCenter(y, ts));
-    for (const u of [foe, friend, borg, flank, past, tank]) {
+    for (const u of [foe, friend, xeno, flank, past, tank]) {
       u.holdPosition = true;
       u.cooldown = 1e9;
       u.mgCooldown = 1e9;
@@ -243,13 +243,13 @@ describe("pyro", () => {
       assert.equal(dead.hp, 0, `${dead.type} of ${dead.ownerId} burned`);
       assert.equal(dead.fireDeath, true);
     }
-    assert.equal(borg.hp, borg.hpMax - LASER_SWEEP_CYBORG_DAMAGE, "a cyborg's plating takes one heavy cut");
+    assert.equal(xeno.hp, xeno.hpMax - LASER_SWEEP_CYBORG_DAMAGE, "a cyborg's plating takes one heavy cut");
     assert.equal(flank.hp, flank.hpMax, "off the jet");
     assert.equal(past.hp, past.hpMax, "past the target");
     assert.equal(tank.hp, tank.hpMax, "armor plate does not take the cut");
-    const hp = borg.hp;
+    const hp = xeno.hp;
     throwFlame(state, me, foe.x, foe.y, reach, false);
-    assert.equal(borg.hp, hp, "the rest of the burst does not cut him again");
+    assert.equal(xeno.hp, hp, "the rest of the burst does not cut him again");
     const dist = foe.x - x;
     const near = me.radius + FLAMER_TRAIL_GAP;
     assert.ok(state.fires.length > 1);

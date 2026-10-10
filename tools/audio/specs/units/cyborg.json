@@ -58,7 +58,7 @@
   },
   "sfx": {
     "fire": {
-      "prompt": "Short burst from a sci-fi rapid pulse repeater energy weapon: a chattering stream of short sharp electric zaps firing very fast, crackling energy snaps with a rising and falling electric whine, laser blaster, no gunpowder, no bullets, close, outdoors battlefield, no music, no voice",
+      "prompt": "Short burst from an electric gatling gun arm, rapid spinning barrels firing very fast, mechanical whir spin-up and spin-down, close, outdoors battlefield, no music, no voice",
       "duration": 1.8,
       "variants": 3,
       "influence": 0.65

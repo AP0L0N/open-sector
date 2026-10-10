@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Siphon: mid-weight Borg drain walker, between the Ravager and the Stalker. Three 16-face layers.
+"""Siphon: mid-weight Xenomorph drain walker, between the Ravager and the Stalker. Three 16-face layers.
 
 A low hunched four-legged hull (head hung low in front, a drooping abdomen
 behind, high mantis knees) under a bulbous glowing nanite reservoir, the
 "heart", held in a chitin cradle and caged by ribs. The gun is a forked drain
 emitter: two long curved prongs with a green arc between the tips, fed by
 two pulsing veins that run back from the emitter into the heart. Cold
-grey-green alloy, dark chitin, the Seed's glow (borg_walker.py). The
+grey-green alloy, dark chitin, the Seed's glow (xeno_walker.py). The
 Apocalypse's layout: hull / turret / gun are passes of one locked camera, one
 scale, one origin, composed by the client with composeAligned (TIGER_OPTS:
 cell 128, contactY 0.92). The turret and the emitter turn on the model origin.
@@ -33,8 +33,8 @@ import numpy as np
 from render_procedural import Mesh, render_turntable
 from render_seed import arch
 
-import borg_walker as bw
-from borg_walker import dome, ellipsoid, knob, leg, shell, tube, tube_x
+import xeno_walker as bw
+from xeno_walker import dome, ellipsoid, knob, leg, shell, tube, tube_x
 
 # Meters. +x nose, +y left, +z up. Feet on z = 0. Origin = turret ring centre.
 BODY = (-0.3, 0.0, 1.3)

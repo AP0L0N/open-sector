@@ -2,9 +2,9 @@
   "key": "weaver",
   "out": "units/weaver",
   "voice": {
-    "name": "Open Sector - Borg Drone",
+    "name": "Open Sector - Xenomorph Drone",
     "voice_id": "502QtipFv6YOD230VZTi",
-    "note": "Shares the Borg Drone voice (voices/borgdrone.json): no new custom voice. Calmer, softer delivery for the unarmed mender. It carries no gun, so its attack lines turn the order down (a right-click on an enemy still sends cmd.attack).",
+    "note": "Shares the Xenomorph Drone voice (voices/xenodrone.json): no new custom voice. Calmer, softer delivery for the unarmed mender. It carries no gun, so its attack lines turn the order down (a right-click on an enemy still sends cmd.attack).",
     "description": "A thin, flat, hollow chorus of many young androgynous voices speaking the same words in perfect unison, like a single drone of an alien cyborg hive: lighter and younger than a commander, emotionless and obedient, airy and slightly metallic with a faint electronic buzz and a hollow tube-like resonance, quick clipped machine cadence, no personality of its own.",
     "stability": 0.75,
     "similarity": 0.8,

@@ -93,11 +93,11 @@ const ANNOUNCE_GAP_MS: Record<string, number> = {
 const lastAnnounce = new Map<string, number>();
 const queue: string[] = [];
 let announcing = false;
-/** Borg commanders hear the Hive Mind (announcer-borg/); a line it lacks falls back to Battle Control. */
+/** Xenomorph commanders hear the Hive Mind (announcer-xeno/); a line it lacks falls back to Battle Control. */
 let announcerFolders: readonly string[] = ["announcer"];
 
 export function setAnnouncerFaction(faction: Faction): void {
-  announcerFolders = faction === "borg" ? ["announcer-borg", "announcer"] : ["announcer"];
+  announcerFolders = faction === "xeno" ? ["announcer-xeno", "announcer"] : ["announcer"];
 }
 
 /** The folder that voices this event for the current faction, or null when none does. */

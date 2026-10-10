@@ -40,7 +40,7 @@ import { tickRegrowth } from "./regrowth.js";
 import { producerType } from "./train.js";
 import type { MatchState } from "./types.js";
 
-/** A is Earth United, B fields `bFaction`. */
+/** A is Alliance, B fields `bFaction`. */
 function match(bFaction: Faction = "bloom"): MatchState {
   const r = createRoom({ id: "BL1", hostId: "A", hostName: "Alpha", mapId: "yard-64", maxSlots: 8 });
   if (!r.ok) throw new Error(r.message);
@@ -68,7 +68,7 @@ const BLOOM_BUILD = BUILDING_TYPES.filter((b) => factionOf(b) === "bloom");
 
 describe("the Bloom in the catalog", () => {
   it("is the third faction, with its own base roles", () => {
-    assert.deepEqual([...FACTIONS], ["eu", "borg", "bloom"]);
+    assert.deepEqual([...FACTIONS], ["alliance", "xeno", "bloom"]);
     assert.deepEqual(HQ_OF.bloom, { rig: "sporepod", core: "broodheart" });
     assert.equal(smelterOf("bloom"), "gorger");
     assert.equal(powerPlantOf("bloom"), "lumenbulb");
@@ -125,7 +125,7 @@ describe("a Bloom seat", () => {
     assert.equal(hqOf(state, "B")!.type, "broodheart");
   });
 
-  it("grows only Bloom structures, and Earth United cannot grow them", () => {
+  it("grows only Bloom structures, and Alliance cannot grow them", () => {
     const state = match();
     unpack(state, "A");
     unpack(state, "B");
@@ -169,7 +169,7 @@ describe("regrowth", () => {
     s.hp -= 5;
     for (let i = 0; i < 20; i++) tickRegrowth(state, TICK_DT);
     assert.equal(s.hp, healed - 5, "a new hit restarts the clock");
-    assert.equal(r.hp, r.hpMax / 2, "Earth United flesh does not regrow");
+    assert.equal(r.hp, r.hpMax / 2, "Alliance flesh does not regrow");
     for (let i = 0; i < 2000; i++) tickRegrowth(state, TICK_DT);
     assert.equal(s.hp, s.hpMax, "never past whole");
   });

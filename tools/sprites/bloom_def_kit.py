@@ -2,7 +2,7 @@
 """The Bloom's defence kit: palette-locked materials and organic mesh helpers.
 
 Chained over the WW2 kit (render_ww2_guns -> render_ww2_fort -> render_bunker -> render_airfield),
-like render_borg_base.py chains the Borg materials. Used by render_bloom_defences.py.
+like render_xeno_base.py chains the Xenomorph materials. Used by render_bloom_defences.py.
 
 Palette lock (gridlock/docs/factions/bloom.md):
   flesh     #5e2f45 dark  #8a4a63 mid  #b7778a light

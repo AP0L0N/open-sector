@@ -907,7 +907,7 @@ export function bindTurntableSheets(
 export { TIGER_OPTS };
 
 
-/** The Borg planes (tools/sprites/render_borg_air.py): one hull sheet each, the Stuka's fit. */
+/** The Xenomorph planes (tools/sprites/render_xeno_air.py): one hull sheet each, the Stuka's fit. */
 const planeHullGlobs = {
   wasp: import.meta.glob("../assets/units/wasp/hull/*.png", { eager: true, import: "default" }) as Record<string, string>,
   scourge: import.meta.glob("../assets/units/scourge/hull/*.png", { eager: true, import: "default" }) as Record<string, string>,

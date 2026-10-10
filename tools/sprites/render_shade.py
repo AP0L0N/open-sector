@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Borg Shade unit sheets — a lean spine-sniper on the Cyborg's lock.
+Xenomorph Shade unit sheets — a lean spine-sniper on the Cyborg's lock.
 
 Same camera, cell, contact points, and row order as render_cyborg.py (and the
-Borg Drone in render_borgdrone.py, whose palette, helpers and runner it
+Xenomorph Drone in render_xenodrone.py, whose palette, helpers and runner it
 shares), so the client reuses the Cyborg's sprite defs with new file names.
 Lean and long-limbed at the Drone's scale, so it reads taller and thinner.
 Smooth dark chitin skin with a faint grey-teal sheen on the lit side (the hive
@@ -37,7 +37,7 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.dont_write_bytecode = True
-import render_borgdrone as B  # noqa: E402  (registers the Borg palette on render_cyborg)
+import render_xenodrone as B  # noqa: E402  (registers the Xenomorph palette on render_cyborg)
 
 R = B.R
 CELL = B.CELL
@@ -47,7 +47,7 @@ ellipsoid, capsule, cylinder, box = R.ellipsoid, R.capsule, R.cylinder, R.box
 rot_x, rot_y, rot_z = R.rot_x, R.rot_y, R.rot_z
 along, cable, flash_star = B.along, B.cable, B.flash_star
 
-# Shade skin: the Borg chitin pushed darker, with a grey-teal sheen for the lit
+# Shade skin: the Xenomorph chitin pushed darker, with a grey-teal sheen for the lit
 # tone (the "chameleon" glint). Registered in this process only.
 SHADE_MATS = {
     "shskin": ((14, 17, 18), (26, 32, 33), (58, 82, 80)),
@@ -226,7 +226,7 @@ def pose_crawl(t: float, flash: int = 0) -> Cloud:
     for k in range(4):
         box(c, (-6.0 + k * 2.6, 0, 8.4 + z0), (1.2, 0.4, 0.9), "shplate", rot=rot_y(0.5))
     capsule(c, (-8.0, 0, 4.2 + z0), (-11.0, 0, 4.0 + z0), 2.2, 1.8, "shskin")
-    B.borg_stumps(c, np.array([-11.6, 0, 3.8 + z0]), np.array([-1.0, 0, -0.1]), t, half=3.0)
+    B.xeno_stumps(c, np.array([-11.6, 0, 3.8 + z0]), np.array([-1.0, 0, -0.1]), t, half=3.0)
     capsule(c, (7.6, 0, 7.0 + z0), (10.2, 0, 8.8 + z0), 1.2, mat="shskin")
     sh_head(c, (13.0, 0, 9.6 + z0 + (0.8 if flash else 0.0)), rot_y(0.05))
     # Right arm: the spine along the ground, lifted a touch to fire.
@@ -260,7 +260,7 @@ def pose_dead() -> Cloud:
     for k in range(4):
         box(c, (-6.0 + k * 2.6, 0, 6.6), (1.2, 0.4, 0.8), "shplate")
     capsule(c, (-8.0, 0, 3.0), (-11.0, 0, 2.8), 2.2, 1.8, "shskin")
-    B.borg_stumps(c, np.array([-11.4, 0, 2.6]), np.array([-1.0, 0, -0.05]), 0.5, half=3.0)
+    B.xeno_stumps(c, np.array([-11.4, 0, 2.6]), np.array([-1.0, 0, -0.05]), 0.5, half=3.0)
     sh_head(c, (12.6, 1.0, 3.2), rot_x(math.radians(-25)), lit=False)
     sh = np.array([5.0, -5.6, 3.6])
     el = np.array([8.0, -10.0, 2.0])

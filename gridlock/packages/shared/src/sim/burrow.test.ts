@@ -10,14 +10,14 @@ import { snapshotFor } from "./snapshot.js";
 import { canSeeEntity } from "./vision.js";
 import type { MatchState } from "./types.js";
 
-/** A is Earth United, B the Borg, on bare flat ground. */
+/** A is Alliance, B the Xenomorphs, on bare flat ground. */
 function field(): MatchState {
   const r = createRoom({ id: "BRW", hostId: "A", hostName: "Alpha", mapId: "yard-64", maxSlots: 8 });
   if (!r.ok) throw new Error(r.message);
   const room = r.value;
   assert.equal(joinRoom(room, "B", "Bravo").ok, true);
   updateSelf(room, "A", { ready: true, spawnId: 1 });
-  updateSelf(room, "B", { ready: true, spawnId: 4, faction: "borg" });
+  updateSelf(room, "B", { ready: true, spawnId: 4, faction: "xeno" });
   const started = startMatch(room, "A", () => 0);
   if (!started.ok) throw new Error(started.message);
   const state = createMatch(room, started.value);

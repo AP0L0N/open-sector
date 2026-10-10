@@ -14,7 +14,7 @@ import type { Entity, MatchState } from "./types.js";
 /**
  * The Weaver's mend. Every WEAVER_PULSE_SECONDS a working Weaver sends HP into each hive unit of
  * its side within WEAVER_REACH_TILES: WEAVER_MEND_CYBORG to a cyborg, WEAVER_MEND_HEAVY to any
- * other Borg body. A unit in reach of two Weavers on the same tick mends once; a Weaver never
+ * other Xenomorph body. A unit in reach of two Weavers on the same tick mends once; a Weaver never
  * mends itself. Torn cyborg legs come back through syncCyborgLegs once the HP is there.
  */
 
@@ -27,10 +27,10 @@ function mending(e: Entity): boolean {
   return isWeaver(e.type) && e.hp > 0 && !e.wreck && !e.shutdown && !e.dormant && e.garrisonedIn == null;
 }
 
-/** May `w` mend `o`: a live Borg unit of its side, not in the air, not inside, not itself, hurt. */
+/** May `w` mend `o`: a live Xenomorph unit of its side, not in the air, not inside, not itself, hurt. */
 export function weaverMends(state: MatchState, w: Entity, o: Entity): boolean {
   if (o === w || o.kind !== "unit" || o.hp <= 0 || o.wreck || o.hp >= o.hpMax) return false;
-  if (factionOf(o.type) !== "borg" || o.garrisonedIn != null || isAirborne(o)) return false;
+  if (factionOf(o.type) !== "xeno" || o.garrisonedIn != null || isAirborne(o)) return false;
   if (!allies(state, w.ownerId, o.ownerId)) return false;
   const reach = WEAVER_REACH_TILES * state.tileSize;
   return Math.hypot(o.x - w.x, o.y - w.y) <= reach + o.radius;
@@ -52,7 +52,7 @@ export function tickWeavers(state: MatchState): void {
   if (!pulsing) return;
   const mended = new Set<number>();
   for (const o of state.entities.values()) {
-    if (o.kind !== "unit" || o.hp <= 0 || o.hp >= o.hpMax || factionOf(o.type) !== "borg") continue;
+    if (o.kind !== "unit" || o.hp <= 0 || o.hp >= o.hpMax || factionOf(o.type) !== "xeno") continue;
     for (const w of pulsing) {
       if (mended.has(o.id) || !weaverMends(state, w, o)) continue;
       o.hp = Math.min(o.hpMax, o.hp + mendAmount(o.type));

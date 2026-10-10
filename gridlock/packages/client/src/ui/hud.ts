@@ -136,11 +136,11 @@ let configFocus: EntityType | null = null;
 let readyCancelArmed: BuildingType | YardFieldType | null = null;
 let sidebarGroup: SidebarGroup = "structures";
 /** The local commander's faction: which cameos the sidebar holds and which announcer speaks. */
-let hudFaction: Faction = "eu";
+let hudFaction: Faction = "alliance";
 
 /** The faction this snapshot's viewer plays. */
 export function viewerFaction(m: { youPlayerId: string; players: readonly { playerId: string; faction?: Faction }[] }): Faction {
-  return m.players.find((p) => p.playerId === m.youPlayerId)?.faction ?? "eu";
+  return m.players.find((p) => p.playerId === m.youPlayerId)?.faction ?? "alliance";
 }
 
 /** Fire on press so a snapshot rebuild cannot swallow the click between mousedown and mouseup. */
@@ -1226,7 +1226,7 @@ const TYPE_ORDER: EntityType[] = [
   "skitter",
   "sporemaw",
   "cyborg",
-  "borgdrone",
+  "xenodrone",
   "thrall",
   "lancer",
   "spitter",
@@ -2156,14 +2156,14 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       title: "Hold position — fire in range, no chase, no withdraw (P)",
       on: holding,
     });
-    const borgs = units.filter((e) => isCyborg(e.type));
-    if (borgs.length) {
+    const xenos = units.filter((e) => isCyborg(e.type));
+    if (xenos.length) {
       out.push({
         slot: "engage",
         act: "engage",
         label: "Engage",
         title: "Engage contacts — fire on what thermal and APS radar read, out of sight but in range",
-        on: borgs.every((e) => e.engageContacts),
+        on: xenos.every((e) => e.engageContacts),
       });
     }
     out.push({
@@ -2857,10 +2857,10 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     return;
   }
   if (act === "engage") {
-    const borgs = units.filter((e) => isCyborg(e.type));
-    if (borgs.length) {
-      const on = !borgs.every((e) => e.engageContacts);
-      ctx.net.send({ type: "cmd.engagecontacts", ids: borgs.map((e) => e.id), on });
+    const xenos = units.filter((e) => isCyborg(e.type));
+    if (xenos.length) {
+      const on = !xenos.every((e) => e.engageContacts);
+      ctx.net.send({ type: "cmd.engagecontacts", ids: xenos.map((e) => e.id), on });
     }
     return;
   }

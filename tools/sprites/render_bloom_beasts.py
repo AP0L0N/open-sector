@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""The Bloom beasts (the faction's tanks), on the Borg walker pipeline.
+"""The Bloom beasts (the faction's tanks), on the Xenomorph walker pipeline.
 
 Same camera, rasterizer, light, outline, 128 cell and contactY 0.92 as the Stalker /
-Ravager / Behemoth (borg_walker.py); the Bloom palette lock from
+Ravager / Behemoth (xeno_walker.py); the Bloom palette lock from
 gridlock/docs/factions/bloom.md via bloom_beast_parts.py. 16 unique yaws (row 0 =
 south, clockwise 22.5 deg) and an 8-frame cycle on the legs sheet, every frame a step
 (the Bile Worm undulates instead). Each beast carries a gray team-tint carapace plate.
@@ -17,7 +17,7 @@ south, clockwise 22.5 deg) and an 8-frame cycle on the legs sheet, every frame a
 Writes gridlock/packages/client/src/assets/units/<id>-legs.png (8 x 16, 128 cell),
 <id>-turret.png / <id>-gun.png (1 x 16) for turreted beasts, <id>-cameo.png (128,
 assembled east), previews in tools/sprites/preview/<id>-{walk,turntable,gameplay}.png
-and <id>-bloom.json (fit, drawSize for borgWalker(), checks).
+and <id>-bloom.json (fit, drawSize for xenoWalker(), checks).
 
   python3 tools/sprites/render_bloom_beasts.py --only skitter
   python3 tools/sprites/render_bloom_beasts.py --lineup
@@ -33,7 +33,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 import bloom_beast_parts as bp
-import borg_walker as bw
+import xeno_walker as bw
 from bloom_beast_parts import V, blob, curve, flesh_leg, horn, knob, posed_leg, ribbed, sac, sweep, team_plate, tube
 from render_procedural import Mesh
 

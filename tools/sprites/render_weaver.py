@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Borg Weaver unit sheets — an unarmed nanite mender on the Cyborg's lock.
+Xenomorph Weaver unit sheets — an unarmed nanite mender on the Cyborg's lock.
 
 Same camera, cell, contact points, and row order as render_cyborg.py (and the
-Borg Drone in render_borgdrone.py, whose palette, helpers and runner it
+Xenomorph Drone in render_xenodrone.py, whose palette, helpers and runner it
 shares), so the client reuses the Cyborg's sprite defs with new file names.
 Slender and upright on long thin legs, so it reads taller than the Drone at the
 Drone's scale. Grey-green alloy over dark chitin, a long crested skull with
@@ -37,7 +37,7 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.dont_write_bytecode = True
-import render_borgdrone as B  # noqa: E402  (registers the Borg palette on render_cyborg)
+import render_xenodrone as B  # noqa: E402  (registers the Xenomorph palette on render_cyborg)
 
 R = B.R
 CELL = B.CELL
@@ -232,7 +232,7 @@ def pose_crawl(t: float, mend: int = 0) -> Cloud:
     box(c, (1.6, 0, 8.4 + z0), (4.6, 2.8, 0.7), "chitin")
     for i in range(4):
         cylinder(c, (-5.6 - i * 1.3, 0, 4.2 + z0), (-6.4 - i * 1.3, 0, 4.2 + z0), 2.3 - 0.2 * i, "cable")
-    B.borg_stumps(c, np.array([-10.6, 0, 3.8 + z0]), np.array([-1.0, 0, -0.1]), t, half=3.2)
+    B.xeno_stumps(c, np.array([-10.6, 0, 3.8 + z0]), np.array([-1.0, 0, -0.1]), t, half=3.2)
     box(c, (-9.6, 0, 4.0 + z0), (1.6, 4.0, 1.8), "chitin")
     box(c, (-1.6, 0, 9.0 + z0), (3.6, 3.0, 1.0), "chitin")
     cap = spindle(c, (-1.0, 0, 9.4 + z0), (-0.85, 0, 0.55), bright=bool(mend), length=13.0)
@@ -279,7 +279,7 @@ def pose_dead() -> Cloud:
     c = Cloud()
     ellipsoid(c, (0, 0, 3.4), (8.4, 5.8, 3.4), "alloy")
     box(c, (1.0, 0, 6.6), (4.6, 2.8, 0.7), "chitin")
-    B.borg_stumps(c, np.array([-10.2, 0, 2.8]), np.array([-1.0, 0, -0.05]), 0.5, half=3.2)
+    B.xeno_stumps(c, np.array([-10.2, 0, 2.8]), np.array([-1.0, 0, -0.05]), 0.5, half=3.2)
     box(c, (-9.2, 0, 3.0), (1.6, 4.0, 1.6), "chitin")
     box(c, (-1.6, 0, 7.4), (3.6, 3.0, 1.0), "chitin")
     spindle(c, (-3.0, -7.0, 2.4), (-0.6, -0.8, 0.0), lit=False, length=12.0)

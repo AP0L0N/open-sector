@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Borg Thrall unit sheets — melee brute cyborg on the Cyborg's lock.
+Xenomorph Thrall unit sheets — melee brute cyborg on the Cyborg's lock.
 
-A fork of render_simunit2.py by way of render_borgdrone.py: the Cyborg's camera,
+A fork of render_simunit2.py by way of render_xenodrone.py: the Cyborg's camera,
 cell, contact points, and row order, so the client reuses the Cyborg's sprite
-defs with new file names, and the Borg helpers from the Drone. The Drone's
-materials are recoloured here (this process only) to the Borg's blue-ish
+defs with new file names, and the Xenomorph helpers from the Drone. The Drone's
+materials are recoloured here (this process only) to the Xenomorphs' blue-ish
 in-game look of the Seed / Cyborg Central / Fusion Node: blue-steel plating,
 a dark blue under-structure, cyan optic and seams with a darker cyan edge.
 A hulking assimilated body: a barrel chest, a chitin hump on the
@@ -41,7 +41,7 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.dont_write_bytecode = True
-import render_borgdrone as B  # noqa: E402  (registers the Borg palette on render_cyborg)
+import render_xenodrone as B  # noqa: E402  (registers the Xenomorph palette on render_cyborg)
 
 R = B.R
 CELL = B.CELL
@@ -51,7 +51,7 @@ ellipsoid, capsule, cylinder, box = R.ellipsoid, R.capsule, R.cylinder, R.box
 rot_x, rot_y, rot_z = R.rot_x, R.rot_y, R.rot_z
 along, cable = B.along, B.cable
 
-# The Thrall wears the Borg's blue-ish in-game look (the Seed / Cyborg Central /
+# The Thrall wears the Xenomorphs' blue-ish in-game look (the Seed / Cyborg Central /
 # Fusion Node): cool blue-steel plating on a dark blue under-structure, cyan
 # optic and seams. Recoloured in this process only; the Drone and the Lancer
 # keep their own sheets.
@@ -344,7 +344,7 @@ def pose_crawl(t: float, flash: int = 0) -> Cloud:
     ellipsoid(c, (-3.0, 0, 12.0 + z0), (5.6, 6.0, 3.2), "chitin")  # hump
     for i in range(3):
         cylinder(c, (-7.4 - i * 1.6, 0, 5.4 + z0), (-8.4 - i * 1.6, 0, 5.4 + z0), 4.2 - 0.3 * i, "cable")
-    B.borg_stumps(c, np.array([-13.0, 0, 5.0 + z0]), np.array([-1.0, 0, -0.1]), t, half=5.2)
+    B.xeno_stumps(c, np.array([-13.0, 0, 5.0 + z0]), np.array([-1.0, 0, -0.1]), t, half=5.2)
     box(c, (-12.0, 0, 5.2 + z0), (2.2, 6.8, 2.6), "chitin")
     for s in (1, -1):
         cable(c, (-4.0, s * 4.0, 10.6 + z0), (-11.4, s * 5.0, 6.0 + z0), (-9.0, s * 8.0, 11.0 + z0), 0.65, n=6)

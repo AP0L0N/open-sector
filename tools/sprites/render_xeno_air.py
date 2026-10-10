@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Borg aircraft: the Wasp (fighter), the Scourge (dive bomber), the Gnat (spy drone), and the Overseer (hover craft). One 16-face hull each.
+"""Xenomorph aircraft: the Wasp (fighter), the Scourge (dive bomber), the Gnat (spy drone), and the Overseer (hover craft). One 16-face hull each.
 
-The Borg answer to the Fw 190 and the Stuka (render_procedural.py), under
+The Xenomorph answer to the Fw 190 and the Stuka (render_procedural.py), under
 their lock: same numpy rasterizer, camera, light, outline, 0.062 px-per-meter
 share of the 256 source cell (the Stuka's), face order, composed to the 128
 cell at runtime with STUKA_OPTS (contactY 0.8, padding 2). The look is the
-Borg walkers' (borg_walker.py): cold grey-green alloy plates, dark chitin,
+Xenomorph walkers' (xeno_walker.py): cold grey-green alloy plates, dark chitin,
 sickly green glow, gray team plate on the back; the wings are a pale green
 membrane, translucent, with chitin spars and glowing veins.
 
@@ -31,11 +31,11 @@ membrane, translucent, with chitin spars and glowing veins.
 
 0001 = nose screen-south, then clockwise 22.5 deg through 0016. No insignia.
 
-  python3 tools/sprites/render_borg_air.py wasp
-  python3 tools/sprites/render_borg_air.py scourge
-  python3 tools/sprites/render_borg_air.py overseer
-  python3 tools/sprites/render_borg_air.py gnat
-  python3 tools/sprites/render_borg_air.py all
+  python3 tools/sprites/render_xeno_air.py wasp
+  python3 tools/sprites/render_xeno_air.py scourge
+  python3 tools/sprites/render_xeno_air.py overseer
+  python3 tools/sprites/render_xeno_air.py gnat
+  python3 tools/sprites/render_xeno_air.py all
 
 Writes gridlock/packages/client/src/assets/units/<id>/hull/0001..0016.png,
 <id>/<id>-hull.json, <id>-cameo.png (72 px), and previews in
@@ -53,9 +53,9 @@ import numpy as np
 import render_procedural as rp
 from render_procedural import Mesh, render_turntable
 
-import borg_walker as bw
-from borg_walker import dome, ellipsoid, knob, shell, tube, tube_x
-from render_borg_naval import UNITS, cameo72, check
+import xeno_walker as bw
+from xeno_walker import dome, ellipsoid, knob, shell, tube, tube_x
+from render_xeno_naval import UNITS, cameo72, check
 
 # Wing membrane: pale green, see-through; its own edge gets the outline (alpha > 0.5).
 rp.MAT.update(

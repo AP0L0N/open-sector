@@ -1,8 +1,8 @@
 {
-  "key": "borgdrone",
-  "out": "units/borgdrone",
+  "key": "xenodrone",
+  "out": "units/xenodrone",
   "voice": {
-    "name": "Open Sector - Borg Drone",
+    "name": "Open Sector - Xenomorph Drone",
     "description": "A thin, flat, hollow chorus of many young androgynous voices speaking the same words in perfect unison, like a single drone of an alien cyborg hive: lighter and younger than a commander, emotionless and obedient, airy and slightly metallic with a faint electronic buzz and a hollow tube-like resonance, quick clipped machine cadence, no personality of its own.",
     "sample": "Drone online. We are linked to the collective. Our carbine is charged. Give the directive and we comply. The hive speaks and the drone obeys. Matter will be taken.",
     "stability": 0.7,
