@@ -468,6 +468,8 @@ import { drawShutdownMark, drawUplink, SHUTDOWN_UNIT_FILTER } from "./cyborg-lin
 import { BLINK_FX_MS, drawBlinkFx, drawPurgeMark } from "./blink-fx.js";
 import { BITE_FX_MS, DOWN_BEAM_MS, drawBite, drawDownBeam } from "./hive-fx.js";
 import { SIMUNIT2_CRAWL_FIRE_SPRITE, SIMUNIT2_CRAWL_SPRITE, SIMUNIT2_DIE_SPRITE, SIMUNIT2_FIRE_SPRITE, SIMUNIT2_SPRITE, UNIT_SPRITE_DRAW_SIZE } from "./sprites.js";
+import { JUGGERNAUT_FISTS_SPRITE, JUGGERNAUT_PUNCH_SPRITE, JUGGERNAUT_SPRITE, JUGGERNAUT_SWING_SPRITE, JUGGERNAUT_THROW_SPRITE } from "./sprites.js";
+import { drawThrownHammer, pickJuggernautPose, JUGGERNAUT_STRIDE_WORLD, type JuggernautSheet } from "./juggernaut-fx.js";
 import {
   THRALL_CRAWL_FIRE_SPRITE,
   THRALL_CRAWL_SPRITE,
@@ -724,6 +726,7 @@ const EXTRUDE: Record<EntityType, number> = {
   stalker: 28,
   ravager: 22,
   behemoth: 46,
+  juggernaut: 44,
   sandbags: 12,
   barbwire: 9,
   wall: 18,
@@ -930,6 +933,11 @@ export class MapView {
   private prevCrateById = new Map<number, MatchSnapshot["crates"][number]>();
   /** Walker legs: ground walked so far and where the hull was last frame. */
   private walkerOdo = new Map<number, { x: number; y: number; d: number }>();
+  /** Juggernaut: when its last hammer or fist blow landed (performance.now), and how many it has landed. */
+  private juggBlows = new Map<number, { at: number; n: number }>();
+  /** Juggernaut: when the hammer left its hands. */
+  private juggThrows = new Map<number, number>();
+  private juggSeen = new Set<number>();
   private snapAt = 0;
   /** Top-left of the viewport in isometric space. */
   private camX = 0;
@@ -1547,6 +1555,13 @@ export class MapView {
       this.blinkFx.push({ from: { x: b.x, y: b.y }, to: { x: b.tx, y: b.ty }, at: now, inside: b.inside });
     }
     for (const i of match.impacts ?? []) {
+      // A Juggernaut blow: its swing or punch loops from this moment. The thrown hammer landing is not one.
+      if (i.hammer && i.hammer !== "throw" && i.fromId != null && !this.juggSeen.has(i.id)) {
+        if (this.juggSeen.size > 200) this.juggSeen.clear();
+        this.juggSeen.add(i.id);
+        const was = this.juggBlows.get(i.fromId);
+        this.juggBlows.set(i.fromId, { at: now, n: (was?.n ?? 0) + 1 });
+      }
       if (i.fromId != null && (i.caliber ?? 0) > 0 && (i.caliber ?? 0) < 40 && i.kind !== "crush") {
         const shooter = this.currById.get(i.fromId);
         if (shooter && isInfantryType(shooter.type) && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
@@ -1638,6 +1653,10 @@ export class MapView {
       if (p.bounced || this.seenShots.has(p.id)) continue;
       this.seenShots.add(p.id);
       const shooter = this.currById.get(p.fromId);
+      if (p.hammer) {
+        this.juggThrows.set(p.fromId, now);
+        continue;
+      }
       if (p.flame) {
         // A new glob: the trigger is still held. The jet itself is drawn per frame from his nozzle.
         if (shooter?.type === "pyro" && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
@@ -1891,7 +1910,7 @@ export class MapView {
         // Every Borg gun fires light: a green bolt from the muzzle to each hit. Lasers, plasma
         // orbs, torpedoes, and daggers draw themselves elsewhere.
         const shots = byGun.get(e.id)?.filter((i) => !i.rocket && !i.laser && !i.torpedo && !i.mortar && !i.bite && !i.downLaser && i.kind !== "crush" && (i.caliber ?? 0) > 0);
-        if (!shots?.length || e.type === "simunit2" || e.type === "thrall" || e.type === "cyborgcommander") continue;
+        if (!shots?.length || e.type === "simunit2" || e.type === "thrall" || e.type === "cyborgcommander" || e.type === "juggernaut") continue;
         const muzzle = this.energyMuzzleWorld(e, shots[0]!);
         for (const bolt of energyBolts(muzzle, shots, ground, now, ts)) {
           this.tracers.push(bolt);
@@ -7183,7 +7202,31 @@ export class MapView {
   }
 
   /** Stance sheet, or the pistol / rifle-recoil / corpse sheet when that pose is showing. */
+  /** The Juggernaut's sheet now, and its frame when a blow or the throw sets it (else it strides). */
+  private juggernautPose(e: EntityView): { def: UnitSpriteDef; frame?: number } {
+    const sheets: Record<JuggernautSheet, UnitSpriteDef> = {
+      walk: JUGGERNAUT_SPRITE,
+      swing: JUGGERNAUT_SWING_SPRITE,
+      fists: JUGGERNAUT_FISTS_SPRITE,
+      punch: JUGGERNAUT_PUNCH_SPRITE,
+      throw: JUGGERNAUT_THROW_SPRITE,
+    };
+    if (e.wreck) return { def: JUGGERNAUT_SPRITE };
+    const blow = this.juggBlows.get(e.id);
+    const pose = pickJuggernautPose({
+      fists: !!e.fists,
+      stepping: unitStepping({ type: e.type, state: e.state, prev: this.prevById.get(e.id), curr: e }),
+      now: performance.now(),
+      speed: this.curr.gameSpeed || 1,
+      blowAt: blow?.at,
+      blows: blow?.n,
+      throwAt: this.juggThrows.get(e.id),
+    });
+    return { def: sheets[pose.sheet], frame: pose.frame };
+  }
+
   private spriteOf(e: EntityView): UnitSpriteDef | undefined {
+    if (e.type === "juggernaut") return this.juggernautPose(e).def;
     if (e.type === "titan") {
       // The outriggers read as down from the midpoint of the brace until the midpoint of the pack.
       const p = e.deployProgress ?? 0;
@@ -7763,6 +7806,17 @@ export class MapView {
     // The ship's mounts are placed on the sim's own spots: no ground sink under the hull.
     if (e.ship || def === BATTLESHIP_SPRITE) hullShiftY -= unitGroundSink(size);
     const stepping = unitStepping({ type: e.type, state: e.state, swimming: e.swimming, prev: this.prevById.get(e.id), curr: e });
+    if (e.type === "juggernaut" && !e.wreck) {
+      const pose = this.juggernautPose(e);
+      if (pose.frame != null) frameIndex = pose.frame;
+      else {
+        // Walk and fists stride with the ground covered, so the sprint is a run, not a faster shuffle.
+        const odo = this.walkerOdo.get(e.id);
+        const d = (odo?.d ?? 0) + strideHop(odo, p);
+        this.walkerOdo.set(e.id, { x: p.x, y: p.y, d });
+        frameIndex = stepping ? strideFrame(d, JUGGERNAUT_STRIDE_WORLD, sheet.frames, e.id) : 0;
+      }
+    }
     if (e.type === "walker" && frameIndex == null) {
       const odo = this.walkerOdo.get(e.id);
       const d = (odo?.d ?? 0) + strideHop(odo, p);
@@ -9038,6 +9092,14 @@ export class MapView {
       const prev = this.prevProjById.get(p.id);
       const wx = prev ? prev.x + (p.x - prev.x) * blend : p.x;
       const wy = prev ? prev.y + (p.y - prev.y) * blend : p.y;
+      // The Juggernaut's hammer tumbles end over end on its arc; no smoke behind it.
+      if (p.hammer) {
+        const wz = prev?.z != null && p.z != null ? prev.z + (p.z - prev.z) * blend : (p.z ?? 0);
+        const s = this.toScreen(wx, wy, this.elevAt(wx, wy) + wz);
+        const g = this.toScreen(wx, wy);
+        drawThrownHammer(ctx, s.x, s.y, g.x, g.y, now, p.id);
+        continue;
+      }
       const arc = prev?.arc != null ? prev.arc + (p.arc - prev.arc) * blend : p.arc;
       const apex = prev?.apex != null ? prev.apex + (p.apex - prev.apex) * blend : p.apex;
       const world = mortarArcPoints({

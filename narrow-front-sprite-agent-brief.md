@@ -182,6 +182,7 @@ Match `UnitSpriteDef.frameSize` in `gridlock/packages/client/src/render/sprites.
 | Hatch head | 48 | 1 | 1.0 | `scout-head.png` |
 | Medium vehicle / tank | 128 | 1 | ~0.92 | `tiger/hull/0001.png` … `0016.png`, `hauler-hull.png` + `hauler-cart.png` |
 | Heavy vehicle | 192 | 1 | ~0.90 | `rig-move.png` |
+| Giant (Juggernaut) | 192 | 8 (throw 4, wreck 1) | 0.82 (wreck 0.62) | `juggernaut-walk.png`, `juggernaut-swing.png`, `wrecks/juggernaut.png` |
 | Aircraft | 128 | 1 | 0.80 | `stuka/hull/0001.png` … `0016.png` (256 source, composed to 128 at runtime like the Tiger; the wingspan sets the scale, padding 2). The map lifts the sprite by altitude and draws a separate ground shadow |
 | Cameo | 72 (tank 128) | 1 | — | `trooper-cameo.png`, `gunner-cameo.png` |
 | Wreck | the live unit's cell | 1 | the live unit's | `wrecks/warden.png`, `wrecks/stuka.png` |
@@ -411,6 +412,7 @@ Human infantry and the Cyborg are the procedural model in Animation. The turntab
 | Thrall | crawl, crawl-fire | 8, 4 | legs torn off: chest on the dirt, dragging on the left fist, the right fist forward; crawl-fire raises the right fist and slams it into the ground ahead (raised / slam / raised / slam), grit at the slam. Prone scale |
 | Thrall | die | 4 | knees buckle, falls forward, nearly flat, face down; frame 3 is the corpse (cyan optic and seams dark). Every frame shares the corpse's footprint centre, so the body does not slide |
 | Thrall | swim | 8 | chest-deep in the shared pool, stood straight so the head and pauldrons stay above water |
+| Juggernaut | walk, swing, fists, punch, throw, wreck | 8, 8, 8, 8, 4, 1 | Borg giant on the Titan's 192 cell with the Cyborg's camera and outline and the Drone's palette (grey-green alloy, chitin, lit green conduits), grey team-tint pauldron caps, one scale (1.6) and contact (0.82) on every sheet (`tools/sprites/render_juggernaut.py`). Walk carries the hammer across the body, head beside the right shoulder. Swing is one blow looped in time with the hits: frame 0 is the hammer on the ground with a green flash, then up, held high, coming down. Fists and punch are the same body without the hammer; the right fist lands on frame 0, the left on frame 4. Throw: wound back, release, empty hands, guard. The wreck (face down, hammer dark beside it) is written by the same script, not `render_wrecks.py` |
 | Rifleman | swim | 8 | `infantry-swim.png` (also the fallback) |
 | Other human infantry | swim | 8 | `render_infantry.py`: chest-deep in the same pool, arms paddling |
 

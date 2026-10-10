@@ -28,7 +28,7 @@ describe("sidebarGroupOf", () => {
     assert.deepEqual(g.structures.map((e) => e.type).sort(), ["aerie", "assimilator", "cyborgcentral", "forge", "fusionnode", "nexus", "spawnpool"]);
     assert.deepEqual(g.defences.map((e) => e.type).sort(), ["pulsespire", "spineturret"]);
     assert.deepEqual(g.infantry.map((e) => e.type).sort(), ["borgdrone", "cyborg", "cyborgcommander", "lancer", "simunit2", "thrall"]);
-    assert.deepEqual(g.tanks.map((e) => e.type).sort(), ["behemoth", "ravager", "stalker"]);
+    assert.deepEqual(g.tanks.map((e) => e.type).sort(), ["behemoth", "juggernaut", "ravager", "stalker"]);
     assert.deepEqual(g.naval.map((e) => e.type).sort(), ["leech", "lurker"]);
     assert.deepEqual(g.aircraft.map((e) => e.type).sort(), ["gnat", "overseer", "scourge", "wasp"]);
     const eu = Object.values(groupEntries("eu")).flat().map((e) => e.type);

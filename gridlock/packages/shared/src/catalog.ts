@@ -567,6 +567,7 @@ export type EntityType =
   | "stalker"
   | "ravager"
   | "behemoth"
+  | "juggernaut"
   | "leech"
   | "lurker"
   | "wasp"
@@ -803,7 +804,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "shed",
   "boiler",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "simunit2" | "borgdrone" | "thrall" | "lancer" | "stalker" | "ravager" | "behemoth" | "leech" | "lurker" | "wasp" | "scourge" | "gnat" | "overseer" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "horten" | "droneop" | "jumpjet";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "simunit2" | "borgdrone" | "thrall" | "lancer" | "stalker" | "ravager" | "behemoth" | "juggernaut" | "leech" | "lurker" | "wasp" | "scourge" | "gnat" | "overseer" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "horten" | "droneop" | "jumpjet";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -914,7 +915,7 @@ export const BUILDING_FACINGS = 24;
 export function isRotatableBuilding(type: string): type is BuildingType {
   return (ROTATABLE_BUILDINGS as readonly string[]).includes(type);
 }
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "simunit2", "borgdrone", "thrall", "lancer", "stalker", "ravager", "behemoth", "leech", "lurker", "wasp", "scourge", "gnat", "overseer", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "horten", "droneop", "jumpjet"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "simunit2", "borgdrone", "thrall", "lancer", "stalker", "ravager", "behemoth", "juggernaut", "leech", "lurker", "wasp", "scourge", "gnat", "overseer", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "horten", "droneop", "jumpjet"];
 
 /**
  * A player fields only one of each of these at a time. While it lives, another
@@ -946,6 +947,7 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly Bu
   thrall: "cyborgcentral",
   lancer: "cyborgcentral",
   behemoth: "nexus",
+  juggernaut: "nexus",
   lurker: "nexus",
   scourge: "nexus",
   overseer: "nexus",
@@ -996,6 +998,7 @@ export const BORG_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([
   "stalker",
   "ravager",
   "behemoth",
+  "juggernaut",
   "forge",
   "nexus",
   "spineturret",
@@ -1702,6 +1705,45 @@ export const BEHEMOTH_RING_SWEEP_SECONDS = 0.3;
 export const STALKER_BURROW_SECONDS = 1.6;
 /** Stalker: seconds to break back out; it comes up with its gun laid. */
 export const STALKER_UNBURROW_SECONDS = 0.8;
+/**
+ * Juggernaut (sim/juggernaut.ts): a giant with a two-handed hammer. Reach is measured like the
+ * Sim Unit's blades, from its centre to the target's body or wall.
+ */
+export const JUGGERNAUT_REACH_TILES = t(1.5);
+/** How far it looks for something to run down by itself. */
+export const JUGGERNAUT_HUNT_TILES = t(8);
+/** Pace while it closes on what it is going for, times its walk. */
+export const JUGGERNAUT_SPRINT_MUL = 2.6;
+/** Seconds between hammer blows. */
+export const JUGGERNAUT_HAMMER_SECONDS = 1.8;
+/** Radius of a hammer blow, round the point it lands on. */
+export const JUGGERNAUT_HAMMER_BLAST_TILES = t(1.4);
+/** A hammer blow at its centre: on a soldier (more than any pool but a cyborg's), a hull, a building. */
+export const JUGGERNAUT_HAMMER_SOLDIER = 120;
+export const JUGGERNAUT_HAMMER_HULL = 60;
+export const JUGGERNAUT_HAMMER_BUILDING = 150;
+/** At or under this share of its pool it throws the hammer and fights on with its fists. */
+export const JUGGERNAUT_RAGE_HP = 0.35;
+/** How far the hammer is thrown, cells. */
+export const JUGGERNAUT_THROW_RANGE_TILES = t(9);
+/** The thrown hammer: flight speed, cells a second, and its landing at the centre. */
+export const JUGGERNAUT_THROW_SPEED_TILES = t(14);
+export const JUGGERNAUT_THROW_BLAST_TILES = t(1.8);
+export const JUGGERNAUT_THROW_SOLDIER = 200;
+export const JUGGERNAUT_THROW_HULL = 110;
+export const JUGGERNAUT_THROW_BUILDING = 300;
+/** Fists: seconds between blows, a tighter blast, and a lighter hit. */
+export const JUGGERNAUT_FIST_SECONDS = 0.6;
+export const JUGGERNAUT_FIST_BLAST_TILES = t(0.7);
+export const JUGGERNAUT_FIST_SOLDIER = 60;
+export const JUGGERNAUT_FIST_HULL = 22;
+export const JUGGERNAUT_FIST_BUILDING = 55;
+/** Without the hammer it moves this much faster, sprint or walk. */
+export const JUGGERNAUT_FIST_PACE_MUL = 1.35;
+/** The Juggernaut: hammer, sprint, and the throw at low HP. */
+export function isJuggernaut(type: EntityType): boolean {
+  return type === "juggernaut";
+}
 /** Leaps on its legs at a point (sim/lunge.ts): the Behemoth. */
 export function canLunge(type: EntityType): boolean {
   return type === "behemoth";
@@ -5682,6 +5724,37 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     wreckHp: 60,
     blurb: `The largest of the heavy assimilators: a carapace on six legs with twin plasma disruptors on one turret. They fire one after the other, a short gap and then a long reload, through a Tiger's front plate, from farther than any tank but the Jagdtiger. The layered carapace sheds part of every shell that hits it (it takes ${Math.round(BEHEMOTH_SHELL_RESIST * 100)}% of the damage). Slow on its legs and slow on the turret, but Lunge throws it up and forward up to ${BEHEMOTH_LUNGE_RANGE_TILES / TILE_SUBDIV} cells; where it lands, ${BEHEMOTH_RING_SWEEPS} green laser sweeps lash out round it, burning enemy soldiers and setting the ground alight. The legs need ${BEHEMOTH_LUNGE_RECHARGE_SECONDS} seconds before the next. Its rack refills near a powered Nanite Forge of yours. Needs a Neural Nexus.`,
   },
+  /** Borg heavy assimilator: a giant on two legs with a two-handed hammer. Melee only. */
+  juggernaut: {
+    type: "juggernaut",
+    kind: "unit",
+    name: "Juggernaut",
+    letter: "z",
+    cost: 2800,
+    buildSeconds: 24,
+    hp: 420,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 13,
+    moveTilesPerSec: paced(1.0),
+    turnDegPerSec: 320,
+    rangeTiles: JUGGERNAUT_REACH_TILES,
+    sightTiles: t(8),
+    cooldown: JUGGERNAUT_HAMMER_SECONDS,
+    damage: JUGGERNAUT_HAMMER_HULL,
+    projectileSpeed: TANK_SHELL_SPEED,
+    turnInPlace: true,
+    armorFront: 60,
+    armorSide: 45,
+    armorRear: 30,
+    penetration: 0,
+    caliber: 0,
+    spreadDeg: 0,
+    leavesWreck: true,
+    wreckHp: 50,
+    blurb: `A giant of the hive on two legs, swinging a two-handed hammer. It fights only at arm's reach, and runs at what it goes for at ${JUGGERNAUT_SPRINT_MUL} times its walk. Every blow lands in an area: it kills a soldier outright, staves in a tank's plate whatever its armor, and knocks whole walls out of a building. Only its own side is spared. Plated like a light tank and slow to fall. Brought down to ${Math.round(JUGGERNAUT_RAGE_HP * 100)}% it hurls the hammer at the strongest enemy within ${JUGGERNAUT_THROW_RANGE_TILES / TILE_SUBDIV} cells, a heavy blast where it lands, then fights on with its fists: lighter blows, three for every swing of the hammer, and it moves faster. Needs a Neural Nexus.`,
+  },
   /** Borg vehicle factory. */
   forge: {
     type: "forge",
@@ -5703,7 +5776,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `A ribbed hangar over vats of nanite gel. It grows the heavy assimilators: the Stalker, the Ravager, and, with a Neural Nexus standing, the Behemoth. The Borg need no supply trucks: every Borg weapon draws on the hive and never runs dry.`,
+    blurb: `A ribbed hangar over vats of nanite gel. It grows the heavy assimilators: the Stalker, the Ravager, and, with a Neural Nexus standing, the Behemoth and the Juggernaut. The Borg need no supply trucks: every Borg weapon draws on the hive and never runs dry.`,
   },
   /** Borg tech and sensor building. */
   nexus: {
@@ -7139,9 +7212,9 @@ export function canPowerDown(type: EntityType): boolean {
   return onUplink(type);
 }
 
-/** Fights at arm's reach, no round in the air: the Sim Unit II's daggers, the Thrall's fists, the Lurker's jaws. */
+/** Fights at arm's reach, no round in the air: the Sim Unit II's daggers, the Thrall's fists, the Juggernaut's hammer and fists, the Lurker's jaws. */
 export function meleeOf(type: EntityType): boolean {
-  return isSimUnit(type) || type === "thrall" || biteOf(type);
+  return isSimUnit(type) || type === "thrall" || isJuggernaut(type) || biteOf(type);
 }
 
 /** The lighter hulls, guns, and trucks the Apocalypse rolls flat. */

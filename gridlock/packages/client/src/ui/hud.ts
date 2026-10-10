@@ -1207,6 +1207,7 @@ const TYPE_ORDER: EntityType[] = [
   "feuerwirbel",
   "walker",
   "behemoth",
+  "juggernaut",
   "stalker",
   "ravager",
   "cyborg",

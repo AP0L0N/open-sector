@@ -58,6 +58,7 @@ import { tickForceFields, tickLasers } from "./laser.js";
 import { tickSupply } from "./supply.js";
 import { tickMineLaunchers } from "./minelauncher.js";
 import { tickSimUnits } from "./simunit.js";
+import { tickJuggernauts } from "./juggernaut.js";
 import { tickLunges } from "./lunge.js";
 import { tickBurrows } from "./burrow.js";
 import type { BlinkView } from "../protocol.js";
@@ -371,6 +372,7 @@ function stepHeld(state: MatchState, dt: number): void {
   tickPlaneBoarding(state);
   tickMineLaunchers(state, dt);
   tickSimUnits(state);
+  tickJuggernauts(state);
   tickThralls(state);
   tickLunges(state);
   tickBurrows(state);

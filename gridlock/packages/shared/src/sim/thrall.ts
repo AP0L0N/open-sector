@@ -16,6 +16,7 @@ import {
   THRALL_STAGGER_MAX_CALIBER,
   THRALL_STAGGER_SECONDS,
   catalog,
+  factionDamage,
   isInfantryType,
   secondsToTicks,
 } from "../catalog.js";
@@ -46,7 +47,7 @@ export function punch(state: MatchState, e: Entity, target: Entity): void {
   const rand = () => nextRand(state);
   const soldier = target.kind === "unit" && !target.wreck && isInfantryType(target.type);
   const mul = target.kind === "building" ? THRALL_BUILDING_MUL : 1;
-  const dmg = Math.round(THRALL_PUNCH_DAMAGE * mul * (0.85 + 0.3 * rand()));
+  const dmg = factionDamage(e.type, Math.round(THRALL_PUNCH_DAMAGE * mul * (0.85 + 0.3 * rand())));
   let kind: ImpactKind = "hit";
   if (dmg > 0) {
     takeDamage(target, dmg, state.tick);
@@ -87,7 +88,7 @@ export function detonateThrall(state: MatchState, e: Entity): void {
     if (dist > radius) continue;
     const heavy = o.kind === "unit" && catalog(o.type).armorFront > PTRD_LIGHT_FRONT;
     const raw = (heavy ? THRALL_BLAST_HEAVY : THRALL_BLAST_SOFT) * mortarFalloff(dist, radius);
-    takeDamage(o, Math.max(1, Math.round(raw)), state.tick);
+    takeDamage(o, factionDamage(e.type, Math.max(1, Math.round(raw))), state.tick);
   }
   state.impacts.push({
     id: state.nextId++,

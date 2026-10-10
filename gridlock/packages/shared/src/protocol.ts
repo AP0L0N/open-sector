@@ -19,7 +19,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 132;
+export const PROTOCOL_VERSION = 133;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -155,6 +155,10 @@ export interface EntityView {
   lungeCharge?: number;
   /** Behemoth landing laser sweeps: green, not the Commander's red. */
   greenLaser?: true;
+  /** Juggernaut running at what it is going for. */
+  sprint?: true;
+  /** Juggernaut has thrown its hammer and fights with its fists. */
+  fists?: true;
   /** Stalker digging in, under the ground (own side only), or rising. */
   burrow?: "digging" | "down" | "rising";
   /** Sim Unit II inside a hostile garrison, own side only: the host and the share of the purge done, 0–1. */
@@ -527,6 +531,8 @@ export interface ProjectileView {
   flame?: boolean;
   /** A Flak 37 shell climbing to its fuse point. `z` is its height. */
   flak?: boolean;
+  /** The Juggernaut's thrown hammer, tumbling on its arc. `z` is its height. */
+  hammer?: true;
 }
 
 export type ImpactKind = "miss" | "puff" | "crush" | "ricochet" | "glance" | "hit" | "pen" | "kill";
@@ -600,6 +606,8 @@ export interface ImpactView {
   bite?: true;
   /** An Overseer's pulse burned straight down onto this spot from `fromId` hanging above it. */
   downLaser?: true;
+  /** A Juggernaut blow landed here: the hammer swung, a fist, or the thrown hammer coming down. */
+  hammer?: "swing" | "fist" | "throw";
 }
 
 /**
