@@ -85,6 +85,7 @@ describe("hive energy", () => {
 
   it("counts down from the full store: base structures, units, and defences each take their share", () => {
     const state = field();
+    at(state, "fusionnode", 40, 40);
     at(state, "forge", 30, 30);
     at(state, "conversion", 34, 30);
     at(state, "lancer", 20, 20);
@@ -93,14 +94,14 @@ describe("hive energy", () => {
     assert.equal(energyOf("hivecore"), 0);
     assert.equal(energyOf("fusionnode"), 0);
     ticks(state, 1);
-    assert.deepEqual(snapshotFor(state, "B").you.energy, { cap: 200, used: want, offline: 0 });
+    assert.deepEqual(snapshotFor(state, "B").you.energy, { cap: 700, used: want, offline: 0 });
   });
 
   it("never refuses or waits on energy: it builds and trains below zero, and pays no scrap", () => {
     const state = field();
     at(state, "conversion", 30, 30);
     const scrap = state.players.get("B")!.scrap;
-    // 160 left after the Chamber: five Lancers (50 each) take the hive below zero, and all five come out.
+    // 60 left after the Chamber: five Lancers (50 each) take the hive below zero, and all five come out.
     for (let i = 0; i < 5; i++) assert.equal(applyCommand(state, "B", { type: "cmd.train", unit: "lancer" }).ok, true);
     ticks(state, 8 * Math.ceil(catalog("lancer").buildSeconds / TICK_DT));
     const lancers = [...state.entities.values()].filter((e) => e.type === "lancer" && e.ownerId === "B");
@@ -115,7 +116,7 @@ describe("hive energy", () => {
     assert.equal(hiveSpeed(200, 400), 0.5);
     assert.equal(hiveSpeed(200, 100_000), LOW_POWER_MIN_SPEED);
     const state = field();
-    // Base structures never go offline: a Nexus and an Aerie keep the hive at -20.
+    // Base structures never go offline: a Nexus and an Aerie keep the hive at -570.
     at(state, "nexus", 30, 30);
     at(state, "aerie", 40, 30);
     ticks(state, 20);
