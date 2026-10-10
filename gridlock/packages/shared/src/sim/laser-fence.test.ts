@@ -105,6 +105,16 @@ describe("Laser Fence", () => {
     assert.ok(tank.hp <= hp * 0.5, `${tank.hp} of ${hp}`);
   });
 
+  it("marks a unit while a beam burns it, so the client can crackle arcs over it", () => {
+    const state = field();
+    fence(state);
+    const man = still(at(state, "jagdtiger", "A", 22, 30));
+    const own = still(at(state, "stalker", "B", 22, 31));
+    ticks(state, 2);
+    assert.ok(man.fenceZapTick != null && state.tick - man.fenceZapTick <= 1, `zap at ${man.fenceZapTick}, tick ${state.tick}`);
+    assert.equal(own.fenceZapTick, undefined);
+  });
+
   it("lets the hive's own units through unharmed", () => {
     const state = field();
     fence(state);

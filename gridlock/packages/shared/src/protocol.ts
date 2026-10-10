@@ -19,7 +19,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 145;
+export const PROTOCOL_VERSION = 147;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -208,6 +208,8 @@ export interface EntityView {
   vault?: true;
   /** Walker arms that fired during the last step. `off` is the second arm's bearing when it took another target. */
   gatling?: { arms: 1 | 2; off?: number };
+  /** A Laser Fence beam burned this unit during the last step: the client crackles arcs over it. */
+  fenceZap?: true;
   /** Apocalypse roof mount: its world facing, and `fire` when it shot during the last step. */
   ciws?: { facing: number; fire?: true };
   /**

@@ -151,7 +151,7 @@ import { hideScout } from "./scout.js";
 import { canSeeEntity } from "./vision.js";
 import { blastWrecks, toWreck } from "./wreck.js";
 import { blastClutter } from "./clutter.js";
-import { catchLanding, domeOver, domeShelters, soakShield } from "./energy-shield.js";
+import { catchLanding, domeOver, domeShelters, soakEnergyStrike } from "./energy-shield.js";
 import type { AirState, Entity, MatchState, Order, Projectile } from "./types.js";
 
 /** Runway heading of an unturned Airfield, world radians: the strip runs east–west. A turned one adds its facing. */
@@ -2137,7 +2137,7 @@ function firePulse(state: MatchState, e: Entity, x: number, y: number, target: E
   let killed = false;
   const dome = domeOver(state, e.ownerId, x, y);
   if (dome) {
-    soakShield(state, dome, base);
+    soakEnergyStrike(state, dome, base);
     target = undefined;
   }
   const soaked = new Set<number>(dome ? [dome.id] : []);

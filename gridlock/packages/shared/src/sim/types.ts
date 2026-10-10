@@ -347,6 +347,8 @@ export interface Entity {
    * then discarded with the entity. Not sent on a living unit.
    */
   fireDeath?: true;
+  /** Last tick a Laser Fence beam burned this unit (sim/laser-fence.ts). */
+  fenceZapTick?: number;
   state: EntityState;
   tileX: number;
   tileY: number;
@@ -599,7 +601,8 @@ export interface Entity {
   blinkReady?: number;
   /**
    * Plasma cannon: shots of energy left in its cell (sim/hive-ammo.ts), fractional while it regrows.
-   * Siphon: the energy kept while its dome is lowered without being drained. Unset means full.
+   * Siphon: the energy kept while its dome is lowered without being drained.
+   * Assembler: Thralls it has left to build (sim/assembler.ts). Unset means full.
    */
   energy?: number;
   /** Its cell ran dry: it holds fire until the cell regrows PLASMA_RESUME_SHARE (sim/hive-ammo.ts). */
@@ -621,10 +624,10 @@ export interface Entity {
   cloaked?: true;
   /** Weaver (sim/weaver.ts): the tick of its next mend pulse. */
   mendNext?: number;
-  /** Broodmother (sim/brood.ts): the tick the next Thrall leaves the sac. */
-  broodNext?: number;
-  /** A Thrall born of a Broodmother: her id. */
-  broodOf?: number;
+  /** Assembler (sim/assembler.ts): the tick the Thrall in its bay is finished. */
+  assemblyDone?: number;
+  /** A Thrall an Assembler built: its id. */
+  assembledBy?: number;
   /** Juggernaut has thrown its hammer: it fights with its fists from now on. */
   fists?: true;
   /** Stalker under the ground or on its way (sim/burrow.ts). Down, no enemy sees it. */
@@ -876,6 +879,8 @@ export interface EnergyShield {
   life: number;
   /** Tick a round last struck it. */
   hitTick?: number;
+  /** A pulse or laser has struck it: the one such hit it always lives through is spent. */
+  energyStruck?: true;
   /** A Siphon's or Hive Ark's dome: stops only what comes in from outside, and follows its unit. */
   dome?: true;
 }

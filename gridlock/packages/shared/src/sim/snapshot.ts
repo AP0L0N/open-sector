@@ -54,6 +54,7 @@ import { bridgeOrderSpan } from "./bridge.js";
 import { artilleryCanLay, gunCrewOf } from "./artillery.js";
 import { crateViews, mineViews, payloadOf, planeRiders } from "./airdrop.js";
 import { cyborgShielded } from "./crits.js";
+import { assemblerCharge } from "./assembler.js";
 import { domeCharge } from "./energy-shield.js";
 import { plasmaCharge } from "./hive-ammo.js";
 import { hiveEnergyOf } from "./hive-energy.js";
@@ -550,7 +551,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
             }
           : undefined,
       ammo: friendly && Object.keys(e.ammo).length > 0 ? { ...e.ammo } : undefined,
-      energy: friendly ? (plasmaCharge(e) ?? domeCharge(state, e)) : undefined,
+      energy: friendly ? (plasmaCharge(e) ?? domeCharge(state, e) ?? assemblerCharge(e)) : undefined,
       shell: friendly && e.shell ? e.shell : undefined,
       mgAmmo: friendly && hasMg(e.type) ? e.mgAmmo : undefined,
       mgHeat: friendly && (hasMg(e.type) || !!gatlingHeatOf(e.type)) ? e.mgHeat : undefined,
@@ -566,6 +567,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       stagger: e.staggered,
       vault: vaultsWalls(e.type) && !e.wreck && e.garrisonedIn == null && onFortTop(state, e) ? true : undefined,
       gatling: gatlingView(state, e),
+      fenceZap: !e.wreck && e.fenceZapTick != null && state.tick - e.fenceZapTick < Math.max(1, clampGameSpeed(state.gameSpeed)) ? true : undefined,
       ciws: ciwsView(state, e),
       mounts: twinCiwsView(state, e, friendly),
       ship: shipView(state, e, friendly),

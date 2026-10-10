@@ -1,6 +1,7 @@
 import { energyDomeOf, energyShieldOf, secondsToTicks, type EnergyDomeDef } from "../catalog.js";
 import { weaponRangeWorld } from "./elevation.js";
 import { allies, worldToTile } from "./geo.js";
+import { energyRound } from "./remains.js";
 import type { Entity, EnergyShield, MatchState, Projectile } from "./types.js";
 
 /**
@@ -14,6 +15,10 @@ import type { Entity, EnergyShield, MatchState, Projectile } from "./types.js";
  * walks, up whenever the Siphon can hold it. The dome stops what comes in from
  * outside, rounds dropping from above and blasts and blows too, and its points
  * are the Siphon's energy. Drained, it is gone until the energy fills back up.
+ *
+ * Pulses and lasers (another hive's bolts, a Cyborg's beam) glance off: a bolt fired flat
+ * turns back off the face, live, and a beam stops there. Either still costs the shield, but
+ * the first one it takes never breaks it.
  */
 
 /** Where a line first meets an enemy wall: `t` along it, 0–1. */
@@ -107,9 +112,65 @@ export function soakShield(state: MatchState, s: EnergyShield, damage: number): 
   s.hitTick = state.tick;
 }
 
+/**
+ * A pulse or a laser meets the wall or dome: it loses `damage` off its points, but the first
+ * such hit never breaks it, however hard. It stands on what it had, at most one point.
+ */
+export function soakEnergyStrike(state: MatchState, s: EnergyShield, damage: number): void {
+  const before = s.hp;
+  soakShield(state, s, damage);
+  if (s.hp <= 0 && before > 0 && !s.energyStruck) s.hp = Math.min(before, 1);
+  s.energyStruck = true;
+}
+
 /** A round stops on the wall: the wall loses the round's damage and the round is spent. */
 export function absorbRound(state: MatchState, p: Projectile, hit: ShieldHit): void {
-  soakShield(state, hit.s, p.damage);
+  if (energyRound(state, p.ownerId)) soakEnergyStrike(state, hit.s, p.damage);
+  else soakShield(state, hit.s, p.damage);
+  state.impacts.push({
+    id: state.nextId++,
+    ownerId: p.ownerId,
+    kind: "ricochet",
+    fromId: p.fromId,
+    x: hit.x,
+    y: hit.y,
+    vx: p.vx,
+    vy: p.vy,
+    caliber: p.caliber,
+  });
+}
+
+/**
+ * A pulse bolt fired flat into an enemy wall or dome: the shield pays for it, and the bolt
+ * turns back off its face, mirrored about the arc where it struck, still live and with its
+ * full sting. It flies far enough to reach back to the one who fired it.
+ */
+export function reflectRound(state: MatchState, p: Projectile, hit: ShieldHit): void {
+  const s = hit.s;
+  soakEnergyStrike(state, s, p.damage);
+  let nx = hit.x - s.x;
+  let ny = hit.y - s.y;
+  const nl = Math.hypot(nx, ny) || 1;
+  nx /= nl;
+  ny /= nl;
+  // The face the bolt came at.
+  if (p.vx * nx + p.vy * ny > 0) {
+    nx = -nx;
+    ny = -ny;
+  }
+  const dot = p.vx * nx + p.vy * ny;
+  p.vx -= 2 * dot * nx;
+  p.vy -= 2 * dot * ny;
+  p.vz = 0;
+  const sp = Math.hypot(p.vx, p.vy) || 1;
+  p.x = hit.x + (p.vx / sp) * 3;
+  p.y = hit.y + (p.vy / sp) * 3;
+  // The wall's own unit stands behind it; the shooter is fair game now.
+  p.ignoreId = s.fromId;
+  const from = state.entities.get(p.fromId);
+  const back = from ? Math.hypot(from.x - hit.x, from.y - hit.y) : 0;
+  p.life = Math.max(p.life, (back + state.tileSize * 2) / sp);
+  s.hitTick = state.tick;
   state.impacts.push({
     id: state.nextId++,
     ownerId: p.ownerId,

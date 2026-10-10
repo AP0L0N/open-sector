@@ -228,7 +228,7 @@ import {
   weaponRangeWorld,
   worldTileHeight,
 } from "./elevation.js";
-import { absorbRound, catchLanding, domeShelters, overheadSweep, shieldSweep } from "./energy-shield.js";
+import { absorbRound, catchLanding, domeShelters, overheadSweep, reflectRound, shieldSweep } from "./energy-shield.js";
 import { drawPlasma, plasmaShots } from "./hive-ammo.js";
 import {
   ownerless,
@@ -3614,7 +3614,11 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     const guard =
       p.torpedo || p.aloft ? null : p.fromAbove ? overheadSweep(state, p.ownerId, x0, y0, p.x, p.y) : shieldSweep(state, p.ownerId, x0, y0, p.x, p.y);
     if (guard && (!struck || guard.t <= struck.t) && (!blocker || guard.t <= blocker.t)) {
-      absorbRound(state, p, guard);
+      // A pulse bolt fired flat turns back off the face. Anything else, or from overhead, stops there.
+      if (!p.fromAbove && !p.plunging && !p.flight && energyRound(state, p.ownerId)) {
+        reflectRound(state, p, guard);
+        keep.push(p);
+      } else absorbRound(state, p, guard);
       continue;
     }
     if (blocker && (!struck || blocker.t <= struck.t)) {
