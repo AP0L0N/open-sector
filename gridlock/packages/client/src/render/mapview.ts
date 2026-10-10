@@ -9191,7 +9191,7 @@ export class MapView {
     const now = performance.now();
     const blend = Math.min(1, (now - this.snapAt) / 100);
     const live = new Set<number>();
-    const heads: { x: number; y: number; dx: number; dy: number; id: number; heavy: boolean; energy: boolean; caliber: number }[] = [];
+    const heads: { x: number; y: number; dx: number; dy: number; id: number; heavy: boolean; energy: boolean; caliber: number; from?: string }[] = [];
     for (const p of this.curr.projectiles) {
       if (!p.rocket) continue;
       live.add(p.id);
@@ -9218,6 +9218,7 @@ export class MapView {
         heavy: !!p.heavy,
         energy: !!p.energy,
         caliber: p.caliber,
+        from: this.currById.get(p.fromId)?.type,
       });
     }
     for (const id of [...this.rocketLast.keys()]) {
@@ -9247,7 +9248,7 @@ export class MapView {
     ctx.restore();
     this.rocketPuffs = keep;
     for (const h of heads) {
-      if (h.energy) drawPlasmaOrb(ctx, h.x, h.y, h.dx, h.dy, h.heavy, plasmaOrbScale(h.caliber));
+      if (h.energy) drawPlasmaOrb(ctx, h.x, h.y, h.dx, h.dy, h.heavy, plasmaOrbScale(h.caliber, h.from));
       else drawRocketHead(ctx, h.x, h.y, h.dx, h.dy, h.id, h.heavy);
     }
   }

@@ -122,6 +122,14 @@ import {
   HIVE_SCOURGE_STANDOFF_TILES,
   HIVE_WASP_STANDOFF_TILES,
   HIVE_BOMB_ENERGY,
+  HIVE_FLIT_ACCEL,
+  HIVE_FLIT_BRAKE,
+  HIVE_FLIT_FULL_DEG,
+  HIVE_FLIT_MIN_SPEED,
+  HIVE_FLIT_SLOW_TURN_MUL,
+  SCOURGE_BOLT_ARC_DEG,
+  SCOURGE_BOLT_RACK,
+  SCOURGE_BOLT_TILES,
   SMALL_ARMS_SPEED,
   WASP_BOLT,
   WASP_BURST_ARC_DEG,
@@ -1788,7 +1796,7 @@ function tickHover(state: MatchState, e: Entity, dt: number): void {
   const o = e.order;
   if (strike && !isHoverType(e.type)) {
     if (isReconType(e.type)) {
-      hoverTo(state, e, strike.x, strike.y, dt);
+      flitTo(state, e, strike.x, strike.y, dt);
       hoverAlt(a, airCruiseAltOf(e.type), dt);
     } else if (isFighterType(e.type)) {
       waspStation(state, e, strike, dt);
@@ -1810,7 +1818,13 @@ function tickHover(state: MatchState, e: Entity, dt: number): void {
     return;
   }
   hoverAlt(a, airCruiseAltOf(e.type), dt);
+  // A Hive flier flies along its nose and comes round on a point (flitTo); the Overseer slides.
+  const travel = staysAloft(e.type) ? flitTo : hoverTo;
   if (!o) {
+    if (staysAloft(e.type) && a.speed > 0) {
+      flitStep(state, e, 0, e.facing, dt);
+      return;
+    }
     a.speed = 0;
     e.state = "idle";
     return;
@@ -1819,7 +1833,7 @@ function tickHover(state: MatchState, e: Entity, dt: number): void {
     const loop = o.loop === true;
     const leg = patrolLegIndex(o.route.length, o.leg, loop);
     const dest = o.route[leg] ?? o.route[o.route.length - 1]!;
-    if (hoverTo(state, e, dest.x, dest.y, dt)) {
+    if (travel(state, e, dest.x, dest.y, dt)) {
       const stepped = stepPatrolLeg(o.route, leg, o.dir === -1 ? -1 : 1, loop);
       o.leg = stepped.leg;
       o.dir = stepped.dir;
@@ -1831,7 +1845,7 @@ function tickHover(state: MatchState, e: Entity, dt: number): void {
     return;
   }
   // A move ends on the spot: it hangs there. A guard or an attack-move holds the point.
-  if (hoverTo(state, e, o.x, o.y, dt) && o.kind === "move") {
+  if (travel(state, e, o.x, o.y, dt) && o.kind === "move") {
     e.order = null;
     e.state = "idle";
   }
@@ -1910,20 +1924,24 @@ function reconWatch(state: MatchState, e: Entity): HoverStrike | null {
 }
 
 /**
- * Hang `standoff` off (tx, ty), turned on it: fly in (or back off) along the line from it to the
- * flier, then hold. Returns the distance to it and how far it is off the nose.
+ * Hang `standoff` off (tx, ty), turned on it: fly in nose first along the line from it to the
+ * flier (flitTo), or back off facing it, then brake to a hold and turn on it. Returns the distance
+ * to it and how far it is off the nose.
  */
 function holdOff(state: MatchState, e: Entity, tx: number, ty: number, standoff: number, dt: number): { d: number; off: number } {
   const a = e.air!;
   const dx = e.x - tx;
   const dy = e.y - ty;
   const d = Math.hypot(dx, dy);
-  if (d > standoff * 1.15 || d < standoff * 0.6) {
-    const back = d > 1e-3 ? Math.atan2(dy, dx) : e.facing + Math.PI;
+  const back = d > 1e-3 ? Math.atan2(dy, dx) : e.facing + Math.PI;
+  if (d > standoff * 1.15) {
+    flitTo(state, e, tx + Math.cos(back) * standoff, ty + Math.sin(back) * standoff, dt);
+  } else if (d < standoff * 0.6) {
+    // Too close: it backs off still facing the target, the one move it makes off its nose.
     hoverTo(state, e, tx + Math.cos(back) * standoff, ty + Math.sin(back) * standoff, dt, tx, ty);
-  } else {
     a.speed = 0;
-    headTo(e, Math.atan2(ty - e.y, tx - e.x), dt);
+  } else {
+    flitStep(state, e, 0, Math.atan2(ty - e.y, tx - e.x), dt);
   }
   const nd = Math.hypot(tx - e.x, ty - e.y);
   return { d: nd, off: Math.abs(angOff(Math.atan2(ty - e.y, tx - e.x), e.facing)) };
@@ -2008,18 +2026,25 @@ function fireWaspBurst(state: MatchState, e: Entity, tx: number, ty: number, tar
 }
 
 /**
- * A Scourge on station: hang HIVE_SCOURGE_STANDOFF_TILES off the target, lob a bomb onto it every
- * HIVE_BOMB_SECONDS, and rake a soft target with the pulse guns in short bursts.
+ * A Scourge on station: hang HIVE_SCOURGE_STANDOFF_TILES off the target at cruise height (it never
+ * sinks to fire), throw a big plasma bolt down onto it every HIVE_BOMB_SECONDS, and rake a soft
+ * target with the pulse guns in short bursts.
  */
 function scourgeStation(state: MatchState, e: Entity, strike: HoverStrike, dt: number): void {
   const a = e.air!;
   const ts = state.tileSize;
   const t = strike.target;
   const { d, off } = holdOff(state, e, strike.x, strike.y, HIVE_SCOURGE_STANDOFF_TILES * ts, dt);
-  hoverAlt(a, AIR_STRAFE_ALT, dt);
-  // Bomb and guns draw on one cell: a bomb takes HIVE_BOMB_ENERGY, a gun burst one, and the guns leave a bomb in it.
-  if (a.bombs > 0 && a.rearm <= 0 && plasmaShots(e) >= HIVE_BOMB_ENERGY && d <= BOMB_RELEASE_TILES * ts && !(t && isAirborne(t))) {
-    dropBomb(state, e, strike.x, strike.y, strike.forced);
+  hoverAlt(a, airCruiseAltOf(e.type), dt);
+  // Bolt and guns draw on one cell: a bolt takes HIVE_BOMB_ENERGY, a gun burst one, and the guns leave a bolt in it.
+  if (
+    a.rearm <= 0 &&
+    plasmaShots(e) >= HIVE_BOMB_ENERGY &&
+    d <= SCOURGE_BOLT_TILES * ts &&
+    off <= (SCOURGE_BOLT_ARC_DEG * Math.PI) / 180 &&
+    !(t && isAirborne(t))
+  ) {
+    fireScourgeBolt(state, e, strike.x, strike.y, t, strike.forced);
     drawPlasma(e, HIVE_BOMB_ENERGY);
     a.rearm = HIVE_BOMB_SECONDS;
     if (e.order?.once) e.order = null;
@@ -2029,6 +2054,92 @@ function scourgeStation(state: MatchState, e: Entity, strike: HoverStrike, dt: n
     drawPlasma(e);
     e.cooldown = HIVE_GUN_BURST_SECONDS;
   }
+}
+
+/**
+ * One Scourge plasma bolt: a big orb from the pod, straight down the line from the flier's height
+ * onto (tx, ty), landing within the rack's scatter of it. It flies and bursts as a rocket
+ * (launcher "scourge" sets its splash), meeting the first hull or wall in its path.
+ */
+function fireScourgeBolt(state: MatchState, e: Entity, tx: number, ty: number, target: Entity | undefined, forced: boolean): void {
+  const rack = SCOURGE_BOLT_RACK;
+  const ts = state.tileSize;
+  const x = e.x + Math.cos(e.facing) * (e.radius + 2);
+  const y = e.y + Math.sin(e.facing) * (e.radius + 2);
+  const dist = Math.hypot(tx - x, ty - y);
+  const moving = !!target && (target.waypoints.length > 0 || target.state === "move");
+  const u = Math.min(1, dist / Math.max(1, SCOURGE_BOLT_TILES * ts));
+  const radius = (rack.scatterNearTiles + (rack.scatterFarTiles - rack.scatterNearTiles) * u) * ts * (moving ? 1.15 : 1);
+  const r = radius * Math.sqrt(nextRand(state));
+  const ang = nextRand(state) * Math.PI * 2;
+  const lx = Math.max(0, Math.min(state.width * ts - 1, tx + Math.cos(ang) * r));
+  const ly = Math.max(0, Math.min(state.height * ts - 1, ty + Math.sin(ang) * r));
+  const z0 = worldTileHeight(state, e.x, e.y) + e.air!.alt;
+  const zLand = worldTileHeight(state, lx, ly);
+  const run = Math.max(1, Math.hypot(lx - x, ly - y));
+  const flight = run / rack.speed;
+  const id = state.nextId++;
+  state.launches.push({ id, fromId: e.id, x, y, z: z0, vx: (lx - x) / flight, vy: (ly - y) / flight });
+  state.projectiles.push({
+    id,
+    ownerId: e.ownerId,
+    team: playerTeam(state, e.ownerId),
+    x,
+    y,
+    vx: (lx - x) / flight,
+    vy: (ly - y) / flight,
+    damage: factionDamage(e.type, rack.damage),
+    penetration: rack.penetration,
+    caliber: rack.caliber,
+    life: flight,
+    ignoreId: e.id,
+    fromId: e.id,
+    bounced: false,
+    shell: null,
+    flight: "rocket",
+    landX: lx,
+    landY: ly,
+    flightTime: flight,
+    harmAllies: forced || undefined,
+    z: z0,
+    vz: (zLand - z0) / flight,
+    launcher: e.type,
+  });
+}
+
+/**
+ * Fly a Hive flier toward a point the way a dragonfly does: along its nose, braking and whipping
+ * round when the point is off to the side or behind, darting once it is ahead, easing in over the
+ * last two cells, and settling onto the spot over the last half cell. True once it is there.
+ */
+function flitTo(state: MatchState, e: Entity, x: number, y: number, dt: number): boolean {
+  const ts = state.tileSize;
+  const d = Math.hypot(x - e.x, y - e.y);
+  // Over the last half cell it settles straight onto the spot, as a hovering insect does.
+  if (d <= ts * 0.5) return hoverTo(state, e, x, y, dt);
+  const bearing = Math.atan2(y - e.y, x - e.x);
+  const off = Math.abs(angOff(bearing, e.facing));
+  const full = (HIVE_FLIT_FULL_DEG * Math.PI) / 180;
+  const aim = Math.max(HIVE_FLIT_MIN_SPEED, Math.min(1, 1 - (off - full) / (Math.PI / 2)));
+  const ease = Math.max(0.15, Math.min(1, d / (2 * ts)));
+  flitStep(state, e, Math.min(aim, ease), bearing, dt);
+  return false;
+}
+
+/**
+ * One tick of a Hive flier's flight: bring its speed toward `want` (a share of cruise), turn the
+ * nose toward `bearing` the sharper the slower it goes, and move along the nose.
+ */
+function flitStep(state: MatchState, e: Entity, want: number, bearing: number, dt: number): void {
+  const a = e.air!;
+  const ts = state.tileSize;
+  a.speed = a.speed < want ? Math.min(want, a.speed + HIVE_FLIT_ACCEL * dt) : Math.max(want, a.speed - HIVE_FLIT_BRAKE * dt);
+  headTo(e, bearing, dt, 1 + (HIVE_FLIT_SLOW_TURN_MUL - 1) * (1 - Math.min(1, a.speed)));
+  const step = cruiseSpeed(state, e) * a.speed * dt;
+  e.x = Math.max(1, Math.min(state.width * ts - 1, e.x + Math.cos(e.facing) * step));
+  e.y = Math.max(1, Math.min(state.height * ts - 1, e.y + Math.sin(e.facing) * step));
+  e.tileX = worldToTile(e.x, ts);
+  e.tileY = worldToTile(e.y, ts);
 }
 
 /** An enemy on the ground the pulse can burn: not a plane, not a wreck, not hidden aboard something. */
