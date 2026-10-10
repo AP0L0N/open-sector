@@ -18,6 +18,8 @@ import {
   TICK_DT,
   TRAIN_TYPES,
   catalog,
+  DEPLOYMENT_LEASH_TILES,
+  HIVE_DROP_SECONDS,
   factionOf,
   isHq,
   isHqBuilding,
@@ -136,7 +138,7 @@ describe("factions in the catalog", () => {
   });
 
   it("names the Xenomorph base and keeps its roles beside the Alliance's", () => {
-    assert.equal(catalog("seed").name, "Seed");
+    assert.equal(catalog("seed").name, "Deployment");
     assert.equal(catalog("hivecore").name, "Hive Core");
     assert.equal(catalog("fusionnode").name, "Fusion Node");
     assert.equal(catalog("assimilator").name, "Assimilator");
@@ -150,7 +152,7 @@ describe("factions in the catalog", () => {
 });
 
 describe("a Xenomorph seat", () => {
-  it("starts with a Seed and sees its faction in the snapshot", () => {
+  it("starts with a Deployment and sees its faction in the snapshot", () => {
     const state = match();
     assert.equal(hqOf(state, "A")!.type, "rig");
     assert.equal(hqOf(state, "B")!.type, "seed");
@@ -160,16 +162,45 @@ describe("a Xenomorph seat", () => {
     assert.equal(players.find((p) => p.playerId === "A")!.faction, "alliance");
   });
 
-  it("grows the Seed into a Hive Core and packs it back into a Seed", () => {
+  it("drops the Hive Core onto the Deployment, whole on landing, and never packs it again", () => {
     const state = match();
-    unpack(state, "B");
+    const seed = hqOf(state, "B")!;
+    assert.equal(applyCommand(state, "B", { type: "cmd.deploy", id: seed.id }).ok, true);
+    const fall = secondsToTicks(HIVE_DROP_SECONDS);
+    for (let i = 0; i < fall - 2; i++) step(state, TICK_DT);
+    assert.equal(hqOf(state, "B")!.type, "seed", "still falling");
+    for (let i = 0; i < 4; i++) step(state, TICK_DT);
     const hive = hqOf(state, "B")!;
     assert.equal(hive.type, "hivecore");
+    assert.equal(hive.hp, catalog("hivecore").hp);
     assert.equal(hive.hpMax, catalog("hivecore").hp);
     for (let i = 0; i < 40; i++) step(state, TICK_DT);
-    assert.equal(applyCommand(state, "B", { type: "cmd.deploy", id: hive.id }).ok, true);
-    for (let i = 0; i < 200 && hqOf(state, "B")!.type !== "seed"; i++) step(state, TICK_DT);
-    assert.equal(hqOf(state, "B")!.type, "seed");
+    const pack = applyCommand(state, "B", { type: "cmd.deploy", id: hive.id });
+    assert.equal(pack.ok, false);
+    for (let i = 0; i < 200; i++) step(state, TICK_DT);
+    assert.equal(hqOf(state, "B")!.type, "hivecore");
+  });
+
+  it("creeps the Deployment only inside its leash round the drop zone", () => {
+    const state = match();
+    const seed = hqOf(state, "B")!;
+    const home = { ...seed.anchor! };
+    assert.deepEqual(home, { x: seed.x, y: seed.y });
+    const leash = DEPLOYMENT_LEASH_TILES * state.tileSize;
+    const far = { x: state.width * state.tileSize - home.x, y: state.height * state.tileSize - home.y };
+    assert.ok(Math.hypot(far.x - home.x, far.y - home.y) > leash * 1.5);
+    assert.equal(applyCommand(state, "B", { type: "cmd.move", ids: [seed.id], x: far.x, y: far.y }).ok, true);
+    const order = seed.order;
+    assert.equal(order?.kind, "move");
+    const gx = order?.kind === "move" ? (order.x ?? NaN) : NaN;
+    const gy = order?.kind === "move" ? (order.y ?? NaN) : NaN;
+    assert.ok(Math.hypot(gx - home.x, gy - home.y) <= leash + 1);
+    seed.x = far.x;
+    seed.y = far.y;
+    step(state, TICK_DT);
+    assert.ok(Math.hypot(seed.x - home.x, seed.y - home.y) <= leash + 1);
+    assert.deepEqual(snapshotFor(state, "B").entities.find((e) => e.id === seed.id)!.anchor, home);
+    assert.equal(snapshotFor(state, "A").entities.find((e) => e.id === seed.id)?.anchor, undefined);
   });
 
   it("is out when its Hive Core falls", () => {
