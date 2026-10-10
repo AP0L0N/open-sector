@@ -3536,7 +3536,7 @@ export const DRONE_LEASH_TILES = t(14);
  * HIVE_DROP_SECONDS and is whole the moment it lands. A Hive Core never packs.
  */
 export const DEPLOYMENT_LEASH_TILES = DRONE_LEASH_TILES;
-export const HIVE_DROP_SECONDS = 2.4;
+export const HIVE_DROP_SECONDS = 1.8;
 /** Seconds aloft on a full battery. */
 export const DRONE_BATTERY_SECONDS = 70;
 /** Turn back once the charge holds only this many seconds past the flight home. */

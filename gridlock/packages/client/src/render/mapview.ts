@@ -320,7 +320,7 @@ import { drawTorpedoBody } from "./torpedo-draw.js";
 import { drawRadarContact, drawRadarOffline, radarContactLit } from "./radar-panel.js";
 import { drawSonarContact, drawWaterMine } from "./sonar-fx.js";
 import { drawHeatContact, drawScanContact } from "./thermal-fx.js";
-import { drawDeploymentGrid, drawHiveComet, drawHiveImpact, HIVE_IMPACT_MS } from "./hive-drop-fx.js";
+import { drawDeploymentGrid, drawHiveComet, drawHiveImpact, HIVE_IMPACT_MS, hiveShake } from "./hive-drop-fx.js";
 import {
   drawTrackKick,
   spawnTrackKickPuffs,
@@ -4548,7 +4548,13 @@ export class MapView {
     }
     this.syncCursor();
     this.poseFrame++;
+    // A Hive Core landing shakes the view for a moment.
+    const shake = this.hiveShakeNow();
+    this.camX += shake.x;
+    this.camY += shake.y;
     this.draw();
+    this.camX -= shake.x;
+    this.camY -= shake.y;
     this.drawMini();
     this.raf = requestAnimationFrame((nt) => this.frame(nt));
   }
@@ -4892,6 +4898,17 @@ export class MapView {
     this.drawSonarContacts();
     this.drawThermalContacts();
     this.drawHiveDrops();
+  }
+
+  /** The strongest shake of any Hive Core that just landed, iso px. */
+  private hiveShakeNow(): { x: number; y: number } {
+    const now = performance.now();
+    let best = { x: 0, y: 0 };
+    for (const h of this.hiveImpacts) {
+      const s = hiveShake(now - h.atMs, now);
+      if (Math.hypot(s.x, s.y) > Math.hypot(best.x, best.y)) best = s;
+    }
+    return best;
   }
 
   /** Real ms the Hive Core takes to fall at the current game speed. */
