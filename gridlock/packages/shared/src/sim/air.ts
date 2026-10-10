@@ -98,6 +98,7 @@ import {
   isAircraftType,
   isArmoredType,
   isDroneType,
+  isHiveArk,
   isFighterType,
   isGarrisonable,
   isInfantryType,
@@ -1536,6 +1537,9 @@ function crashHurt(state: MatchState, o: Entity): void {
     if (isGarrisonable(o.type) && livingGarrison(state, o).length > 0) woundGarrison(state, o, dmg, 120);
   } else if (isInfantryType(o.type) || isDroneType(o.type) || isJumpJetType(o.type) || isAircraftType(o.type)) {
     dmg = Math.max(AIR_CRASH_SOFT_DAMAGE, o.hpMax + 1);
+  } else if (isHiveArk(o.type)) {
+    // A plane falling on a Hive Ark meets a carrier's deck, not a tank's roof.
+    dmg = AIR_CRASH_HULL_MIN;
   } else {
     dmg = Math.max(AIR_CRASH_HULL_MIN, Math.round(o.hpMax * AIR_CRASH_HULL_SHARE));
     if (hasTracks(o.type) && trackCritAllowed(o.type)) addCrit(o, "tracks");
@@ -1594,7 +1598,8 @@ function crashSplash(state: MatchState, e: Entity): void {
   const struck = e.air?.struck ?? [];
   for (const o of state.entities.values()) {
     if (o.id === e.id || o.hp <= 0 || o.garrisonedIn != null || o.air?.phase === "crash") continue;
-    if (struck.includes(o.id)) continue;
+    // A Wasp off a Hive Ark falls clear of its own pods.
+    if (struck.includes(o.id) || o.id === e.arkOf) continue;
     let d: number;
     if (o.kind === "building") {
       const b = buildingBounds(o, state.tileSize);
@@ -1646,7 +1651,8 @@ function strikeWhileCrashing(state: MatchState, e: Entity): void {
   let stop = false;
   for (const o of state.entities.values()) {
     if (o.id === e.id || o.hp <= 0 || o.garrisonedIn != null || o.air?.phase === "crash") continue;
-    if (struck.includes(o.id)) continue;
+    // A Wasp off a Hive Ark falls clear of its own pods.
+    if (struck.includes(o.id) || o.id === e.arkOf) continue;
     if (!crashTouches(state, e, o) || !lowEnough(state, e, o)) continue;
     struck.push(o.id);
     crashHurt(state, o);

@@ -36,6 +36,10 @@
     "special": [
       "[shouting] Take the hammer!",
       "[roaring] Then with our hands!"
+    ],
+    "ram": [
+      "[roaring] Out of our way!",
+      "[shouting] Break through!"
     ]
   },
   "sfx": {
@@ -67,6 +71,18 @@
       "prompt": "A giant armored humanoid war machine breaking into a run: fast, enormous, heavy metal footsteps pounding the ground one after another, each a deep thud, hydraulic hiss and servo whine rising in pitch, close, outdoors, no music, no voice",
       "duration": 2.5,
       "variants": 1,
+      "influence": 0.65
+    },
+    "ram": {
+      "prompt": "A giant armored humanoid war machine charging at full speed: a burst of rapid, earth-shaking heavy metal footfalls accelerating, a roaring hydraulic surge and rushing wind, building to a ramming charge, close, outdoors, no music, no voice",
+      "duration": 1.6,
+      "variants": 2,
+      "influence": 0.65
+    },
+    "ram_hit": {
+      "prompt": "A giant armored war machine ramming into a tank at full speed: an enormous crunching metal-on-metal collision, armor plate buckling and tearing, a deep bass boom and a crackle of green energy, debris clattering down, close, outdoors, no music, no voice",
+      "duration": 2.0,
+      "variants": 3,
       "influence": 0.65
     },
     "move": {

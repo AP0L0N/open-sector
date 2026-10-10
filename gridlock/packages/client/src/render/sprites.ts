@@ -70,6 +70,10 @@ import juggernautSwingWadeUrl from "../assets/units/juggernaut-swing-wade.png";
 import juggernautFistsWadeUrl from "../assets/units/juggernaut-fists-wade.png";
 import juggernautPunchWadeUrl from "../assets/units/juggernaut-punch-wade.png";
 import juggernautThrowWadeUrl from "../assets/units/juggernaut-throw-wade.png";
+import juggernautRamUrl from "../assets/units/juggernaut-ram.png";
+import juggernautRamFistsUrl from "../assets/units/juggernaut-ram-fists.png";
+import juggernautRamhitUrl from "../assets/units/juggernaut-ramhit.png";
+import juggernautRamhitFistsUrl from "../assets/units/juggernaut-ramhit-fists.png";
 import ravagerLegsUrl from "../assets/units/ravager-legs.png";
 import ravagerTurretUrl from "../assets/units/ravager-turret.png";
 import ravagerGunUrl from "../assets/units/ravager-gun.png";
@@ -409,6 +413,7 @@ import {
   bindSupplySheets,
   bindNavalSheets,
   bindBattleshipSheets,
+  bindHiveArkSheets,
   bindApocalypseSheets,
   bindPlaneSheets,
   bindFlutterSheets,
@@ -419,6 +424,7 @@ import {
 } from "./turntable-sheet.js";
 import { engineRowFromFacing, engineRowFromScreen } from "./turntable.js";
 import { BATTLESHIP_MODEL, battleshipDrawSize } from "./battleship.js";
+import { HIVEARK_MODEL, hiveArkDrawSize } from "./hive-ark.js";
 import scoutHeadUrl from "../assets/units/scout-head.png";
 import rigSheetUrl from "../assets/units/rig-move.png";
 import seedSheetUrl from "../assets/units/seed-move.png";
@@ -1405,6 +1411,11 @@ export const JUGGERNAUT_SWING_WADE_SPRITE = juggernautSheet(juggernautSwingWadeU
 export const JUGGERNAUT_FISTS_WADE_SPRITE = juggernautSheet(juggernautFistsWadeUrl, 8);
 export const JUGGERNAUT_PUNCH_WADE_SPRITE = juggernautSheet(juggernautPunchWadeUrl, 8);
 export const JUGGERNAUT_THROW_WADE_SPRITE = juggernautSheet(juggernautThrowWadeUrl, 4);
+/** The ram: the charge strides by ground covered, the slam plays once. No wading twins: it never charges in water. */
+export const JUGGERNAUT_RAM_SPRITE = juggernautSheet(juggernautRamUrl, 8);
+export const JUGGERNAUT_RAM_FISTS_SPRITE = juggernautSheet(juggernautRamFistsUrl, 8);
+export const JUGGERNAUT_RAMHIT_SPRITE = juggernautSheet(juggernautRamhitUrl, 4);
+export const JUGGERNAUT_RAMHIT_FISTS_SPRITE = juggernautSheet(juggernautRamhitFistsUrl, 4);
 
 const ss3Gun: TurretSpriteDef = {
   image: new Image(),
@@ -1683,6 +1694,23 @@ export const LURKER_SPRITE: UnitSpriteDef = {
   facingSpace: "world",
 };
 bindNavalSheets("lurker", LURKER_SPRITE.image);
+
+/**
+ * Hive Ark hull, cut at the waterline over its wake. Both cannons and the docked Wasps are drawn
+ * over it by render/hive-ark.ts, each on its own pivot. Drawn at the sim's width, not UNIT_VISUAL_SCALE.
+ */
+export const HIVEARK_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: HIVEARK_MODEL.cell,
+  fps: 8,
+  drawSize: Math.round(hiveArkDrawSize(TILE_SIZE)),
+  contactY: HIVEARK_MODEL.cyFrac,
+  facingSpace: "world",
+};
+export const HIVEARK_CANNON: TurretSpriteDef = { image: new Image(), dirs: TANK_FACE_DIRS, frames: 1, frameSize: HIVEARK_MODEL.cell };
+bindHiveArkSheets({ hull: HIVEARK_SPRITE.image, cannon: HIVEARK_CANNON.image });
 
 /** Wing-stroke frames a second on the Xenomorph insects: a blur of a beat at play size. */
 export const WING_BEAT_FPS = 24;
@@ -2034,6 +2062,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   supplyboat: SUPPLYBOAT_SPRITE,
   submarine: SUBMARINE_SPRITE,
   lurker: LURKER_SPRITE,
+  hiveark: HIVEARK_SPRITE,
   battleship: BATTLESHIP_SPRITE,
   destroyer: DESTROYER_SPRITE,
   lst: LST_SPRITE,

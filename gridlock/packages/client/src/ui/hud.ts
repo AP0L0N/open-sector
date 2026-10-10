@@ -1044,6 +1044,8 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
         ? jetLine(e.jet)
         : e.type === "aswheli"
           ? "  ·  on the hunt"
+          : e.arkOf != null
+            ? "  ·  off its Hive Ark"
           : e.air
             ? airLine(e.air, e.type, e.energy)
             : "";
@@ -1052,9 +1054,11 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
     ? diveLine(e.dive, !!e.submerged)
     : e.asw
       ? aswLine(e.asw)
-      : neverSurfacesOf(e.type) && !e.wreck && e.ownerId === ctx.match.youPlayerId
-        ? `  ·  ${e.submerged ? "submerged" : "surfaced to bite"}`
-        : "";
+      : e.ark?.cannons[0]?.energy != null
+        ? arkLine(e.ark)
+        : neverSurfacesOf(e.type) && !e.wreck && e.ownerId === ctx.match.youPlayerId
+          ? `  ·  ${e.submerged ? "submerged" : "surfaced to bite"}`
+          : "";
   box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${field}${plates}${injuries}${posture}${mag}${rack}${rockets}${mg}${flight}${depth}  ·  ${who}${q}${cart}${smoke}${dep}${special}${garrison}${scout}${bed}${pads}${capturing}${holding}${selfDestroy}${tending}`;
   box.style.borderColor = occ ? colorHex(occ.colorId) : "#b08968";
 }
@@ -1107,6 +1111,18 @@ function aswLine(a: NonNullable<EntityView["asw"]>): string {
           ? `helicopter loading${a.rearm != null ? ` ${Math.ceil(a.rearm)}s` : ""}`
           : "helicopter ready";
   return `  ·  ${heli}  ·  mines ${a.mines}/${a.minesMax}`;
+}
+
+/** Your own Hive Ark: each cannon's cell, the dome, and the Wasps on the pods. */
+function arkLine(a: NonNullable<EntityView["ark"]>): string {
+  const cells = a.cannons
+    .map((c, i) => `${i === 0 ? "fore" : "aft"} cannon ${Math.round((c.energy ?? 0) * 100)}%${c.drained ? " recharging" : ""}`)
+    .join(", ");
+  const dome = a.domeDown != null ? `dome down ${a.domeDown}s` : "dome up";
+  const wasps = a.pods
+    .map((p) => (p.docked ? "docked" : p.regrow != null ? `regrowing ${p.regrow}s` : "up"))
+    .join(" / ");
+  return `  ·  ${cells}  ·  ${dome}  ·  Wasps ${wasps}`;
 }
 
 /** Mode, and for your own drone the battery and a recall. */
@@ -1351,6 +1367,7 @@ const TYPE_ORDER: EntityType[] = [
   "gunboat",
   "leech",
   "lurker",
+  "hiveark",
   "leviathan",
   "spineback",
   "abyssray",
@@ -2570,6 +2587,23 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
         : `The legs are recharging (${Math.round(charge * 100)}%).`,
       on: !!view?.blinkMode,
       disabled: !ready,
+      badge: ready ? undefined : `${Math.round(charge * 100)}%`,
+    });
+  }
+  // The Juggernaut rams by itself: the button only shows how far along the next one is.
+  const rammers = units.filter((e) => e.type === "juggernaut" && !e.wreck);
+  if (rammers.length > 0) {
+    const charge = Math.min(...rammers.map((e) => e.ramCharge ?? 1));
+    const ready = charge >= 1;
+    out.push({
+      slot: "ram",
+      act: "ram",
+      label: "Ram",
+      title: ready
+        ? "Ready. It rams by itself: it charges an enemy armored hull 3 to 10 cells off (or a building you order it to attack), running down everything of the enemy's in its path, and slams into it. Never a soldier."
+        : `Ram recharging (${Math.round(charge * 100)}%). It charges again by itself once it is back.`,
+      on: rammers.some((e) => e.ram),
+      disabled: true,
       badge: ready ? undefined : `${Math.round(charge * 100)}%`,
     });
   }

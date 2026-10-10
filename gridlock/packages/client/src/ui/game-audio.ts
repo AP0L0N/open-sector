@@ -25,8 +25,14 @@ const UNIT_VOICE_VOLUME = 0.95;
 const ANNOUNCE_VOLUME = 1.0;
 const UI_VOLUME = 0.5;
 
+/** Units that speak and fire with another's takes until they have their own. */
+const BORROWED_AUDIO: Partial<Record<string, string>> = {
+  // The Hive Ark: the Xenomorph sea voice and the Leech's plasma cannon.
+  hiveark: "leech",
+};
+
 function unitFolder(type: string): string {
-  return `units/${type}`;
+  return `units/${BORROWED_AUDIO[type] ?? type}`;
 }
 
 function pick(folder: string, cue: string): string | null {
@@ -47,7 +53,7 @@ let speakers: ReadonlySet<number> = new Set();
 /** One answer from a unit type. `special` falls back to `move` for units without one. Returns whether a line played. */
 export function unitVoice(
   type: string,
-  cue: UnitCue | "ready" | "load" | "shield_down" | "shield_up" | LinkVoice | SensorVoice,
+  cue: UnitCue | "ready" | "load" | "ram" | "shield_down" | "shield_up" | LinkVoice | SensorVoice,
   opts: { withSfx?: boolean; ids?: readonly number[] } = {},
 ): boolean {
   const folder = unitFolder(type);
@@ -286,7 +292,7 @@ export function playSoundEvents(events: readonly SoundEvent[], mixAt: (x: number
         const url = pick(unitFolder(ev.type), `sfx-${ev.cue}`);
         const mix = url ? mixAt(ev.x, ev.y) : null;
         // A hull crumpling under the Apocalypse and a Stuka's siren are heard over the fight around them; a Cyborg link cue sits between.
-        const loud = ev.cue === "crush" || ev.cue === "dive" || ev.cue === "lunge" || ev.cue === "detonate" || ev.cue === "smash" || ev.cue === "throw_land";
+        const loud = ev.cue === "crush" || ev.cue === "dive" || ev.cue === "lunge" || ev.cue === "detonate" || ev.cue === "smash" || ev.cue === "throw_land" || ev.cue === "ram_hit";
         const volume = loud ? 0.9 : ev.cue === "special" ? 0.6 : 0.75;
         if (url && mix) playSample(url, mix, { volume, maxVoices: 2, jitter: ev.cue === "special" ? undefined : 0.04 });
         break;

@@ -630,6 +630,13 @@ export interface Entity {
   assembledBy?: number;
   /** Juggernaut has thrown its hammer: it fights with its fists from now on. */
   fists?: true;
+  /**
+   * Juggernaut charging (sim/juggernaut.ts): what it rams, the tick it gives up, and the ids it
+   * has already run down on the way.
+   */
+  ram?: { targetId: number; until: number; hit: number[] };
+  /** Juggernaut: the tick it can ram again. Unset or past means ready. */
+  ramReady?: number;
   /** Stalker under the ground or on its way (sim/burrow.ts). Down, no enemy sees it. */
   burrow?: { phase: "digging" | "down" | "rising"; until: number };
   /** Sim Unit II inside a hostile garrison: the host, where he came from, and the tick he is done. */
@@ -669,6 +676,10 @@ export interface Entity {
   asw?: AswDeck;
   /** ASW helicopter only. */
   heli?: HeliState;
+  /** Hive Ark only: its cannons' cells and its Wasp pods (sim/hive-ark.ts). Its dome is an energy shield. */
+  ark?: ArkState;
+  /** A Wasp off a Hive Ark's pod: the Ark it flies from. It takes no orders from anyone. */
+  arkOf?: number;
   /** Paratrooper on the way down. No orders, no fire; small arms can reach him. */
   chute?: Chute;
   /** Jump Jet, and the Titan's leg jets. */
@@ -715,6 +726,34 @@ export interface TwinCiwsMount {
   overheat: number;
   /** Sim tick it last fired. */
   fireTick?: number;
+}
+
+/** One Hive Ark plasma cannon: its own traverse, reload, and energy cell. */
+export interface ArkCannon {
+  facing: number;
+  /** Balls in its cell, fractional while one regrows. */
+  energy: number;
+  /** Seconds until the next ball is charged. */
+  cooldown: number;
+  /** Its cell ran dry: it holds fire until the cell is full again. */
+  drained: boolean;
+  /** Sim tick it last fired. Missing until it first does. */
+  firedTick?: number;
+}
+
+/** One Hive Ark landing pod and the Wasp that lives on it. */
+export interface ArkPod {
+  /** The Wasp while it flies. Null while it sits on the pod, or is regrowing. */
+  waspId: number | null;
+  /** Seconds until a lost Wasp has regrown on the pod. 0 while it has one. */
+  regrow: number;
+}
+
+export interface ArkState {
+  cannons: ArkCannon[];
+  pods: ArkPod[];
+  /** Seconds since no enemy unit was in sight. The Wasps come home past ARK_WASP_CALM_SECONDS. */
+  calm: number;
 }
 
 export interface ShipState {
@@ -767,6 +806,8 @@ export interface Projectile {
   big?: boolean;
   /** A Battle Ship's shell: `big`, on the ship's low, fast arc (BATTLESHIP_SHELL). Its barrel: turret × 3 + gun. */
   shipBarrel?: number;
+  /** A Hive Ark's plasma ball (ARK_PLASMA_BALL), from cannon 0 (fore) or 1 (aft). */
+  arkCannon?: number;
   /**
    * Arcing mortar bomb, a bomb falling from a plane, or a Titan rocket (straight
    * and fast, bursts at its fused point or on whatever it meets first).
@@ -847,7 +888,7 @@ export interface EnergyShield {
   hitTick?: number;
   /** A pulse or laser has struck it: the one such hit it always lives through is spent. */
   energyStruck?: true;
-  /** A Siphon's dome: stops only what comes in from outside, and follows its unit. */
+  /** A Siphon's or Hive Ark's dome: stops only what comes in from outside, and follows its unit. */
   dome?: true;
 }
 
