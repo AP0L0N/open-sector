@@ -308,6 +308,7 @@ import {
   TROOPER_DIE_SPRITE,
   TROOPER_HANDGUN_SPRITE,
   TROOPER_RIFLE_FIRE_SPRITE,
+  buildingSpriteDestRect,
   unitHitsBuildingSprite,
   type BuildingSpriteDef,
   type UnitSpriteDef,
@@ -565,6 +566,7 @@ import {
   HOLE_DRAW_LAYER,
   STANDING_DRAW_LAYER,
 } from "./corpse-depth.js";
+import { FRIENDLY_XRAY_ALPHA, XrayLayer, xrayPairs, type XrayItem } from "./friendly-xray.js";
 import { CLUTTER_BREAK_MS, drawClutterSplinters } from "./clutter-fx.js";
 import { drawTreeFall, TREE_FALL_MS } from "./tree-fall.js";
 import { drawBurnedCorpse, drawBurningTree } from "./burn-draw.js";
@@ -1025,6 +1027,7 @@ export class MapView {
   /** Swapped for a scratch layer while a fogged building draws; see `drawVeiled`. */
   private ctx: CanvasRenderingContext2D;
   private readonly buildingVeil = new BuildingVeil();
+  private readonly xrayLayer = new XrayLayer();
   /** Wall-clock ms a foreign unit first appeared in a snapshot. */
   private unitSeenAt = new Map<number, number>();
   private readonly mctx: CanvasRenderingContext2D;
@@ -4778,6 +4781,7 @@ export class MapView {
     }
     items.sort(compareDrawOrder);
     for (const it of items) it.run();
+    this.drawFriendlyXray(drawList, liveIds, w, h, now);
     this.flushWorkBars();
     // Over the ground and everything on it; shots and blasts after stay bright in the dark.
     this.drawNight();
@@ -7466,6 +7470,68 @@ export class MapView {
       });
     }
     this.occBuildings = out;
+  }
+
+  /**
+   * Your own and allied units a structure paints over show through it: the
+   * covered part is drawn again over the structure, half transparent.
+   */
+  private drawFriendlyXray(drawList: readonly EntityView[], liveIds: ReadonlySet<number>, w: number, h: number, now: number): void {
+    const units: (XrayItem & { e: EntityView; fade: number })[] = [];
+    for (const e of drawList) {
+      if (e.kind !== "unit" || !liveIds.has(e.id) || e.wreck || e.hp <= 0 || e.garrisonedIn) continue;
+      if (!ownerAllied(this.curr, e.ownerId) || !this.unitNearView(e, w, h)) continue;
+      const fade = this.sightFade(e, now) * this.wreckFade(e, now);
+      if (fade <= 0) continue;
+      const def = this.spriteOf(e);
+      const size = def?.drawSize ?? 64;
+      const p = this.lerpEnt(e);
+      const s = this.toScreen(p.x, p.y);
+      const top = size * (def?.contactY ?? 0.8);
+      units.push({ key: this.drawKey(e), rect: { x: s.x - size / 2, y: s.y - top, w: size, h: size }, e, fade });
+    }
+    if (units.length === 0) return;
+    const ts = this.ts();
+    const covers: (XrayItem & { spr: BuildingSpriteDef; southX: number; southY: number; footprintW: number })[] = [];
+    for (const e of drawList) {
+      if (e.kind !== "building" || isBridge(e.type) || isFieldStructure(e.type) || isRubble(e)) continue;
+      if (!this.knownRect(e)) continue;
+      const spr = buildingSpriteFor(e.type, e.facing);
+      if (!spr || !spriteReady(spr)) continue;
+      const x = e.tileX * ts;
+      const y = e.tileY * ts;
+      const bw = e.tileW * ts;
+      const bh = e.tileH * ts;
+      const elev = this.buildingElev(e);
+      const south = this.toScreen(x + bw, y + bh, elev);
+      const footprintW = this.toScreen(x + bw, y, elev).x - this.toScreen(x, y + bh, elev).x;
+      const rect = buildingSpriteDestRect(spr, south.x, south.y, footprintW);
+      if (!rect || rect.x > w || rect.y > h || rect.x + rect.w < 0 || rect.y + rect.h < 0) continue;
+      covers.push({ key: this.drawKey(e), rect, spr, southX: south.x, southY: south.y, footprintW });
+    }
+    const pairs = xrayPairs(units, covers);
+    if (pairs.size === 0) return;
+    const main = this.ctx;
+    // Drawing a unit again queues its work bar again; the first one is kept.
+    const bars = this.workBars.length;
+    for (const [ci, hidden] of pairs) {
+      const c = covers[ci]!;
+      const scratch = this.xrayLayer.begin(main, c.rect);
+      if (!scratch) return;
+      this.ctx = scratch;
+      try {
+        for (const ui of hidden) {
+          const u = units[ui]!;
+          scratch.globalAlpha = u.fade;
+          this.drawUnit(u.e);
+          if (u.e.chute != null) this.drawTroopCanopy(u.e);
+        }
+      } finally {
+        this.ctx = main;
+      }
+      this.xrayLayer.end(main, c.rect, FRIENDLY_XRAY_ALPHA, (m) => drawBuildingSprite(m, c.spr, c.southX, c.southY, c.footprintW));
+    }
+    this.workBars.length = bars;
   }
 
   private takeMoveClicks(): { x: number; y: number; t: number }[] {
