@@ -1272,7 +1272,7 @@ export interface PlasmaCellDef {
   shots: number;
   rechargeSeconds: number;
 }
-/** The energy cell on `type`'s main gun, or undefined when the gun is not a plasma cannon. */
+/** The energy cell on `type`'s main gun (the Weaver's feeds its shields), or undefined when it has none. */
 export function plasmaCellOf(type: string): PlasmaCellDef | undefined {
   return catalog(type as EntityType).plasmaCell;
 }
@@ -2012,6 +2012,11 @@ const ENERGY_SHIELDS: Partial<Record<EntityType, EnergyShieldDef>> = {
   xenodrone: INFANTRY_SHIELD,
   lancer: INFANTRY_SHIELD,
 };
+/**
+ * The wall a Weaver throws in front of a friend under fire (sim/weaver.ts): one soldier wide and
+ * weaker than a Drone's own. Not in ENERGY_SHIELDS: the Weaver's cell sets the pace, not a recharge.
+ */
+export const WEAVER_SHIELD: EnergyShieldDef = { hp: 60, arcPx: 12, halfDeg: 60, seconds: 10, rechargeSeconds: 0 };
 /** The energy wall this type raises, or undefined. */
 export function energyShieldOf(type: EntityType): EnergyShieldDef | undefined {
   return ENERGY_SHIELDS[type];
@@ -3729,6 +3734,15 @@ export const ACID = {
  */
 export const WEAVER_REACH_TILES = t(3.5);
 export const WEAVER_PULSE_SECONDS = 1;
+/**
+ * The Weaver's shields (sim/weaver.ts). A friend of its side under fire within WEAVER_SHIELD_REACH_TILES,
+ * the Weaver too, gets a WEAVER_SHIELD across the side the fire comes from. Each wall draws one of the
+ * WEAVER_CELL.shots in the Weaver's energy cell (a quarter of it), and a Weaver throws at most one
+ * every WEAVER_SHIELD_GAP_SECONDS.
+ */
+export const WEAVER_SHIELD_REACH_TILES = t(7);
+export const WEAVER_SHIELD_GAP_SECONDS = 0.5;
+export const WEAVER_CELL: PlasmaCellDef = { shots: 4, rechargeSeconds: 5 };
 export const WEAVER_MEND_CYBORG = 5;
 export const WEAVER_MEND_HEAVY = 4;
 
@@ -6037,7 +6051,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: ACID.spreadDeg,
     blurb: `A taken body with a swollen throat sac. It rears back and spits globs of corrosive bile, four and then a short refill from the bladder on its back: about a rifle round on a soldier, from a little less reach. On a tank the glob does not have to get through. It eats the plate: every glob that lands takes ${ACID_CORRODE_MM} mm off every face, up to half the plate, and the coat dries ${ACID_CORRODE_SECONDS} seconds after the last one. Spit a Tiger down and let the Stalkers and Lancers finish it. No stance orders. Near death its legs are torn off and it crawls on, still spitting. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
   },
-  /** Xenomorph cyborg: unarmed nanite mender. */
+  /** Xenomorph cyborg: unarmed support, shields friends under fire and mends hive units. */
   weaver: {
     type: "weaver",
     kind: "unit",
@@ -6058,7 +6072,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `No weapon. Four needle arms and a spindle of nanites on its back. Every second it sends a mend into each hive unit of yours within ${WEAVER_REACH_TILES / TILE_SUBDIV} cells: ${WEAVER_MEND_CYBORG} HP to a cyborg, ${WEAVER_MEND_HEAVY} to a heavy assimilator or anything else the hive fields. Two Weavers on one unit mend it once. It cannot mend itself; another Weaver can. Torn legs grow back once the body is whole enough. No stance orders. It hears the hive through your Conversion Chamber's spire, and mends nothing while dark.`,
+    plasmaCell: WEAVER_CELL,
+    blurb: `Support. No weapon. Four needle arms and a spindle of nanites on its back. When a unit of your side is under fire within ${WEAVER_SHIELD_REACH_TILES / TILE_SUBDIV} cells, the Weaver itself too, it throws a small energy wall in front of it, facing the fire: one soldier wide and ${WEAVER_SHIELD.hp} points strong, standing ${WEAVER_SHIELD.seconds} seconds unless shot down. Enemy rounds stop on it and enemies cannot walk through; your side shoots and walks through. Each wall takes a quarter of its energy cell, which regrows a quarter every ${WEAVER_CELL.rechargeSeconds} seconds. It does not stop shells lobbed from above. It also sends a mend every second into each hive unit of yours within ${WEAVER_REACH_TILES / TILE_SUBDIV} cells: ${WEAVER_MEND_CYBORG} HP to a cyborg, ${WEAVER_MEND_HEAVY} to a heavy assimilator or anything else the hive fields. Two Weavers on one unit mend it once. It cannot mend itself; another Weaver can. Torn legs grow back once the body is whole enough. No stance orders. It hears the hive through your Conversion Chamber's spire, and shields and mends nothing while dark.`,
   },
   /** Xenomorph cyborg: cloaked spine sniper. */
   shade: {
@@ -8629,10 +8644,20 @@ export function isYardField(type: string): type is YardFieldType {
   return (YARD_FIELD_TYPES as readonly string[]).includes(type);
 }
 
-/** Builds in the yard's line lane, beside sandbags and walls, apart from the other defences: the lines and the Spotlight post. */
+/** Builds in the yard's line lane, beside sandbags and walls, apart from the other defences: the lines, the Laser Fence, and the Spotlight post. */
 export function onLineLane(type: string): boolean {
-  return isYardField(type) || type === "spotlight";
+  return isYardField(type) || type === "spotlight" || isFenceLine(type);
 }
+
+/**
+ * Sited like a wall from the Defences tab, before it builds: a post at every corner clicked, then
+ * Confirm. The yard pays for every post and they all go up together.
+ */
+export function isFenceLine(type: string): type is "laserfence" {
+  return type === "laserfence";
+}
+/** Most posts one fence order can site. */
+export const FENCE_POSTS_MAX = 64;
 
 /**
  * Guns, garrisons, and the sandbag and wall lines: the Defences tab.

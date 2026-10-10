@@ -592,7 +592,7 @@ export interface Entity {
   blinkReady?: number;
   /** Plasma cannon: shots of energy left in its cell (sim/hive-ammo.ts), fractional while it regrows. Assembler: Thralls it has left to build (sim/assembler.ts). Unset means full. */
   energy?: number;
-  /** Behemoth, Drone, Lancer: the tick it may raise its next energy wall (sim/energy-shield.ts). Unset means ready. */
+  /** Behemoth, Drone, Lancer, Weaver: the tick it may raise its next energy wall (sim/energy-shield.ts, sim/weaver.ts). Unset means ready. */
   shieldReady?: number;
   /** Behemoth in the air on a lunge (sim/lunge.ts): from, to, and the ticks it left and lands. */
   lunge?: { x0: number; y0: number; x1: number; y1: number; t0: number; t1: number };
@@ -818,6 +818,8 @@ export interface EnergyShield {
   ownerId: string;
   /** The unit that raised it. */
   fromId: number;
+  /** A Weaver's wall: the friend it was thrown in front of (sim/weaver.ts). */
+  forId?: number;
   x: number;
   y: number;
   angle: number;

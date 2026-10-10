@@ -18,6 +18,9 @@ import {
   WEAVER_MEND_CYBORG,
   WEAVER_MEND_HEAVY,
   WEAVER_PULSE_SECONDS,
+  WEAVER_CELL,
+  WEAVER_SHIELD,
+  WEAVER_SHIELD_GAP_SECONDS,
   catalog,
   factionOf,
   infantryGunFor,
@@ -169,7 +172,7 @@ describe("Spitter acid", () => {
   });
 });
 
-describe("Weaver mend", () => {
+describe("Weaver", () => {
   it("mends hurt hive units near it once a pulse, Weavers not stacking, never itself or the enemy", () => {
     const state = field();
     uplink(state);
@@ -192,6 +195,49 @@ describe("Weaver mend", () => {
     assert.equal(foe.hp, 10, "the enemy is not mended");
     // Each Weaver mends the other, never itself.
     assert.equal(w1.hp, 100 + 3 * WEAVER_MEND_CYBORG);
+  });
+
+  it("throws a small wall in front of a friend under fire, facing the shooter, for a quarter of its cell", () => {
+    const state = field();
+    uplink(state);
+    const w = still(at(state, "weaver", "B", 20, 30));
+    const friend = still(at(state, "spitter", "B", 25, 30));
+    const far = still(at(state, "spitter", "B", 20, 45));
+    const foe = still(at(state, "rifleman", "A", 31, 30));
+    const foe2 = still(at(state, "rifleman", "A", 20, 52));
+    foe.attackTarget = friend.id;
+    foe2.attackTarget = far.id;
+    ticks(state, 2);
+    const walls = (state.energyShields ?? []).filter((s) => s.fromId === w.id);
+    assert.equal(walls.length, 1, "one wall, for the friend in reach; the far one is beyond it");
+    const s = walls[0]!;
+    assert.equal(s.forId, friend.id);
+    assert.equal(s.x, friend.x);
+    assert.equal(s.r, WEAVER_SHIELD.arcPx);
+    assert.equal(s.hpMax, WEAVER_SHIELD.hp);
+    assert.ok(Math.abs(s.angle) < 0.05, "faces the rifleman to the east");
+    assert.ok(w.energy! >= 3 && w.energy! < 3.1, `a quarter of the cell spent: ${w.energy}`);
+    ticks(state, secondsToTicks(2));
+    assert.equal(state.energyShields!.filter((x) => x.forId === friend.id).length, 1, "never two walls on one friend");
+    const view = snapshotFor(state, "B").shields!.find((x) => x.id === s.id)!;
+    assert.equal(view.by, w.id);
+  });
+
+  it("shields itself, runs dry after four walls, and throws again once the cell regrows", () => {
+    const state = field();
+    uplink(state);
+    const w = still(at(state, "weaver", "B", 20, 30));
+    const friends = [w, ...[0, 1, 2, 3].map((i) => still(at(state, "spitter", "B", 22, 26 + i * 2)))];
+    friends.forEach((f, i) => {
+      still(at(state, "rifleman", "A", 28, 26 + i * 2)).attackTarget = f.id;
+    });
+    ticks(state, secondsToTicks(WEAVER_SHIELD_GAP_SECONDS * 6));
+    const mine = () => state.energyShields!.filter((s) => s.fromId === w.id);
+    assert.equal(mine().length, WEAVER_CELL.shots, "four walls drain the cell");
+    assert.ok(w.energy! < 1);
+    assert.ok(mine().some((s) => s.forId === w.id), "all as hurt, so the nearest first: the Weaver itself");
+    ticks(state, secondsToTicks(WEAVER_CELL.rechargeSeconds));
+    assert.equal(mine().length, WEAVER_CELL.shots + 1, "one more once a quarter regrows");
   });
 
   it("mends nothing shut down", () => {
