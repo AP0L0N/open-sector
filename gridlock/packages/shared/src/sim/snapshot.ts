@@ -542,6 +542,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       stagger: e.staggered,
       vault: vaultsWalls(e.type) && !e.wreck && e.garrisonedIn == null && onFortTop(state, e) ? true : undefined,
       gatling: gatlingView(state, e),
+      fenceZap: !e.wreck && e.fenceZapTick != null && state.tick - e.fenceZapTick < Math.max(1, clampGameSpeed(state.gameSpeed)) ? true : undefined,
       ciws: ciwsView(state, e),
       mounts: twinCiwsView(state, e, friendly),
       ship: shipView(state, e, friendly),

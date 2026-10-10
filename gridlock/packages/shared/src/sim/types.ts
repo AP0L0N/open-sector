@@ -347,6 +347,8 @@ export interface Entity {
    * then discarded with the entity. Not sent on a living unit.
    */
   fireDeath?: true;
+  /** Last tick a Laser Fence beam burned this unit (sim/laser-fence.ts). */
+  fenceZapTick?: number;
   state: EntityState;
   tileX: number;
   tileY: number;
