@@ -143,6 +143,7 @@ import {
   type RocketRackDef,
   LAUNCHER_ROCKET_RACK,
   PENETRATOR_RACK,
+  PLASMA_FIRE_CALIBER,
   type CatalogEntry,
   type ShellType,
   torpedoesOf,
@@ -192,7 +193,7 @@ import { hiddenFromAuto, inStrikeReach } from "./simunit.js";
 import { juggernautBlow, landHammer } from "./juggernaut.js";
 import { detonateThrall, maybeStagger, punch, punchAir, thrallDetonatesOn } from "./thrall.js";
 import { artilleryCanLay, artilleryReady, artilleryReloadMul, blastOnGun, bulletOnGun, gunCrewOf } from "./artillery.js";
-import { noteImpactSurface } from "./remains.js";
+import { energyRound, noteImpactSurface } from "./remains.js";
 import { stanceHitRadiusMul, stanceTargetSpreadMul, tickStance } from "./stance.js";
 import {
   aimHeight,
@@ -211,6 +212,7 @@ import {
 import {
   ownerless,
   allies,
+  burnTreeAt,
   clearOrder,
   fellTreeAt,
   inBounds,
@@ -2720,7 +2722,10 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
   const inAir = rocket && !!p.airBurst;
   const tx = worldToTile(p.x, state.tileSize);
   const ty = worldToTile(p.y, state.tileSize);
-  if (!inAir && isTree(state, tx, ty)) fellTreeAt(state, tx, ty);
+  if (!inAir && isTree(state, tx, ty)) {
+    if (energyRound(state, p.ownerId)) burnTreeAt(state, tx, ty);
+    else fellTreeAt(state, tx, ty);
+  }
   const rack = p.heavy ? PENETRATOR_RACK : rocketRackOf(p.launcher ?? "titan");
   const lob = p.shipBarrel != null ? BATTLESHIP_SHELL : p.big ? ARTILLERY_SHELL : MORTAR_LOB;
   const radius = (rocket ? rack.splashTiles : p.big ? lob.splashTiles : MORTAR_SPLASH_TILES) * state.tileSize;
@@ -3421,7 +3426,10 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     // A barrage from a plane comes down through the canopy; only what it lands on counts.
     const tree = p.fromAbove || p.plunging || p.torpedo ? null : nearestTreeSweep(state, x0, y0, p, z0, z1, rand);
     if (tree && (!struck || tree.t <= struck.t)) {
-      if (canFellTrees(p)) fellTreeAt(state, tree.tx, tree.ty);
+      if (energyRound(state, p.ownerId)) {
+        // Plasma does not snap the trunk: it sets the tree alight.
+        if (canFellTrees(p) || p.caliber >= PLASMA_FIRE_CALIBER) burnTreeAt(state, tree.tx, tree.ty);
+      } else if (canFellTrees(p)) fellTreeAt(state, tree.tx, tree.ty);
       pushImpact(state, p, "miss", tree.x, tree.y);
       continue;
     }
