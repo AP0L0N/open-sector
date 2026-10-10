@@ -2,7 +2,7 @@
   "key": "leech",
   "out": "units/leech",
   "voice": {
-    "name": "Open Sector - Borg Swarm",
+    "name": "Open Sector - Xenomorph Swarm",
     "description": "A fast, hissing swarm chorus of many small synthetic voices speaking the same words together, like a hive of insect-like machines piloting alien craft: thin and sharp, raspy and buzzing, with dry clicking and a faint wet chitter between words, emotionless and eager, quick clipped cadence, a slightly metallic hollow resonance under the voice.",
     "sample": "The swarm hears you. We skim the water, we split the sky, we hunt beneath the waves. Point and we strike. Many wings, one mind. The collective is hungry and the prey is near.",
     "stability": 0.55,

@@ -5,7 +5,7 @@ import { createRoom, hostSlot, startMatch, updateSelf } from "../lobby.js";
 import type { AiDifficulty } from "../protocol.js";
 import { AI_PROFILES } from "./ai-profile.js";
 import {
-  BORG_ARMY,
+  XENO_ARMY,
   CPU_ARMY,
   CPU_EXPAND_TILES,
   CPU_FLEET_MIN,
@@ -754,9 +754,9 @@ describe("CPU types", () => {
     }
   });
 
-  it("never plans a Borg building or unit for Earth United", () => {
+  it("never plans a Xenomorph building or unit for Alliance", () => {
     for (const rows of Object.values(CPU_ARMY)) {
-      for (const row of rows) assert.equal(factionOf(row.unit), "eu", row.unit);
+      for (const row of rows) assert.equal(factionOf(row.unit), "alliance", row.unit);
     }
   });
 
@@ -1421,12 +1421,12 @@ describe("easy CPU at sea", () => {
   });
 });
 
-describe("Borg CPU", () => {
-  function humanVsBorg(): { state: MatchState; aiId: string } {
+describe("Xenomorph CPU", () => {
+  function humanVsXeno(): { state: MatchState; aiId: string } {
     const made = createRoom({ id: "AIB", hostId: "A", hostName: "Alpha", mapId: "yard-64", maxSlots: 8 });
     if (!made.ok) throw new Error(made.message);
     const room = made.value;
-    const add = hostSlot(room, "A", 1, { status: "ai", ai: "defensive", faction: "borg" });
+    const add = hostSlot(room, "A", 1, { status: "ai", ai: "defensive", faction: "xeno" });
     if (!add.ok) throw new Error(add.message);
     updateSelf(room, "A", { ready: true });
     const started = startMatch(room, "A", () => 0);
@@ -1456,14 +1456,14 @@ describe("Borg CPU", () => {
   }
 
   it("unpacks its Seed into a Hive Core", () => {
-    const { state, aiId } = humanVsBorg();
+    const { state, aiId } = humanVsXeno();
     assert.ok([...state.entities.values()].some((e) => e.ownerId === aiId && e.type === "seed"));
     waitCore(state, aiId);
     assert.ok(hiveOf(state, aiId));
   });
 
   it("raises a Fusion Node, then an Assimilator", () => {
-    const { state, aiId } = humanVsBorg();
+    const { state, aiId } = humanVsXeno();
     waitCore(state, aiId);
     assert.equal(nextStructure(state, aiId), "fusionnode");
     standBy(state, aiId, ["fusionnode"]);
@@ -1471,26 +1471,26 @@ describe("Borg CPU", () => {
   });
 
   it("raises the Cyborg Central once power and an Assimilator stand", () => {
-    const { state, aiId } = humanVsBorg();
+    const { state, aiId } = humanVsXeno();
     waitCore(state, aiId);
     standBy(state, aiId, ["fusionnode", "assimilator"]);
     assert.equal(nextStructure(state, aiId), "cyborgcentral");
   });
 
   it("trains its army at the Cyborg Central", () => {
-    const { state, aiId } = humanVsBorg();
+    const { state, aiId } = humanVsXeno();
     waitCore(state, aiId);
     standBy(state, aiId, ["fusionnode", "assimilator", "cyborgcentral", "fusionnode"]);
     state.players.get(aiId)!.scrap = 5000;
     tickAi(state);
     const central = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "cyborgcentral")!;
     assert.ok(central.queue.length > 0, "nothing queued at the Central");
-    assert.ok(BORG_ARMY.some((r) => r.unit === central.queue[0]!.type));
+    assert.ok(XENO_ARMY.some((r) => r.unit === central.queue[0]!.type));
   });
 
-  it("lists only Borg units, all from the Cyborg Central", () => {
-    for (const row of BORG_ARMY) {
-      assert.equal(factionOf(row.unit), "borg", row.unit);
+  it("lists only Xenomorph units, all from the Cyborg Central", () => {
+    for (const row of XENO_ARMY) {
+      assert.equal(factionOf(row.unit), "xeno", row.unit);
       assert.equal(producerType(row.unit), "cyborgcentral", row.unit);
     }
   });

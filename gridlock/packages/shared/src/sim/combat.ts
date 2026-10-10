@@ -1122,7 +1122,7 @@ function flightStowsGun(e: Entity): boolean {
   return rocketsOf(e.type) && jetAloft(e);
 }
 
-/** A CIWS or RAM runs on its radar, a Borg gun on base power. Short on power, it neither lays nor fires. */
+/** A CIWS or RAM runs on its radar, a Xenomorph gun on base power. Short on power, it neither lays nor fires. */
 function powerSilences(e: Entity): boolean {
   return e.kind === "building" && !!e.unpowered && (radarLaidOf(e.type) || poweredGunOf(e.type));
 }

@@ -212,7 +212,7 @@ export function createMatch(
     const pos = spawns.get(pid);
     if (!pos) continue;
     // A start the map built a Core on begins from that Core, grown as its seat's own; the rest unpack a Rig or a Seed.
-    const faction: Faction = slot.faction ?? "eu";
+    const faction: Faction = slot.faction ?? "alliance";
     const core = coreOf.get(pos.spawnId);
     let hqId: number;
     if (core) {

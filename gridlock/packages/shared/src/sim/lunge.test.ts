@@ -10,14 +10,14 @@ import { createMatch, step } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
 import type { MatchState } from "./types.js";
 
-/** A is Earth United, B the Borg, on bare flat ground. */
+/** A is Alliance, B the Xenomorphs, on bare flat ground. */
 function field(): MatchState {
   const r = createRoom({ id: "LNG", hostId: "A", hostName: "Alpha", mapId: "yard-64", maxSlots: 8 });
   if (!r.ok) throw new Error(r.message);
   const room = r.value;
   assert.equal(joinRoom(room, "B", "Bravo").ok, true);
   updateSelf(room, "A", { ready: true, spawnId: 1 });
-  updateSelf(room, "B", { ready: true, spawnId: 4, faction: "borg" });
+  updateSelf(room, "B", { ready: true, spawnId: 4, faction: "xeno" });
   const started = startMatch(room, "A", () => 0);
   if (!started.ok) throw new Error(started.message);
   const state = createMatch(room, started.value);
@@ -69,7 +69,7 @@ describe("Behemoth lunge", () => {
     for (let k = 0; k < 12; k++) {
       const a = (k / 12) * Math.PI * 2;
       foes.push(makeEntity(state, "rifleman", "A", land.x + Math.cos(a) * 10 * ts, land.y + Math.sin(a) * 10 * ts));
-      friends.push(makeEntity(state, "borgdrone", "B", land.x + Math.cos(a + 0.26) * 9 * ts, land.y + Math.sin(a + 0.26) * 9 * ts));
+      friends.push(makeEntity(state, "xenodrone", "B", land.x + Math.cos(a + 0.26) * 9 * ts, land.y + Math.sin(a + 0.26) * 9 * ts));
     }
     ticks(state, secondsToTicks(BEHEMOTH_LUNGE_SECONDS) + 2);
     assert.ok(b.laser, "the first sweep is out");

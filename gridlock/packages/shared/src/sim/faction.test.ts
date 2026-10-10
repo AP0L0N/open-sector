@@ -4,7 +4,9 @@ import { createRoom, hostSlot, joinRoom, startMatch, updateSelf } from "../lobby
 import {
   isNavalType,
   isAircraftType,
-  BORG_TYPES,
+  XENO_TYPES,
+  SHARED_TYPES,
+  inFaction,
   FORGE_REARM_SECONDS,
   BUILDING_TYPES,
   HQ_OF,
@@ -35,8 +37,8 @@ import { smelterCount, smelterIncome, smelterYields } from "./smelter.js";
 import { producerType } from "./train.js";
 import type { MatchState } from "./types.js";
 
-/** A is Earth United, B picks `bFaction` in the lobby. */
-function match(bFaction: Faction = "borg"): MatchState {
+/** A is Alliance, B picks `bFaction` in the lobby. */
+function match(bFaction: Faction = "xeno"): MatchState {
   const r = createRoom({ id: "FX1", hostId: "A", hostName: "Alpha", mapId: "yard-64", maxSlots: 8 });
   if (!r.ok) throw new Error(r.message);
   const room = r.value;
@@ -75,17 +77,13 @@ function unpack(state: MatchState, pid: string): void {
 }
 
 describe("factions in the catalog", () => {
-  it("gives the Borg the cyborgs, their Central, and their own base", () => {
+  it("gives the Xenomorphs their cyborgs and their own base, and shares the Central", () => {
     assert.deepEqual(
-      [...BORG_TYPES].sort(),
+      [...XENO_TYPES].sort(),
       [
         "aerie",
         "assimilator",
         "behemoth",
-        "borgdrone",
-        "cyborg",
-        "cyborgcentral",
-        "cyborgcommander",
         "forge",
         "fusionnode",
         "hivecore",
@@ -102,26 +100,29 @@ describe("factions in the catalog", () => {
         "spineturret",
         "stalker",
         "wasp",
+        "xenodrone",
       ],
     );
-    for (const t of ["rig", "core", "dynamo", "smelter", "rifleman", "ss3", "muster", "sandbags"]) assert.equal(factionOf(t), "eu", t);
-    for (const t of BUILDING_TYPES.filter((b) => factionOf(b) === "borg")) assert.ok(BORG_TYPES.has(t));
+    for (const t of ["rig", "core", "dynamo", "smelter", "rifleman", "ss3", "muster", "sandbags", "cyborg", "cyborgcommander"]) assert.equal(factionOf(t), "alliance", t);
+    assert.deepEqual([...SHARED_TYPES], ["cyborgcentral"]);
+    for (const f of ["alliance", "xeno"] as const) assert.ok(inFaction("cyborgcentral", f), f);
+    for (const t of BUILDING_TYPES.filter((b) => factionOf(b) === "xeno")) assert.ok(XENO_TYPES.has(t));
     // Cyborgs come from the Central, ships from the Spawning Pool, planes from the Aerie, the rest from the Nanite Forge.
-    for (const t of TRAIN_TYPES.filter((u) => factionOf(u) === "borg")) {
+    for (const t of TRAIN_TYPES.filter((u) => factionOf(u) === "xeno")) {
       const want = isCyborg(t) ? "cyborgcentral" : isNavalType(t) ? "spawnpool" : isAircraftType(t) ? "aerie" : "forge";
       assert.equal(producerType(t), want, t);
     }
     for (const t of ["stalker", "ravager", "behemoth"] as const) assert.equal(producerType(t), "forge");
-    for (const t of ["borgdrone", "lancer"] as const) assert.ok(isCyborg(t) && onUplink(t) && isInfantryType(t), t);
+    for (const t of ["xenodrone", "lancer"] as const) assert.ok(isCyborg(t) && onUplink(t) && isInfantryType(t), t);
     assert.ok(!onUplink("cyborgcommander"));
   });
 
-  it("names the Borg base and keeps its roles beside Earth United's", () => {
+  it("names the Xenomorph base and keeps its roles beside the Alliance's", () => {
     assert.equal(catalog("seed").name, "Seed");
     assert.equal(catalog("hivecore").name, "Hive Core");
     assert.equal(catalog("fusionnode").name, "Fusion Node");
     assert.equal(catalog("assimilator").name, "Assimilator");
-    assert.deepEqual(HQ_OF.borg, { rig: "seed", core: "hivecore" });
+    assert.deepEqual(HQ_OF.xeno, { rig: "seed", core: "hivecore" });
     assert.ok(isHqRig("seed") && isHqBuilding("hivecore") && isHq("seed") && isHq("core"));
     assert.ok(isSmelterType("assimilator") && isSmelterType("smelter") && !isSmelterType("dynamo"));
     assert.ok(catalog("fusionnode").power > 0);
@@ -130,15 +131,15 @@ describe("factions in the catalog", () => {
   });
 });
 
-describe("a Borg seat", () => {
+describe("a Xenomorph seat", () => {
   it("starts with a Seed and sees its faction in the snapshot", () => {
     const state = match();
     assert.equal(hqOf(state, "A")!.type, "rig");
     assert.equal(hqOf(state, "B")!.type, "seed");
-    assert.equal(state.players.get("B")!.faction, "borg");
+    assert.equal(state.players.get("B")!.faction, "xeno");
     const players = snapshotFor(state, "A").players;
-    assert.equal(players.find((p) => p.playerId === "B")!.faction, "borg");
-    assert.equal(players.find((p) => p.playerId === "A")!.faction, "eu");
+    assert.equal(players.find((p) => p.playerId === "B")!.faction, "xeno");
+    assert.equal(players.find((p) => p.playerId === "A")!.faction, "alliance");
   });
 
   it("grows the Seed into a Hive Core and packs it back into a Seed", () => {
@@ -161,7 +162,7 @@ describe("a Borg seat", () => {
     assert.equal(state.players.get("B")!.alive, false);
   });
 
-  it("builds only Borg structures, and Earth United only its own", () => {
+  it("builds only Xenomorph structures, and Alliance only its own", () => {
     const state = match();
     unpack(state, "A");
     unpack(state, "B");
@@ -178,33 +179,41 @@ describe("a Borg seat", () => {
     assert.equal(bags.ok, false);
     if (!bags.ok) assert.equal(bags.message, "Not available to your faction.");
     refuse("A", "fusionnode");
-    refuse("A", "cyborgcentral");
     assert.equal(applyCommand(state, "B", { type: "cmd.build", building: "fusionnode" }).ok, true);
     assert.equal(applyCommand(state, "A", { type: "cmd.build", building: "dynamo" }).ok, true);
   });
 
-  it("trains all three cyborgs at a Cyborg Central, with no Research Facility", () => {
+  it("trains its three cyborgs at a Cyborg Central, with no Research Facility", () => {
     const state = match();
     unpack(state, "B");
     const ts = state.tileSize;
     const p = state.players.get("B")!;
     p.scrap = 50_000;
     const central = makeEntity(state, "cyborgcentral", "B", tileCenter(40, ts), tileCenter(40, ts), { tileX: 40, tileY: 40 });
-    for (const unit of ["cyborg", "simunit2", "cyborgcommander"] as const) {
+    for (const unit of ["xenodrone", "simunit2", "lancer"] as const) {
       const r = applyCommand(state, "B", { type: "cmd.train", unit });
       assert.equal(r.ok, true, r.ok ? unit : r.message);
     }
-    assert.deepEqual(central.queue.map((j) => j.type), ["cyborg", "simunit2", "cyborgcommander"]);
+    assert.deepEqual(central.queue.map((j) => j.type), ["xenodrone", "simunit2", "lancer"]);
+    const alliance = applyCommand(state, "B", { type: "cmd.train", unit: "cyborg" });
+    assert.equal(alliance.ok, false);
     const eu = applyCommand(state, "B", { type: "cmd.train", unit: "rifleman" });
     assert.equal(eu.ok, false);
   });
 
-  it("keeps Earth United from training a cyborg even with a captured Central", () => {
+  it("builds the Alliance a Cyborg Central for its Cyborg and Commander, and no Xenomorph cyborg", () => {
     const state = match();
     unpack(state, "A");
     const ts = state.tileSize;
-    makeEntity(state, "cyborgcentral", "A", tileCenter(40, ts), tileCenter(40, ts), { tileX: 40, tileY: 40 });
-    const r = applyCommand(state, "A", { type: "cmd.train", unit: "cyborg" });
+    state.players.get("A")!.scrap = 50_000;
+    assert.equal(applyCommand(state, "A", { type: "cmd.build", building: "cyborgcentral" }).ok, true);
+    const central = makeEntity(state, "cyborgcentral", "A", tileCenter(40, ts), tileCenter(40, ts), { tileX: 40, tileY: 40 });
+    for (const unit of ["cyborg", "cyborgcommander"] as const) {
+      const r = applyCommand(state, "A", { type: "cmd.train", unit });
+      assert.equal(r.ok, true, r.ok ? unit : r.message);
+    }
+    assert.deepEqual(central.queue.map((j) => j.type), ["cyborg", "cyborgcommander"]);
+    const r = applyCommand(state, "A", { type: "cmd.train", unit: "xenodrone" });
     assert.equal(r.ok, false);
     if (!r.ok) assert.equal(r.message, "Not available to your faction.");
   });
@@ -247,7 +256,7 @@ describe("a Borg seat", () => {
     makeEntity(state, "nexus", "B", tileCenter(30, ts), tileCenter(30, ts), { tileX: 30, tileY: 30 });
     assert.equal(applyCommand(state, "B", { type: "cmd.train", unit: "behemoth" }).ok, true);
     assert.deepEqual(forge.queue.map((j) => j.type), ["stalker", "ravager", "behemoth"]);
-    // Earth United cannot use a captured Forge.
+    // Alliance cannot use a captured Forge.
     unpack(state, "A");
     forge.ownerId = "A";
     const eu = applyCommand(state, "A", { type: "cmd.train", unit: "stalker" });
@@ -290,7 +299,7 @@ describe("a Borg seat", () => {
     assert.equal(fight(false), catalog("rifleman").hp, "an unpowered turret stays silent");
   });
 
-  it("rearms Borg units beside a powered Nanite Forge, and only there", () => {
+  it("rearms Xenomorph units beside a powered Nanite Forge, and only there", () => {
     const state = openField();
     const ts = state.tileSize;
     makeEntity(state, "fusionnode", "B", tileCenter(100, ts), tileCenter(100, ts), { tileX: 100, tileY: 100 });
@@ -333,35 +342,35 @@ describe("a Borg seat", () => {
     if (!ship.ok) assert.equal(ship.message, "Need a Spawning Pool.");
   });
 
-  it("flags every Borg shot and hit as energy, and no Earth United one", () => {
+  it("flags every Xenomorph shot and hit as energy, and no Alliance one", () => {
     const state = openField();
     const ts = state.tileSize;
-    makeEntity(state, "borgdrone", "B", tileCenter(120, ts), tileCenter(120, ts));
+    makeEntity(state, "xenodrone", "B", tileCenter(120, ts), tileCenter(120, ts));
     makeEntity(state, "rifleman", "A", tileCenter(120, ts), tileCenter(128, ts));
-    let borgHit = false;
+    let xenoHit = false;
     let euHit = false;
     for (let i = 0; i < 80; i++) {
       step(state, TICK_DT);
       const snap = snapshotFor(state, "A");
-      for (const p of snap.projectiles) assert.equal(p.energy, state.players.get(state.entities.get(p.fromId)?.ownerId ?? "")?.faction === "borg" ? true : undefined);
+      for (const p of snap.projectiles) assert.equal(p.energy, state.players.get(state.entities.get(p.fromId)?.ownerId ?? "")?.faction === "xeno" ? true : undefined);
       for (const hit of snap.impacts) {
-        if (hit.ownerId === "B") borgHit ||= hit.energy === true;
+        if (hit.ownerId === "B") xenoHit ||= hit.energy === true;
         if (hit.ownerId === "A") {
           assert.equal(hit.energy, undefined);
           euHit = true;
         }
       }
     }
-    assert.ok(borgHit, "where a Drone's pulse lands is energy");
+    assert.ok(xenoHit, "where a Drone's pulse lands is energy");
     assert.ok(euHit, "the rifleman fired too");
   });
 
-  it("lets the host seat a Borg CPU, and refuses an unknown faction", () => {
+  it("lets the host seat a Xenomorph CPU, and refuses an unknown faction", () => {
     const r = createRoom({ id: "FX2", hostId: "A", hostName: "Alpha", mapId: "yard-64", maxSlots: 8 });
     if (!r.ok) throw new Error(r.message);
     const room = r.value;
-    assert.equal(hostSlot(room, "A", 1, { status: "ai", ai: "defensive", faction: "borg" }).ok, true);
-    assert.equal(room.slots[1]!.faction, "borg");
+    assert.equal(hostSlot(room, "A", 1, { status: "ai", ai: "defensive", faction: "xeno" }).ok, true);
+    assert.equal(room.slots[1]!.faction, "xeno");
     assert.equal(hostSlot(room, "A", 1, { faction: "nope" as Faction }).ok, false);
   });
 });

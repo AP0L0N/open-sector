@@ -77,7 +77,7 @@ function runBeam(state: MatchState, cmd: Entity): void {
 }
 
 describe("cyborg commander", () => {
-  it("is a Borg cyborg from the Cyborg Central with a force field and a cutting laser", () => {
+  it("is an Alliance cyborg from the Cyborg Central with a force field and a cutting laser", () => {
     const def = catalog("cyborgcommander");
     assert.equal(def.name, "Cyborg Commander");
     assert.equal(def.cost, 5000);
@@ -154,7 +154,7 @@ describe("cyborg commander", () => {
     const flank = at(state, "rifleman", b, x, y, LASER_SWEEP_HALF_DEG * 2.5, range * 0.6);
     const beyond = at(state, "rifleman", b, x, y, 0, range * 1.3);
     const friend = at(state, "rifleman", a, x, y, -LASER_SWEEP_HALF_DEG * 0.85, range * 0.5);
-    const borg = at(state, "cyborg", b, x, y, -LASER_SWEEP_HALF_DEG * 0.3, range * 0.7);
+    const xeno = at(state, "cyborg", b, x, y, -LASER_SWEEP_HALF_DEG * 0.3, range * 0.7);
     cmd.order = { kind: "attack", targetId: target.id };
     tickCombat(state, TICK_DT);
     assert.ok(cmd.laser, "the sweep started");
@@ -171,7 +171,7 @@ describe("cyborg commander", () => {
       assert.equal(dead.fireDeath, true);
     }
     for (const alive of [flank, beyond]) assert.equal(alive.hp, alive.hpMax, `${alive.type} spared`);
-    assert.equal(borg.hp, borg.hpMax - LASER_SWEEP_CYBORG_DAMAGE, "a cyborg's plating takes a heavy cut");
+    assert.equal(xeno.hp, xeno.hpMax - LASER_SWEEP_CYBORG_DAMAGE, "a cyborg's plating takes a heavy cut");
     assert.ok(state.impacts.some((i) => i.laser && i.kind === "kill"));
 
     // The cut at the tip: a run of small fires along the arc at full reach.
@@ -231,13 +231,13 @@ describe("cyborg commander", () => {
     const tank = at(state, "ss3", b, x, y, 0, range * 0.7);
     const ownMan = at(state, "rifleman", a, x, y, 0, range * 0.3);
     const foeMan = at(state, "gunner", b, x, y, 0, range * 0.5);
-    const ownBorg = at(state, "cyborg", a, x, y, 0, range * 0.4);
+    const ownXeno = at(state, "cyborg", a, x, y, 0, range * 0.4);
     const aside = at(state, "rifleman", a, x, y, 20, range * 0.4);
     const behind = at(state, "rifleman", a, x, y, 0, range * 0.85);
     fireLaser(state, cmd, tank.x, tank.y, range, tank);
     assert.ok(cmd.laser?.line);
     for (const dead of [ownMan, foeMan]) assert.equal(dead.hp, 0, `${dead.type} of ${dead.ownerId} burned`);
-    assert.equal(ownBorg.hp, ownBorg.hpMax - LASER_SWEEP_CYBORG_DAMAGE, "his own Cyborg takes the heavy cut");
+    assert.equal(ownXeno.hp, ownXeno.hpMax - LASER_SWEEP_CYBORG_DAMAGE, "his own Cyborg takes the heavy cut");
     assert.equal(aside.hp, aside.hpMax, "off the line");
     assert.equal(behind.hp, behind.hpMax, "past the target the beam has stopped");
     assert.equal(tank.hp, tank.hpMax - LASER_ARMOR_DAMAGE);

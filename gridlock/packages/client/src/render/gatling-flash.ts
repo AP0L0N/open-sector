@@ -61,7 +61,7 @@ export function drawGatlingFlash(
   size: number,
   now: number,
   seed: number,
-  /** A Borg pulse repeater: the flash is green light, not powder flame. */
+  /** A Xenomorph pulse repeater: the flash is green light, not powder flame. */
   energy?: boolean,
 ): void {
   const phase = Math.floor(now / 45 + seed) % 3;

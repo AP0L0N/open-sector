@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Stalker: Borg turreted walker, Tiger class. Three 16-face layers from one camera.
+"""Stalker: Xenomorph turreted walker, Tiger class. Three 16-face layers from one camera.
 
 A low four-legged spider hull under an armoured dome turret that carries one
 long disruptor barrel with a green emitter at the muzzle. Cold grey-green
-alloy, dark chitin, the Seed's glow (borg_walker.py). The Apocalypse's layout:
+alloy, dark chitin, the Seed's glow (xeno_walker.py). The Apocalypse's layout:
 hull / turret / gun are passes of one locked camera with one scale and one
 origin, so the client composes them with one transform (composeAligned,
 TIGER_OPTS: cell 128, contactY 0.92). The turret and gun turn on the model
@@ -28,8 +28,8 @@ from pathlib import Path
 
 from render_procedural import Mesh, render_turntable
 
-import borg_walker as bw
-from borg_walker import dome, ellipsoid, knob, leg, shell, tube, tube_x
+import xeno_walker as bw
+from xeno_walker import dome, ellipsoid, knob, leg, shell, tube, tube_x
 
 # Meters. +x nose, +y left, +z up. Feet on z = 0. Origin = turret ring centre.
 BODY = (-0.2, 0.0, 1.25)

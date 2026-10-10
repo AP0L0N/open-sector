@@ -448,7 +448,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       blink: friendly && isSimUnit(e.type) && !e.wreck ? { u: blinkCharge(state, e) } : undefined,
       lungeAlt: e.lunge ? Math.round(lungeAlt(state, e) * 10) / 10 : undefined,
       lungeCharge: friendly && canLunge(e.type) && !e.wreck ? Math.round(lungeCharge(state, e) * 100) / 100 : undefined,
-      greenLaser: e.laser && factionOf(e.type) === "borg" && e.type !== "cyborgcommander" ? true : undefined,
+      greenLaser: e.laser && factionOf(e.type) === "xeno" && e.type !== "cyborgcommander" ? true : undefined,
       burrow: e.burrow ? e.burrow.phase : undefined,
       purge: friendly && e.purge ? { hostId: e.purge.hostId, u: purgeProgress(state, e) ?? 0 } : undefined,
       takeover: e.takeover ? { by: e.takeover.by, u: Math.min(1, e.takeover.ticks / secondsToTicks(CYBORG_TAKEOVER_SECONDS)) } : undefined,
@@ -653,7 +653,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       colorId: p.colorId,
       team: p.team,
       alive: p.alive,
-      faction: p.faction ?? "eu",
+      faction: p.faction ?? "alliance",
     })),
     entities,
     projectiles: state.projectiles
@@ -797,7 +797,7 @@ function visibleBodies(state: MatchState, youPlayerId: string, vis: Uint8Array):
   return bodies;
 }
 
-/** Every Borg weapon is an energy weapon: their shots and hits go out flagged so the client draws and voices them that way. */
+/** Every Xenomorph weapon is an energy weapon: their shots and hits go out flagged so the client draws and voices them that way. */
 function energyShot(state: MatchState, ownerId: string): boolean {
-  return state.players.get(ownerId)?.faction === "borg";
+  return state.players.get(ownerId)?.faction === "xeno";
 }

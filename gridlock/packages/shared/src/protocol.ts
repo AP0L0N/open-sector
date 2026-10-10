@@ -61,7 +61,7 @@ export interface Slot {
   ready: boolean;
   /** Set when status is ai. */
   ai?: AiDifficulty;
-  /** Earth United or Borg. Missing reads as Earth United. */
+  /** Alliance or Xenomorph. Missing reads as Alliance. */
   faction?: Faction;
 }
 
@@ -408,7 +408,7 @@ export interface PlayerPublic {
   colorId: number;
   team: number;
   alive: boolean;
-  /** Missing reads as Earth United. */
+  /** Missing reads as Alliance. */
   faction?: Faction;
 }
 
@@ -489,7 +489,7 @@ export interface ProjectileView {
   y: number;
   vx: number;
   vy: number;
-  /** Fired by the Borg: drawn and heard as an energy bolt, pulse, or plasma shot. The sim treats it as its round kind. */
+  /** Fired by the Xenomorphs: drawn and heard as an energy bolt, pulse, or plasma shot. The sim treats it as its round kind. */
   energy?: true;
   caliber: number;
   fromId: number;
@@ -543,7 +543,7 @@ export interface ImpactView {
   id: number;
   ownerId: string;
   kind: ImpactKind;
-  /** Landed by a Borg weapon: an energy burst rather than a bullet strike or a shell blast. */
+  /** Landed by a Xenomorph weapon: an energy burst rather than a bullet strike or a shell blast. */
   energy?: true;
   x: number;
   y: number;

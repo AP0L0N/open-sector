@@ -462,11 +462,11 @@ import { drawShutdownMark, drawUplink, SHUTDOWN_UNIT_FILTER } from "./cyborg-lin
 import { BLINK_FX_MS, drawBlinkFx, drawPurgeMark } from "./blink-fx.js";
 import { SIMUNIT2_CRAWL_FIRE_SPRITE, SIMUNIT2_CRAWL_SPRITE, SIMUNIT2_DIE_SPRITE, SIMUNIT2_FIRE_SPRITE, SIMUNIT2_SPRITE, UNIT_SPRITE_DRAW_SIZE } from "./sprites.js";
 import {
-  BORGDRONE_CRAWL_FIRE_SPRITE,
-  BORGDRONE_CRAWL_SPRITE,
-  BORGDRONE_DIE_SPRITE,
-  BORGDRONE_FIRE_SPRITE,
-  BORGDRONE_SPRITE,
+  XENODRONE_CRAWL_FIRE_SPRITE,
+  XENODRONE_CRAWL_SPRITE,
+  XENODRONE_DIE_SPRITE,
+  XENODRONE_FIRE_SPRITE,
+  XENODRONE_SPRITE,
   LANCER_CRAWL_FIRE_SPRITE,
   LANCER_CRAWL_SPRITE,
   LANCER_DIE_SPRITE,
@@ -570,8 +570,8 @@ function workLit(e: EntityView): boolean {
   if (e.kind !== "building" || e.hp <= 0 || e.wreck || e.ruined) return false;
   if (!e.ownerId || e.ownerId === NEUTRAL_OWNER || e.unpowered) return false;
   if (isGarrisonable(e.type)) return false;
-  // The Borg light nothing.
-  if (factionOf(e.type) === "borg") return false;
+  // The Xenomorphs light nothing.
+  if (factionOf(e.type) === "xeno") return false;
   return isHqBuilding(e.type) || (BUILDING_TYPES as readonly string[]).includes(e.type);
 }
 import {
@@ -688,7 +688,7 @@ const EXTRUDE: Record<EntityType, number> = {
   cyborg: 26,
   cyborgcommander: 26,
   simunit2: 26,
-  borgdrone: 24,
+  xenodrone: 24,
   lancer: 27,
   stalker: 28,
   ravager: 22,
@@ -1015,7 +1015,7 @@ export class MapView {
     torpedo?: boolean;
     /** A Flak 37 shell burst in the air at `z`: the air flash, no ground puff. */
     flak?: boolean;
-    /** A Borg weapon's: drawn as green light. */
+    /** A Xenomorph weapon's: drawn as green light. */
     energy?: true;
   }[] = [];
   private fxIds = new Set<number>();
@@ -1836,8 +1836,8 @@ export class MapView {
     const ground = (x: number, y: number) => this.elevAt(x, y);
     for (const e of match.entities) {
       if (e.wreck) continue;
-      if (factionOf(e.type) === "borg") {
-        // Every Borg gun fires light: a green bolt from the muzzle to each hit. Lasers, plasma
+      if (factionOf(e.type) === "xeno") {
+        // Every Xenomorph gun fires light: a green bolt from the muzzle to each hit. Lasers, plasma
         // orbs, torpedoes, and daggers draw themselves elsewhere.
         const shots = byGun.get(e.id)?.filter((i) => !i.rocket && !i.laser && !i.torpedo && !i.mortar && i.kind !== "crush" && (i.caliber ?? 0) > 0);
         if (!shots?.length || e.type === "simunit2" || e.type === "cyborgcommander") continue;
@@ -2001,7 +2001,7 @@ export class MapView {
   }
 
   /**
-   * Where a Borg gun's bolts leave: the Cyborg's arm, a turret's barrel tip out along its traverse,
+   * Where a Xenomorph gun's bolts leave: the Cyborg's arm, a turret's barrel tip out along its traverse,
    * or the muzzle of a hull, a soldier, or a plane at about the height its sprite carries the gun.
    */
   private energyMuzzleWorld(e: EntityView, toward: { x: number; y: number }): { x: number; y: number; z: number } {
@@ -2105,7 +2105,7 @@ export class MapView {
       return;
     }
     this.gunRecoil.set(shooter.id, { at: now });
-    const energy = factionOf(shooter.type) === "borg";
+    const energy = factionOf(shooter.type) === "xeno";
     // A plasma cannon throws no powder smoke.
     if (!energy) {
       this.muzzleSmokes.push(
@@ -2170,7 +2170,7 @@ export class MapView {
       );
     }
     this.gunRecoil.set(shooter.id, { at: now });
-    const energy = factionOf(shooter.type) === "borg";
+    const energy = factionOf(shooter.type) === "xeno";
     if (!energy) {
       this.fieldGunSmokes.push(
         ...spawnFieldGunSmoke({
@@ -7234,20 +7234,20 @@ export class MapView {
       if (sheet === "swim") return spriteFor("simunit2", "stand", true);
       return SIMUNIT2_SPRITE;
     }
-    if (e.type === "borgdrone" || e.type === "lancer") {
-      const drone = e.type === "borgdrone";
+    if (e.type === "xenodrone" || e.type === "lancer") {
+      const drone = e.type === "xenodrone";
       const sheet = cyborgSheet({
         swimming: e.swimming,
         wreck: e.wreck,
         stance: e.stance,
         shotAgeMs: this.infantryShotAge(e.id),
       });
-      if (sheet === "die") return drone ? BORGDRONE_DIE_SPRITE : LANCER_DIE_SPRITE;
-      if (sheet === "fire") return drone ? BORGDRONE_FIRE_SPRITE : LANCER_FIRE_SPRITE;
-      if (sheet === "crawl-fire") return drone ? BORGDRONE_CRAWL_FIRE_SPRITE : LANCER_CRAWL_FIRE_SPRITE;
-      if (sheet === "crawl") return drone ? BORGDRONE_CRAWL_SPRITE : LANCER_CRAWL_SPRITE;
+      if (sheet === "die") return drone ? XENODRONE_DIE_SPRITE : LANCER_DIE_SPRITE;
+      if (sheet === "fire") return drone ? XENODRONE_FIRE_SPRITE : LANCER_FIRE_SPRITE;
+      if (sheet === "crawl-fire") return drone ? XENODRONE_CRAWL_FIRE_SPRITE : LANCER_CRAWL_FIRE_SPRITE;
+      if (sheet === "crawl") return drone ? XENODRONE_CRAWL_SPRITE : LANCER_CRAWL_SPRITE;
       if (sheet === "swim") return spriteFor(e.type, "stand", true);
-      return drone ? BORGDRONE_SPRITE : LANCER_SPRITE;
+      return drone ? XENODRONE_SPRITE : LANCER_SPRITE;
     }
     if (e.type === "cyborgcommander") {
       // He holds the firing pose while the beam is out.
@@ -7582,7 +7582,7 @@ export class MapView {
     // A hulk has its own burnt-out sheet on the same cell and contact; without one it greys the live art.
     const sheet = this.drawnSheet(e, def);
     let frameIndex: number | undefined;
-    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ROCKETER_DIE_SPRITE || def === PYRO_DIE_SPRITE || def === MORTARMAN_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE || def === DRONEOP_DIE_SPRITE || def === CYBORG_DIE_SPRITE || def === CYBORGCOMMANDER_DIE_SPRITE || def === SIMUNIT2_DIE_SPRITE || def === BORGDRONE_DIE_SPRITE || def === LANCER_DIE_SPRITE || def === JUMPJET_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
+    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ROCKETER_DIE_SPRITE || def === PYRO_DIE_SPRITE || def === MORTARMAN_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE || def === DRONEOP_DIE_SPRITE || def === CYBORG_DIE_SPRITE || def === CYBORGCOMMANDER_DIE_SPRITE || def === SIMUNIT2_DIE_SPRITE || def === XENODRONE_DIE_SPRITE || def === LANCER_DIE_SPRITE || def === JUMPJET_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
     else if (def === TROOPER_RIFLE_FIRE_SPRITE || def === GUNNER_FIRE_SPRITE || def === SNIPER_FIRE_SPRITE || def === ATINFANTRY_FIRE_SPRITE || def === ROCKETER_FIRE_SPRITE || def === PYRO_FIRE_SPRITE || def === JUMPJET_FIRE_SPRITE) {
       frameIndex = heldFrame(this.infantryShotAge(e.id) ?? 0, def.fps, def.frames);
     } else if (def === JUMPJET_FLY_SPRITE) {
@@ -7664,7 +7664,7 @@ export class MapView {
     if (drawn && e.gatling && !e.wreck) {
       const now = performance.now();
       const muzzles = gatlingMuzzles(s.x, s.y, size, p.turretFacing ?? p.facing, e.gatling.arms, e.gatling.off);
-      const energy = factionOf(e.type) === "borg";
+      const energy = factionOf(e.type) === "xeno";
       muzzles.forEach((m, i) => drawGatlingFlash(ctx, m, size, now, e.id + i * 2, energy));
     }
     if (drawn && e.mounts && !e.wreck) {
@@ -7677,7 +7677,7 @@ export class MapView {
         drawGatlingFlash(ctx, muzzle, size * 0.45, now, e.id + i * 7);
       });
     }
-    if (drawn && hullFlamerOf(e.type) && !e.wreck && e.mgAmmo !== 0 && factionOf(e.type) !== "borg") {
+    if (drawn && hullFlamerOf(e.type) && !e.wreck && e.mgAmmo !== 0 && factionOf(e.type) !== "xeno") {
       // The igniter at the bow projector stays lit while there is fuel to light.
       const m = feuerwirbelNozzle(s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), p.facing, size, this.ts());
       drawPilotLight(ctx, m.x, m.y, performance.now(), e.id);
@@ -8249,7 +8249,7 @@ export class MapView {
     if (host) this.flashAperture(host, p, now, false);
     else {
       this.rocketFrom.set(p.id, { x: p.x, y: p.y, z: p.z ?? 0 });
-      const energy = !!shooter && factionOf(shooter.type) === "borg";
+      const energy = !!shooter && factionOf(shooter.type) === "xeno";
       if (shooter && !shooter.wreck && !energy) {
         this.rocketPuffs.push(
           ...backblastPuffs({
@@ -8775,7 +8775,7 @@ export class MapView {
       if (!nozzle) continue;
       const born = jetParticles({ nozzle, land: jet.land, now, dtMs, seed: (id * 2654435761 + Math.floor(now * 7)) >>> 0 });
       // The Ravager's nanite jet is plasma: green, and no soot.
-      if (e && factionOf(e.type) === "borg") for (const fp of born) fp.energy = true;
+      if (e && factionOf(e.type) === "xeno") for (const fp of born) fp.energy = true;
       this.flameParticles.push(...born);
     }
     if (this.flameParticles.length > FLAME_PARTICLE_CAP) {
@@ -8860,7 +8860,7 @@ export class MapView {
       drawFlameParticle(ctx, s.x, s.y - p.h, look.r, look.heat, look.alpha);
     }
     if (plasma.length > 0) {
-      // The same fire, turned to the Borg's green.
+      // The same fire, turned to the Xenomorphs' green.
       ctx.filter = "hue-rotate(115deg) saturate(1.4)";
       for (const p of plasma) {
         const look = flameParticleLook(p, now);
@@ -8929,7 +8929,7 @@ export class MapView {
     const ctx = this.ctx;
     const keep: typeof this.fx = [];
     for (const f of this.fx) {
-      // A Borg hit is light, not metal: a green burst in place of dirt, sparks, and fireball.
+      // A Xenomorph hit is light, not metal: a green burst in place of dirt, sparks, and fireball.
       const energyHit = !!f.energy && !f.death && !f.intercept && f.kind !== "muzzle" && f.kind !== "kill" && !f.splash;
       if (energyHit || (f.energy && f.kind === "muzzle")) {
         const life = f.kind === "muzzle" ? fxLifeMs("muzzle", false) : energyBurstMs(f.caliber);

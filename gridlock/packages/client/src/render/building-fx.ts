@@ -125,7 +125,7 @@ const DEFS: Partial<Record<EntityType, BuildingAnimDef>> = {
     ],
     arcs: [{ x: 325, y: 167 }],
   },
-  // Borg spots from tools/sprites/render_borg_base.py (hivecore.json, fusionnode.json, assimilator.json).
+  // Xenomorph spots from tools/sprites/render_xeno_base.py (hivecore.json, fusionnode.json, assimilator.json).
   // Hive Core: the iris breathes, the crown rings chase round the spines, the apex beacon blinks.
   hivecore: {
     lights: [
@@ -171,7 +171,7 @@ const DEFS: Partial<Record<EntityType, BuildingAnimDef>> = {
     ],
     smoke: [{ x: 204, y: 164, rise: 40, thin: true }],
   },
-  // Spawning Pool and Aerie (render_borg_harbour.py; spots from spawnpool.json, aerie.json).
+  // Spawning Pool and Aerie (render_xeno_harbour.py; spots from spawnpool.json, aerie.json).
   spawnpool: {
     lights: [
       { x: 210, y: 141, r: 22, color: "#6dffc8", period: 2600, phase: 0, mode: "pulse" },
@@ -229,7 +229,7 @@ const DEFS: Partial<Record<EntityType, BuildingAnimDef>> = {
       { x: 588, y: 112, r: 6, color: "#b6fff0", period: 1600, phase: 0, mode: "blink" },
     ],
   },
-  // Nanite Forge (render_borg_base.py, forge.json): the maw breathes, the apron chevrons chase out, the vats pulse, a pod blinks in the claw.
+  // Nanite Forge (render_xeno_base.py, forge.json): the maw breathes, the apron chevrons chase out, the vats pulse, a pod blinks in the claw.
   forge: {
     lights: [
       { x: 127, y: 125, r: 18, color: "#6dffc8", period: 2600, phase: 0.0, mode: "pulse" },

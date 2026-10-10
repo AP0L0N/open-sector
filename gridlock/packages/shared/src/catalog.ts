@@ -561,7 +561,7 @@ export type EntityType =
   | "cyborg"
   | "cyborgcommander"
   | "simunit2"
-  | "borgdrone"
+  | "xenodrone"
   | "lancer"
   | "stalker"
   | "ravager"
@@ -800,7 +800,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "shed",
   "boiler",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "simunit2" | "borgdrone" | "lancer" | "stalker" | "ravager" | "behemoth" | "leech" | "lurker" | "wasp" | "scourge" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "horten" | "droneop" | "jumpjet";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "simunit2" | "xenodrone" | "lancer" | "stalker" | "ravager" | "behemoth" | "leech" | "lurker" | "wasp" | "scourge" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "horten" | "droneop" | "jumpjet";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -911,7 +911,7 @@ export const BUILDING_FACINGS = 24;
 export function isRotatableBuilding(type: string): type is BuildingType {
   return (ROTATABLE_BUILDINGS as readonly string[]).includes(type);
 }
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "simunit2", "borgdrone", "lancer", "stalker", "ravager", "behemoth", "leech", "lurker", "wasp", "scourge", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "horten", "droneop", "jumpjet"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "simunit2", "xenodrone", "lancer", "stalker", "ravager", "behemoth", "leech", "lurker", "wasp", "scourge", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "horten", "droneop", "jumpjet"];
 
 /**
  * A player fields only one of each of these at a time. While it lives, another
@@ -939,7 +939,7 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly Bu
   cyborg: "cyborgcentral",
   cyborgcommander: "cyborgcentral",
   simunit2: "cyborgcentral",
-  borgdrone: "cyborgcentral",
+  xenodrone: "cyborgcentral",
   lancer: "cyborgcentral",
   behemoth: "nexus",
   lurker: "nexus",
@@ -966,26 +966,27 @@ export function techNeeds(unit: TrainType): readonly BuildingType[] {
 }
 
 /**
- * Factions. Each seat picks one in the lobby. Earth United fields everything that is not
- * listed under the Borg; the Borg field only what is.
+ * Factions. Each seat picks one in the lobby. Alliance fields everything that is not
+ * listed under the Xenomorphs; the Xenomorphs field only what is.
  */
-export type Faction = "eu" | "borg";
-export const FACTIONS: readonly Faction[] = ["eu", "borg"];
-export const FACTION_NAMES: Record<Faction, string> = { eu: "Earth United", borg: "Borg" };
+export type Faction = "alliance" | "xeno";
+export const FACTIONS: readonly Faction[] = ["alliance", "xeno"];
+export const FACTION_NAMES: Record<Faction, string> = { alliance: "Alliance", xeno: "Xenomorph" };
 export function isFaction(v: unknown): v is Faction {
-  return v === "eu" || v === "borg";
+  return v === "alliance" || v === "xeno";
 }
-/** Everything the Borg build, train, or start with. */
-export const BORG_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([
+/** The ids older saves carry ("eu" was the Alliance, "borg" the Xenomorphs), read as today's. */
+export function migrateFaction(v: unknown): unknown {
+  return v === "eu" ? "alliance" : v === "borg" ? "xeno" : v;
+}
+/** Everything the Xenomorphs build, train, or start with. The Cyborg Central is in SHARED_TYPES. */
+export const XENO_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([
   "seed",
   "hivecore",
   "fusionnode",
   "assimilator",
-  "cyborgcentral",
-  "cyborg",
-  "cyborgcommander",
   "simunit2",
-  "borgdrone",
+  "xenodrone",
   "lancer",
   "stalker",
   "ravager",
@@ -1001,18 +1002,26 @@ export const BORG_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([
   "wasp",
   "scourge",
 ]);
-/** The faction that fields `type`. Neutral structures and civilian buildings read as Earth United. */
+/**
+ * Built by both factions. The Cyborg Central trains the Alliance's Cyborg and Cyborg Commander,
+ * and the Xenomorphs' Drone, Lancer, and Sim Unit II; each side sees only its own units there.
+ */
+export const SHARED_TYPES: ReadonlySet<EntityType> = new Set<EntityType>(["cyborgcentral"]);
+/**
+ * The faction that fields `type`. Neutral structures, civilian buildings, and shared buildings
+ * read as Alliance.
+ */
 export function factionOf(type: string): Faction {
-  return BORG_TYPES.has(type as EntityType) ? "borg" : "eu";
+  return XENO_TYPES.has(type as EntityType) ? "xeno" : "alliance";
 }
 /** May a player of `faction` queue, place, or train `type`? */
 export function inFaction(type: string, faction: Faction): boolean {
-  return factionOf(type) === faction;
+  return SHARED_TYPES.has(type as EntityType) || factionOf(type) === faction;
 }
 /** What each faction starts with, and what that unpacks into. */
 export const HQ_OF: Record<Faction, { rig: "rig" | "seed"; core: "core" | "hivecore" }> = {
-  eu: { rig: "rig", core: "core" },
-  borg: { rig: "seed", core: "hivecore" },
+  alliance: { rig: "rig", core: "core" },
+  xeno: { rig: "seed", core: "hivecore" },
 };
 /** The headquarters building: losing it eliminates the player. */
 export function isHqBuilding(type: string): type is "core" | "hivecore" {
@@ -1034,7 +1043,7 @@ export function deployTarget(rig: "rig" | "seed"): "core" | "hivecore" {
 export function packTarget(core: "core" | "hivecore"): "rig" | "seed" {
   return core === "hivecore" ? "seed" : "rig";
 }
-/** A building that pours scrap from a scrap field: the Smelter, or the Borg Assimilator. */
+/** A building that pours scrap from a scrap field: the Smelter, or the Xenomorph Assimilator. */
 export type SmelterType = "smelter" | "assimilator";
 export function isSmelterType(type: string): type is SmelterType {
   return type === "smelter" || type === "assimilator";
@@ -1045,27 +1054,27 @@ export function isPowerPlantType(type: string): type is "dynamo" | "fusionnode" 
 }
 /** The faction's own Smelter and Power Plant. */
 export function smelterOf(faction: Faction): SmelterType {
-  return faction === "borg" ? "assimilator" : "smelter";
+  return faction === "xeno" ? "assimilator" : "smelter";
 }
 export function powerPlantOf(faction: Faction): "dynamo" | "fusionnode" {
-  return faction === "borg" ? "fusionnode" : "dynamo";
+  return faction === "xeno" ? "fusionnode" : "dynamo";
 }
-/** A shipyard on the water: the Marine Base, or the Borg Spawning Pool. Ships launch, rearm, and retreat here. */
+/** A shipyard on the water: the Marine Base, or the Xenomorph Spawning Pool. Ships launch, rearm, and retreat here. */
 export type DockType = "dock" | "spawnpool";
 export function isDockType(type: string): type is DockType {
   return type === "dock" || type === "spawnpool";
 }
-/** A field planes live on: the Airfield, or the Borg Aerie. Same footprint, same four pads. */
+/** A field planes live on: the Airfield, or the Xenomorph Aerie. Same footprint, same four pads. */
 export type AirfieldType = "airfield" | "aerie";
 export function isAirfieldType(type: string): type is AirfieldType {
   return type === "airfield" || type === "aerie";
 }
 /** The faction's own shipyard and airfield. */
 export function dockOf(faction: Faction): DockType {
-  return faction === "borg" ? "spawnpool" : "dock";
+  return faction === "xeno" ? "spawnpool" : "dock";
 }
 export function airfieldOf(faction: Faction): AirfieldType {
-  return faction === "borg" ? "aerie" : "airfield";
+  return faction === "xeno" ? "aerie" : "airfield";
 }
 
 /** Advanced defences: the yard queues one only while every building listed here stands. */
@@ -1079,15 +1088,15 @@ export const BUILD_REQUIRES: Partial<Record<BuildingType, readonly BuildingType[
   pulsespire: ["nexus"],
 };
 
-/** The Borg vehicle factory: trains every Borg unit that is not a cyborg. */
-export const BORG_FACTORY = "forge";
+/** The Xenomorph vehicle factory: trains every Xenomorph unit that is not a cyborg. */
+export const XENO_FACTORY = "forge";
 /** A standing, powered Nanite Forge rearms its owner's units and Pulse Spires within this reach. */
 export const FORGE_REARM_TILES = t(6);
 /** Seconds between two rearm passes of a Forge. */
 export const FORGE_REARM_SECONDS = 2;
 /** Hand-outs (a shell, a rocket, or a belt's worth of rounds) each unit in reach takes per pass. */
 export const FORGE_REARM_PER_PASS = 2;
-/** Buildings that light the radar panel: the Radar Station, and the Borg Neural Nexus. */
+/** Buildings that light the radar panel: the Radar Station, and the Xenomorph Neural Nexus. */
 export function isRadarStation(type: string): boolean {
   return type === "radar" || type === "nexus";
 }
@@ -1250,7 +1259,7 @@ export interface CatalogEntry {
    */
   radarLaid?: boolean;
   /**
-   * A crewless building gun (the Borg Spine Turret and Pulse Spire). It lays and fires on its own
+   * A crewless building gun (the Xenomorph Spine Turret and Pulse Spire). It lays and fires on its own
    * like a turret, needs nobody at it, and falls silent while its owner is short on power.
    */
   poweredGun?: boolean;
@@ -3469,7 +3478,7 @@ export const PAK43_SHELLS: Record<ShellType, ShellDef> = {
   smoke: { id: "smoke", name: "Smoke", blurb: "Not carried.", damage: 0, penetration: 0, caliber: 88, spreadDeg: 6 },
 };
 
-/** Borg Pulse Spire: an armor-piercing pulse between the Pak 36's and the Pak 43's. Only AP is carried. */
+/** Xenomorph Pulse Spire: an armor-piercing pulse between the Pak 36's and the Pak 43's. Only AP is carried. */
 export const PULSE_SPIRE_SHELLS: Record<ShellType, ShellDef> = {
   ap: {
     id: "ap",
@@ -3838,7 +3847,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     special: "deploy",
-    blurb: "A Borg hive pod on six legs. Root it where the ground is level and it grows into a Hive Core.",
+    blurb: "A Xenomorph hive pod on six legs. Root it where the ground is level and it grows into a Hive Core.",
   },
   hivecore: {
     type: "hivecore",
@@ -3861,7 +3870,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     special: "deploy",
-    blurb: "The Borg hive that grew from the Seed. It raises every Borg structure. Lose it and the collective falls.",
+    blurb: "The Xenomorph hive that grew from the Seed. It raises every Xenomorph structure. Lose it and the collective falls.",
   },
   core: {
     type: "core",
@@ -4101,7 +4110,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `Assembly hall and uplink mast that run your cyborgs. Trains the Cyborg, the Cyborg Commander, and the Sim Unit II. Your Cyborgs and Sim Units live on its uplink: if it falls or your power runs short while no Cyborg Commander of yours lives, ${CYBORG_SHUTDOWN_SECONDS} seconds later every Cyborg of yours on the field shuts down: still yours, but dead still and silent. Get the link back (a new Central, or the power) and they wake up, unless an enemy Cyborg Commander took them first. A living Cyborg Commander keeps yours running without it, and takes over any enemy's shut-down Cyborg near him.`,
+    blurb: `Assembly hall and uplink mast that run your cyborgs. Both sides raise one: the Alliance trains the Cyborg and the Cyborg Commander here, the Xenomorphs the Drone, the Lancer, and the Sim Unit II. Your cyborgs live on its uplink: if it falls or your power runs short while no Cyborg Commander of yours lives, ${CYBORG_SHUTDOWN_SECONDS} seconds later every Cyborg of yours on the field shuts down: still yours, but dead still and silent. Get the link back (a new Central, or the power) and they wake up, unless an enemy Cyborg Commander took them first. A living Cyborg Commander keeps yours running without it, and takes over any enemy's shut-down Cyborg near him.`,
   },
   radar: {
     type: "radar",
@@ -5313,7 +5322,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: GATLING.penetration,
     caliber: GATLING.caliber,
     spreadDeg: GATLING.spreadDeg,
-    blurb: "Half soldier, half machine. A pulse repeater for an arm, fed from a 300-charge cell that a powered Nanite Forge in reach recharges. It throws a stream of green bolts and overheats after under two seconds on the trigger. He carries no lamp: a thermal scanner marks enemy soldiers in a cone ahead of him, through fog, cover and dark. Set to Engage, he fires on whatever his side's scanners read inside his reach, seen or not. A round sometimes bites a Walker or a truck. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him, and either brings the legs back. He runs on the uplink from your Cyborg Central or a living Cyborg Commander of yours: without either he shuts down a few seconds later: still yours, but still and silent. He wakes up once your link is back, unless an enemy Cyborg Commander takes him over first.",
+    blurb: "Half soldier, half machine. A gatling arm fed from a 300-round drum that only a supply truck refills. It fires with tracers and overheats after under two seconds on the trigger. He carries no lamp: a thermal scanner marks enemy soldiers in a cone ahead of him, through fog, cover and dark. Set to Engage, he fires on whatever his side's scanners read inside his reach, seen or not. A round sometimes bites a Walker or a truck. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him, and either brings the legs back. He runs on the uplink from your Cyborg Central or a living Cyborg Commander of yours: without either he shuts down a few seconds later: still yours, but still and silent. He wakes up once your link is back, unless an enemy Cyborg Commander takes him over first.",
   },
   cyborgcommander: {
     type: "cyborgcommander",
@@ -5365,8 +5374,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: DAGGERS.spreadDeg,
     blurb: `A light, fast cyborg built for the knife. An energy dagger in each hand: one slash kills a soldier, but only at arm's reach. He opens a Walker or a truck slowly and barely scratches a tank or a wall. A blink drive throws him up to ${SIMUNIT_BLINK_RANGE_TILES / TILE_SUBDIV} cells in an instant on one charge, back by itself in ${SIMUNIT_BLINK_RECHARGE_SECONDS} seconds: an enemy he goes for inside that reach, he blinks straight onto while the charge is up. Right-click an enemy structure or hull with soldiers inside and he blinks in among them, kills every soldier aboard in ${SIMUNIT_PURGE_SECONDS} seconds, and blinks back out; only a hostile garrison offers it. Like the Cyborg he can shut down where he stands: dark and still, he reads as no one's machine and enemy guns pass him by until he powers up. Near death his legs are torn off and he crawls on, still cutting. Medics heal him, engineers repair him. He runs on your Cyborg Central's uplink or a living Cyborg Commander, like the Cyborg.`,
   },
-  borgdrone: {
-    type: "borgdrone",
+  xenodrone: {
+    type: "xenodrone",
     kind: "unit",
     name: "Drone",
     letter: "o",
@@ -5415,7 +5424,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: LAUNCHER.spreadDeg,
     blurb: "Anti-armor cyborg. A plasma lance rides its shoulder and throws a burning bolt like a rocket: loose at full reach, tighter up close, a burst among soldiers that dents a tank. The capacitor on its back recharges the lance between shots. Heavy plating keeps it standing where a Rocketer would fall. No stance orders. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It runs on your Cyborg Central's uplink or a living Cyborg Commander, and shuts down without them.",
   },
-  /** Borg heavy assimilator: four legs and a turreted disruptor, the hive's answer to the Tiger. */
+  /** Xenomorph heavy assimilator: four legs and a turreted disruptor, the hive's answer to the Tiger. */
   stalker: {
     type: "stalker",
     kind: "unit",
@@ -5449,7 +5458,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     wreckHp: 35,
     blurb: "Heavy assimilator on four long legs, a domed turret on its back. The disruptor throws a piercing plasma bolt about as hard as a Tiger's shell, or a scattering burst for soldiers, from a little less reach. Thinner in front than a Tiger, but its legs turn it quicker. No tracks to lose. Burrow digs it in where it stands: under the ground no enemy sees it or can pick it, but it neither moves nor fires; it rises with its gun laid and fires at once. The rack refills by itself near a powered Nanite Forge of yours.",
   },
-  /** Borg heavy assimilator: fast raptor hull, spine gatling turret, nanite flamer in the jaw. */
+  /** Xenomorph heavy assimilator: fast raptor hull, spine gatling turret, nanite flamer in the jaw. */
   ravager: {
     type: "ravager",
     kind: "unit",
@@ -5484,7 +5493,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     wreckHp: 28,
     blurb: `Fast heavy assimilator built to hunt soldiers. A pulse repeater on a quick turret draws on its own core and never runs dry; tank plate turns the bolts, and they do not bring a building down. A plasma jet in the jaw fires on its own at soldiers and soft vehicles inside a short reach, but only where the nose points, and burns every soldier in its path, friends too. ${HULL_FLAMER_BURSTS} bursts of plasma, refilled near a powered Nanite Forge of yours. Lighter plate than a Stalker.`,
   },
-  /** Borg heavy assimilator: six legs, twin disruptors, a carapace that sheds shells. */
+  /** Xenomorph heavy assimilator: six legs, twin disruptors, a carapace that sheds shells. */
   behemoth: {
     type: "behemoth",
     kind: "unit",
@@ -5521,7 +5530,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     wreckHp: 60,
     blurb: `The largest of the heavy assimilators: a carapace on six legs with twin plasma disruptors on one turret. They fire one after the other, a short gap and then a long reload, through a Tiger's front plate, from farther than any tank but the Jagdtiger. The layered carapace sheds part of every shell that hits it (it takes ${Math.round(BEHEMOTH_SHELL_RESIST * 100)}% of the damage). Slow on its legs and slow on the turret, but Lunge throws it up and forward up to ${BEHEMOTH_LUNGE_RANGE_TILES / TILE_SUBDIV} cells; where it lands, ${BEHEMOTH_RING_SWEEPS} green laser sweeps lash out round it, burning enemy soldiers and setting the ground alight. The legs need ${BEHEMOTH_LUNGE_RECHARGE_SECONDS} seconds before the next. Its rack refills near a powered Nanite Forge of yours. Needs a Neural Nexus.`,
   },
-  /** Borg vehicle factory. */
+  /** Xenomorph vehicle factory. */
   forge: {
     type: "forge",
     kind: "building",
@@ -5542,9 +5551,9 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `A ribbed hangar over vats of nanite gel. It grows the heavy assimilators: the Stalker, the Ravager, and, with a Neural Nexus standing, the Behemoth. The Borg drive no supply trucks: while it stands and your power holds, the Forge refills the racks, belts, and fuel of your units and Pulse Spires within ${FORGE_REARM_TILES / TILE_SUBDIV} cells of it.`,
+    blurb: `A ribbed hangar over vats of nanite gel. It grows the heavy assimilators: the Stalker, the Ravager, and, with a Neural Nexus standing, the Behemoth. The Xenomorphs drive no supply trucks: while it stands and your power holds, the Forge refills the racks, belts, and fuel of your units and Pulse Spires within ${FORGE_REARM_TILES / TILE_SUBDIV} cells of it.`,
   },
-  /** Borg tech and sensor building. */
+  /** Xenomorph tech and sensor building. */
   nexus: {
     type: "nexus",
     kind: "building",
@@ -5567,7 +5576,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     ...UNARMED,
     blurb: "A neural core in a cage of ribs under a crown of sensor spines: the hive thinks here. It unlocks the Behemoth and the Pulse Spire, and it lights the radar panel like a Radar Station: an enemy plane or drone nobody can see shows as a blinking contact on the panel. Costs about what a Research Facility does, and draws more power.",
   },
-  /** Borg anti-infantry gun: crewless, runs on base power. */
+  /** Xenomorph anti-infantry gun: crewless, runs on base power. */
   spineturret: {
     type: "spineturret",
     kind: "building",
@@ -5599,7 +5608,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     capturable: false,
     blurb: "A chitin bulb rooted in the ground with a twin pulse repeater for a head. Nobody works it: it lays itself all the way round and cuts down soldiers at an MG42's pace from a little short of an MG Nest's reach, and draws its charge from the hive, so it never runs dry. Tank plate turns them, and they do not bring a building down. Short on power, it falls silent. Cannot move.",
   },
-  /** Borg anti-armor gun: crewless, runs on base power. */
+  /** Xenomorph anti-armor gun: crewless, runs on base power. */
   pulsespire: {
     type: "pulsespire",
     kind: "building",
@@ -5634,7 +5643,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     capturable: false,
     blurb: `A tall spire with a long emitter and a ring of green fire. Nobody works it: it turns all the way round, slowly, and throws a piercing energy pulse through a Tiger's front plate from farther than a Pak 36 reaches. Tanks first. ${PULSE_SPIRE_RACK} charges in the ring; a powered Nanite Forge within reach recharges it. Short on power, it falls silent. Needs a Neural Nexus. Cannot move.`,
   },
-  /** Borg shipyard: grows the Leech and the Lurker. Stands on open water like a Marine Base. */
+  /** Xenomorph shipyard: grows the Leech and the Lurker. Stands on open water like a Marine Base. */
   spawnpool: {
     type: "spawnpool",
     kind: "building",
@@ -5658,7 +5667,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     onWater: true,
     blurb: "A ring of ribbed chitin around a glowing birthing pool. It can only grow on water: every tile under it must be open water. Grows the Leech and, with a Neural Nexus standing, the Lurker, which slip into the water beside it and never come ashore. Lurkers reload their plasma torpedoes beside it.",
   },
-  /** Borg airfield: a launch spine and four nests. Same footprint and pads as the Airfield. */
+  /** Xenomorph airfield: a launch spine and four nests. Same footprint and pads as the Airfield. */
   aerie: {
     type: "aerie",
     kind: "building",
@@ -5681,7 +5690,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     ...UNARMED,
     blurb: `A long spine of fused chitin with four landing nests beside it. Grows the Wasp and, with a Neural Nexus standing, the Scourge, and keeps up to ${AIRFIELD_PADS} of them. They come back to their nests to recharge, rearm, and mend.`,
   },
-  /** Borg fast attack boat: a skimming chitin hull with a plasma cannon. */
+  /** Xenomorph fast attack boat: a skimming chitin hull with a plasma cannon. */
   leech: {
     type: "leech",
     kind: "unit",
@@ -5715,7 +5724,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     wreckHp: 14,
     blurb: "A low chitin hull that skims the water on a glowing belly, a small plasma cannon on its back. Water only: it never comes ashore. It fires on boats and on anything within reach of the bank, a little faster and harder than the Attack Boat. Thin shell: an anti-tank rifle or a tank shell goes straight through. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.",
   },
-  /** Borg submarine: plasma torpedoes, runs submerged. */
+  /** Xenomorph submarine: plasma torpedoes, runs submerged. */
   lurker: {
     type: "lurker",
     kind: "unit",
@@ -5752,7 +5761,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     belt: SUB_TORPEDOES,
     blurb: `A long ribbed hull with glowing gills that hunts under the water. It leaves the pool surfaced; Dive and Surface set its depth. Submerged, the enemy sees it only while one of their Destroyers hears it on sonar, or for ${SUB_REVEAL_SECONDS} seconds after it fires. It must surface to strike a boat, a swimmer, or a shore building. Its bow tubes throw slow plasma torpedoes that run at the waterline; any gun can burst one before it arrives. ${SUB_TORPEDOES} in the tubes; beside a Spawning Pool it grows one back every ${SUB_REARM_SECONDS} seconds. Needs a Neural Nexus.`,
   },
-  /** Borg fighter: insect wings, twin pulse cannons. Lives in an Aerie nest. */
+  /** Xenomorph fighter: insect wings, twin pulse cannons. Lives in an Aerie nest. */
   wasp: {
     type: "wasp",
     kind: "unit",
@@ -5781,7 +5790,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     wreckHp: 20,
     blurb: `Insect fighter on green-veined wings, a pulse cannon under each. ${FW190_BARRAGES} barrages a sortie: on each pass it lines up on the target and lays two straight lines of pulses through it, coming down through a tank's thin roof. It chases enemy planes out of the sky the same way. A shade faster and tighter than the Fw 190, a little lighter. Lands in an Aerie nest to recharge and mend. A hit that tears a wing brings it down at once.`,
   },
-  /** Borg dive bomber: beetle carapace and a plasma bomb pod. Lives in an Aerie nest. */
+  /** Xenomorph dive bomber: beetle carapace and a plasma bomb pod. Lives in an Aerie nest. */
   scourge: {
     type: "scourge",
     kind: "unit",
@@ -6806,7 +6815,7 @@ export function armorLabel(type: EntityType): string | null {
   return `F${d.armorFront} / S${d.armorSide} / R${d.armorRear}`;
 }
 
-const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "cyborg", "cyborgcommander", "simunit2", "borgdrone", "lancer", "droneop", "jumpjet"];
+const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "cyborg", "cyborgcommander", "simunit2", "xenodrone", "lancer", "droneop", "jumpjet"];
 
 /** Soldier with a jet pack: the Jump Jet. */
 export function isJumpJetType(type: EntityType): boolean {
@@ -6890,7 +6899,7 @@ export function isInfantryType(type: EntityType): boolean {
  * no random limb hits, legs tied to HP.
  */
 export function isCyborg(type: EntityType): boolean {
-  return type === "cyborg" || type === "cyborgcommander" || isSimUnit(type) || type === "borgdrone" || type === "lancer";
+  return type === "cyborg" || type === "cyborgcommander" || isSimUnit(type) || type === "xenodrone" || type === "lancer";
 }
 
 /**
@@ -6982,7 +6991,7 @@ export function primaryInfantryGun(type: EntityType): InfantryGun | null {
   if (type === "cyborg") return GATLING;
   if (type === "cyborgcommander") return LASER;
   if (type === "simunit2") return DAGGERS;
-  if (type === "borgdrone") return RIFLE;
+  if (type === "xenodrone") return RIFLE;
   if (type === "lancer") return LAUNCHER;
   if (type === "jumpjet") return ASSAULT;
   return null;
@@ -7000,7 +7009,7 @@ export function infantryLoadout(type: EntityType): readonly InfantryGun[] {
   if (type === "cyborg") return [GATLING];
   if (type === "cyborgcommander") return [LASER];
   if (type === "simunit2") return [DAGGERS];
-  if (type === "borgdrone") return [RIFLE];
+  if (type === "xenodrone") return [RIFLE];
   if (type === "lancer") return [LAUNCHER];
   if (type === "jumpjet") return [ASSAULT, HANDGUN];
   return [];
@@ -7484,7 +7493,7 @@ export function armorFirstOf(type: EntityType): boolean {
   return catalog(type).armorFirst === true;
 }
 
-/** A crewless Borg gun that runs on base power: the Spine Turret, the Pulse Spire. See CatalogEntry.poweredGun. */
+/** A crewless Xenomorph gun that runs on base power: the Spine Turret, the Pulse Spire. See CatalogEntry.poweredGun. */
 export function poweredGunOf(type: EntityType): boolean {
   return catalog(type).poweredGun === true;
 }

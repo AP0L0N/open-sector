@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Borg crewless emplacements: Spine Turret and Pulse Spire.
+"""Xenomorph crewless emplacements: Spine Turret and Pulse Spire.
 
 Same file set and JSON schema as render_ww2_guns.py, so the client draws them as forts (FORT_TYPES):
   <id>.png            the static base (pad, roots / spire), with its cast shadow
@@ -14,11 +14,11 @@ Same file set and JSON schema as render_ww2_guns.py, so the client draws them as
   spineturret  t(1)  anti-infantry: a squat chitin bulb on clawed roots, a twin needle gatling head
   pulsespire   t(1)  anti-armour: a tall tapered spire, a long emitter barrel through green energy rings
 
-Look and materials: render_borg_base.py (the Hive Core / Fusion Node / Assimilator kit: gunmetal and
+Look and materials: render_xeno_base.py (the Hive Core / Fusion Node / Assimilator kit: gunmetal and
 chitin, cyan-green emissive glow, the same concrete pad), on render_ww2_guns.py's rows, canvas and
 shading at the WW2 guns' 3x source zoom.
 
-  cd tools/sprites && python3 render_borg_guns.py --out ../../gridlock/packages/client/src/assets/buildings [--only spineturret pulsespire]
+  cd tools/sprites && python3 render_xeno_guns.py --out ../../gridlock/packages/client/src/assets/buildings [--only spineturret pulsespire]
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from pathlib import Path
 import numpy as np
 
 import render_ww2_guns as wg  # noqa: E402  (sets up the WW2 kit, ra.ZOOM = 3)
-import render_borg_base as bb  # noqa: E402  (chains the Borg materials over it)
+import render_xeno_base as bb  # noqa: E402  (chains the Xenomorph materials over it)
 
 wf = wg.wf
 ra = wg.ra

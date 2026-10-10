@@ -1,4 +1,4 @@
-import { canContinuousTrain, clampGameSpeed, isFaction, type Faction, type TrainType } from "../catalog.js";
+import { canContinuousTrain, clampGameSpeed, isFaction, migrateFaction, type Faction, type TrainType } from "../catalog.js";
 import { getMap, TILE_EMPTY } from "../maps.js";
 import { MAX_SLOTS, MIN_SLOTS, SLOT_COUNT, isAiDifficulty, type AiDifficulty, type SlotStatus } from "../protocol.js";
 import { restampForts } from "./field.js";
@@ -332,9 +332,27 @@ export function applySaveSeats(room: RoomState, save: SaveGame, humanPlayerId: s
   }
 }
 
+/**
+ * Saves from before the factions were renamed: the Borg Drone is the Xenomorph Drone now, and the
+ * faction ids "eu" and "borg" read as "alliance" and "xeno".
+ */
+function migrateNames(raw: object): object {
+  const s = JSON.parse(JSON.stringify(raw).replace(/"borgdrone"/g, '"xenodrone"')) as {
+    players?: unknown;
+    seats?: unknown;
+  };
+  for (const list of [s.players, s.seats]) {
+    if (!Array.isArray(list)) continue;
+    for (const p of list) {
+      if (p && typeof p === "object" && "faction" in p) p.faction = migrateFaction(p.faction);
+    }
+  }
+  return s;
+}
+
 function parseSave(raw: unknown): SaveResult<SaveGame> {
   if (!raw || typeof raw !== "object") return fail("That save cannot be read.");
-  const s = raw as Partial<SaveGame>;
+  const s = migrateNames(raw) as Partial<SaveGame>;
   if (s.v !== SAVE_VERSION) return fail("That save is from another version.");
   if (typeof s.mapId !== "string" || s.mapId.length < 1 || s.mapId.length > 80) return fail("That save's map is missing.");
   if (typeof s.humanId !== "string" || s.humanId.length < 1 || s.humanId.length > 80) return fail("That save has no commander.");

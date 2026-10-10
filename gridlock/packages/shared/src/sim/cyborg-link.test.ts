@@ -99,7 +99,7 @@ describe("cyborg link", () => {
     const { state, a } = match();
     const { hub } = central(state, a, 6, 6);
     const ts = state.tileSize;
-    const drone = makeEntity(state, "borgdrone", a, tileCenter(60, ts), tileCenter(40, ts));
+    const drone = makeEntity(state, "xenodrone", a, tileCenter(60, ts), tileCenter(40, ts));
     const lancer = makeEntity(state, "lancer", a, tileCenter(64, ts), tileCenter(40, ts));
     ticks(state, 2);
     hub.hp = 0;

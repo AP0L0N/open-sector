@@ -270,12 +270,12 @@ import simunit2CrawlUrl from "../assets/units/simunit2-crawl.png";
 import simunit2CrawlFireUrl from "../assets/units/simunit2-crawl-fire.png";
 import simunit2DieUrl from "../assets/units/simunit2-die.png";
 import simunit2SwimUrl from "../assets/units/simunit2-swim.png";
-import borgdroneWalkUrl from "../assets/units/borgdrone-walk.png";
-import borgdroneFireUrl from "../assets/units/borgdrone-fire.png";
-import borgdroneCrawlUrl from "../assets/units/borgdrone-crawl.png";
-import borgdroneCrawlFireUrl from "../assets/units/borgdrone-crawl-fire.png";
-import borgdroneDieUrl from "../assets/units/borgdrone-die.png";
-import borgdroneSwimUrl from "../assets/units/borgdrone-swim.png";
+import xenodroneWalkUrl from "../assets/units/xenodrone-walk.png";
+import xenodroneFireUrl from "../assets/units/xenodrone-fire.png";
+import xenodroneCrawlUrl from "../assets/units/xenodrone-crawl.png";
+import xenodroneCrawlFireUrl from "../assets/units/xenodrone-crawl-fire.png";
+import xenodroneDieUrl from "../assets/units/xenodrone-die.png";
+import xenodroneSwimUrl from "../assets/units/xenodrone-swim.png";
 import lancerWalkUrl from "../assets/units/lancer-walk.png";
 import lancerFireUrl from "../assets/units/lancer-fire.png";
 import lancerCrawlUrl from "../assets/units/lancer-crawl.png";
@@ -1081,12 +1081,12 @@ export const SIMUNIT2_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_FIRE_SPRITE, imag
 export const SIMUNIT2_CRAWL_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_SPRITE, image: loadSheet(simunit2CrawlUrl) };
 export const SIMUNIT2_CRAWL_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_FIRE_SPRITE, image: loadSheet(simunit2CrawlFireUrl) };
 export const SIMUNIT2_DIE_SPRITE: UnitSpriteDef = { ...CYBORG_DIE_SPRITE, image: loadSheet(simunit2DieUrl) };
-/** Drone and Lancer (render_borgdrone.py, render_lancer.py): Sim Unit II's lock, their own frames. */
-export const BORGDRONE_SPRITE: UnitSpriteDef = { ...CYBORG_SPRITE, image: loadSheet(borgdroneWalkUrl) };
-export const BORGDRONE_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_FIRE_SPRITE, image: loadSheet(borgdroneFireUrl) };
-export const BORGDRONE_CRAWL_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_SPRITE, image: loadSheet(borgdroneCrawlUrl) };
-export const BORGDRONE_CRAWL_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_FIRE_SPRITE, image: loadSheet(borgdroneCrawlFireUrl) };
-export const BORGDRONE_DIE_SPRITE: UnitSpriteDef = { ...CYBORG_DIE_SPRITE, image: loadSheet(borgdroneDieUrl) };
+/** Drone and Lancer (render_xenodrone.py, render_lancer.py): Sim Unit II's lock, their own frames. */
+export const XENODRONE_SPRITE: UnitSpriteDef = { ...CYBORG_SPRITE, image: loadSheet(xenodroneWalkUrl) };
+export const XENODRONE_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_FIRE_SPRITE, image: loadSheet(xenodroneFireUrl) };
+export const XENODRONE_CRAWL_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_SPRITE, image: loadSheet(xenodroneCrawlUrl) };
+export const XENODRONE_CRAWL_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_FIRE_SPRITE, image: loadSheet(xenodroneCrawlFireUrl) };
+export const XENODRONE_DIE_SPRITE: UnitSpriteDef = { ...CYBORG_DIE_SPRITE, image: loadSheet(xenodroneDieUrl) };
 export const LANCER_SPRITE: UnitSpriteDef = { ...CYBORG_SPRITE, image: loadSheet(lancerWalkUrl) };
 export const LANCER_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_FIRE_SPRITE, image: loadSheet(lancerFireUrl) };
 export const LANCER_CRAWL_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_SPRITE, image: loadSheet(lancerCrawlUrl) };
@@ -1203,7 +1203,7 @@ const SWIM_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   cyborg: swimSprite(cyborgSwimUrl),
   cyborgcommander: swimSprite(cyborgCommanderSwimUrl),
   simunit2: swimSprite(simunit2SwimUrl),
-  borgdrone: swimSprite(borgdroneSwimUrl),
+  xenodrone: swimSprite(xenodroneSwimUrl),
   lancer: swimSprite(lancerSwimUrl),
 };
 
@@ -1272,8 +1272,8 @@ bindApocalypseSheets(
   APOCALYPSE_SPRITE.mount!.image,
 );
 
-/** A Borg heavy assimilator on the Tiger's cell; the legs are the hull. Sized by the art's metres per cell. */
-function borgWalker(legs: string, turret: string, gun: string, size: number, fps: number): UnitSpriteDef {
+/** A Xenomorph heavy assimilator on the Tiger's cell; the legs are the hull. Sized by the art's metres per cell. */
+function xenoWalker(legs: string, turret: string, gun: string, size: number, fps: number): UnitSpriteDef {
   const overlay = (src: string): TurretSpriteDef => ({ image: loadSheet(src), dirs: TANK_FACE_DIRS, frames: 1, frameSize: 128 });
   return {
     image: loadSheet(legs),
@@ -1288,9 +1288,9 @@ function borgWalker(legs: string, turret: string, gun: string, size: number, fps
     facingSpace: "world",
   };
 }
-export const STALKER_SPRITE = borgWalker(stalkerLegsUrl, stalkerTurretUrl, stalkerGunUrl, 49, 10);
-export const BEHEMOTH_SPRITE = borgWalker(behemothLegsUrl, behemothTurretUrl, behemothGunUrl, 68, 7);
-export const RAVAGER_SPRITE = borgWalker(ravagerLegsUrl, ravagerTurretUrl, ravagerGunUrl, 29, 12);
+export const STALKER_SPRITE = xenoWalker(stalkerLegsUrl, stalkerTurretUrl, stalkerGunUrl, 49, 10);
+export const BEHEMOTH_SPRITE = xenoWalker(behemothLegsUrl, behemothTurretUrl, behemothGunUrl, 68, 7);
+export const RAVAGER_SPRITE = xenoWalker(ravagerLegsUrl, ravagerTurretUrl, ravagerGunUrl, 29, 12);
 
 const ss3Gun: TurretSpriteDef = {
   image: new Image(),
@@ -1544,7 +1544,7 @@ export const FW190_SPRITE: UnitSpriteDef = {
 };
 bindFighterSheets(FW190_SPRITE.image);
 
-/** Leech: the Borg attack boat, on the Attack Boat's cell and scale. */
+/** Leech: the Xenomorph attack boat, on the Attack Boat's cell and scale. */
 export const LEECH_SPRITE: UnitSpriteDef = {
   image: new Image(),
   dirs: TANK_FACE_DIRS,
@@ -1557,7 +1557,7 @@ export const LEECH_SPRITE: UnitSpriteDef = {
 };
 bindNavalSheets("leech", LEECH_SPRITE.image);
 
-/** Lurker: the Borg submarine, about the Submarine's footprint. */
+/** Lurker: the Xenomorph submarine, about the Submarine's footprint. */
 export const LURKER_SPRITE: UnitSpriteDef = {
   image: new Image(),
   dirs: TANK_FACE_DIRS,
@@ -1570,7 +1570,7 @@ export const LURKER_SPRITE: UnitSpriteDef = {
 };
 bindNavalSheets("lurker", LURKER_SPRITE.image);
 
-/** Wasp: the Borg fighter, the Fw 190's camera and scale. */
+/** Wasp: the Xenomorph fighter, the Fw 190's camera and scale. */
 export const WASP_SPRITE: UnitSpriteDef = {
   image: new Image(),
   dirs: TANK_FACE_DIRS,
@@ -1583,7 +1583,7 @@ export const WASP_SPRITE: UnitSpriteDef = {
 };
 bindPlaneSheets("wasp", WASP_SPRITE.image);
 
-/** Scourge: the Borg dive bomber, the Stuka's camera and scale. */
+/** Scourge: the Xenomorph dive bomber, the Stuka's camera and scale. */
 export const SCOURGE_SPRITE: UnitSpriteDef = {
   image: new Image(),
   dirs: TANK_FACE_DIRS,
@@ -1787,7 +1787,7 @@ export const RIG_SPRITE: UnitSpriteDef = {
   facingSpace: "world",
 };
 
-/** Borg carrier that unpacks into a Hive Core. The Rig's lock: tools/sprites/render_seed.py. */
+/** Xenomorph carrier that unpacks into a Hive Core. The Rig's lock: tools/sprites/render_seed.py. */
 export const SEED_SPRITE: UnitSpriteDef = {
   image: loadSheet(seedSheetUrl),
   dirs: 16,
@@ -1911,7 +1911,7 @@ const INFANTRY_DIE: Partial<Record<EntityType, UnitSpriteDef>> = {
   cyborg: CYBORG_DIE_SPRITE,
   cyborgcommander: CYBORGCOMMANDER_DIE_SPRITE,
   simunit2: SIMUNIT2_DIE_SPRITE,
-  borgdrone: BORGDRONE_DIE_SPRITE,
+  xenodrone: XENODRONE_DIE_SPRITE,
   lancer: LANCER_DIE_SPRITE,
 };
 
@@ -1980,7 +1980,7 @@ export function spriteFor(type: EntityType, stance?: Stance, swimming = false): 
   if (type === "cyborg") return stance === "crawl" ? CYBORG_CRAWL_SPRITE : CYBORG_SPRITE;
   if (type === "cyborgcommander") return stance === "crawl" ? CYBORGCOMMANDER_CRAWL_SPRITE : CYBORGCOMMANDER_SPRITE;
   if (type === "simunit2") return stance === "crawl" ? SIMUNIT2_CRAWL_SPRITE : SIMUNIT2_SPRITE;
-  if (type === "borgdrone") return stance === "crawl" ? BORGDRONE_CRAWL_SPRITE : BORGDRONE_SPRITE;
+  if (type === "xenodrone") return stance === "crawl" ? XENODRONE_CRAWL_SPRITE : XENODRONE_SPRITE;
   if (type === "lancer") return stance === "crawl" ? LANCER_CRAWL_SPRITE : LANCER_SPRITE;
   return UNIT_SPRITES[type];
 }
@@ -2039,22 +2039,22 @@ const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   research: building(researchUrl, 384, 210, 324, 150, 70),
   // Assembly hall, uplink mast, reactor annex. Metrics from tools/sprites/render_cyborgcentral.py (cyborgcentral.json).
   cyborgcentral: building(cyborgCentralUrl, 384, 210, 348, 204, 60),
-  // Borg. Metrics from tools/sprites/render_borg_base.py (<type>.json).
-  // Hive dome, ringed spines, iris: the Borg HQ, t(3) like the Core.
+  // Xenomorph. Metrics from tools/sprites/render_xeno_base.py (<type>.json).
+  // Hive dome, ringed spines, iris: the Xenomorph HQ, t(3) like the Core.
   hivecore: building(hiveCoreUrl, 384, 204, 274.2, 204, 62.2),
-  // Twin coil spires and a plasma core: the Borg power plant, t(2) like the Dynamo.
+  // Twin coil spires and a plasma core: the Xenomorph power plant, t(2) like the Dynamo.
   fusionnode: building(fusionNodeUrl, 384, 210, 277.9, 210, 10.9),
-  // Claw-rig over a glowing intake pit: the Borg scrap smelter, t(3) like the Smelter.
+  // Claw-rig over a glowing intake pit: the Xenomorph scrap smelter, t(3) like the Smelter.
   assimilator: building(assimilatorUrl, 384, 204, 256.2, 204, 54.2),
-  // Ribbed hangar, glowing maw, nanite vats, crane claw: the Borg vehicle factory, t(3) like the Machine Shop.
+  // Ribbed hangar, glowing maw, nanite vats, crane claw: the Xenomorph vehicle factory, t(3) like the Machine Shop.
   forge: building(forgeUrl, 384, 204, 232.2, 188, 22.2),
-  // Neural core in a rib cage under a sensor crown: Borg tech and radar, t(2).
+  // Neural core in a rib cage under a sensor crown: Xenomorph tech and radar, t(2).
   nexus: building(nexusUrl, 384, 210, 322.9, 210, 19.9),
   // Ops hut, lattice mast, dish. Metrics from tools/sprites/render_radar.py (radar.json); the stack hangs over the dish.
   radar: building(radarUrl, 384, 210, 354, 216, 58),
   // The pier stands in its pond: a hard edge, no blend onto ground that is not there.
   dock: building(dockUrl, 384, 210, 354, 214, 92, false),
-  // Chitin ring round a birthing pool, floating on open water like the Marine Base (render_borg_harbour.py).
+  // Chitin ring round a birthing pool, floating on open water like the Marine Base (render_xeno_harbour.py).
   spawnpool: building(spawnPoolUrl, 384, 210, 240.1, 163.3, 28.1, false),
   // Launch spine and four nests on the Airfield's canvas and pads.
   aerie: building(aerieUrl, 960, 652, 552, 588, 100, false),

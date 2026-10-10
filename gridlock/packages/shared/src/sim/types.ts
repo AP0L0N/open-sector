@@ -906,7 +906,7 @@ export interface SimPlayer {
   scrapCarry: number;
   /** Sim tick this side's Cyborgs lost their link (no powered Cyborg Central, no living Commander). Absent while linked. */
   cyborgLinkLostTick?: number;
-  /** The seat's faction. Missing reads as Earth United (old saves, hand-built test players). */
+  /** The seat's faction. Missing reads as Alliance (old saves, hand-built test players). */
   faction?: Faction;
   /**
    * Units this commander keeps training. Each of his producers for that unit

@@ -1,4 +1,4 @@
-import { AIRFIELD_PADS, BORG_FACTORY, airfieldOf, canContinuousTrain, catalog, dockOf, isDockType, factionOf, inFaction, isAirfieldType, isAircraftType, isCyborg, isNavalType, isOneAtATime, secondsToTicks, techNeeds, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, type BuildingType, type TrainType } from "../catalog.js";
+import { AIRFIELD_PADS, XENO_FACTORY, airfieldOf, canContinuousTrain, catalog, dockOf, isDockType, factionOf, inFaction, isAirfieldType, isAircraftType, isCyborg, isNavalType, isOneAtATime, secondsToTicks, techNeeds, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, type BuildingType, type TrainType } from "../catalog.js";
 import { airfieldPadWorld, freePad, padsSpoken, parkHeading } from "./air.js";
 import { makeEntity, newAirState, ownedUnits, rallyPoint, worldToTile } from "./geo.js";
 import { openSpotNear, packRadius, packSlots } from "./formation.js";
@@ -15,8 +15,8 @@ export function producerType(unit: TrainType): "muster" | "armory" | "airfield" 
   const faction = factionOf(unit);
   if (isAircraftType(unit)) return airfieldOf(faction);
   if (isNavalType(unit)) return dockOf(faction);
-  // Every other Borg unit is a heavy assimilator, grown at the Nanite Forge.
-  if (faction === "borg") return BORG_FACTORY;
+  // Every other Xenomorph unit is a heavy assimilator, grown at the Nanite Forge.
+  if (faction === "xeno") return XENO_FACTORY;
   if (unit === "rifleman" || unit === "gunner" || unit === "sniper" || unit === "atinfantry" || unit === "rocketer" || unit === "pyro" || unit === "mortarman" || unit === "engineer" || unit === "medic" || unit === "droneop" || unit === "jumpjet") return "muster";
   return "armory";
 }
@@ -78,7 +78,7 @@ function queuedCount(state: MatchState, playerId: string): number {
 export function startTrain(state: MatchState, playerId: string, unit: TrainType): string | null {
   const p = state.players.get(playerId);
   if (!p || !p.alive) return "You are out of the fight.";
-  if (!inFaction(unit, p.faction ?? "eu")) return NOT_YOUR_FACTION;
+  if (!inFaction(unit, p.faction ?? "alliance")) return NOT_YOUR_FACTION;
   const def = catalog(unit);
   const taken = oneAtATimeTaken(state, playerId, unit);
   if (taken === "alive") return `Only one ${def.name} at a time. Yours is still in the field.`;
@@ -138,7 +138,7 @@ function producerNeeded(unit: TrainType): string {
 function queueOn(state: MatchState, playerId: string, unit: TrainType, building: Entity): string | null {
   const p = state.players.get(playerId);
   if (!p || !p.alive) return "You are out of the fight.";
-  if (!inFaction(unit, p.faction ?? "eu")) return NOT_YOUR_FACTION;
+  if (!inFaction(unit, p.faction ?? "alliance")) return NOT_YOUR_FACTION;
   const def = catalog(unit);
   const taken = oneAtATimeTaken(state, playerId, unit);
   if (taken === "alive") return `Only one ${def.name} at a time. Yours is still in the field.`;
