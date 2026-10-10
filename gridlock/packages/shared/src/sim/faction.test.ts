@@ -88,6 +88,7 @@ describe("factions in the catalog", () => {
         "cyborgcommander",
         "forge",
         "fusionnode",
+        "gnat",
         "hivecore",
         "lancer",
         "leech",
@@ -309,6 +310,7 @@ describe("a Borg seat", () => {
     assert.equal(producerType("lurker"), "spawnpool");
     assert.equal(producerType("wasp"), "aerie");
     assert.equal(producerType("scourge"), "aerie");
+    assert.equal(producerType("gnat"), "aerie");
     assert.equal(producerType("gunboat"), "dock");
     assert.equal(producerType("fw190"), "airfield");
     const state = openField();

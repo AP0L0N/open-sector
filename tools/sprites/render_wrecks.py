@@ -419,6 +419,7 @@ SPECS = [
     Spec("lurker", 128, 0.74, "sunk", src="lurker", layers=["hull"], padding=2, holes=3, bites=2, soot=0.45, debris=6, sink=3.5, list_deg=4),
     Spec("wasp", 128, 0.8, "plane", src="wasp", layers=["hull"], padding=2, holes=3, bites=2, debris=12),
     Spec("scourge", 128, 0.8, "plane", src="scourge", layers=["hull"], padding=2, holes=3, bites=2, debris=14),
+    Spec("gnat", 128, 0.8, "plane", src="gnat", layers=["hull"], padding=2, holes=1, bites=1, debris=5),
 ]
 
 

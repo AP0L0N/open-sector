@@ -675,6 +675,7 @@ const EXTRUDE: Record<EntityType, number> = {
   fw190: 12,
   wasp: 12,
   scourge: 14,
+  gnat: 6,
   bv222: 22,
   he111: 17,
   horten: 17,

@@ -78,7 +78,8 @@ describe("Horten VII", () => {
     assert.equal(catalog("horten").rangeTiles, 0);
     assert.deepEqual(airLoadoutOf("horten"), { bombs: 0, rounds: 0 });
     assert.deepEqual([...techNeeds("horten")], ["research", "radar"]);
-    for (const t of PLANES) assert.equal(isReconType(t), false, t);
+    // The Borg Gnat is the only other recon flyer.
+    for (const t of PLANES) assert.equal(isReconType(t), t === "gnat", t);
   });
 
   it("is the fastest plane, carries more fuel, and sees the farthest in the air", () => {

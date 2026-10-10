@@ -65,6 +65,7 @@ import ravagerGunUrl from "../assets/units/ravager-gun.png";
 import leechWreckUrl from "../assets/units/wrecks/leech.png";
 import lurkerWreckUrl from "../assets/units/wrecks/lurker.png";
 import waspWreckUrl from "../assets/units/wrecks/wasp.png";
+import gnatWreckUrl from "../assets/units/wrecks/gnat.png";
 import scourgeWreckUrl from "../assets/units/wrecks/scourge.png";
 import spawnPoolUrl from "../assets/buildings/spawnpool.png";
 import aerieUrl from "../assets/buildings/aerie.png";
@@ -1616,6 +1617,19 @@ export const SCOURGE_SPRITE: UnitSpriteDef = {
 };
 bindPlaneSheets("scourge", SCOURGE_SPRITE.image);
 
+/** Gnat: the Borg spy fly, the Fw 190's camera at true scale beside the Wasp: tiny on the map. */
+export const GNAT_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(41 * UNIT_VISUAL_SCALE),
+  contactY: 0.8,
+  facingSpace: "world",
+};
+bindPlaneSheets("gnat", GNAT_SPRITE.image);
+
 /**
  * BV 222 transport. Same camera and cell as the Stuka; its wingspan fills the cell,
  * so it is drawn well over the Stuka's size to read as the big, slow flying boat it is —
@@ -1856,6 +1870,7 @@ const WRECK_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   fw190: wreckSheet(fw190WreckUrl, FW190_SPRITE),
   wasp: wreckSheet(waspWreckUrl, WASP_SPRITE),
   scourge: wreckSheet(scourgeWreckUrl, SCOURGE_SPRITE),
+  gnat: wreckSheet(gnatWreckUrl, GNAT_SPRITE),
   bv222: wreckSheet(bv222WreckUrl, BV222_SPRITE),
   he111: wreckSheet(he111WreckUrl, HE111_SPRITE),
   horten: wreckSheet(hortenWreckUrl, HORTEN_SPRITE),
@@ -1906,6 +1921,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   stuka: STUKA_SPRITE,
   fw190: FW190_SPRITE,
   wasp: WASP_SPRITE,
+  gnat: GNAT_SPRITE,
   scourge: SCOURGE_SPRITE,
   bv222: BV222_SPRITE,
   he111: HE111_SPRITE,

@@ -571,6 +571,7 @@ export type EntityType =
   | "lurker"
   | "wasp"
   | "scourge"
+  | "gnat"
   | "titan"
   | "mammoth"
   | "nebelwerfer"
@@ -801,7 +802,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "shed",
   "boiler",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "simunit2" | "borgdrone" | "thrall" | "lancer" | "stalker" | "ravager" | "behemoth" | "leech" | "lurker" | "wasp" | "scourge" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "horten" | "droneop" | "jumpjet";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "simunit2" | "borgdrone" | "thrall" | "lancer" | "stalker" | "ravager" | "behemoth" | "leech" | "lurker" | "wasp" | "scourge" | "gnat" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "horten" | "droneop" | "jumpjet";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -912,7 +913,7 @@ export const BUILDING_FACINGS = 24;
 export function isRotatableBuilding(type: string): type is BuildingType {
   return (ROTATABLE_BUILDINGS as readonly string[]).includes(type);
 }
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "simunit2", "borgdrone", "thrall", "lancer", "stalker", "ravager", "behemoth", "leech", "lurker", "wasp", "scourge", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "horten", "droneop", "jumpjet"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "simunit2", "borgdrone", "thrall", "lancer", "stalker", "ravager", "behemoth", "leech", "lurker", "wasp", "scourge", "gnat", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "horten", "droneop", "jumpjet"];
 
 /**
  * A player fields only one of each of these at a time. While it lives, another
@@ -1003,6 +1004,7 @@ export const BORG_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([
   "lurker",
   "wasp",
   "scourge",
+  "gnat",
 ]);
 /** The faction that fields `type`. Neutral structures and civilian buildings read as Earth United. */
 export function factionOf(type: string): Faction {
@@ -5761,7 +5763,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `A long spine of fused chitin with four landing nests beside it. Grows the Wasp and, with a Neural Nexus standing, the Scourge, and keeps up to ${AIRFIELD_PADS} of them. They come back to their nests to recharge, rearm, and mend.`,
+    blurb: `A long spine of fused chitin with four landing nests beside it. Grows the Wasp, the Gnat, and, with a Neural Nexus standing, the Scourge, and keeps up to ${AIRFIELD_PADS} of them. They come back to their nests to recharge, rearm, and mend.`,
   },
   /** Borg fast attack boat: a skimming chitin hull with a plasma cannon. */
   leech: {
@@ -5890,6 +5892,32 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     aircraft: true,
     wreckHp: 23,
     blurb: "Dive bomber with a beetle's carapace. One plasma bomb per sortie, slung in a glowing pod, and two pulse guns for soft targets. Flies over everything; only rifles, machine guns, the Walker, and the Titan's rockets can reach it in the air. Lands in an Aerie nest to recharge and rearm. A hit that tears a wing brings it down at once. Needs a Neural Nexus.",
+  },
+  /** Borg spy drone: a tiny fly with one big sensor eye. Lives in an Aerie nest. */
+  gnat: {
+    type: "gnat",
+    kind: "unit",
+    name: "Gnat",
+    letter: "q",
+    cost: 350,
+    buildSeconds: 6,
+    hp: 22,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 6,
+    moveTilesPerSec: paced(8),
+    turnDegPerSec: 200,
+    rangeTiles: 0,
+    sightTiles: t(11),
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    aircraft: true,
+    recon: true,
+    wreckHp: 6,
+    blurb: `A spy fly the size of a man, grown in an Aerie nest in a few seconds and for a handful of scrap. No weapon: one great sensor eye. It flies as high as the Horten VII and sees almost as far from up there, ${(t(11) + HORTEN_FLYING_SIGHT_BONUS) / TILE_SUBDIV} tiles around it. Only anti-air guns and a fighter that climbs after it can reach it, but its shell is paper: one burst brings it down. Its charge holds ${HORTEN_FUEL_SECONDS} seconds of flight. Send it at a point or a unit and it flies over and circles there; on guard or patrol it keeps watching the area. It comes home to its nest to recharge when it runs low.`,
   },
   titan: {
     type: "titan",

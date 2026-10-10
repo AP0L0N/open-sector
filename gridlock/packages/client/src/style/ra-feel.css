@@ -922,6 +922,7 @@ input[type="range"] { padding: 0; }
 #train-lurker,
 #train-wasp,
 #train-scourge,
+#train-gnat,
 #train-borgdrone,
 #train-thrall,
 #train-lancer,
@@ -1121,6 +1122,11 @@ input[type="range"] { padding: 0; }
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/scourge-cameo.png");
+}
+#train-gnat {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/gnat-cameo.png");
 }
 #build-spawnpool {
   background-image:
@@ -1640,6 +1646,8 @@ input[type="range"] { padding: 0; }
 .prod-job[data-type="wasp"] { background-image: url("../assets/units/wasp-cameo.png"); }
 .config-type[data-type="scourge"],
 .prod-job[data-type="scourge"] { background-image: url("../assets/units/scourge-cameo.png"); }
+.config-type[data-type="gnat"],
+.prod-job[data-type="gnat"] { background-image: url("../assets/units/gnat-cameo.png"); }
 .config-type[data-type="spawnpool"] { background-image: url("../assets/buildings/spawnpool-cameo.png"); }
 .config-type[data-type="aerie"] { background-image: url("../assets/buildings/aerie-cameo.png"); }
 .config-type[data-type="apocalypse"] { background-image: url("../assets/units/apocalypse-cameo.png"); }
