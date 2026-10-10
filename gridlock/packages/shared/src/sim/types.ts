@@ -580,6 +580,10 @@ export interface Entity {
   lungeReady?: number;
   /** Behemoth just landed: landing laser sweeps still to come. */
   lungeRing?: number;
+  /** Juggernaut running at what it is going for (sim/juggernaut.ts). */
+  sprint?: true;
+  /** Juggernaut has thrown its hammer: it fights with its fists from now on. */
+  fists?: true;
   /** Stalker under the ground or on its way (sim/burrow.ts). Down, no enemy sees it. */
   burrow?: { phase: "digging" | "down" | "rising"; until: number };
   /** Sim Unit II inside a hostile garrison: the host, where he came from, and the tick he is done. */
@@ -732,6 +736,8 @@ export interface Projectile {
   lobbed?: boolean;
   /** Force-attack: the blast also catches allies, and a tree on the aim burns. */
   harmAllies?: boolean;
+  /** The Juggernaut's thrown hammer, on a mortar arc: lands in a hammer blast, not a shell burst. */
+  hammer?: true;
   /** Force-attack aim, before the glob scatters. Not sent to clients. */
   aimX?: number;
   aimY?: number;

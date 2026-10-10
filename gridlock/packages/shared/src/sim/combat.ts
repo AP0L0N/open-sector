@@ -153,6 +153,8 @@ import {
   SIMUNIT_HEAVY_MUL,
   SIMUNIT_HULL_SLASH_DAMAGE,
   SIMUNIT_HUNT_TILES,
+  JUGGERNAUT_HUNT_TILES,
+  isJuggernaut,
   SIMUNIT_LIGHT_MUL,
   SIMUNIT_SLASH_DAMAGE,
   meleeOf,
@@ -187,6 +189,7 @@ import {
 import { fireStats, hullTurnMul, immobilized, rollCrits, rollLamp, takeDamage } from "./crits.js";
 import { damageMaulerCart } from "./mauler-cart.js";
 import { hiddenFromAuto, inStrikeReach } from "./simunit.js";
+import { juggernautBlow, landHammer } from "./juggernaut.js";
 import { artilleryCanLay, artilleryReady, artilleryReloadMul, blastOnGun, bulletOnGun, gunCrewOf } from "./artillery.js";
 import { noteImpactSurface } from "./remains.js";
 import { stanceHitRadiusMul, stanceTargetSpreadMul, tickStance } from "./stance.js";
@@ -1838,6 +1841,14 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   const laid = holedUp || traverse || Math.abs(remainingDeg) <= FIRE_LAID_DEG;
   const bearing = traverse && !holedUp ? Math.atan2(aimY - e.y, aimX - e.x) : undefined;
 
+  // The Juggernaut's hammer or fists: a blow at arm's reach, landing now, in an area.
+  if (isJuggernaut(e.type)) {
+    if (!laid || e.cooldown > 0) return;
+    juggernautBlow(state, e, target, aimX, aimY);
+    if (e.order?.once) clearOrder(e);
+    return;
+  }
+
   const useMg = !ground && !e.order?.once && target ? wantsMg(e, target) : false;
   if (useMg && target && gunArcOk && laid && e.mgCooldown <= 0 && e.mgOverheat <= 0 && e.mgAmmo > 0) {
     fireRound(
@@ -3357,7 +3368,8 @@ export function tickProjectiles(state: MatchState, dt: number): void {
         p.y = p.landY;
       }
       p.z = 0;
-      detonateMortar(state, p, rand);
+      if (p.hammer) landHammer(state, p);
+      else detonateMortar(state, p, rand);
       continue;
     }
     const x0 = p.x;
@@ -3833,7 +3845,8 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
   // Dry tanks: the Pyro has nothing to go at them with until a truck refills him.
   if (e.type === "pyro" && e.clip <= 0) return undefined;
   // The knife reaches an arm; the man carrying it looks further and runs the target down.
-  const range = meleeOf(e.type) ? Math.max(weaponRangeWorld(state, e), SIMUNIT_HUNT_TILES * state.tileSize) : weaponRangeWorld(state, e);
+  const hunt = isJuggernaut(e.type) ? JUGGERNAUT_HUNT_TILES : SIMUNIT_HUNT_TILES;
+  const range = meleeOf(e.type) ? Math.max(weaponRangeWorld(state, e), hunt * state.tileSize) : weaponRangeWorld(state, e);
   // The CIWS takes units only, and a plane in the air before anything on the ground.
   const radar = radarLaidOf(e.type);
   let best: Entity | undefined;

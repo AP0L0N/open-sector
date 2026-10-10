@@ -360,6 +360,7 @@ export const BORG_HEAVY: readonly { unit: TrainType; want: number }[] = [
   { unit: "stalker", want: 4 },
   { unit: "ravager", want: 2 },
   { unit: "behemoth", want: 1 },
+  { unit: "juggernaut", want: 1 },
 ];
 /** Each Borg factory and the ranks it fills. */
 const BORG_FACTORIES: readonly { factory: BuildingType; army: readonly { unit: TrainType; want: number }[] }[] = [

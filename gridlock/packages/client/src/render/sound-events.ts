@@ -69,7 +69,7 @@ export type SoundEvent =
    * its deck, one of your defences going up (sandbags thumped down, a gun set in its pit),
    * (crush) an Apocalypse rolling a hull flat, or (dive) a Stuka's siren as it tips over into its dive.
    */
-  | { kind: "unitsfx"; type: string; cue: "special" | "crush" | "dive" | "lunge" | "burrow" | "unburrow" | LinkSfx; x: number; y: number }
+  | { kind: "unitsfx"; type: string; cue: "special" | "crush" | "dive" | "lunge" | "burrow" | "unburrow" | LinkSfx | JuggernautSfx; x: number; y: number }
   | { kind: "announce"; event: AnnounceEvent };
 
 /**
@@ -77,6 +77,11 @@ export type SoundEvent =
  * (`reboot`); a Cyborg Commander's uplink opening on one (`uplink`, from his folder).
  */
 export type LinkSfx = "shutdown" | "reboot" | "uplink";
+/**
+ * Juggernaut cues: a hammer blow landing (`smash`), a fist (`punch`), the hammer leaving its
+ * hands (`throw`) and coming down (`throw_land`), and the giant breaking into a run (`charge`).
+ */
+export type JuggernautSfx = "smash" | "punch" | "throw" | "throw_land" | "charge";
 /** A Cyborg of yours going dark or waking up yours; your Commander starting a takeover. */
 export type LinkVoice = "shutdown" | "online" | "takeover";
 
@@ -113,6 +118,8 @@ const FIRE_GAP_MS: Record<string, number> = {
 const DEFAULT_FIRE_GAP_MS = 140;
 /** A Stuka's siren winds up once a dive: one sample covers the drop, the release and the pull-out. */
 const DIVE_GAP_MS = 4000;
+/** A Juggernaut's charge is heard once per run, not on every hop between targets. */
+const CHARGE_GAP_MS = 5000;
 /** How far under cruise height a plane may already be and still be starting its dive. */
 const DIVE_FROM_BELOW_CRUISE = 1;
 /** An LST loading a column calls it once, not once a soldier. */
@@ -168,6 +175,7 @@ export class SoundTracker {
   private lastShieldHit = new Map<number, number>();
   private lastLoadLine = new Map<number, number>();
   private lastDive = new Map<number, number>();
+  private lastCharge = new Map<number, number>();
   /** Share of health left, not raw hp: bracing or packing up rescales both hp and hpMax. */
   private lastHp = new Map<number, number>();
   private lowPower = false;
@@ -266,6 +274,13 @@ export class SoundTracker {
     for (const p of match.projectiles) {
       if (p.bounced || this.seenShots.has(p.id)) continue;
       this.seenShots.add(p.id);
+      // The Juggernaut hurls its hammer: the throw, and its roar when it is yours.
+      if (p.hammer) {
+        const s = byId.get(p.fromId);
+        out.push({ kind: "unitsfx", type: "juggernaut", cue: "throw", x: s?.x ?? p.x, y: s?.y ?? p.y });
+        if (s?.ownerId === me) out.push({ kind: "voice", type: "juggernaut", event: "special" });
+        continue;
+      }
       fire(p.fromId, p.flame ? "flame" : p.rocket ? "rocket" : isShell(p.caliber) || p.mortar || p.bomb ? "shell" : "small");
     }
     for (const l of match.launches ?? []) {
@@ -281,6 +296,12 @@ export class SoundTracker {
       // An Apocalypse rolled a hull flat: steel crumpling under its tracks.
       if (i.crusher != null) {
         out.push({ kind: "unitsfx", type: "apocalypse", cue: "crush", x: i.x, y: i.y });
+        continue;
+      }
+      // A Juggernaut blow is its own sound where it lands: no gun report, no shell burst.
+      if (i.hammer) {
+        const cue = i.hammer === "fist" ? "punch" : i.hammer === "throw" ? "throw_land" : "smash";
+        out.push({ kind: "unitsfx", type: "juggernaut", cue, x: i.x, y: i.y });
         continue;
       }
       // The laser's burn is heard when the beam opens (below), not again where it lands.
@@ -339,6 +360,11 @@ export class SoundTracker {
       if (prev && !prev.wreck && e.wreck) {
         out.push({ kind: "death", type: e.type, infantry: false, x: e.x, y: e.y });
         if (e.ownerId === me) out.push({ kind: "announce", event: "unitlost" });
+      }
+      // A Juggernaut breaks into a run at what it is going for.
+      if (prev && !prev.sprint && e.sprint && now - (this.lastCharge.get(e.id) ?? -Infinity) >= CHARGE_GAP_MS) {
+        this.lastCharge.set(e.id, now);
+        out.push({ kind: "unitsfx", type: e.type, cue: "charge", x: e.x, y: e.y });
       }
       // A Behemoth's legs fire it into the air; a Stalker digs in or bursts out.
       if (prev && prev.lungeAlt == null && e.lungeAlt != null) out.push({ kind: "unitsfx", type: e.type, cue: "lunge", x: e.x, y: e.y });

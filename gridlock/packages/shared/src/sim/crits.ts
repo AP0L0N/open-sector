@@ -30,10 +30,12 @@ import {
   stanceOf,
   wadeSpeedOf,
   wadesOf,
+  isJuggernaut,
   type Crit,
 } from "../catalog.js";
 import type { ImpactKind } from "../protocol.js";
 import { artilleryHaulMul, gunCrewOf } from "./artillery.js";
+import { juggernautPaceMul } from "./juggernaut.js";
 import type { ArmorFace } from "./ballistics.js";
 import { hasHeadlight, hasSpotlight } from "./night.js";
 import type { Entity } from "./types.js";
@@ -47,6 +49,7 @@ export function moveSpeedMul(e: Entity, swimming = false): number {
   if (swimming && wadesOf(e.type)) return wadeSpeedOf(e.type);
   if (isInfantryType(e.type)) return STANCE_SPEED[stanceOf(e)];
   if (e.charging) return WALKER_CHARGE_SPEED;
+  if (isJuggernaut(e.type)) return juggernautPaceMul(e);
   return 1;
 }
 

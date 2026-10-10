@@ -59,6 +59,11 @@ import stalkerGunUrl from "../assets/units/stalker-gun.png";
 import behemothLegsUrl from "../assets/units/behemoth-legs.png";
 import behemothTurretUrl from "../assets/units/behemoth-turret.png";
 import behemothGunUrl from "../assets/units/behemoth-gun.png";
+import juggernautWalkUrl from "../assets/units/juggernaut-walk.png";
+import juggernautSwingUrl from "../assets/units/juggernaut-swing.png";
+import juggernautFistsUrl from "../assets/units/juggernaut-fists.png";
+import juggernautPunchUrl from "../assets/units/juggernaut-punch.png";
+import juggernautThrowUrl from "../assets/units/juggernaut-throw.png";
 import ravagerLegsUrl from "../assets/units/ravager-legs.png";
 import ravagerTurretUrl from "../assets/units/ravager-turret.png";
 import ravagerGunUrl from "../assets/units/ravager-gun.png";
@@ -306,6 +311,7 @@ import wardenWreckUrl from "../assets/units/wrecks/warden.png";
 import apocalypseWreckUrl from "../assets/units/wrecks/apocalypse.png";
 import stalkerWreckUrl from "../assets/units/wrecks/stalker.png";
 import behemothWreckUrl from "../assets/units/wrecks/behemoth.png";
+import juggernautWreckUrl from "../assets/units/wrecks/juggernaut.png";
 import ravagerWreckUrl from "../assets/units/wrecks/ravager.png";
 import ss3WreckUrl from "../assets/units/wrecks/ss3.png";
 import jagdtigerWreckUrl from "../assets/units/wrecks/jagdtiger.png";
@@ -1292,6 +1298,23 @@ export const STALKER_SPRITE = borgWalker(stalkerLegsUrl, stalkerTurretUrl, stalk
 export const BEHEMOTH_SPRITE = borgWalker(behemothLegsUrl, behemothTurretUrl, behemothGunUrl, 68, 7);
 export const RAVAGER_SPRITE = borgWalker(ravagerLegsUrl, ravagerTurretUrl, ravagerGunUrl, 29, 12);
 
+/**
+ * Juggernaut (tools/sprites/render_juggernaut.py): one model on the Titan's 192 cell, the
+ * Cyborg's camera, one scale and contact on every sheet so a swap never pops.
+ * Walk and fists stride by ground covered; swing and punch loop in time with the blows
+ * (frame 0 is the hit); throw plays once.
+ */
+const JUGGERNAUT_CELL = 192;
+const JUGGERNAUT_DRAW = Math.round(62 * UNIT_VISUAL_SCALE);
+function juggernautSheet(src: string, frames: number, contactY = 0.82): UnitSpriteDef {
+  return { image: loadSheet(src), dirs: 16, frames, frameSize: JUGGERNAUT_CELL, fps: 8, drawSize: JUGGERNAUT_DRAW, contactY, facingSpace: "world" };
+}
+export const JUGGERNAUT_SPRITE = juggernautSheet(juggernautWalkUrl, 8);
+export const JUGGERNAUT_SWING_SPRITE = juggernautSheet(juggernautSwingUrl, 8);
+export const JUGGERNAUT_FISTS_SPRITE = juggernautSheet(juggernautFistsUrl, 8);
+export const JUGGERNAUT_PUNCH_SPRITE = juggernautSheet(juggernautPunchUrl, 8);
+export const JUGGERNAUT_THROW_SPRITE = juggernautSheet(juggernautThrowUrl, 4);
+
 const ss3Gun: TurretSpriteDef = {
   image: new Image(),
   dirs: TANK_FACE_DIRS,
@@ -1822,6 +1845,8 @@ const WRECK_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   apocalypse: wreckSheet(apocalypseWreckUrl, APOCALYPSE_SPRITE),
   stalker: wreckSheet(stalkerWreckUrl, STALKER_SPRITE),
   behemoth: wreckSheet(behemothWreckUrl, BEHEMOTH_SPRITE),
+  // Face down on the dirt: its own pivot (the body's footprint centre), the live cell and size.
+  juggernaut: { ...wreckSheet(juggernautWreckUrl, JUGGERNAUT_SPRITE), contactY: 0.62 },
   ravager: wreckSheet(ravagerWreckUrl, RAVAGER_SPRITE),
   ss3: wreckSheet(ss3WreckUrl, SS3_SPRITE),
   jagdtiger: wreckSheet(jagdtigerWreckUrl, JAGDTIGER_SPRITE),
@@ -1867,6 +1892,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   apocalypse: APOCALYPSE_SPRITE,
   stalker: STALKER_SPRITE,
   behemoth: BEHEMOTH_SPRITE,
+  juggernaut: JUGGERNAUT_SPRITE,
   ravager: RAVAGER_SPRITE,
   ss3: SS3_SPRITE,
   jagdtiger: JAGDTIGER_SPRITE,

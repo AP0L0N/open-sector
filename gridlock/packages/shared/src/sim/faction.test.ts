@@ -89,6 +89,7 @@ describe("factions in the catalog", () => {
         "forge",
         "fusionnode",
         "hivecore",
+        "juggernaut",
         "lancer",
         "leech",
         "lurker",
@@ -111,7 +112,7 @@ describe("factions in the catalog", () => {
       const want = isCyborg(t) ? "cyborgcentral" : isNavalType(t) ? "spawnpool" : isAircraftType(t) ? "aerie" : "forge";
       assert.equal(producerType(t), want, t);
     }
-    for (const t of ["stalker", "ravager", "behemoth"] as const) assert.equal(producerType(t), "forge");
+    for (const t of ["stalker", "ravager", "behemoth", "juggernaut"] as const) assert.equal(producerType(t), "forge");
     for (const t of ["borgdrone", "lancer"] as const) assert.ok(isCyborg(t) && onUplink(t) && isInfantryType(t), t);
     assert.ok(!onUplink("cyborgcommander"));
   });
@@ -241,12 +242,15 @@ describe("a Borg seat", () => {
       const r = applyCommand(state, "B", { type: "cmd.train", unit });
       assert.equal(r.ok, true, r.ok ? unit : r.message);
     }
-    const locked = applyCommand(state, "B", { type: "cmd.train", unit: "behemoth" });
-    assert.equal(locked.ok, false);
-    if (!locked.ok) assert.equal(locked.message, "Need a Neural Nexus.");
+    for (const unit of ["behemoth", "juggernaut"] as const) {
+      const locked = applyCommand(state, "B", { type: "cmd.train", unit });
+      assert.equal(locked.ok, false);
+      if (!locked.ok) assert.equal(locked.message, "Need a Neural Nexus.");
+    }
     makeEntity(state, "nexus", "B", tileCenter(30, ts), tileCenter(30, ts), { tileX: 30, tileY: 30 });
     assert.equal(applyCommand(state, "B", { type: "cmd.train", unit: "behemoth" }).ok, true);
-    assert.deepEqual(forge.queue.map((j) => j.type), ["stalker", "ravager", "behemoth"]);
+    assert.equal(applyCommand(state, "B", { type: "cmd.train", unit: "juggernaut" }).ok, true);
+    assert.deepEqual(forge.queue.map((j) => j.type), ["stalker", "ravager", "behemoth", "juggernaut"]);
     // Earth United cannot use a captured Forge.
     unpack(state, "A");
     forge.ownerId = "A";
