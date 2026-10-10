@@ -65,10 +65,12 @@ import { canSeeEntity } from "./vision.js";
  * sees inside JUGGERNAUT_THROW_RANGE_TILES. The hammer flies on an arc and lands in a bigger
  * blast. From then on it fights with its fists: lighter, tighter blows on a much shorter clock,
  * and it moves JUGGERNAUT_FIST_PACE_MUL faster. Nothing in reach to throw at: it keeps swinging.
+ * A friend that brought it there on a force-attack takes the hammer: it goes at whoever hurt it last.
  *
  * Ram: every JUGGERNAUT_RAM_RECHARGE_SECONDS it charges by itself. The mark is an enemy armored
  * hull JUGGERNAUT_RAM_MIN_TILES to JUGGERNAUT_RAM_RANGE_TILES off with clear ground to it, or the
  * enemy building it is ordered to attack; never a soldier. Under a named attack it charges only that target.
+ * A force-attack names one too, friend or foe: it charges that hull or building, while it closes on it.
  * It runs at JUGGERNAUT_RAM_SPEED_TILES, steering on the mark, neither walking nor swinging, and
  * runs down every enemy it passes (once a charge). On contact it slams: a heavy blow through any
  * plate that throws the hull back, or massive damage to a building. A wall or the water's edge in
@@ -235,8 +237,34 @@ function strongestInReach(state: MatchState, e: Entity): Entity | undefined {
   return best;
 }
 
+/** Who hurt it: the nearest one with it in its sights, a friend on a force-attack too. */
+function attackerOf(state: MatchState, e: Entity): Entity | undefined {
+  let best: Entity | undefined;
+  let bestD = Infinity;
+  for (const a of state.entities.values()) {
+    if (a.id === e.id || a.hp <= 0 || a.wreck || a.shutdown || a.dormant) continue;
+    if (a.attackTarget !== e.id && !(a.order?.kind === "forceattack" && a.order.targetId === e.id)) continue;
+    const d = Math.hypot(a.x - e.x, a.y - e.y);
+    if (d >= bestD) continue;
+    best = a;
+    bestD = d;
+  }
+  return best;
+}
+
+/** The one that hurt it last, if the hammer can reach it: a soldier in a house means the house. */
+function lastAttackerInReach(state: MatchState, e: Entity): Entity | undefined {
+  let t = e.lastAttacker != null ? state.entities.get(e.lastAttacker) : undefined;
+  if (t?.garrisonedIn != null) t = state.entities.get(t.garrisonedIn);
+  if (!t || t.hp <= 0 || t.wreck || t.garrisonedIn != null) return undefined;
+  if (isAirborne(t) || isBridge(t.type) || isRubble(t) || diving(t)) return undefined;
+  if (gapTo(state, e, t) > JUGGERNAUT_THROW_RANGE_TILES * state.tileSize) return undefined;
+  if (!allies(state, e.ownerId, t.ownerId) && !canSeeEntity(state, e.ownerId, t)) return undefined;
+  return t;
+}
+
 /** The hammer leaves its hands on an arc at `t`; it lands where `t` stands now. */
-function throwHammer(state: MatchState, e: Entity, t: Entity): void {
+function throwHammer(state: MatchState, e: Entity, t: Entity, harmAllies: boolean): void {
   const ts = state.tileSize;
   let lx = t.x;
   let ly = t.y;
@@ -270,6 +298,7 @@ function throwHammer(state: MatchState, e: Entity, t: Entity): void {
     apex: 10 + (dist / ts) * 0.9,
     flightTime: flight,
     hammer: true,
+    harmAllies: harmAllies || undefined,
     z: 0,
   };
   state.projectiles.push(p);
@@ -280,7 +309,7 @@ function throwHammer(state: MatchState, e: Entity, t: Entity): void {
 
 /** The thrown hammer is down: tickProjectiles calls this in place of a shell burst. */
 export function landHammer(state: MatchState, p: Projectile): void {
-  hammerBlast(state, { id: p.fromId, ownerId: p.ownerId }, p.x, p.y, "throw");
+  hammerBlast(state, { id: p.fromId, ownerId: p.ownerId }, p.x, p.y, "throw", !!p.harmAllies);
 }
 
 /** Ram charge, 0–1. 1 is ready. */
@@ -319,11 +348,12 @@ function clearRun(state: MatchState, e: Entity, t: Entity): boolean {
   return true;
 }
 
-/** Something it may charge: an enemy armored hull on the ground, or (`building`) an enemy building. Never a soldier. */
-function rammable(state: MatchState, e: Entity, o: Entity, building: boolean): boolean {
+/** Something it may charge: an enemy armored hull on the ground, or (`building`) an enemy building. Never a soldier. `friends`: a force-attack's mark may be its own side's. */
+function rammable(state: MatchState, e: Entity, o: Entity, building: boolean, friends = false): boolean {
   if (o.id === e.id || o.hp <= 0 || o.wreck || o.garrisonedIn != null || hiddenFromAuto(o)) return false;
   if (ownerless(o) || isAirborne(o) || isBridge(o.type) || isRubble(o) || diving(o)) return false;
-  if (allies(state, e.ownerId, o.ownerId)) return false;
+  const friend = allies(state, e.ownerId, o.ownerId);
+  if (friend && !friends) return false;
   if (o.kind === "building") {
     if (!building) return false;
   } else if (o.kind !== "unit" || isInfantryType(o.type) || !isArmoredType(o.type) || isNavalType(o.type)) {
@@ -331,19 +361,25 @@ function rammable(state: MatchState, e: Entity, o: Entity, building: boolean): b
   }
   const gap = gapTo(state, e, o);
   if (gap < JUGGERNAUT_RAM_MIN_TILES * state.tileSize || gap > JUGGERNAUT_RAM_RANGE_TILES * state.tileSize) return false;
-  return canSeeEntity(state, e.ownerId, o) && clearRun(state, e, o);
+  return (friend || canSeeEntity(state, e.ownerId, o)) && clearRun(state, e, o);
 }
 
 /**
- * What it charges now, if anything. A named attack: only that target, a hull or a building.
+ * What it charges now, if anything. A named attack or a force-attack: only that target, a hull
+ * or a building (a force-attack's may be a friend's), and only while it closes on it.
  * Otherwise the hull it is set on, else the nearest enemy hull in the band. Nothing on a plain
  * move, on hold, or from the water.
  */
 function ramMark(state: MatchState, e: Entity): Entity | undefined {
   if (e.holdPosition || e.garrisonedIn != null || e.shutdown || e.dormant) return undefined;
   const o = e.order;
-  if (o && o.kind !== "attack" && o.kind !== "attackmove" && o.kind !== "patrol" && o.kind !== "guard") return undefined;
+  if (o && o.kind !== "attack" && o.kind !== "attackmove" && o.kind !== "patrol" && o.kind !== "guard" && o.kind !== "forceattack") return undefined;
   if (!chargeable(state, e, e.x, e.y)) return undefined;
+  if (o?.kind === "forceattack") {
+    // On the ground, or driving elsewhere while it swings at the aim: no charge.
+    const t = o.targetId != null && o.travel == null ? state.entities.get(o.targetId) : undefined;
+    return t && rammable(state, e, t, true, true) ? t : undefined;
+  }
   if (o?.kind === "attack" && !o.auto) {
     const t = o.targetId != null ? state.entities.get(o.targetId) : undefined;
     return t && rammable(state, e, t, true) ? t : undefined;
@@ -509,10 +545,18 @@ export function tickJuggernauts(state: MatchState): void {
       tickRam(state, e);
       continue;
     }
+    if (e.juggHpSeen != null && e.hp < e.juggHpSeen) {
+      const a = attackerOf(state, e);
+      if (a) e.lastAttacker = a.id;
+    }
+    e.juggHpSeen = e.hp;
     const t = e.holdPosition || e.garrisonedIn != null ? undefined : chaseTarget(state, e);
     e.sprint = t && !inStrikeReach(state, e, t) ? true : undefined;
     if (e.fists || e.hp > e.hpMax * JUGGERNAUT_RAGE_HP || e.garrisonedIn != null) continue;
-    const mark = strongestInReach(state, e);
-    if (mark) throwHammer(state, e, mark);
+    // A friend's force-attack brought it down: the hammer goes back at whoever hurt it last.
+    const last = lastAttackerInReach(state, e);
+    const friend = !!last && allies(state, e.ownerId, last.ownerId);
+    const mark = (friend ? last : undefined) ?? strongestInReach(state, e) ?? last;
+    if (mark) throwHammer(state, e, mark, allies(state, e.ownerId, mark.ownerId));
   }
 }

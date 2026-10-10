@@ -637,6 +637,9 @@ export interface Entity {
   ram?: { targetId: number; until: number; hit: number[] };
   /** Juggernaut: the tick it can ram again. Unset or past means ready. */
   ramReady?: number;
+  /** Juggernaut (sim/juggernaut.ts): HP last tick, and the unit that last hurt it (a friend's force-attack too). */
+  juggHpSeen?: number;
+  lastAttacker?: number;
   /** Stalker under the ground or on its way (sim/burrow.ts). Down, no enemy sees it. */
   burrow?: { phase: "digging" | "down" | "rising"; until: number };
   /** Sim Unit II inside a hostile garrison: the host, where he came from, and the tick he is done. */
@@ -735,6 +738,8 @@ export interface ArkCannon {
   energy: number;
   /** Seconds until the next ball is charged. */
   cooldown: number;
+  /** Seconds it has glowed up toward the next shot (ARK_CANNON_CHARGE_SECONDS fires). */
+  charge: number;
   /** Its cell ran dry: it holds fire until the cell is full again. */
   drained: boolean;
   /** Sim tick it last fired. Missing until it first does. */

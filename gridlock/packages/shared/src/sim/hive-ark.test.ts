@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
   ARK_CANNON_CELL,
+  ARK_CANNON_CHARGE_SECONDS,
+  ARK_CANNON_RELOAD,
   ARK_CANNON_RECHARGE_SECONDS,
   ARK_DOME,
   ARK_MIN_RANGE_TILES,
@@ -12,6 +14,7 @@ import {
   ARK_WASP_REGROW_SECONDS,
   BATTLESHIP_RANGE_TILES,
   TICK_DT,
+  TILE_SUBDIV,
   TRAIN_TYPES,
   catalog,
   factionDamage,
@@ -100,10 +103,31 @@ describe("Hive Ark catalog", () => {
     assert.equal(leavesWreck("hiveark"), true);
   });
 
-  it("reaches farther than the Battle Ship, on a high arc", () => {
-    assert.ok(ARK_RANGE_TILES > BATTLESHIP_RANGE_TILES);
+  it("reaches half its old 31 tiles, short of the Battle Ship, on a high arc", () => {
+    assert.equal(ARK_RANGE_TILES, (31 * TILE_SUBDIV) / 2);
+    assert.ok(ARK_RANGE_TILES < BATTLESHIP_RANGE_TILES);
     assert.ok(ARK_PLASMA_BALL.apexNear > 0);
     assert.ok(catalog("hiveark").hp >= catalog("battleship").hp * 0.75);
+  });
+});
+
+describe("Hive Ark hull", () => {
+  it("is round: it moves off in any direction at once and never turns", () => {
+    for (const [dx, dy] of [[-24, 0], [0, -14], [-12, 12]] as const) {
+      const { state, x0, y0 } = bay();
+      const ark = spawn(state, "hiveark", "A", x0 + 36, y0 + 10);
+      ark.facing = 0;
+      const goal = { x: tileCenter(x0 + 36 + dx, state.tileSize), y: tileCenter(y0 + 10 + dy, state.tileSize) };
+      assert.equal(applyCommand(state, "A", { type: "cmd.move", ids: [ark.id], ...goal }).ok, true);
+      const start = { x: ark.x, y: ark.y };
+      ticks(state, 1);
+      assert.ok(Math.hypot(ark.x - start.x, ark.y - start.y) > 0, "no turn before it moves");
+      for (let i = 0; i < 1200 && ark.waypoints.length > 0; i++) {
+        ticks(state, 1);
+        assert.equal(ark.facing, 0, "the hull never yaws");
+      }
+      assert.ok(Math.hypot(ark.x - goal.x, ark.y - goal.y) <= state.tileSize * 2, `reached ${dx},${dy}`);
+    }
   });
 });
 
@@ -112,6 +136,10 @@ describe("Hive Ark cannons", () => {
     const { state, ark, target } = shoot(60);
     applyCommand(state, "A", { type: "cmd.attack", ids: [ark.id], targetId: target.id });
     ticks(state, 5);
+    assert.equal(balls(state, ark.id).length, 0, "it charges up before the first ball");
+    const glow = snapshotFor(state, "A").entities.find((v) => v.id === ark.id)?.ark?.cannons.map((c) => c.charge ?? 0);
+    assert.ok(glow && glow.every((k) => k > 0 && k < 1), "the charge shows on both cannons");
+    ticks(state, secondsToTicks(ARK_CANNON_CHARGE_SECONDS));
     const shot = balls(state, ark.id);
     assert.deepEqual(shot.map((p) => p.arkCannon).sort(), [0, 1]);
     for (const p of shot) {
@@ -135,6 +163,21 @@ describe("Hive Ark cannons", () => {
     assert.notEqual(ark.ark!.cannons[0]!.firedTick, undefined);
     ticks(state, secondsToTicks(ARK_CANNON_RECHARGE_SECONDS * ARK_CANNON_CELL));
     assert.notEqual(dry.firedTick, undefined, "full again, it fires");
+  });
+
+  it("keeps the reload's pace under steady fire: the charge rides the end of it", () => {
+    const { state, ark, target } = shoot(60);
+    applyCommand(state, "A", { type: "cmd.attack", ids: [ark.id], targetId: target.id });
+    const fore = ark.ark!.cannons[0]!;
+    const fired: number[] = [];
+    for (let i = 0; i < secondsToTicks(ARK_CANNON_RELOAD * 2 + ARK_CANNON_CHARGE_SECONDS + 1); i++) {
+      const before = fore.firedTick;
+      ticks(state, 1);
+      if (fore.firedTick !== before) fired.push(fore.firedTick!);
+    }
+    assert.equal(fired.length, 3);
+    // The reload counts down in float steps: a tick of slack.
+    assert.ok(Math.abs(fired[2]! - fired[1]! - secondsToTicks(ARK_CANNON_RELOAD)) <= 1);
   });
 
   it("will not fire inside its minimum range", () => {
