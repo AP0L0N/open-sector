@@ -399,7 +399,7 @@ import {
 import { roofCiwsMuzzle } from "./roof-ciws.js";
 import { CIWS_INTERCEPT_LIFT, CIWS_MUZZLE_REACH, CIWS_SOURCE_ZOOM, ciwsMuzzleLift, ciwsTurretCell, ciwsTurretRow } from "./ciws.js";
 import { ciwsBurstTracers, ciwsTracers } from "./ciws-tracer.js";
-import { drawEnergyBolt, drawEnergyBurst, drawEnergyMuzzle, drawPlasmaOrb, energyBolts, energyBurstMs } from "./energy-fx.js";
+import { drawEnergyBolt, drawEnergyBurst, drawEnergyMuzzle, drawPlasmaOrb, energyBolts, energyBurstMs, plasmaOrbScale } from "./energy-fx.js";
 import { SCORCH_GLOW_MS, SCORCH_SMOKE_RADIUS, drawPlasmaSteam, drawScorchFallback, drawScorchGlow, plasmaSteamMs } from "./plasma-ground.js";
 import { PTRD_MUZZLE_LIFT, ptrdTracers } from "./ptrd-tracer.js";
 import { ROOF_CIWS_LIFT } from "./roof-ciws.js";
@@ -537,8 +537,6 @@ import {
 
 /** A cloaked Shade as its own side sees it. */
 const CLOAKED_UNIT_FILTER = "opacity(0.38) saturate(0.5) brightness(1.35)";
-/** An armored hull coated in a Spitter's acid. */
-const ACID_HULL_FILTER = "sepia(0.55) hue-rotate(28deg) saturate(1.7) brightness(0.92)";
 
 /** The hive cyborgs that share the Drone's sheet set: stand, fire, crawl, crawl-fire, die. */
 const HIVE_SHEETS: Partial<Record<string, { stand: UnitSpriteDef; fire: UnitSpriteDef; crawl: UnitSpriteDef; crawlFire: UnitSpriteDef; die: UnitSpriteDef }>> = {
@@ -8304,8 +8302,6 @@ export class MapView {
     else if (!e.wreck && (e.shutdown || e.dormant)) ctx.filter = SHUTDOWN_UNIT_FILTER;
     // Your Shade with its skin settled: a faint shimmer only its own side sees.
     else if (!e.wreck && e.cloaked) ctx.filter = CLOAKED_UNIT_FILTER;
-    // A hull under a Spitter's acid coat: the plate goes a sick yellow-green.
-    else if (!e.wreck && (e.acid ?? 0) > 0) ctx.filter = ACID_HULL_FILTER;
     // A map's neutral unit is grey: no one's colours, everyone's enemy.
     else if (!e.wreck && !e.ownerId) ctx.filter = NEUTRAL_UNIT_FILTER;
     // The ship's mounts are placed on the sim's own spots: no ground sink under the hull.
@@ -9092,7 +9088,7 @@ export class MapView {
     const now = performance.now();
     const blend = Math.min(1, (now - this.snapAt) / 100);
     const live = new Set<number>();
-    const heads: { x: number; y: number; dx: number; dy: number; id: number; heavy: boolean; energy: boolean }[] = [];
+    const heads: { x: number; y: number; dx: number; dy: number; id: number; heavy: boolean; energy: boolean; caliber: number }[] = [];
     for (const p of this.curr.projectiles) {
       if (!p.rocket) continue;
       live.add(p.id);
@@ -9118,6 +9114,7 @@ export class MapView {
         id: p.id,
         heavy: !!p.heavy,
         energy: !!p.energy,
+        caliber: p.caliber,
       });
     }
     for (const id of [...this.rocketLast.keys()]) {
@@ -9147,7 +9144,7 @@ export class MapView {
     ctx.restore();
     this.rocketPuffs = keep;
     for (const h of heads) {
-      if (h.energy) drawPlasmaOrb(ctx, h.x, h.y, h.dx, h.dy, h.heavy);
+      if (h.energy) drawPlasmaOrb(ctx, h.x, h.y, h.dx, h.dy, h.heavy, plasmaOrbScale(h.caliber));
       else drawRocketHead(ctx, h.x, h.y, h.dx, h.dy, h.id, h.heavy);
     }
   }
