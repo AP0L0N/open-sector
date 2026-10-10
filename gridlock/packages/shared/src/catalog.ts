@@ -1582,6 +1582,11 @@ export interface CatalogEntry {
    * Down, it only torpedoes another boat that is down too. It must surface to strike a hull.
    */
   submerges?: boolean;
+  /**
+   * Lives below and never takes air (the Lurker): always submerged, no Dive or Surface. It comes
+   * up only for SUB_REVEAL_SECONDS after it strikes. Its catalog sight is its sight under water.
+   */
+  neverSurfaces?: boolean;
   /** A torpedo running in the water. Nobody commands it; any gun can shoot it before it arrives. */
   torpedoBody?: boolean;
   /**
@@ -4181,6 +4186,8 @@ export const LURKER_BITE_DAMAGE = 55;
 export const LURKER_BITE_SOLDIER_DAMAGE = 80;
 export const LURKER_HEAVY_MUL = 0.45;
 export const LURKER_BUILDING_MUL = 0.3;
+/** The Lurker's sight: it never surfaces, so this is what it sees through the water. */
+export const LURKER_SIGHT_TILES = t(8);
 
 /**
  * Overseer. A Xenomorph hover craft: it lifts straight off its Aerie nest, flies slowly at
@@ -6588,7 +6595,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     noReverse: true,
     turnInPlace: true,
     rangeTiles: LURKER_REACH_TILES,
-    sightTiles: t(16),
+    sightTiles: LURKER_SIGHT_TILES,
     cooldown: LURKER_BITE_SECONDS,
     damage: LURKER_BITE_DAMAGE,
     projectileSpeed: 0,
@@ -6600,10 +6607,11 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: 0,
     naval: true,
     submerges: true,
+    neverSurfaces: true,
     bite: true,
     leavesWreck: true,
     wreckHp: 40,
-    blurb: `A sea beast the hive grew in its pool: a long plated body that swims like an eel, a crest of spines, glowing eyes, and a split jaw of hooked fangs. No gun: it hunts with its jaws. It leaves the pool surfaced; Dive and Surface set its depth, and it holds ${SUB_DIVE_SECONDS} seconds of breath below. Submerged, the enemy sees it only while one of their Destroyers hears it on sonar, or for ${SUB_REVEAL_SECONDS} seconds after it bites. Up or down, it bites whatever it reaches, ${LURKER_REACH_TILES / TILE_SUBDIV} cells from its body: one bite kills a soldier, swimming or standing at the water's edge, and tears into a boat's hull; a tank's plate gives slowly, a wall slower. It never comes ashore. Dead, its carcass sinks and blocks the water until it is shot apart. Needs a Neural Nexus.`,
+    blurb: `A sea beast the hive grew in its pool: a long plated body that swims like an eel, a crest of spines, glowing eyes, and a split jaw of hooked fangs. No gun: it hunts with its jaws. It lives under the water and never needs air: it cannot be ordered up, and down there it sees only ${LURKER_SIGHT_TILES / TILE_SUBDIV} cells. The enemy sees it only while one of their Destroyers hears it on sonar. It surfaces by itself when it bites and stays in sight for ${SUB_REVEAL_SECONDS} seconds before it sinks again. It bites whatever it reaches, ${LURKER_REACH_TILES / TILE_SUBDIV} cells from its body: one bite kills a soldier, swimming or standing at the water's edge, and tears into a boat's hull; a tank's plate gives slowly, a wall slower. It never comes ashore. Dead, its carcass sinks and blocks the water until it is shot apart. Needs a Neural Nexus.`,
   },
   /** Xenomorph fighter: insect wings, twin pulse cannons. Lives in an Aerie nest. */
   wasp: {
@@ -8728,6 +8736,11 @@ export function torpedoesOf(type: EntityType): boolean {
 /** Can dive, and down it stays out of enemy sight unless spotted close or just fired. */
 export function submergesOf(type: EntityType): boolean {
   return catalog(type).submerges === true;
+}
+
+/** Always below: no Dive or Surface, no air. It comes up only to strike. */
+export function neverSurfacesOf(type: EntityType): boolean {
+  return catalog(type).neverSurfaces === true;
 }
 
 /** Hull sonar, an ASW helicopter on the fantail, and a mine rail: the Destroyer. */
