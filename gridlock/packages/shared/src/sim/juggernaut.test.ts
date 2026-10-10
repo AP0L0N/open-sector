@@ -163,6 +163,26 @@ describe("Juggernaut", () => {
     assert.equal(state.projectiles.some((p) => p.hammer), false);
   });
 
+  it("near death on a friend's force-attack throws the hammer back at the one that hurt it last", () => {
+    const state = field();
+    const j = at(state, "juggernaut", "B", 30, 30);
+    const friend = at(state, "titan", "B", 35, 30);
+    const other = at(state, "titan", "B", 30, 35);
+    const hp = friend.hp;
+    j.hp = Math.floor(j.hpMax * JUGGERNAUT_RAGE_HP) + 5;
+    assert.equal(applyCommand(state, "B", { type: "cmd.forceattack", ids: [friend.id], x: j.x, y: j.y, targetId: j.id }).ok, true);
+    for (let i = 0; i < secondsToTicks(10) && !j.fists; i++) step(state, TICK_DT);
+    assert.equal(j.fists, true, "it threw the hammer");
+    assert.equal(j.lastAttacker, friend.id);
+    const hammer = state.projectiles.find((p) => p.hammer);
+    assert.ok(hammer, "the hammer is in the air");
+    assert.ok(Math.abs((hammer.landX ?? 0) - friend.x) < 1 && Math.abs((hammer.landY ?? 0) - friend.y) < 1, "at the friend that shot it");
+    const otherHp = other.hp;
+    ticks(state, secondsToTicks(1.5));
+    assert.ok(friend.hp < hp, "the hammer came down on it");
+    assert.equal(other.hp, otherHp, "not on a friend that left it alone");
+  });
+
   it("keeps the hammer when there is nothing in reach to throw it at", () => {
     const state = field();
     const j = at(state, "juggernaut", "B", 30, 30);
@@ -349,6 +369,27 @@ describe("Juggernaut ram", () => {
     assert.ok(until(state, 1, () => !!j.ram), "it charges the building");
     assert.ok(until(state, 3, () => !j.ram));
     assert.ok(hp - house.hp >= JUGGERNAUT_RAM_BUILDING * XENO_DAMAGE_MUL * 0.85, `building took ${hp - house.hp}`);
+  });
+
+  it("charges what it is force-attacking: an enemy hull, or its own side's", () => {
+    const state = field();
+    const j = at(state, "juggernaut", "B", 20, 30);
+    const titan = at(state, "titan", "A", 27, 30);
+    titan.cooldown = 1e6;
+    const hp = titan.hp;
+    assert.equal(applyCommand(state, "B", { type: "cmd.forceattack", ids: [j.id], x: titan.x, y: titan.y, targetId: titan.id }).ok, true);
+    assert.ok(until(state, 1, () => !!j.ram), "it charges the enemy");
+    assert.ok(until(state, 3, () => !j.ram));
+    assert.ok(hp - titan.hp >= JUGGERNAUT_RAM_HULL * XENO_DAMAGE_MUL * 0.85, `enemy took ${hp - titan.hp}`);
+
+    const own = field();
+    const j2 = at(own, "juggernaut", "B", 20, 30);
+    const mate = at(own, "titan", "B", 27, 30);
+    const mateHp = mate.hp;
+    assert.equal(applyCommand(own, "B", { type: "cmd.forceattack", ids: [j2.id], x: mate.x, y: mate.y, targetId: mate.id }).ok, true);
+    assert.ok(until(own, 1, () => !!j2.ram), "it charges the friend");
+    assert.ok(until(own, 3, () => !j2.ram));
+    assert.ok(mateHp - mate.hp >= JUGGERNAUT_RAM_HULL * XENO_DAMAGE_MUL * 0.85, `friend took ${mateHp - mate.hp}`);
   });
 
   it("does not charge a building it is not set on", () => {
