@@ -2598,6 +2598,12 @@ function launchRocket(
       ? rocketScatterRadius(Math.min(dist, normal), normal, moving ? 1.15 : 1, rack) * (1 + far * (RADAR_LONG_RANGE_SPREAD - 1))
       : rocketScatterRadius(dist, range, moving ? 1.15 : 1, rack);
   const land = mortarLanding(goalX, goalY, radius, () => nextRand(state));
+  // A homing ball steers onto the flier in flight (stepHomingRocket): it leaves aimed at it, no lead, no scatter.
+  const homeOn = rack.homing && aloft && target ? target : undefined;
+  if (homeOn) {
+    land.x = homeOn.x;
+    land.y = homeOn.y;
+  }
   const maxX = Math.max(1, state.width * state.tileSize - 1);
   const maxY = Math.max(1, state.height * state.tileSize - 1);
   land.x = Math.min(maxX, Math.max(0, land.x));
@@ -2636,6 +2642,8 @@ function launchRocket(
     vz: (zLand - z0) / flight,
     launcher: e.type,
     airRack: rack === airRackOf(e.type) || undefined,
+    homeOn: homeOn?.id,
+    homeLeft: homeOn ? flight * 2 : undefined,
     heavy: rack.plate != null && rack.plate > 1 ? true : undefined,
     plate: rack.plate != null && rack.plate > 1 ? rack.plate : undefined,
     ...lob(rack, dist, range, z0),
@@ -2661,7 +2669,54 @@ function lob(rack: RocketRackDef, dist: number, range: number, z0: number): Pick
 }
 
 /** Advance a rocket along its straight line, or its shallow arc. True while it is still flying. */
+/**
+ * A homing ball on its flier: each tick it turns onto where the flier is now, at the flier's
+ * height, and bursts on it once it gets there, the flier taking the centre of the burst.
+ * Undefined when it no longer steers (the flier is gone, down, or out-ran it): it flies on as fused.
+ */
+function stepHomingRocket(state: MatchState, p: Projectile, dt: number, rand: () => number): boolean | undefined {
+  const t = state.entities.get(p.homeOn!);
+  p.homeLeft = (p.homeLeft ?? 0) - dt;
+  if (!t || t.hp <= 0 || t.wreck || !isAirborne(t) || isCrashing(t) || p.homeLeft <= 0) {
+    p.homeOn = undefined;
+    p.homeLeft = undefined;
+    return undefined;
+  }
+  const speed = Math.hypot(p.vx, p.vy) || 1;
+  const z0 = p.z ?? 0;
+  const tz = entityHeight(state, t) + airAlt(t);
+  const dx = t.x - p.x;
+  const dy = t.y - p.y;
+  const d = Math.hypot(dx, dy);
+  if (d <= speed * dt) {
+    p.x = t.x;
+    p.y = t.y;
+    p.z = tz;
+    p.airBurst = true;
+    p.homedOn = t.id;
+    detonateMortar(state, p, rand, t);
+    return false;
+  }
+  const flight = d / speed;
+  p.vx = (dx / d) * speed;
+  p.vy = (dy / d) * speed;
+  p.vz = (tz - z0) / flight;
+  p.x += p.vx * dt;
+  p.y += p.vy * dt;
+  p.z = z0 + p.vz * dt;
+  p.life = flight - dt;
+  p.flightTime = flight;
+  p.landX = t.x;
+  p.landY = t.y;
+  p.airBurst = true;
+  return true;
+}
+
 function stepRocket(state: MatchState, p: Projectile, dt: number, rand: () => number): boolean {
+  if (p.homeOn != null) {
+    const homed = stepHomingRocket(state, p, dt, rand);
+    if (homed !== undefined) return homed;
+  }
   const x0 = p.x;
   const y0 = p.y;
   const z0 = p.z ?? 0;
@@ -3810,6 +3865,7 @@ function pushImpact(
     rocket: p.flight === "rocket" ? true : undefined,
     shot: p.flight === "rocket" ? p.id : undefined,
     z: p.airBurst ? (p.z ?? 0) : undefined,
+    homed: p.homedOn,
     airZ: p.aloft ? (p.z ?? 0) : undefined,
     torpedo: p.torpedo || undefined,
   };
