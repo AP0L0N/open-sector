@@ -495,6 +495,10 @@ import {
   JUGGERNAUT_FISTS_WADE_SPRITE,
   JUGGERNAUT_PUNCH_SPRITE,
   JUGGERNAUT_PUNCH_WADE_SPRITE,
+  JUGGERNAUT_RAM_FISTS_SPRITE,
+  JUGGERNAUT_RAM_SPRITE,
+  JUGGERNAUT_RAMHIT_FISTS_SPRITE,
+  JUGGERNAUT_RAMHIT_SPRITE,
   JUGGERNAUT_SPRITE,
   JUGGERNAUT_SWING_SPRITE,
   JUGGERNAUT_SWING_WADE_SPRITE,
@@ -502,7 +506,16 @@ import {
   JUGGERNAUT_THROW_WADE_SPRITE,
   JUGGERNAUT_WALK_WADE_SPRITE,
 } from "./sprites.js";
-import { drawThrownHammer, pickJuggernautPose, JUGGERNAUT_STRIDE_WORLD, type JuggernautSheet } from "./juggernaut-fx.js";
+import {
+  drawRamShock,
+  drawRamTrail,
+  drawThrownHammer,
+  pickJuggernautPose,
+  JUGGERNAUT_RAM_STRIDE_WORLD,
+  JUGGERNAUT_STRIDE_WORLD,
+  RAM_SHOCK_MS,
+  type JuggernautSheet,
+} from "./juggernaut-fx.js";
 import {
   THRALL_CRAWL_FIRE_SPRITE,
   THRALL_CRAWL_SPRITE,
@@ -1077,6 +1090,10 @@ export class MapView {
   /** Juggernaut: when the hammer left its hands. */
   private juggThrows = new Map<number, number>();
   private juggSeen = new Set<number>();
+  /** Juggernaut: when its last ram slammed home (performance.now). */
+  private juggRamHits = new Map<number, number>();
+  /** Where rams struck: shock and dust on the ground, along the charge (world). */
+  private ramShocks: { atMs: number; x: number; y: number; vx: number; vy: number; seed: number }[] = [];
   private snapAt = 0;
   /** Top-left of the viewport in isometric space. */
   private camX = 0;
@@ -1712,6 +1729,13 @@ export class MapView {
         this.juggSeen.add(i.id);
         const was = this.juggBlows.get(i.fromId);
         this.juggBlows.set(i.fromId, { at: now, n: (was?.n ?? 0) + 1 });
+      }
+      // A Juggernaut's ram slammed home, or ran into a wall: the slam plays, the ground shakes.
+      if ((i.ram === "slam" || i.ram === "stop") && i.fromId != null && !this.juggSeen.has(i.id)) {
+        if (this.juggSeen.size > 200) this.juggSeen.clear();
+        this.juggSeen.add(i.id);
+        this.juggRamHits.set(i.fromId, now);
+        if (i.ram === "slam") this.ramShocks.push({ atMs: now, x: i.x, y: i.y, vx: i.vx, vy: i.vy, seed: i.id });
       }
       if (i.fromId != null && (i.caliber ?? 0) > 0 && (i.caliber ?? 0) < 40 && i.kind !== "crush") {
         const shooter = this.currById.get(i.fromId);
@@ -5016,6 +5040,33 @@ export class MapView {
     this.drawSonarContacts();
     this.drawThermalContacts();
     this.drawHiveDrops();
+    this.drawRamFx();
+  }
+
+  /** Juggernaut rams: dust and speed streaks behind a charge, and the shock where one struck. */
+  private drawRamFx(): void {
+    const now = performance.now();
+    const unit = this.ts() * 2;
+    /** Screen direction of a world heading, unit length. */
+    const screenDir = (x: number, y: number, wx: number, wy: number): { dx: number; dy: number } => {
+      const a = this.toScreen(x, y);
+      const b = this.toScreen(x + wx, y + wy);
+      const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      return { dx: (b.x - a.x) / len, dy: (b.y - a.y) / len };
+    };
+    for (const e of this.curr.entities) {
+      if (e.type !== "juggernaut" || !e.ram || e.wreck) continue;
+      const p = this.lerpEnt(e);
+      const s = this.toScreen(p.x, p.y);
+      const d = screenDir(p.x, p.y, Math.cos(e.facing), Math.sin(e.facing));
+      drawRamTrail(this.ctx, s.x, s.y, { ...d, nowMs: now, id: e.id, unit });
+    }
+    this.ramShocks = this.ramShocks.filter((h) => now - h.atMs < RAM_SHOCK_MS);
+    for (const h of this.ramShocks) {
+      const s = this.toScreen(h.x, h.y);
+      const d = screenDir(h.x, h.y, h.vx, h.vy);
+      drawRamShock(this.ctx, s.x, s.y, { age: (now - h.atMs) / RAM_SHOCK_MS, ...d, unit, seed: h.seed });
+    }
   }
 
   /** The strongest shake of any Hive Core that just landed, iso px. */
@@ -7731,6 +7782,8 @@ export class MapView {
           fists: JUGGERNAUT_FISTS_WADE_SPRITE,
           punch: JUGGERNAUT_PUNCH_WADE_SPRITE,
           throw: JUGGERNAUT_THROW_WADE_SPRITE,
+          ram: e.fists ? JUGGERNAUT_RAM_FISTS_SPRITE : JUGGERNAUT_RAM_SPRITE,
+          ramhit: e.fists ? JUGGERNAUT_RAMHIT_FISTS_SPRITE : JUGGERNAUT_RAMHIT_SPRITE,
         }
       : {
           walk: JUGGERNAUT_SPRITE,
@@ -7738,6 +7791,9 @@ export class MapView {
           fists: JUGGERNAUT_FISTS_SPRITE,
           punch: JUGGERNAUT_PUNCH_SPRITE,
           throw: JUGGERNAUT_THROW_SPRITE,
+          // Without the hammer the charge is a shoulder-down run, the slam a two-fisted blow.
+          ram: e.fists ? JUGGERNAUT_RAM_FISTS_SPRITE : JUGGERNAUT_RAM_SPRITE,
+          ramhit: e.fists ? JUGGERNAUT_RAMHIT_FISTS_SPRITE : JUGGERNAUT_RAMHIT_SPRITE,
         };
     if (e.wreck) return { def: JUGGERNAUT_SPRITE };
     const blow = this.juggBlows.get(e.id);
@@ -7749,6 +7805,8 @@ export class MapView {
       blowAt: blow?.at,
       blows: blow?.n,
       throwAt: this.juggThrows.get(e.id),
+      ramming: !!e.ram,
+      ramHitAt: this.juggRamHits.get(e.id),
     });
     return { def: sheets[pose.sheet], frame: pose.frame };
   }
@@ -8417,7 +8475,8 @@ export class MapView {
         const odo = this.walkerOdo.get(e.id);
         const d = (odo?.d ?? 0) + strideHop(odo, p);
         this.walkerOdo.set(e.id, { x: p.x, y: p.y, d });
-        frameIndex = stepping ? strideFrame(d, JUGGERNAUT_STRIDE_WORLD, sheet.frames, e.id) : 0;
+        const strideWorld = pose.def === JUGGERNAUT_RAM_SPRITE || pose.def === JUGGERNAUT_RAM_FISTS_SPRITE ? JUGGERNAUT_RAM_STRIDE_WORLD : JUGGERNAUT_STRIDE_WORLD;
+        frameIndex = stepping || e.ram ? strideFrame(d, strideWorld, sheet.frames, e.id) : 0;
       }
     }
     if (e.type === "walker" && frameIndex == null) {

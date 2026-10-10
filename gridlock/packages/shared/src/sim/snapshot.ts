@@ -72,6 +72,7 @@ import { radarContacts, radarOnline } from "./radar.js";
 import { cyborgShutdownIn } from "./cyborg-link.js";
 import { blinkCharge, purgeProgress } from "./simunit.js";
 import { lungeAlt, lungeCharge } from "./lunge.js";
+import { ramCharge } from "./juggernaut.js";
 import { hiddenBurrowed } from "./burrow.js";
 import { hiddenCloaked } from "./shade.js";
 import { isSimUnit, onUplink, usesHiveEnergy, vaultsWalls } from "../catalog.js";
@@ -485,6 +486,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       sprint: e.sprint,
       cloaked: friendly ? e.cloaked : undefined,
       fists: e.fists,
+      ram: e.ram ? true : undefined,
+      ramCharge: friendly && e.type === "juggernaut" && !e.wreck ? Math.round(ramCharge(state, e) * 100) / 100 : undefined,
       purge: friendly && e.purge ? { hostId: e.purge.hostId, u: purgeProgress(state, e) ?? 0 } : undefined,
       takeover: e.takeover ? { by: e.takeover.by, u: Math.min(1, e.takeover.ticks / secondsToTicks(CYBORG_TAKEOVER_SECONDS)) } : undefined,
       laser: e.laser ? laserView(e.laser, state.tick) : undefined,

@@ -2590,6 +2590,23 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       badge: ready ? undefined : `${Math.round(charge * 100)}%`,
     });
   }
+  // The Juggernaut rams by itself: the button only shows how far along the next one is.
+  const rammers = units.filter((e) => e.type === "juggernaut" && !e.wreck);
+  if (rammers.length > 0) {
+    const charge = Math.min(...rammers.map((e) => e.ramCharge ?? 1));
+    const ready = charge >= 1;
+    out.push({
+      slot: "ram",
+      act: "ram",
+      label: "Ram",
+      title: ready
+        ? "Ready. It rams by itself: it charges an enemy armored hull 3 to 10 cells off (or a building you order it to attack), running down everything of the enemy's in its path, and slams into it. Never a soldier."
+        : `Ram recharging (${Math.round(charge * 100)}%). It charges again by itself once it is back.`,
+      on: rammers.some((e) => e.ram),
+      disabled: true,
+      badge: ready ? undefined : `${Math.round(charge * 100)}%`,
+    });
+  }
   const stalkers = units.filter((e) => canBurrow(e.type) && !e.wreck);
   if (stalkers.length > 0) {
     const down = stalkers.some((e) => e.burrow === "down" || e.burrow === "digging");

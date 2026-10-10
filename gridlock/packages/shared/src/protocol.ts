@@ -19,7 +19,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 147;
+export const PROTOCOL_VERSION = 148;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -161,6 +161,10 @@ export interface EntityView {
   cloaked?: true;
   /** Juggernaut has thrown its hammer and fights with its fists. */
   fists?: true;
+  /** Juggernaut charging something down. */
+  ram?: true;
+  /** Juggernaut, own side only: ram charge, 0–1. 1 is ready. */
+  ramCharge?: number;
   /** Stalker digging in, under the ground (own side only), or rising. */
   burrow?: "digging" | "down" | "rising";
   /** Sim Unit II inside a hostile garrison, own side only: the host and the share of the purge done, 0–1. */
@@ -640,6 +644,11 @@ export interface ImpactView {
   downLaser?: true;
   /** A Juggernaut blow landed here: the hammer swung, a fist, or the thrown hammer coming down. */
   hammer?: "swing" | "fist" | "throw";
+  /**
+   * A Juggernaut's ram (`fromId` is the giant): "slam" where it struck what it charged, "trample"
+   * on someone run down on the way, "stop" where it ran into a wall or the water's edge.
+   */
+  ram?: "slam" | "trample" | "stop";
 }
 
 /**

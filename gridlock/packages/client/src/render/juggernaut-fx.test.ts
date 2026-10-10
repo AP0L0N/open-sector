@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { JUGGERNAUT_FIST_SECONDS, JUGGERNAUT_HAMMER_SECONDS } from "@gridlock/shared";
-import { JUGGERNAUT_THROW_MS, pickJuggernautPose } from "./juggernaut-fx.js";
+import { JUGGERNAUT_RAMHIT_MS, JUGGERNAUT_THROW_MS, pickJuggernautPose } from "./juggernaut-fx.js";
 
 const base = { fists: false, stepping: false, now: 10_000, speed: 1 };
 
@@ -40,6 +40,17 @@ describe("Juggernaut pose", () => {
     assert.deepEqual(pickJuggernautPose({ ...base, fists: true, throwAt: base.now, blowAt: base.now }), { sheet: "throw", frame: 0 });
     assert.equal(pickJuggernautPose({ ...base, fists: true, throwAt: base.now - JUGGERNAUT_THROW_MS * 0.8 }).frame, 3);
     assert.equal(pickJuggernautPose({ ...base, fists: true, throwAt: base.now - JUGGERNAUT_THROW_MS * 2 }).sheet, "fists");
+  });
+
+  it("runs on the ram sheet while it charges, over a blow still showing", () => {
+    assert.deepEqual(pickJuggernautPose({ ...base, ramming: true }), { sheet: "ram" });
+    assert.deepEqual(pickJuggernautPose({ ...base, ramming: true, blowAt: base.now - 100 }), { sheet: "ram" });
+  });
+
+  it("plays the slam once, then fights or walks on", () => {
+    assert.deepEqual(pickJuggernautPose({ ...base, ramHitAt: base.now }), { sheet: "ramhit", frame: 0 });
+    assert.equal(pickJuggernautPose({ ...base, ramHitAt: base.now - JUGGERNAUT_RAMHIT_MS * 0.6 }).frame, 2);
+    assert.equal(pickJuggernautPose({ ...base, ramHitAt: base.now - JUGGERNAUT_RAMHIT_MS * 1.2 }).sheet, "walk");
   });
 
   it("drops the fight pose once it walks on", () => {
