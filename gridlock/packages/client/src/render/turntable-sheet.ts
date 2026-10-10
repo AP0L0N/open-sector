@@ -905,6 +905,7 @@ export { TIGER_OPTS };
 const planeHullGlobs = {
   wasp: import.meta.glob("../assets/units/wasp/hull/*.png", { eager: true, import: "default" }) as Record<string, string>,
   scourge: import.meta.glob("../assets/units/scourge/hull/*.png", { eager: true, import: "default" }) as Record<string, string>,
+  overseer: import.meta.glob("../assets/units/overseer/hull/*.png", { eager: true, import: "default" }) as Record<string, string>,
 } as const;
 
 const planePrevious = new Map<keyof typeof planeHullGlobs, ComposedTurntable>();

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Borg boats: the Leech (plasma skiff) and the Lurker (submarine). One 16-face hull each.
+"""Borg sea: the Leech (plasma skiff) and the Lurker (sea beast). One 16-face hull each.
 
 The Borg answer to the Attack Boat and the Submarine (render_naval.py), under
 their lock: same numpy rasterizer (render_procedural), camera, light, outline,
@@ -13,10 +13,13 @@ alloy plates, dark chitin, sickly green glow seams, gray team plate.
           the water under the belly, sensor eyes and a ram at the bow, and a
           small domed plasma turret on the foredeck (baked in, like the
           gunboat's 20mm).
-  lurker  a submarine running awash: a long ribbed eel hull mostly under
-          the water, a row of dorsal spines, a swept dorsal sensor fin with a
-          gray team band and a sensor eye, glowing gill slits down each side,
-          twin glowing torpedo ports at the bow, a tail fluke.
+  lurker  a sea beast, not a boat: a plated head reared up out of the water
+          on an arched neck, jaws open on rows of pale fangs over a glowing
+          throat, green eyes and a spine crest; behind it three coils of the
+          body break the surface, ribbed and spined, glow gills down their
+          flanks, the middle coil carrying the gray team band; two clawed
+          fore-flippers paddle at the waterline and a forked tail fluke
+          lifts out at the stern. Rings of white water round every coil.
 
 Row 0 = bow screen-south, then clockwise 22.5 deg through row 15. No insignia.
 
@@ -59,6 +62,8 @@ rp.MAT.update(
         "uglow": (rp.hex_rgb("#2fb57c"), 0.0, 1.0),
         "uglow_hi": (rp.hex_rgb("#5fe8a8"), 0.0, 1.0),
         "pad": (rp.hex_rgb("#2e3631"), 0.12, 1.0),
+        "fang": (rp.hex_rgb("#d8d4c4"), 0.06, 1.0),
+        "gum": (rp.hex_rgb("#3b2a2c"), 0.08, 1.0),
     }
 )
 rs.EMISSIVE.update({"uglow", "uglow_hi"})
@@ -207,35 +212,86 @@ def build_leech() -> Mesh:
 # ---------------------------------------------------------------- Lurker
 
 
+def jaw(m: Mesh, root, tip, r0: float, r1: float, up: int, fangs: int = 5) -> None:
+    """One jaw: a tapered chitin bone, a dark gum along its inner edge, a row of pale fangs pointing at the other jaw."""
+    root = np.asarray(root, float)
+    tip = np.asarray(tip, float)
+    tube(m, root, tip, r0, r1, "chitin", n=9)
+    for k in range(fangs):
+        t = 0.18 + 0.74 * k / max(1, fangs - 1)
+        p = root + (tip - root) * t
+        r = r0 + (r1 - r0) * t
+        for s in (-1, 1):
+            base = p + np.array([0.0, s * r * 0.55, -up * r * 0.55])
+            tube(m, base, base + np.array([0.05, -s * 0.04, -up * (0.38 - 0.18 * t)]), 0.09, 0.015, "fang", n=5)
+        knob(m, p + np.array([0.0, 0.0, -up * r * 0.6]), r * 0.5, "gum")
+
+
+def coil(m: Mesh, x: float, length: float, beam: float, rise: float, spines: int, team: bool = False) -> None:
+    """One coil of the body arched out of the water: a ribbed shell cut at the waterline, a spine crest, glow gills."""
+    shell(m, (x, 0.0, -rise * 0.25), (length, beam, rise), 3, team=(1, 1) if team else None, seg=18)
+    for k in range(spines):
+        t = (k + 0.5) / spines - 0.5
+        sx = x + t * length * 1.3
+        h = rise * 0.75 * math.sqrt(max(0.0, 1 - (2 * t) ** 2))
+        tube(m, (sx, 0.0, h + 0.05), (sx - 0.5, 0.0, h + 0.7), 0.17, 0.02, "claw", n=5)
+    for s in (-1, 1):
+        for k in (-1, 0, 1):
+            gx = x + k * length * 0.32
+            m.box((gx - 0.1, s * beam * 0.92 - 0.06, 0.08), (gx + 0.1, s * beam * 0.92 + 0.06, rise * 0.45), "seam")
+
+
 def build_lurker() -> Mesh:
-    """Submarine running awash, meters. +x bow, +y port, +z up. Waterline at z=0."""
+    """Sea beast in meters. +x head, +y left, +z up. Waterline at z=0: only what clears it is drawn."""
     m = Mesh()
-    # Long ribbed eel hull, axis under the water: only the back clears it.
-    shell(m, (0.0, 0.0, -0.45), (11.4, 1.38, 1.3), 8, team=(3, 3), seg=20)
-    # Row of dorsal spines, swept back.
-    for k, x in enumerate((8.2, 6.8, -1.6, -3.0, -4.4, -5.8, -7.2, -8.4)):
-        h = 0.55 if abs(x) < 6 else 0.4
-        tube(m, (x, 0.0, 0.72), (x - 0.6, 0.0, 0.8 + h), 0.2, 0.03, "chitin", n=5)
-    # Dorsal sensor fin: a swept blade, gray team band, a sensor eye in its leading edge.
-    plan = [(1.6, 0.0), (1.0, 0.42), (-1.2, 0.5), (-2.6, 0.0), (-1.2, -0.5), (1.0, -0.42)]
-    levels = [(0.55, 0.0, 1.0), (1.5, -0.45, 0.82), (1.8, -0.6, 0.78), (2.15, -0.8, 0.7), (2.5, -1.05, 0.6), (3.35, -1.9, 0.3)]
-    fin = [[np.array([x * k + dx, y * k, z]) for x, y in plan] for z, dx, k in levels]
-    m.loft(fin, lambda r, s: "team" if r == 1 else ("seam" if r == 3 else ("alloy" if s % 2 else "alloy_hi")))
-    knob(m, (0.95, 0.0, 2.2), 0.2, "eye")
-    tube(m, (-1.6, 0.0, 3.2), (-3.0, 0.0, 3.75), 0.07, 0.03, "barrel", n=5)  # sensor whip
-    # Gill slits down each flank, just above the water.
+    # Neck: rises from under the water and arches up to the head.
+    neck = [(4.4, 0.0, -0.4), (5.6, 0.0, 0.9), (6.7, 0.0, 1.75), (7.5, 0.0, 2.15)]
+    for (a, b), r in zip(zip(neck, neck[1:]), (0.95, 0.82, 0.72)):
+        tube(m, a, b, r, r * 0.88, "alloy" if r > 0.8 else "alloy_hi", n=12)
+        knob(m, b, r * 0.86, "alloy_hi")
+    for p in neck[1:]:
+        tube(m, (p[0] - 0.1, 0.0, p[2] + 0.6), (p[0] - 0.65, 0.0, p[2] + 1.3), 0.2, 0.02, "claw", n=5)
     for s in (-1, 1):
-        for x in (5.4, 4.7, 4.0, 3.3):
-            m.box((x - 0.12, s * 1.2 - 0.06, 0.12), (x + 0.12, s * 1.2 + 0.06, 0.62), "seam")
-            m.box((x + 0.12, s * 1.18 - 0.05, 0.1), (x + 0.3, s * 1.18 + 0.05, 0.66), "chitin")
-    # Twin glowing torpedo ports at the bow, a chitin snout.
-    tube(m, (10.6, 0.0, 0.15), (12.1, 0.0, 0.05), 0.42, 0.06, "chitin", n=8)
+        for p in neck[1:3]:
+            knob(m, (p[0], s * 0.62, p[2] - 0.1), 0.16, "seam")
+    # Head: a plated skull, a spine crest swept back, green eyes, a brow ridge.
+    shell(m, (8.35, 0.0, 2.25), (1.55, 1.05, 0.9), 2, seg=16)
+    for k, dx in enumerate((0.0, -0.55, -1.1)):
+        tube(m, (7.9 + dx, 0.0, 2.8), (7.2 + dx, 0.0, 3.75 - k * 0.25), 0.22, 0.02, "claw", n=5)
     for s in (-1, 1):
-        knob(m, (10.35, s * 0.42, 0.32), 0.17, "core")
-    # Tail fluke at the stern, lying on the water.
+        knob(m, (9.05, s * 0.72, 2.65), 0.28, "eye")
+        knob(m, (8.65, s * 0.86, 2.6), 0.18, "eye")
+        tube(m, (8.4, s * 0.7, 3.0), (9.4, s * 0.6, 2.9), 0.16, 0.06, "chitin", n=5)
+    # Jaws wide open on a glowing throat.
+    jaw(m, (9.3, 0.0, 2.45), (11.7, 0.0, 2.55), 0.62, 0.2, up=1, fangs=6)
+    jaw(m, (9.1, 0.0, 1.85), (11.1, 0.0, 0.85), 0.52, 0.16, up=-1, fangs=5)
+    knob(m, (9.6, 0.0, 2.05), 0.46, "core")
+    ellipsoid(m, (10.1, 0.0, 1.9), (0.7, 0.38, 0.28), "gum", rings=5, seg=10)
+    # Two clawed fore-flippers paddling at the waterline beside the neck.
     for s in (-1, 1):
-        tube(m, (-10.6, 0.0, 0.1), (-12.0, s * 1.3, 0.08), 0.18, 0.05, "chitin", n=6)
-    knob(m, (-11.2, 0.0, 0.2), 0.14, "seam")
+        tube(m, (4.9, s * 0.7, 0.05), (5.7, s * 1.9, 0.32), 0.3, 0.2, "limb", n=7)
+        knob(m, (5.7, s * 1.9, 0.32), 0.24, "alloy")
+        for k in (-1, 0, 1):
+            tube(m, (5.7, s * 1.9, 0.32), (6.35 + 0.1 * k, s * (2.2 + 0.25 * k), 0.12), 0.1, 0.02, "claw", n=5)
+    # Three coils of the body break the surface behind it, the middle one with the team band.
+    coil(m, 1.8, 2.0, 1.05, 1.35, 3)
+    coil(m, -2.6, 1.8, 0.92, 1.15, 3, team=True)
+    coil(m, -6.4, 1.4, 0.72, 0.85, 2)
+    # Forked tail fluke lifted out of the water at the stern.
+    knob(m, (-8.7, 0.0, 0.15), 0.4, "alloy")
+    for s in (-1, 1):
+        tube(m, (-8.8, 0.0, 0.25), (-10.1, s * 1.05, 1.15), 0.3, 0.05, "chitin", n=7)
+        tube(m, (-9.4, s * 0.45, 0.6), (-10.0, s * 0.95, 0.75), 0.09, 0.03, "seam", n=5)
+    return m
+
+
+def lurker_wake() -> Mesh:
+    """Dark water along the beast with the hive glow under it, and a ring of white water round each coil."""
+    m = Mesh()
+    ellipse(m, 0.02, 0.3, 0.0, 11.2, 2.0, "water")
+    for cx, rx, ry in ((5.4, 2.4, 2.6), (1.8, 2.4, 1.35), (-2.6, 2.2, 1.2), (-6.4, 1.8, 1.0), (-9.3, 1.6, 1.4)):
+        ellipse(m, 0.03, cx, 0.0, rx * 0.7, ry * 0.6, "uglow")
+        ring(m, 0.06, cx, 0.0, rx * 0.86, ry * 0.86, rx, ry, "foam")
     return m
 
 
@@ -247,7 +303,7 @@ UNITS_SPEC = {
     # The Lurker is drawn at 0.66 of NAVAL_SCALE so its 25 m with the wake fits the 256 source cell
     # (the EU Submarine runs off its cell at east / west); drawSize puts the px per meter back.
     "leech": (build_leech, lambda: borg_wake(7.6, 3.6, 6.0, 1.95, -0.3), "gunboat", 48.0, 1.0),
-    "lurker": (build_lurker, lambda: borg_wake(12.8, 2.3, 11.2, 1.9), "submarine", 64.0 * 1.2, 0.66),
+    "lurker": (build_lurker, lurker_wake, "submarine", 64.0 * 1.2, 0.66),
 }
 
 

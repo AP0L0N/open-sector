@@ -177,5 +177,23 @@
     "frames": 1,
     "contactY": 0.56,
     "clipped_dirs": []
+  },
+  {
+    "type": "lurker",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/lurker.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.74,
+    "clipped_dirs": []
+  },
+  {
+    "type": "overseer",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/overseer.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.8,
+    "clipped_dirs": []
   }
 ]

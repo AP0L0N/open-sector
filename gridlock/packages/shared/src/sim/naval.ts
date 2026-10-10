@@ -1,4 +1,5 @@
 import {
+  biteOf,
   hasSonar,
   isTorpedoBody,
   secondsToTicks,
@@ -52,8 +53,9 @@ function namedStrike(e: Entity, t: Entity): boolean {
   return (o?.kind === "attack" || o?.kind === "forceattack") && !o.auto && o.targetId === t.id;
 }
 
-/** In range of a named hull on the surface, a submarine below comes up to fire. */
+/** In range of a named hull on the surface, a submarine below comes up to fire. A Lurker bites from below. */
 export function surfaceToStrike(e: Entity, t: Entity): void {
+  if (biteOf(e.type)) return;
   if (diving(e) && !diving(t) && namedStrike(e, t)) setDive(e, false);
 }
 

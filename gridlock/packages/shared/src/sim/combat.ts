@@ -156,6 +156,12 @@ import {
   SIMUNIT_LIGHT_MUL,
   SIMUNIT_SLASH_DAMAGE,
   meleeOf,
+  biteOf,
+  factionDamage,
+  LURKER_BITE_DAMAGE,
+  LURKER_BITE_SOLDIER_DAMAGE,
+  LURKER_BUILDING_MUL,
+  LURKER_HEAVY_MUL,
 } from "../catalog.js";
 import { aimableBridge, bridgeSweep, strikeBridge, tagBridgeRounds } from "./bridge.js";
 import type { ImpactKind, ImpactView } from "../protocol.js";
@@ -1942,6 +1948,14 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     if (e.order?.once) clearOrder(e);
     return;
   }
+  // The Lurker's jaws: a bite at its reach, no round in the air. On a bare point it snaps at the water.
+  if (biteOf(e.type)) {
+    if (target) bite(state, e, target);
+    else biteAir(state, e, aimX, aimY);
+    e.cooldown = def.cooldown;
+    if (e.order?.once) clearOrder(e);
+    return;
+  }
   // The Sim Unit's daggers: a cut at arm's reach, no round in the air. On a bare point he cuts the air.
   if (infantryGun?.id === "daggers") {
     if (target) slash(state, e, target);
@@ -2534,7 +2548,7 @@ function launchRocket(
     y,
     vx: dx / flight,
     vy: dy / flight,
-    damage: rack.damage,
+    damage: factionDamage(e.type, rack.damage),
     penetration: rack.penetration,
     caliber: rack.caliber,
     life: flight,
@@ -3095,7 +3109,7 @@ function slash(state: MatchState, e: Entity, target: Entity): void {
   else if (target.wreck || (isArmored(def) && !isLightHull(def))) mul = SIMUNIT_HEAVY_MUL;
   else if (isLightHull(def)) mul = SIMUNIT_LIGHT_MUL;
   const rand = () => nextRand(state);
-  const dmg = Math.round((soldier ? SIMUNIT_SLASH_DAMAGE : SIMUNIT_HULL_SLASH_DAMAGE * mul) * (0.9 + 0.2 * rand()));
+  const dmg = factionDamage(e.type, Math.round((soldier ? SIMUNIT_SLASH_DAMAGE : SIMUNIT_HULL_SLASH_DAMAGE * mul) * (0.9 + 0.2 * rand())));
   const vx = target.x - e.x;
   const vy = target.y - e.y;
   let kind: ImpactKind = "hit";
@@ -3128,6 +3142,52 @@ function slashAir(state: MatchState, e: Entity, x: number, y: number): void {
 
 /** Shown as a small-arms spark on the client; it also marks the slash as the Sim Unit's shot. */
 const DAGGER_CALIBER = 8;
+
+/**
+ * The Lurker's bite. A soldier takes LURKER_BITE_SOLDIER_DAMAGE, more than his whole pool;
+ * anything else the hull bite: a tank, a wreck, or a plate LURKER_HEAVY_MUL of it, a wall
+ * LURKER_BUILDING_MUL, and through the slits of a held house the soldiers inside the
+ * soldier's bite instead. It lands now, and like a shot it gives the beast away.
+ */
+function bite(state: MatchState, e: Entity, target: Entity): void {
+  const def = catalog(target.type);
+  const soldier = target.kind === "unit" && !target.wreck && isInfantryType(target.type);
+  let mul = 1;
+  if (target.kind === "building") mul = LURKER_BUILDING_MUL;
+  else if (target.wreck || (isArmored(def) && !isLightHull(def))) mul = LURKER_HEAVY_MUL;
+  const rand = () => nextRand(state);
+  const dmg = factionDamage(e.type, Math.round((soldier ? LURKER_BITE_SOLDIER_DAMAGE : LURKER_BITE_DAMAGE * mul) * (0.9 + 0.2 * rand())));
+  let kind: ImpactKind = "hit";
+  if (target.kind === "building" && wallsShieldGarrison(state, target)) {
+    woundGarrison(state, target, factionDamage(e.type, LURKER_BITE_SOLDIER_DAMAGE), BITE_CALIBER);
+  } else {
+    takeDamage(target, dmg, state.tick);
+    if (target.hp <= 0) kind = "kill";
+    else if (soldier) rollCrits(target, "none", "hit", dmg, rand);
+  }
+  surface(state, e);
+  state.impacts.push({
+    id: state.nextId++,
+    ownerId: e.ownerId,
+    kind,
+    fromId: e.id,
+    x: target.x,
+    y: target.y,
+    vx: target.x - e.x,
+    vy: target.y - e.y,
+    caliber: BITE_CALIBER,
+    bite: true,
+  });
+}
+
+/** A force-attack on bare water: the jaws close on nothing. The client still shows the snap. */
+function biteAir(state: MatchState, e: Entity, x: number, y: number): void {
+  surface(state, e);
+  state.impacts.push({ id: state.nextId++, ownerId: e.ownerId, kind: "miss", fromId: e.id, x, y, vx: x - e.x, vy: y - e.y, caliber: BITE_CALIBER, bite: true });
+}
+
+/** Marks the bite on the client: a snap of jaws and a churn of water, not a bullet strike. */
+const BITE_CALIBER = 9;
 
 function fireRound(
   state: MatchState,
@@ -3233,7 +3293,7 @@ function fireRound(
     y,
     vx: dx * speed,
     vy: dy * speed,
-    damage: stats.damage,
+    damage: factionDamage(e.type, stats.damage),
     penetration: gunId === "ptrd" ? ptrdPenetration(distTiles, rangeTiles) : stats.penetration,
     caliber: stats.caliber,
     life,

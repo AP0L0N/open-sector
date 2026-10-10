@@ -98,6 +98,8 @@ const FIRE_GAP_MS: Record<string, number> = {
   lst: 260,
   fw190: 1500,
   stuka: 500,
+  // One zap a pulse: the Overseer burns every 0.3 s.
+  overseer: 260,
   nebelwerfer: 1600,
   titan: 350,
   battleship: 700,

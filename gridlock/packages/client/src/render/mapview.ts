@@ -460,6 +460,7 @@ import { cyborgCommanderLens } from "./cyborgcommander-muzzle.js";
 import { beamEnd, beamShare, drawForceField, drawLaserBeam } from "./laser-beam.js";
 import { drawShutdownMark, drawUplink, SHUTDOWN_UNIT_FILTER } from "./cyborg-link-fx.js";
 import { BLINK_FX_MS, drawBlinkFx, drawPurgeMark } from "./blink-fx.js";
+import { BITE_FX_MS, DOWN_BEAM_MS, drawBite, drawDownBeam } from "./hive-fx.js";
 import { SIMUNIT2_CRAWL_FIRE_SPRITE, SIMUNIT2_CRAWL_SPRITE, SIMUNIT2_DIE_SPRITE, SIMUNIT2_FIRE_SPRITE, SIMUNIT2_SPRITE, UNIT_SPRITE_DRAW_SIZE } from "./sprites.js";
 import {
   BORGDRONE_CRAWL_FIRE_SPRITE,
@@ -663,6 +664,7 @@ const EXTRUDE: Record<EntityType, number> = {
   fw190: 12,
   wasp: 12,
   scourge: 14,
+  overseer: 12,
   bv222: 22,
   he111: 17,
   horten: 17,
@@ -1121,6 +1123,11 @@ export class MapView {
   private burrowSeen = new Map<number, { phase: string; at: number }>();
   /** Blink flashes in flight: both ends in world px and when they started. */
   private blinkFx: { from: { x: number; y: number }; to: { x: number; y: number }; at: number; inside?: boolean }[] = [];
+  /** Overseer pulses still showing: the craft that fired and the spot it burned. */
+  private downBeams: { id: number; fromId: number; x: number; y: number; at: number }[] = [];
+  /** Lurker bites still showing: where the jaws closed and the way the beast lunged. */
+  private biteFx: { id: number; fromId?: number; x: number; y: number; dx: number; dy: number; at: number }[] = [];
+  private hiveFxSeen = new Set<number>();
   private seenBlinks = new Set<number>();
   rotateMode = false;
   /** Rotate light: the rotate click swings only the selected Battle Ships' and Titans' lamps. */
@@ -1517,6 +1524,14 @@ export class MapView {
         this.crushBumps.set(i.crusher, now);
       }
       if (i.kind === "crush") continue;
+      if ((i.downLaser || i.bite) && !this.hiveFxSeen.has(i.id)) {
+        if (this.hiveFxSeen.size > 400) this.hiveFxSeen.clear();
+        this.hiveFxSeen.add(i.id);
+        if (i.downLaser && i.fromId != null) this.downBeams.push({ id: i.id, fromId: i.fromId, x: i.x, y: i.y, at: now });
+        if (i.bite) this.biteFx.push({ id: i.id, fromId: i.fromId, x: i.x, y: i.y, dx: i.vx, dy: i.vy, at: now });
+      }
+      // Jaws leave no strike, burst, or dirt: the snap and the water are all of it.
+      if (i.bite) continue;
       // A 20mm round that missed a plane climbed away into the sky: its tracer is all there is.
       if (i.airZ != null && i.kind === "miss") continue;
       if (i.nuke) {
@@ -1839,7 +1854,7 @@ export class MapView {
       if (factionOf(e.type) === "borg") {
         // Every Borg gun fires light: a green bolt from the muzzle to each hit. Lasers, plasma
         // orbs, torpedoes, and daggers draw themselves elsewhere.
-        const shots = byGun.get(e.id)?.filter((i) => !i.rocket && !i.laser && !i.torpedo && !i.mortar && i.kind !== "crush" && (i.caliber ?? 0) > 0);
+        const shots = byGun.get(e.id)?.filter((i) => !i.rocket && !i.laser && !i.torpedo && !i.mortar && !i.bite && !i.downLaser && i.kind !== "crush" && (i.caliber ?? 0) > 0);
         if (!shots?.length || e.type === "simunit2" || e.type === "cyborgcommander") continue;
         const muzzle = this.energyMuzzleWorld(e, shots[0]!);
         for (const bolt of energyBolts(muzzle, shots, ground, now, ts)) {
@@ -4663,6 +4678,7 @@ export class MapView {
     this.drawBlinkReach();
     this.drawPurgeMarks();
     this.drawBlinkFlashes();
+    this.drawHiveFx();
     this.drawSonarContacts();
     this.drawThermalContacts();
   }
@@ -5337,6 +5353,43 @@ export class MapView {
       const a = this.toScreen(f.from.x, f.from.y);
       const b = this.toScreen(f.to.x, f.to.y);
       drawBlinkFx(this.ctx, a, b, (now - f.at) * speed, UNIT_SPRITE_DRAW_SIZE * this.zoom, f.inside);
+    }
+  }
+
+  /** Overseer beams from the craft as it hangs now down to the spot, and Lurker bites. */
+  private drawHiveFx(): void {
+    if (this.downBeams.length === 0 && this.biteFx.length === 0) return;
+    const now = performance.now();
+    const speed = this.curr.gameSpeed || 1;
+    this.downBeams = this.downBeams.filter((f) => (now - f.at) * speed < DOWN_BEAM_MS);
+    this.biteFx = this.biteFx.filter((f) => (now - f.at) * speed < BITE_FX_MS);
+    const blend = Math.min(1, (now - this.snapAt) / 100);
+    for (const f of this.downBeams) {
+      const craft = this.currById.get(f.fromId);
+      if (!craft) continue;
+      const p = this.lerpEnt(craft);
+      const alt = lerpAirAlt(this.prevById.get(craft.id), craft, blend);
+      const top = this.toScreen(p.x, p.y, this.elevAt(p.x, p.y) + alt);
+      drawDownBeam(this.ctx, top, this.toScreen(f.x, f.y), (now - f.at) * speed, this.zoom);
+    }
+    for (const f of this.biteFx) {
+      // The jaws close at the head's reach toward the target, not on a long hull's middle.
+      const beast = f.fromId != null ? this.currById.get(f.fromId) : undefined;
+      let jx = f.x;
+      let jy = f.y;
+      if (beast) {
+        const p = this.lerpEnt(beast);
+        const d = Math.hypot(f.x - p.x, f.y - p.y);
+        const reach = Math.min(d, catalog(beast.type).radius * 2.4);
+        if (d > 1e-6) {
+          jx = p.x + ((f.x - p.x) / d) * reach;
+          jy = p.y + ((f.y - p.y) / d) * reach;
+        }
+      }
+      const at = this.toScreen(jx, jy);
+      const tip = this.toScreen(f.x + f.dx, f.y + f.dy);
+      const back = this.toScreen(f.x - f.dx, f.y - f.dy);
+      drawBite(this.ctx, at, { x: tip.x - back.x, y: tip.y - back.y }, (now - f.at) * speed, 2 * UNIT_SPRITE_DRAW_SIZE * this.zoom, f.id);
     }
   }
 

@@ -34,6 +34,7 @@ import {
   PYRO_COOKOFF_DAMAGE,
   PYRO_COOKOFF_FIRES,
   PYRO_COOKOFF_RADIUS,
+  factionDamage,
 } from "../catalog.js";
 import { coverStrike, wallSweep } from "./field.js";
 import { takeDamage } from "./crits.js";
@@ -149,7 +150,7 @@ export function throwFlame(
     y: fromY,
     vx: (landX - fromX) / flight,
     vy: (landY - fromY) / flight,
-    damage: FLAMER.damage,
+    damage: factionDamage(e.type, FLAMER.damage),
     penetration: FLAMER.penetration,
     caliber: FLAMER.caliber,
     life: flight,

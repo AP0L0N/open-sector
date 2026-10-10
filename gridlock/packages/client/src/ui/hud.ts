@@ -1196,6 +1196,7 @@ const TYPE_ORDER: EntityType[] = [
   "stuka",
   "wasp",
   "scourge",
+  "overseer",
   "drone",
   "aswheli",
   "warden",

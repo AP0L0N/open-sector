@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Borg aircraft: the Wasp (fighter) and the Scourge (dive bomber). One 16-face hull each.
+"""Borg aircraft: the Wasp (fighter), the Scourge (dive bomber), and the Overseer (hover craft). One 16-face hull each.
 
 The Borg answer to the Fw 190 and the Stuka (render_procedural.py), under
 their lock: same numpy rasterizer, camera, light, outline, 0.062 px-per-meter
@@ -18,11 +18,19 @@ membrane, translucent, with chitin spars and glowing veins.
            a glow seam down the join, a plated pronotum and a horned head,
            long veined wings from under the elytra, and a glowing plasma bomb
            pod slung in chitin claws under the belly.
+  overseer hover craft: a floating hive eye, nothing like a plane. A ribbed
+           chitin bell with glow seams and the gray team band, a skirt of
+           glowing membrane round its rim, four humming membrane vanes out to
+           the sides, a chitin prow with one great green eye on the nose (the
+           heading), a cluster of emitters round a hot core under the belly,
+           and six tendrils trailing down and back: their tips are the lowest
+           point (the plane's wheels).
 
 0001 = nose screen-south, then clockwise 22.5 deg through 0016. No insignia.
 
   python3 tools/sprites/render_borg_air.py wasp
   python3 tools/sprites/render_borg_air.py scourge
+  python3 tools/sprites/render_borg_air.py overseer
   python3 tools/sprites/render_borg_air.py all
 
 Writes gridlock/packages/client/src/assets/units/<id>/hull/0001..0016.png,
@@ -42,7 +50,7 @@ import render_procedural as rp
 from render_procedural import Mesh, render_turntable
 
 import borg_walker as bw
-from borg_walker import ellipsoid, knob, shell, tube, tube_x
+from borg_walker import dome, ellipsoid, knob, shell, tube, tube_x
 from render_borg_naval import UNITS, cameo72, check
 
 # Wing membrane: pale green, see-through; its own edge gets the outline (alpha > 0.5).
@@ -175,10 +183,67 @@ def build_scourge() -> Mesh:
     return m
 
 
+def build_overseer() -> Mesh:
+    """Hover craft in meters. +x nose, +y left, +z up. Tendril tips at z = 0."""
+    m = Mesh()
+    zb = 1.9  # rim of the bell
+    seg = 20
+    # The bell: ribbed chitin over alloy, glow seams, the team band near the crown.
+    dome(m, 0.0, 0.0, zb, 1.9, 1.9, 1.35, bw.banded_dome_mat(seg, (3,), team_seg=None, team_rings=(5,)), rings=7, seg=seg)
+    # Membrane skirt round the rim, flaring down and out.
+    top = [np.array([1.9 * math.cos(2 * math.pi * s / seg), 1.9 * math.sin(2 * math.pi * s / seg), zb + 0.02]) for s in range(seg)]
+    low = [np.array([2.35 * math.cos(2 * math.pi * s / seg), 2.35 * math.sin(2 * math.pi * s / seg), zb - 0.45]) for s in range(seg)]
+    m.loft([top, low], "membrane")
+    for s in range(0, seg, 2):
+        a = 2 * math.pi * s / seg
+        tube(m, (1.9 * math.cos(a), 1.9 * math.sin(a), zb + 0.02), (2.33 * math.cos(a), 2.33 * math.sin(a), zb - 0.43), 0.05, 0.03, "vein", n=4)
+    # Four humming vanes out to the sides, a little swept: chitin spar, membrane blade, glowing vein.
+    for ang in (math.radians(55), math.radians(125), math.radians(-55), math.radians(-125)):
+        ux, uy = math.cos(ang), math.sin(ang)
+        r0, r1 = 1.75, 3.6
+        z0, z1 = zb + 0.35, zb + 0.55
+        px, py = -uy, ux
+        a = m.v((ux * r0 + px * 0.45, uy * r0 + py * 0.45, z0))
+        b = m.v((ux * r1 + px * 0.2, uy * r1 + py * 0.2, z1))
+        c = m.v((ux * r1 - px * 0.2, uy * r1 - py * 0.2, z1))
+        d = m.v((ux * r0 - px * 0.45, uy * r0 - py * 0.45, z0))
+        m.quad(a, b, c, d, "membrane")
+        tube(m, (ux * r0, uy * r0, z0 + 0.03), (ux * r1, uy * r1, z1 + 0.03), 0.09, 0.04, "chitin", n=5)
+        tube(m, (ux * (r0 + 0.3) + px * 0.2, uy * (r0 + 0.3) + py * 0.2, z0 + 0.05), (ux * (r1 - 0.2), uy * (r1 - 0.2), z1 + 0.05), 0.04, 0.03, "vein", n=4)
+        knob(m, (ux * r0, uy * r0, z0), 0.2, "seam")
+    # Prow and the great eye on the nose: the heading.
+    tube(m, (1.4, 0.0, zb + 0.55), (2.75, 0.0, zb + 0.25), 0.55, 0.12, "chitin", n=9)
+    ellipsoid(m, (2.05, 0.0, zb + 0.62), (0.42, 0.44, 0.4), "eye", rings=6, seg=12)
+    for s in (-1, 1):
+        knob(m, (1.75, s * 0.62, zb + 0.48), 0.15, "eye")
+    # Crest down the crown, front to back.
+    tube(m, (0.9, 0.0, zb + 1.3), (-1.3, 0.0, zb + 1.55), 0.16, 0.05, "claw", n=5)
+    for x in (0.4, -0.4):
+        tube(m, (x, 0.0, zb + 1.4), (x - 0.4, 0.0, zb + 1.9), 0.11, 0.02, "claw", n=5)
+    # Emitter cluster round a hot core under the belly.
+    ellipsoid(m, (0.0, 0.0, zb - 0.15), (1.5, 1.5, 0.35), "chitin", rings=6, seg=16)
+    knob(m, (0.0, 0.0, zb - 0.55), 0.5, "core")
+    for k in range(6):
+        a = 2 * math.pi * (k + 0.5) / 6
+        ex, ey = 0.85 * math.cos(a), 0.85 * math.sin(a)
+        tube(m, (ex, ey, zb - 0.25), (ex * 0.8, ey * 0.8, zb - 0.95), 0.13, 0.09, "barrel", n=6)
+        knob(m, (ex * 0.8, ey * 0.8, zb - 0.98), 0.1, "seam")
+    # Six tendrils trailing down and back: the lowest point.
+    for k in range(6):
+        a = 2 * math.pi * k / 6 + math.pi / 6
+        rx, ry = 1.45 * math.cos(a), 1.45 * math.sin(a)
+        mid = (rx * 0.95 - 0.35, ry * 0.95, zb - 1.0)
+        tube(m, (rx, ry, zb - 0.3), mid, 0.11, 0.08, "limb", n=5)
+        tube(m, mid, (rx * 0.85 - 0.75, ry * 0.85, 0.05), 0.08, 0.03, "limb", n=5)
+        knob(m, (rx * 0.85 - 0.75, ry * 0.85, 0.08), 0.07, "vein")
+    return m
+
+
 UNITS_SPEC = {
     # id: (builder, z_mid, EU ref, EU ref drawSize base (before UNIT_VISUAL_SCALE))
     "wasp": (build_wasp, 1.0, "fw190", 56.0),
     "scourge": (build_scourge, 1.2, "stuka", 63.0),
+    "overseer": (build_overseer, 1.9, "fw190", 56.0),
 }
 
 
@@ -193,7 +258,7 @@ def render(unit: str, ss: int = 4, check_only: bool = False) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("what", choices=["wasp", "scourge", "all"])
+    ap.add_argument("what", choices=["wasp", "scourge", "overseer", "all"])
     ap.add_argument("--ss", type=int, default=4)
     ap.add_argument("--check-only", action="store_true")
     args = ap.parse_args()

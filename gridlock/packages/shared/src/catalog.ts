@@ -570,6 +570,7 @@ export type EntityType =
   | "lurker"
   | "wasp"
   | "scourge"
+  | "overseer"
   | "titan"
   | "mammoth"
   | "nebelwerfer"
@@ -800,7 +801,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "shed",
   "boiler",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "simunit2" | "borgdrone" | "lancer" | "stalker" | "ravager" | "behemoth" | "leech" | "lurker" | "wasp" | "scourge" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "horten" | "droneop" | "jumpjet";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "simunit2" | "borgdrone" | "lancer" | "stalker" | "ravager" | "behemoth" | "leech" | "lurker" | "wasp" | "scourge" | "overseer" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "horten" | "droneop" | "jumpjet";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -911,7 +912,7 @@ export const BUILDING_FACINGS = 24;
 export function isRotatableBuilding(type: string): type is BuildingType {
   return (ROTATABLE_BUILDINGS as readonly string[]).includes(type);
 }
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "simunit2", "borgdrone", "lancer", "stalker", "ravager", "behemoth", "leech", "lurker", "wasp", "scourge", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "horten", "droneop", "jumpjet"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "simunit2", "borgdrone", "lancer", "stalker", "ravager", "behemoth", "leech", "lurker", "wasp", "scourge", "overseer", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "horten", "droneop", "jumpjet"];
 
 /**
  * A player fields only one of each of these at a time. While it lives, another
@@ -944,6 +945,7 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly Bu
   behemoth: "nexus",
   lurker: "nexus",
   scourge: "nexus",
+  overseer: "nexus",
   titan: "research",
   mammoth: "research",
   nebelwerfer: "research",
@@ -1000,6 +1002,7 @@ export const BORG_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([
   "lurker",
   "wasp",
   "scourge",
+  "overseer",
 ]);
 /** The faction that fields `type`. Neutral structures and civilian buildings read as Earth United. */
 export function factionOf(type: string): Faction {
@@ -1081,12 +1084,21 @@ export const BUILD_REQUIRES: Partial<Record<BuildingType, readonly BuildingType[
 
 /** The Borg vehicle factory: trains every Borg unit that is not a cyborg. */
 export const BORG_FACTORY = "forge";
-/** A standing, powered Nanite Forge rearms its owner's units and Pulse Spires within this reach. */
-export const FORGE_REARM_TILES = t(6);
-/** Seconds between two rearm passes of a Forge. */
-export const FORGE_REARM_SECONDS = 2;
-/** Hand-outs (a shell, a rocket, or a belt's worth of rounds) each unit in reach takes per pass. */
-export const FORGE_REARM_PER_PASS = 2;
+/**
+ * Borg weapons draw on the hive, not on a rack: no Borg unit or gun ever runs dry, and none
+ * needs a truck, a pad, or a pool to rearm (sim/hive-ammo.ts). In return every Borg weapon
+ * lands BORG_DAMAGE_MUL of what the same round, beam, or blade would do from anyone else.
+ */
+export const BORG_DAMAGE_MUL = 0.8;
+/** Never runs out of shells, rockets, belts, charges, bombs, or fuel for its weapons: everything the Borg field. */
+export function endlessAmmo(type: string): boolean {
+  return factionOf(type) === "borg";
+}
+/** Damage a weapon on `type` lands: BORG_DAMAGE_MUL of it for the Borg, whole numbers kept whole, never under 1. */
+export function factionDamage(type: string, damage: number): number {
+  if (damage <= 0 || factionOf(type) !== "borg") return damage;
+  return Math.max(1, Number.isInteger(damage) ? Math.round(damage * BORG_DAMAGE_MUL) : damage * BORG_DAMAGE_MUL);
+}
 /** Buildings that light the radar panel: the Radar Station, and the Borg Neural Nexus. */
 export function isRadarStation(type: string): boolean {
   return type === "radar" || type === "nexus";
@@ -1243,6 +1255,16 @@ export interface CatalogEntry {
   aircraft?: boolean;
   /** A fighter like the Fw 190: barrages on each pass, and hunts planes in the air. */
   fighter?: boolean;
+  /**
+   * Hovers like a helicopter (the Borg Overseer): lifts straight off its pad and sets straight
+   * down on it, stops in the air, and burns down on what it hangs over (sim/air.ts tickHover).
+   */
+  hovers?: boolean;
+  /**
+   * Jaws, not a gun (the Borg Lurker): a bite at the reach of `rangeTiles` from its body to the
+   * target's, landing at once. Up or down it bites, and the bite gives it away like a shot.
+   */
+  bite?: boolean;
   /**
    * Radar-laid mount (the CIWS, the RAM). Fires on its own at units only, planes and paratroopers first,
    * lays on a plane with CIWS_AIR_SPREAD instead of AIR_TARGET_SPREAD, cranks
@@ -3648,6 +3670,40 @@ export const SUB_TORPEDOES = 8;
 export const SUB_REARM_SECONDS = 6;
 
 /**
+ * Lurker. A Borg sea beast, not a boat: it hunts under the water and comes up under what it
+ * goes for with its jaws. Each bite lands at once: a soldier, swimming or on the bank, takes
+ * LURKER_BITE_SOLDIER_DAMAGE, more than his whole pool; anything else the hull bite, a tank's
+ * plate LURKER_HEAVY_MUL of it and a wall LURKER_BUILDING_MUL. It reaches LURKER_REACH_TILES
+ * from its body to the target's, so a soldier or a truck at the water's edge is not safe.
+ */
+export const LURKER_REACH_TILES = t(1.25);
+export const LURKER_BITE_SECONDS = 1.1;
+export const LURKER_BITE_DAMAGE = 55;
+export const LURKER_BITE_SOLDIER_DAMAGE = 80;
+export const LURKER_HEAVY_MUL = 0.45;
+export const LURKER_BUILDING_MUL = 0.3;
+
+/**
+ * Overseer. A Borg hover craft: it lifts straight off its Aerie nest, flies slowly at
+ * OVERSEER_CRUISE_ALT, and sent at something on the ground stops over it at OVERSEER_HOVER_ALT
+ * and burns straight down. Within OVERSEER_FIRE_TILES of overhead it fires a laser pulse every
+ * OVERSEER_PULSE_SECONDS: OVERSEER_PULSE_DAMAGE to every enemy soldier in a spot of
+ * OVERSEER_BEAM_TILES, a hull's roof OVERSEER_HULL_MUL of it, a building OVERSEER_BUILDING_MUL.
+ */
+export const OVERSEER_CRUISE_ALT = 14;
+export const OVERSEER_HOVER_ALT = 9;
+export const OVERSEER_FIRE_TILES = t(0.75);
+export const OVERSEER_PULSE_SECONDS = 0.3;
+export const OVERSEER_PULSE_DAMAGE = 12;
+export const OVERSEER_BEAM_TILES = t(0.35);
+export const OVERSEER_HULL_MUL = 0.6;
+export const OVERSEER_BUILDING_MUL = 0.4;
+/** Climb and descent rate on and off its nest, elevation units a second. */
+export const OVERSEER_LIFT_PER_SEC = 5;
+/** Seconds of flight in a full tank: it hangs in the air longer than a plane flies. */
+export const OVERSEER_FUEL_SECONDS = 140;
+
+/**
  * Destroyer. A twin 40mm on the foredeck that fires fast and not far, a hull
  * sonar that hears every enemy submarine in a wide ring round the ship, down
  * or up, an ASW helicopter on the fantail, and a rail of water mines on the stern.
@@ -5313,7 +5369,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: GATLING.penetration,
     caliber: GATLING.caliber,
     spreadDeg: GATLING.spreadDeg,
-    blurb: "Half soldier, half machine. A pulse repeater for an arm, fed from a 300-charge cell that a powered Nanite Forge in reach recharges. It throws a stream of green bolts and overheats after under two seconds on the trigger. He carries no lamp: a thermal scanner marks enemy soldiers in a cone ahead of him, through fog, cover and dark. Set to Engage, he fires on whatever his side's scanners read inside his reach, seen or not. A round sometimes bites a Walker or a truck. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him, and either brings the legs back. He runs on the uplink from your Cyborg Central or a living Cyborg Commander of yours: without either he shuts down a few seconds later: still yours, but still and silent. He wakes up once your link is back, unless an enemy Cyborg Commander takes him over first.",
+    blurb: "Half soldier, half machine. A pulse repeater for an arm, fed from the hive, so it never runs dry. It throws a stream of green bolts and overheats after under two seconds on the trigger. He carries no lamp: a thermal scanner marks enemy soldiers in a cone ahead of him, through fog, cover and dark. Set to Engage, he fires on whatever his side's scanners read inside his reach, seen or not. A round sometimes bites a Walker or a truck. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him, and either brings the legs back. He runs on the uplink from your Cyborg Central or a living Cyborg Commander of yours: without either he shuts down a few seconds later: still yours, but still and silent. He wakes up once your link is back, unless an enemy Cyborg Commander takes him over first.",
   },
   cyborgcommander: {
     type: "cyborgcommander",
@@ -5447,7 +5503,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     defaultShell: "ap",
     leavesWreck: true,
     wreckHp: 35,
-    blurb: "Heavy assimilator on four long legs, a domed turret on its back. The disruptor throws a piercing plasma bolt about as hard as a Tiger's shell, or a scattering burst for soldiers, from a little less reach. Thinner in front than a Tiger, but its legs turn it quicker. No tracks to lose. Burrow digs it in where it stands: under the ground no enemy sees it or can pick it, but it neither moves nor fires; it rises with its gun laid and fires at once. The rack refills by itself near a powered Nanite Forge of yours.",
+    blurb: "Heavy assimilator on four long legs, a domed turret on its back. The disruptor throws a piercing plasma bolt about as hard as a Tiger's shell, or a scattering burst for soldiers, from a little less reach. Thinner in front than a Tiger, but its legs turn it quicker. No tracks to lose. Burrow digs it in where it stands: under the ground no enemy sees it or can pick it, but it neither moves nor fires; it rises with its gun laid and fires at once. It draws its bolts from the hive and never runs dry.",
   },
   /** Borg heavy assimilator: fast raptor hull, spine gatling turret, nanite flamer in the jaw. */
   ravager: {
@@ -5482,7 +5538,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     mgAmmo: HULL_FLAMER_FUEL,
     leavesWreck: true,
     wreckHp: 28,
-    blurb: `Fast heavy assimilator built to hunt soldiers. A pulse repeater on a quick turret draws on its own core and never runs dry; tank plate turns the bolts, and they do not bring a building down. A plasma jet in the jaw fires on its own at soldiers and soft vehicles inside a short reach, but only where the nose points, and burns every soldier in its path, friends too. ${HULL_FLAMER_BURSTS} bursts of plasma, refilled near a powered Nanite Forge of yours. Lighter plate than a Stalker.`,
+    blurb: `Fast heavy assimilator built to hunt soldiers. A pulse repeater on a quick turret draws on its own core and never runs dry; tank plate turns the bolts, and they do not bring a building down. A plasma jet in the jaw fires on its own at soldiers and soft vehicles inside a short reach, but only where the nose points, and burns every soldier in its path, friends too. The jet never runs dry either. Lighter plate than a Stalker.`,
   },
   /** Borg heavy assimilator: six legs, twin disruptors, a carapace that sheds shells. */
   behemoth: {
@@ -5542,7 +5598,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `A ribbed hangar over vats of nanite gel. It grows the heavy assimilators: the Stalker, the Ravager, and, with a Neural Nexus standing, the Behemoth. The Borg drive no supply trucks: while it stands and your power holds, the Forge refills the racks, belts, and fuel of your units and Pulse Spires within ${FORGE_REARM_TILES / TILE_SUBDIV} cells of it.`,
+    blurb: `A ribbed hangar over vats of nanite gel. It grows the heavy assimilators: the Stalker, the Ravager, and, with a Neural Nexus standing, the Behemoth. The Borg need no supply trucks: every Borg weapon draws on the hive and never runs dry.`,
   },
   /** Borg tech and sensor building. */
   nexus: {
@@ -5632,7 +5688,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     armorFirst: true,
     poweredGun: true,
     capturable: false,
-    blurb: `A tall spire with a long emitter and a ring of green fire. Nobody works it: it turns all the way round, slowly, and throws a piercing energy pulse through a Tiger's front plate from farther than a Pak 36 reaches. Tanks first. ${PULSE_SPIRE_RACK} charges in the ring; a powered Nanite Forge within reach recharges it. Short on power, it falls silent. Needs a Neural Nexus. Cannot move.`,
+    blurb: `A tall spire with a long emitter and a ring of green fire. Nobody works it: it turns all the way round, slowly, and throws a piercing energy pulse through a Tiger's front plate from farther than a Pak 36 reaches. Tanks first. It draws its charge from the hive and never runs dry. Short on power, it falls silent. Needs a Neural Nexus. Cannot move.`,
   },
   /** Borg shipyard: grows the Leech and the Lurker. Stands on open water like a Marine Base. */
   spawnpool: {
@@ -5656,7 +5712,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     onWater: true,
-    blurb: "A ring of ribbed chitin around a glowing birthing pool. It can only grow on water: every tile under it must be open water. Grows the Leech and, with a Neural Nexus standing, the Lurker, which slip into the water beside it and never come ashore. Lurkers reload their plasma torpedoes beside it.",
+    blurb: "A ring of ribbed chitin around a glowing birthing pool. It can only grow on water: every tile under it must be open water. Grows the Leech and, with a Neural Nexus standing, the Lurker, which slip into the water beside it and never come ashore.",
   },
   /** Borg airfield: a launch spine and four nests. Same footprint and pads as the Airfield. */
   aerie: {
@@ -5679,7 +5735,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `A long spine of fused chitin with four landing nests beside it. Grows the Wasp and, with a Neural Nexus standing, the Scourge, and keeps up to ${AIRFIELD_PADS} of them. They come back to their nests to recharge, rearm, and mend.`,
+    blurb: `A long spine of fused chitin with four landing nests beside it. Grows the Wasp and, with a Neural Nexus standing, the Scourge and the Overseer, and keeps up to ${AIRFIELD_PADS} of them. They never run out of anything to fire; they come back to their nests to refuel and mend.`,
   },
   /** Borg fast attack boat: a skimming chitin hull with a plasma cannon. */
   leech: {
@@ -5715,7 +5771,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     wreckHp: 14,
     blurb: "A low chitin hull that skims the water on a glowing belly, a small plasma cannon on its back. Water only: it never comes ashore. It fires on boats and on anything within reach of the bank, a little faster and harder than the Attack Boat. Thin shell: an anti-tank rifle or a tank shell goes straight through. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.",
   },
-  /** Borg submarine: plasma torpedoes, runs submerged. */
+  /** Borg sea beast: hunts under the water and bites. No gun. */
   lurker: {
     type: "lurker",
     kind: "unit",
@@ -5723,34 +5779,32 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     letter: "k",
     cost: 1000,
     buildSeconds: 16,
-    hp: 120,
+    hp: 160,
     power: 0,
     tileW: 1,
     tileH: 1,
     radius: 14.4,
-    moveTilesPerSec: paced(1.7),
-    turnDegPerSec: 85,
+    moveTilesPerSec: paced(2.2),
+    turnDegPerSec: 110,
     noReverse: true,
     turnInPlace: true,
-    gunArcDeg: 20,
-    rangeTiles: TORPEDO_RANGE_TILES,
+    rangeTiles: LURKER_REACH_TILES,
     sightTiles: t(16),
-    cooldown: 7,
-    damage: TORPEDO.damage,
-    projectileSpeed: TORPEDO_SPEED,
-    armorFront: 22,
-    armorSide: 20,
-    armorRear: 16,
-    penetration: TORPEDO.penetration,
-    caliber: TORPEDO.caliber,
-    spreadDeg: TORPEDO.spreadDeg,
+    cooldown: LURKER_BITE_SECONDS,
+    damage: LURKER_BITE_DAMAGE,
+    projectileSpeed: 0,
+    armorFront: 18,
+    armorSide: 16,
+    armorRear: 12,
+    penetration: 0,
+    caliber: 0,
+    spreadDeg: 0,
     naval: true,
-    torpedoes: true,
     submerges: true,
+    bite: true,
     leavesWreck: true,
     wreckHp: 40,
-    belt: SUB_TORPEDOES,
-    blurb: `A long ribbed hull with glowing gills that hunts under the water. It leaves the pool surfaced; Dive and Surface set its depth. Submerged, the enemy sees it only while one of their Destroyers hears it on sonar, or for ${SUB_REVEAL_SECONDS} seconds after it fires. It must surface to strike a boat, a swimmer, or a shore building. Its bow tubes throw slow plasma torpedoes that run at the waterline; any gun can burst one before it arrives. ${SUB_TORPEDOES} in the tubes; beside a Spawning Pool it grows one back every ${SUB_REARM_SECONDS} seconds. Needs a Neural Nexus.`,
+    blurb: `A sea beast the hive grew in its pool: a long plated body that swims like an eel, a crest of spines, glowing eyes, and a split jaw of hooked fangs. No gun: it hunts with its jaws. It leaves the pool surfaced; Dive and Surface set its depth, and it holds ${SUB_DIVE_SECONDS} seconds of breath below. Submerged, the enemy sees it only while one of their Destroyers hears it on sonar, or for ${SUB_REVEAL_SECONDS} seconds after it bites. Up or down, it bites whatever it reaches, ${LURKER_REACH_TILES / TILE_SUBDIV} cells from its body: one bite kills a soldier, swimming or standing at the water's edge, and tears into a boat's hull; a tank's plate gives slowly, a wall slower. It never comes ashore. Dead, its carcass sinks and blocks the water until it is shot apart. Needs a Neural Nexus.`,
   },
   /** Borg fighter: insect wings, twin pulse cannons. Lives in an Aerie nest. */
   wasp: {
@@ -5779,7 +5833,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     aircraft: true,
     fighter: true,
     wreckHp: 20,
-    blurb: `Insect fighter on green-veined wings, a pulse cannon under each. ${FW190_BARRAGES} barrages a sortie: on each pass it lines up on the target and lays two straight lines of pulses through it, coming down through a tank's thin roof. It chases enemy planes out of the sky the same way. A shade faster and tighter than the Fw 190, a little lighter. Lands in an Aerie nest to recharge and mend. A hit that tears a wing brings it down at once.`,
+    blurb: `Insect fighter on green-veined wings, a pulse cannon under each. They never run dry: on every pass it lines up on the target and lays two straight lines of pulses through it, coming down through a tank's thin roof. It chases enemy planes out of the sky the same way. A shade faster and tighter than the Fw 190, a little lighter. Lands in an Aerie nest to refuel and mend. A hit that tears a wing brings it down at once.`,
   },
   /** Borg dive bomber: beetle carapace and a plasma bomb pod. Lives in an Aerie nest. */
   scourge: {
@@ -5807,7 +5861,34 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: STUKA_MG.spreadDeg,
     aircraft: true,
     wreckHp: 23,
-    blurb: "Dive bomber with a beetle's carapace. One plasma bomb per sortie, slung in a glowing pod, and two pulse guns for soft targets. Flies over everything; only rifles, machine guns, the Walker, and the Titan's rockets can reach it in the air. Lands in an Aerie nest to recharge and rearm. A hit that tears a wing brings it down at once. Needs a Neural Nexus.",
+    blurb: "Dive bomber with a beetle's carapace. A plasma bomb in a glowing pod that grows the next one as soon as the last falls, so it bombs on every pass and never goes home to rearm, and two pulse guns for soft targets. Flies over everything; only rifles, machine guns, the Walker, and the Titan's rockets can reach it in the air. Lands in an Aerie nest to refuel and mend. A hit that tears a wing brings it down at once. Needs a Neural Nexus.",
+  },
+  /** Borg hover craft: hangs over its target and burns straight down. Lives in an Aerie nest. */
+  overseer: {
+    type: "overseer",
+    kind: "unit",
+    name: "Overseer",
+    letter: "z",
+    cost: 1800,
+    buildSeconds: 22,
+    hp: 130,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 12,
+    moveTilesPerSec: paced(3.2),
+    turnDegPerSec: 150,
+    rangeTiles: OVERSEER_FIRE_TILES,
+    sightTiles: t(10),
+    cooldown: OVERSEER_PULSE_SECONDS,
+    damage: OVERSEER_PULSE_DAMAGE,
+    projectileSpeed: 0,
+    ...UNARMED,
+    caliber: 10,
+    aircraft: true,
+    hovers: true,
+    wreckHp: 20,
+    blurb: `A floating hive eye: a bell of chitin on a ring of humming vanes, glowing membrane round its rim and a cluster of emitters under its belly. It lifts straight off its Aerie nest and flies slowly. Sent at something on the ground it stops right over it and hangs there, burning straight down with a green laser pulse every ${OVERSEER_PULSE_SECONDS} seconds, and follows it as it moves. Every enemy soldier in the beam's spot burns; a tank's thin roof gives under it slowly, a building slower still. It never runs dry. It cannot touch a plane, and it hovers low: rifles, machine guns, and anti-air reach it. It sets down on its nest to refuel and mend. Needs a Neural Nexus.`,
   },
   titan: {
     type: "titan",
@@ -6837,8 +6918,8 @@ export function airLoadoutOf(type: EntityType): { bombs: number; rounds: number 
   if (type === "bv222") return { bombs: 1, rounds: 0 };
   // The He 111's torpedo rides in the bomb slot: hung on the pad, spent on the run.
   if (dropsTorpedo(type)) return { bombs: HE111_TORPEDOES, rounds: 0 };
-  // The Horten VII carries cameras only.
-  if (isReconType(type)) return { bombs: 0, rounds: 0 };
+  // The Horten VII carries cameras only. The Overseer's emitters draw on the hive.
+  if (isReconType(type) || isHoverType(type)) return { bombs: 0, rounds: 0 };
   return { bombs: STUKA_BOMBS, rounds: STUKA_MG_ROUNDS };
 }
 
@@ -6854,11 +6935,13 @@ export function isReconType(type: EntityType): boolean {
 
 /** Height a plane cruises at between runs. */
 export function airCruiseAltOf(type: EntityType): number {
+  if (isHoverType(type)) return OVERSEER_CRUISE_ALT;
   return isReconType(type) ? HORTEN_CRUISE_ALT : AIR_CRUISE_ALT;
 }
 
 /** Seconds of flight in a full tank. */
 export function airFuelOf(type: EntityType): number {
+  if (isHoverType(type)) return OVERSEER_FUEL_SECONDS;
   return isReconType(type) ? HORTEN_FUEL_SECONDS : AIR_FUEL_SECONDS;
 }
 
@@ -6874,6 +6957,16 @@ export function isAirDrop(s: unknown): s is AirDrop {
 /** Fighter: hunts planes in the air as well as targets on the ground. */
 export function isFighterType(type: EntityType): boolean {
   return type === "fw190" || catalog(type).fighter === true;
+}
+
+/** Hovers like a helicopter: the Borg Overseer. */
+export function isHoverType(type: EntityType): boolean {
+  return catalog(type).hovers === true;
+}
+
+/** Fights with its jaws: the Borg Lurker. */
+export function biteOf(type: EntityType): boolean {
+  return catalog(type).bite === true;
 }
 
 /** Operator's quadcopter. */
@@ -6915,9 +7008,9 @@ export function canPowerDown(type: EntityType): boolean {
   return onUplink(type);
 }
 
-/** Fights with the energy daggers: Sim Unit II. */
+/** Fights at arm's reach, no round in the air: Sim Unit II's daggers, the Lurker's jaws. */
 export function meleeOf(type: EntityType): boolean {
-  return isSimUnit(type);
+  return isSimUnit(type) || biteOf(type);
 }
 
 /** The lighter hulls, guns, and trucks the Apocalypse rolls flat. */

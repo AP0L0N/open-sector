@@ -12,6 +12,7 @@ import {
   LASER,
   LASER_FIRE_RADIUS,
   LASER_ARMOR_DAMAGE,
+  factionDamage,
   LASER_SWEEP_CYBORG_DAMAGE,
   LASER_SWEEP_HALF_DEG,
   TECH_REQUIRES,
@@ -171,7 +172,7 @@ describe("cyborg commander", () => {
       assert.equal(dead.fireDeath, true);
     }
     for (const alive of [flank, beyond]) assert.equal(alive.hp, alive.hpMax, `${alive.type} spared`);
-    assert.equal(borg.hp, borg.hpMax - LASER_SWEEP_CYBORG_DAMAGE, "a cyborg's plating takes a heavy cut");
+    assert.equal(borg.hp, borg.hpMax - factionDamage("cyborgcommander", LASER_SWEEP_CYBORG_DAMAGE), "a cyborg's plating takes a heavy cut");
     assert.ok(state.impacts.some((i) => i.laser && i.kind === "kill"));
 
     // The cut at the tip: a run of small fires along the arc at full reach.
@@ -216,7 +217,7 @@ describe("cyborg commander", () => {
     cmd.order = { kind: "attack", targetId: tank.id };
     tickCombat(state, TICK_DT);
     assert.ok(cmd.laser?.line, "a line, not a sweep");
-    assert.equal(tank.hp, tank.hpMax - LASER_ARMOR_DAMAGE);
+    assert.equal(tank.hp, tank.hpMax - factionDamage("cyborgcommander", LASER_ARMOR_DAMAGE));
     runBeam(state, cmd);
     assert.equal(bystander.hp, bystander.hpMax, "the line does not sweep");
   });
@@ -237,10 +238,10 @@ describe("cyborg commander", () => {
     fireLaser(state, cmd, tank.x, tank.y, range, tank);
     assert.ok(cmd.laser?.line);
     for (const dead of [ownMan, foeMan]) assert.equal(dead.hp, 0, `${dead.type} of ${dead.ownerId} burned`);
-    assert.equal(ownBorg.hp, ownBorg.hpMax - LASER_SWEEP_CYBORG_DAMAGE, "his own Cyborg takes the heavy cut");
+    assert.equal(ownBorg.hp, ownBorg.hpMax - factionDamage("cyborgcommander", LASER_SWEEP_CYBORG_DAMAGE), "his own Cyborg takes the heavy cut");
     assert.equal(aside.hp, aside.hpMax, "off the line");
     assert.equal(behind.hp, behind.hpMax, "past the target the beam has stopped");
-    assert.equal(tank.hp, tank.hpMax - LASER_ARMOR_DAMAGE);
+    assert.equal(tank.hp, tank.hpMax - factionDamage("cyborgcommander", LASER_ARMOR_DAMAGE));
   });
 
   it("is stopped by a building in the way", () => {
@@ -379,7 +380,7 @@ describe("cyborg commander", () => {
     cmd.order = { kind: "attack", targetId: tank.id };
     tickCombat(state, TICK_DT);
     assert.ok(cmd.laser?.line, "the laser cuts again");
-    assert.equal(tank.hp, tank.hpMax - LASER_ARMOR_DAMAGE);
+    assert.equal(tank.hp, tank.hpMax - factionDamage("cyborgcommander", LASER_ARMOR_DAMAGE));
   });
 
   it("only a Cyborg Commander of yours takes the field order", () => {

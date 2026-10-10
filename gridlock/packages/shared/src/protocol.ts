@@ -19,7 +19,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 129;
+export const PROTOCOL_VERSION = 130;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -592,6 +592,10 @@ export interface ImpactView {
   laser?: boolean;
   /** A Flak 37 shell burst in the air at `z`: a flash and a lingering black cloud. Nothing on the ground is touched. */
   flak?: boolean;
+  /** A Lurker's jaws closed here (`fromId` is the beast): a snap and a churn of water, not a round. */
+  bite?: true;
+  /** An Overseer's pulse burned straight down onto this spot from `fromId` hanging above it. */
+  downLaser?: true;
 }
 
 /**

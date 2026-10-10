@@ -66,6 +66,7 @@ import leechWreckUrl from "../assets/units/wrecks/leech.png";
 import lurkerWreckUrl from "../assets/units/wrecks/lurker.png";
 import waspWreckUrl from "../assets/units/wrecks/wasp.png";
 import scourgeWreckUrl from "../assets/units/wrecks/scourge.png";
+import overseerWreckUrl from "../assets/units/wrecks/overseer.png";
 import spawnPoolUrl from "../assets/buildings/spawnpool.png";
 import aerieUrl from "../assets/buildings/aerie.png";
 import aerieGroundUrl from "../assets/buildings/aerie-ground.png";
@@ -1557,14 +1558,14 @@ export const LEECH_SPRITE: UnitSpriteDef = {
 };
 bindNavalSheets("leech", LEECH_SPRITE.image);
 
-/** Lurker: the Borg submarine, about the Submarine's footprint. */
+/** Lurker: the Borg sea beast, at the Submarine's px per meter (render_borg_naval.py check). */
 export const LURKER_SPRITE: UnitSpriteDef = {
   image: new Image(),
   dirs: TANK_FACE_DIRS,
   frames: 1,
   frameSize: 128,
   fps: 8,
-  drawSize: Math.round(64 * 1.2 * UNIT_VISUAL_SCALE),
+  drawSize: Math.round(98 * UNIT_VISUAL_SCALE),
   contactY: 0.74,
   facingSpace: "world",
 };
@@ -1595,6 +1596,22 @@ export const SCOURGE_SPRITE: UnitSpriteDef = {
   facingSpace: "world",
 };
 bindPlaneSheets("scourge", SCOURGE_SPRITE.image);
+
+/**
+ * Overseer: the Borg hover craft, the Stuka's camera and fit. At the Fw 190's px per meter
+ * it would be 41 (render_borg_air.py check); drawn a little larger so the bell reads at play zoom.
+ */
+export const OVERSEER_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(48 * UNIT_VISUAL_SCALE),
+  contactY: 0.8,
+  facingSpace: "world",
+};
+bindPlaneSheets("overseer", OVERSEER_SPRITE.image);
 
 /**
  * BV 222 transport. Same camera and cell as the Stuka; its wingspan fills the cell,
@@ -1836,6 +1853,7 @@ const WRECK_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   fw190: wreckSheet(fw190WreckUrl, FW190_SPRITE),
   wasp: wreckSheet(waspWreckUrl, WASP_SPRITE),
   scourge: wreckSheet(scourgeWreckUrl, SCOURGE_SPRITE),
+  overseer: wreckSheet(overseerWreckUrl, OVERSEER_SPRITE),
   bv222: wreckSheet(bv222WreckUrl, BV222_SPRITE),
   he111: wreckSheet(he111WreckUrl, HE111_SPRITE),
   horten: wreckSheet(hortenWreckUrl, HORTEN_SPRITE),
@@ -1887,6 +1905,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   fw190: FW190_SPRITE,
   wasp: WASP_SPRITE,
   scourge: SCOURGE_SPRITE,
+  overseer: OVERSEER_SPRITE,
   bv222: BV222_SPRITE,
   he111: HE111_SPRITE,
   horten: HORTEN_SPRITE,

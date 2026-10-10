@@ -228,20 +228,15 @@ describe("cyborg", () => {
     assert.equal(full.ok, false);
   });
 
-  it("gets the drum topped up by a supply truck", () => {
+  it("never runs the drum dry: the hive fills it, no truck needed", () => {
     const { state, a } = match();
     clearCover(state);
     const ts = state.tileSize;
-    const truck = makeEntity(state, "supply", a, tileCenter(40, ts), tileCenter(40, ts));
     const cy = makeEntity(state, "cyborg", a, tileCenter(43, ts), tileCenter(40, ts));
     cy.holdPosition = true;
-    assert.equal(applyCommand(state, a, { type: "cmd.supply", ids: [truck.id], targetId: cy.id }).ok, false);
     cy.clip = 0;
-    const cargo = truck.supply;
-    assert.equal(applyCommand(state, a, { type: "cmd.supply", ids: [truck.id], targetId: cy.id }).ok, true);
-    ticks(state, 40);
-    assert.ok(cy.clip > 0 && cy.clip <= CYBORG_DRUM, `clip ${cy.clip}`);
-    assert.ok(truck.supply < cargo);
+    ticks(state, 1);
+    assert.equal(cy.clip, CYBORG_DRUM);
     assert.equal(cy.reload, 0);
   });
 });
