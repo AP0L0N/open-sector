@@ -475,6 +475,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
           ? { air: e.dive?.air ?? SUB_DIVE_SECONDS, airMax: SUB_DIVE_SECONDS, winded: e.dive?.winded || undefined }
           : undefined,
       braced: e.braced || undefined,
+      anchor: friendly && e.type === "seed" && e.anchor ? { x: e.anchor.x, y: e.anchor.y } : undefined,
       rocketReload: friendly && (e.rocketCooldown ?? 0) > 0 ? e.rocketCooldown : undefined,
       rockets: friendly && e.rockets != null ? e.rockets : undefined,
       heavy: friendly && e.type === "rocketer" ? (e.heavy ?? 0) : undefined,

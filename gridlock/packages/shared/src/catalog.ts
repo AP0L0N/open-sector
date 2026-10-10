@@ -1169,7 +1169,7 @@ export function inFaction(type: string, faction: Faction): boolean {
   if (SHARED_TYPES.has(type as EntityType)) return faction !== "bloom";
   return factionOf(type) === faction;
 }
-/** The headquarters packed up and on the move: the Rig, the Xenomorph Seed, the Bloom Spore Pod. */
+/** The headquarters packed up and on the move: the Rig, the Xenomorph Deployment (`seed`), the Bloom Spore Pod. */
 export type HqRigType = "rig" | "seed" | "sporepod";
 /** The headquarters building: the Core, the Xenomorph Hive Core, the Bloom Brood Heart. */
 export type HqBuildingType = "core" | "hivecore" | "broodheart";
@@ -3507,6 +3507,15 @@ export const DRONE_MODE_LABEL: Record<DroneMode, string> = {
 };
 /** Radius around the Drone Op the drone may fly, gameplay tiles. */
 export const DRONE_LEASH_TILES = t(14);
+
+/**
+ * The Xenomorph Deployment (type id `seed`): a landing grid, not a body. It
+ * creeps only inside DEPLOYMENT_LEASH_TILES of where the match set it down.
+ * Deployed, the Hive Core falls out of the sky onto it over
+ * HIVE_DROP_SECONDS and is whole the moment it lands. A Hive Core never packs.
+ */
+export const DEPLOYMENT_LEASH_TILES = DRONE_LEASH_TILES;
+export const HIVE_DROP_SECONDS = 2.4;
 /** Seconds aloft on a full battery. */
 export const DRONE_BATTERY_SECONDS = 70;
 /** Turn back once the charge holds only this many seconds past the flight home. */
@@ -4354,7 +4363,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
   seed: {
     type: "seed",
     kind: "unit",
-    name: "Seed",
+    name: "Deployment",
     letter: "E",
     cost: 0,
     buildSeconds: 0,
@@ -4363,7 +4372,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 14,
-    moveTilesPerSec: paced(1.3),
+    moveTilesPerSec: paced(0.8),
     turnDegPerSec: 120,
     turnInPlace: true,
     rangeTiles: 0,
@@ -4373,7 +4382,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     special: "deploy",
-    blurb: "A Xenomorph hive pod on six legs. Root it where the ground is level and it grows into a Hive Core.",
+    blurb: "The hive's landing grid. Creep it to level ground near the drop zone and deploy: the Hive Core strikes down from orbit like a comet. It never packs again.",
   },
   hivecore: {
     type: "hivecore",
@@ -4395,8 +4404,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    special: "deploy",
-    blurb: "The Xenomorph hive that grew from the Seed. It raises every Xenomorph structure. Lose it and the collective falls.",
+    blurb: "The Xenomorph hive, dropped from orbit onto the Deployment. It raises every Xenomorph structure and never packs up. Lose it and the collective falls.",
   },
   core: {
     type: "core",
@@ -9472,6 +9480,7 @@ export function bracesOf(type: EntityType): boolean {
 
 /** Seconds a deploy or undeploy takes for this type. */
 export function deploySecondsOf(type: EntityType): number {
+  if (type === "seed") return HIVE_DROP_SECONDS;
   return bracesOf(type) ? TITAN_BRACE_SECONDS : DEPLOY_SECONDS;
 }
 
