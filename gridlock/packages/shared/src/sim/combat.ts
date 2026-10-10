@@ -163,7 +163,6 @@ import {
   factionDamage,
   factionOf,
   XENO_DAMAGE_MUL,
-  SIPHON_DRAIN,
   MAWCASTER_BILE_CHANCE,
   LURKER_BITE_DAMAGE,
   LURKER_BITE_SOLDIER_DAMAGE,
@@ -221,7 +220,7 @@ import {
   weaponRangeWorld,
   worldTileHeight,
 } from "./elevation.js";
-import { absorbRound, shieldSweep } from "./energy-shield.js";
+import { absorbRound, catchLanding, domeShelters, overheadSweep, shieldSweep } from "./energy-shield.js";
 import { drawPlasma, plasmaShots } from "./hive-ammo.js";
 import {
   ownerless,
@@ -2691,6 +2690,8 @@ function stepRocket(state: MatchState, p: Projectile, dt: number, rand: () => nu
   // Fused at the plane's height with no plane there: a RAM rocket flies on and comes down.
   if (p.airBurst && !airBurstCatchesAny(state, p) && coastPastMiss(state, p)) return true;
   if (!p.airBurst) p.z = 0;
+  // An enemy dome over the point takes the rocket on its skin.
+  if (!p.airBurst && catchLanding(state, p)) return false;
   detonateMortar(state, p, rand);
   return false;
 }
@@ -2781,6 +2782,7 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
     else merged.splice(at, 0, direct);
     blast = merged;
   }
+  const soaked = new Set<number>();
   for (const e of blast) {
     if (e.hp <= 0 || e.wreck || e.id === p.fromId || e.garrisonedIn != null || isRubble(e)) continue;
     // A ground burst never reaches a plane; an air burst only catches planes.
@@ -2794,6 +2796,8 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
     if (d > reach) continue;
     const friendly = e.ownerId !== "" && allies(state, p.ownerId, e.ownerId);
     if (friendly && !p.harmAllies) continue;
+    // A burst outside an enemy dome does not reach under it.
+    if (!inAir && domeShelters(state, p.ownerId, p.x, p.y, e, p.damage, soaked)) continue;
     const falloff = mortarFalloff(d, reach);
     const def = catalog(e.type);
     if (inAir) {
@@ -3171,7 +3175,9 @@ function slash(state: MatchState, e: Entity, target: Entity): void {
   const vx = target.x - e.x;
   const vy = target.y - e.y;
   let kind: ImpactKind = "hit";
-  if (target.kind === "building" && wallsShieldGarrison(state, target)) {
+  if (domeShelters(state, e.ownerId, e.x, e.y, target, dmg)) {
+    kind = "glance";
+  } else if (target.kind === "building" && wallsShieldGarrison(state, target)) {
     woundGarrison(state, target, SIMUNIT_SLASH_DAMAGE, DAGGER_CALIBER);
   } else if (dmg > 0) {
     takeDamage(target, dmg, state.tick);
@@ -3216,7 +3222,9 @@ function bite(state: MatchState, e: Entity, target: Entity): void {
   const rand = () => nextRand(state);
   const dmg = factionDamage(e.type, Math.round((soldier ? LURKER_BITE_SOLDIER_DAMAGE : LURKER_BITE_DAMAGE * mul) * (0.9 + 0.2 * rand())));
   let kind: ImpactKind = "hit";
-  if (target.kind === "building" && wallsShieldGarrison(state, target)) {
+  if (domeShelters(state, e.ownerId, e.x, e.y, target, dmg)) {
+    kind = "glance";
+  } else if (target.kind === "building" && wallsShieldGarrison(state, target)) {
     woundGarrison(state, target, factionDamage(e.type, LURKER_BITE_SOLDIER_DAMAGE), BITE_CALIBER);
   } else {
     takeDamage(target, dmg, state.tick);
@@ -3369,7 +3377,6 @@ function fireRound(
     plunging: plunging || undefined,
     aloft: aloft || undefined,
     acid: gunId === "acid" || undefined,
-    drain: e.type === "siphon" || undefined,
     z: z0,
     vz: ((zAim - z0) / Math.max(1e-6, aimDist)) * speed,
   };
@@ -3478,6 +3485,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
         p.y = p.landY;
       }
       p.z = 0;
+      if (catchLanding(state, p)) continue;
       if (p.hammer) landHammer(state, p);
       else detonateMortar(state, p, rand);
       continue;
@@ -3497,8 +3505,10 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     const concrete = overheadShot ? null : wallSweep(state, x0, y0, p.x, p.y);
     const struck = nearestSweepHit(state, x0, y0, p, z0, z1);
     const blocker = concrete && (!bagHit || concrete.t < bagHit.t) ? concrete : bagHit;
-    // An enemy energy wall stops the round where it meets it. A barrage from overhead falls past it.
-    const guard = p.fromAbove || p.torpedo || p.aloft ? null : shieldSweep(state, p.ownerId, x0, y0, p.x, p.y);
+    // An enemy energy wall stops the round where it meets it. A barrage from overhead falls past a
+    // wall but not onto a dome.
+    const guard =
+      p.torpedo || p.aloft ? null : p.fromAbove ? overheadSweep(state, p.ownerId, x0, y0, p.x, p.y) : shieldSweep(state, p.ownerId, x0, y0, p.x, p.y);
     if (guard && (!struck || guard.t <= struck.t) && (!blocker || guard.t <= blocker.t)) {
       absorbRound(state, p, guard);
       continue;
@@ -3681,10 +3691,6 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     else woundDeckGunners(state, e, p.damage);
     // Acid coats the plate whether or not it bit.
     if (p.acid) coatAcid(state, e);
-    // The Siphon drinks what its bolt took off an enemy body.
-    if (p.drain && chipWalls && dealt > 0 && shooter && shooter.hp > 0 && !shooter.wreck && e.kind === "unit" && !e.wreck && !allies(state, shooter.ownerId, e.ownerId)) {
-      shooter.hp = Math.min(shooter.hpMax, shooter.hp + Math.max(1, Math.round(dealt * SIPHON_DRAIN)));
-    }
     // A bullet that meets the body can smash the lamps, even when it only sparks.
     if (e.hp > 0 && !e.wreck) rollLamp(e, lampShotOf(p), rand);
     if (e.type === "supply" && !e.wreck && e.hp > 0) {
@@ -3853,6 +3859,7 @@ function nearestTreeSweep(
 function cannonSplash(state: MatchState, p: Projectile): void {
   const radius = FW190_SPLASH_TILES * state.tileSize;
   const grid = spatialGrid();
+  const soaked = new Set<number>();
   for (const e of poolCircle(state, p.x, p.y, radius, grid?.maxRadius ?? 0)) {
     if (e.hp <= 0 || e.wreck || e.kind !== "unit" || e.garrisonedIn != null || isAirborne(e)) continue;
     if (!p.harmAllies && e.ownerId && allies(state, p.ownerId, e.ownerId)) continue;
@@ -3860,6 +3867,7 @@ function cannonSplash(state: MatchState, p: Projectile): void {
     const d = Math.hypot(e.x - p.x, e.y - p.y);
     if (d > radius + e.radius) continue;
     const dmg = Math.max(1, Math.round(FW190_SPLASH_DAMAGE * mortarFalloff(Math.max(0, d - e.radius), radius)));
+    if (domeShelters(state, p.ownerId, p.x, p.y, e, dmg, soaked)) continue;
     const dealt = coverStrike(e, dmg, state.tick, true);
     if (e.hp > 0) rollCrits(e, "none", "hit", dealt, () => nextRand(state));
   }

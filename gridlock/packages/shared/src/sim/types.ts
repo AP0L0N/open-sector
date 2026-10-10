@@ -590,9 +590,12 @@ export interface Entity {
   dormant?: true;
   /** Sim Unit II: the tick his blink drive is charged again. Unset or past means ready. */
   blinkReady?: number;
-  /** Plasma cannon: shots of energy left in its cell (sim/hive-ammo.ts), fractional while it regrows. Unset means full. */
+  /**
+   * Plasma cannon: shots of energy left in its cell (sim/hive-ammo.ts), fractional while it regrows.
+   * Siphon: the energy kept while its dome is lowered without being drained. Unset means full.
+   */
   energy?: number;
-  /** Behemoth, Drone, Lancer: the tick it may raise its next energy wall (sim/energy-shield.ts). Unset means ready. */
+  /** Behemoth, Drone, Lancer: the tick it may raise its next energy wall; Siphon: the tick its drained dome is cast again (sim/energy-shield.ts). Unset means ready. */
   shieldReady?: number;
   /** Behemoth in the air on a lunge (sim/lunge.ts): from, to, and the ticks it left and lands. */
   lunge?: { x0: number; y0: number; x1: number; y1: number; t0: number; t1: number };
@@ -746,8 +749,6 @@ export interface Projectile {
   hpFraction?: number;
   /** A Spitter's glob: coats an armored hull (sim/acid.ts) and never ricochets. */
   acid?: boolean;
-  /** A Siphon's bolt: what it takes off an enemy unit mends the Siphon. */
-  drain?: boolean;
   /** Elevation units at the current point. Omit in tests for ground-level. */
   z?: number;
   /** Elevation units per second along the shot. Direct fire only. */
@@ -811,7 +812,8 @@ export interface Projectile {
 /** Lasting smoke screen from a 75mm smoke shell. */
 /**
  * A hive energy wall (sim/energy-shield.ts): an arc of radius `r` about (x, y),
- * `half` radians either side of `angle`. It stays where it was raised.
+ * `half` radians either side of `angle`. It stays where it was raised. A dome (`dome`)
+ * is the full circle, rides on the unit that holds it, and has no life limit.
  */
 export interface EnergyShield {
   id: number;
@@ -829,6 +831,8 @@ export interface EnergyShield {
   life: number;
   /** Tick a round last struck it. */
   hitTick?: number;
+  /** A Siphon's dome: stops only what comes in from outside, and follows its unit. */
+  dome?: true;
 }
 
 export interface SmokeCloud {

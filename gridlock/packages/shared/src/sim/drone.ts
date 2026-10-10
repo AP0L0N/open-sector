@@ -43,6 +43,7 @@ import { noteImpactSurface } from "./remains.js";
 import { nextRand } from "./rng.js";
 import { hideScout } from "./scout.js";
 import { canSeeEntity } from "./vision.js";
+import { domeOver, domeShelters, soakShield } from "./energy-shield.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
 
 export { newDroneLink };
@@ -491,7 +492,11 @@ function burst(state: MatchState, d: Entity, target: Entity): void {
   const ts = state.tileSize;
   const radius = DRONE_WARHEAD.splashTiles * ts;
   let killed = false;
-  for (const e of [...state.entities.values()]) {
+  // Diving onto an enemy dome, the warhead spends itself on the skin.
+  const dome = domeOver(state, d.ownerId, d.x, d.y);
+  if (dome) soakShield(state, dome, DRONE_WARHEAD.damage);
+  const soaked = new Set<number>(dome ? [dome.id] : []);
+  for (const e of dome ? [] : [...state.entities.values()]) {
     if (e.hp <= 0 || e.wreck || e.garrisonedIn != null || e.id === d.id) continue;
     if (airAlt(e) > 0.5) continue;
     if (isLowFieldWork(e.type)) continue;
@@ -499,6 +504,7 @@ function burst(state: MatchState, d: Entity, target: Entity): void {
     const dist = e === target ? 0 : Math.hypot(e.x - d.x, e.y - d.y);
     const reach = e.kind === "building" ? radius + Math.min(e.tileW, e.tileH) * ts * 0.35 : radius;
     if (dist > reach) continue;
+    if (domeShelters(state, d.ownerId, d.x, d.y, e, DRONE_WARHEAD.damage, soaked)) continue;
     const fall = mortarFalloff(dist, reach);
     let dmg: number;
     if (e.kind === "building") {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { SHIELD_PANELS, shieldCurve, shieldGlow, shieldHeightElev } from "./energy-shield.js";
+import { SHIELD_PANELS, domeHeightElev, shieldCurve, shieldGlow, shieldHeightElev } from "./energy-shield.js";
 
 describe("energy wall drawing", () => {
   it("curves about where it was raised, end to end across its span", () => {
@@ -17,5 +17,10 @@ describe("energy wall drawing", () => {
     const struck = shieldGlow({ hp: 300, hpMax: 900, hit: true }, 0, 1);
     assert.ok(low < full && struck > low);
     assert.ok(shieldHeightElev(34) > shieldHeightElev(13));
+  });
+
+  it("a Siphon's dome crowns lower for its span than a wall, and grows with its radius", () => {
+    assert.ok(domeHeightElev(96) < shieldHeightElev(96));
+    assert.ok(domeHeightElev(96) > domeHeightElev(48));
   });
 });

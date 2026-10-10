@@ -74,3 +74,55 @@ export function drawShieldPanel(
   ctx.stroke();
   ctx.restore();
 }
+
+/** A Siphon's dome rises this far for each world px of radius: lower than a wall, it spans much more. */
+const DOME_HEIGHT_PER_R = 0.45;
+
+/** Elevation units a dome's crown rises, from its radius. */
+export function domeHeightElev(r: number): number {
+  return (r * DOME_HEIGHT_PER_R) / ISO_ELEVATION;
+}
+
+/**
+ * A Siphon's dome: a glass bubble of green light over the ground ellipse (centre `c`, half axes
+ * `rx`, `ry` on screen), its crown `lift` screen px up. Drawn over what stands under it.
+ */
+export function drawDome(
+  ctx: CanvasRenderingContext2D,
+  c: { x: number; y: number },
+  rx: number,
+  ry: number,
+  lift: number,
+  glow: number,
+): void {
+  if (glow <= 0 || rx <= 0 || ry <= 0) return;
+  const top = ry + lift;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.beginPath();
+  ctx.ellipse(c.x, c.y, rx, ry, 0, 0, Math.PI);
+  ctx.ellipse(c.x, c.y, rx, top, 0, Math.PI, Math.PI * 2);
+  ctx.closePath();
+  const g = ctx.createRadialGradient(c.x, c.y - lift * 0.45, Math.max(1, rx * 0.2), c.x, c.y - lift * 0.3, rx * 1.05);
+  g.addColorStop(0, `rgba(90, 240, 165, ${0.05 * glow})`);
+  g.addColorStop(0.7, `rgba(90, 240, 165, ${0.12 * glow})`);
+  g.addColorStop(1, `rgba(160, 255, 210, ${0.32 * glow})`);
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.lineWidth = 1.4;
+  ctx.strokeStyle = `rgba(200, 255, 228, ${0.6 * glow})`;
+  ctx.stroke();
+  // Where it meets the ground, all the way round.
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = `rgba(130, 255, 196, ${0.45 * glow})`;
+  ctx.beginPath();
+  ctx.ellipse(c.x, c.y, rx, ry, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  // A soft highlight on the crown.
+  ctx.strokeStyle = `rgba(230, 255, 240, ${0.25 * glow})`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.ellipse(c.x, c.y, rx * 0.7, top * 0.82, 0, Math.PI * 1.15, Math.PI * 1.55);
+  ctx.stroke();
+  ctx.restore();
+}

@@ -19,7 +19,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 141;
+export const PROTOCOL_VERSION = 142;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -175,7 +175,7 @@ export interface EntityView {
   laser?: { a0: number; a1: number; u: number; dur: number; lens: number[]; line?: true };
   /** Allied ammo rack. Omitted for enemies and unarmed types. */
   ammo?: Partial<Record<ShellType, number>>;
-  /** Allied plasma cannon: share of its energy cell charged, 0–1. Omitted for enemies and every other gun. */
+  /** Allied plasma cannon: share of its energy cell charged, 0–1. An allied Siphon: its dome's energy, or how far its recharge has come. Omitted for enemies and every other type. */
   energy?: number;
   /** Loaded shell. Allied guns only. */
   shell?: ShellType;
@@ -509,8 +509,6 @@ export interface ProjectileView {
   energy?: true;
   /** A Spitter's acid glob. */
   acid?: true;
-  /** A Siphon's draining bolt. */
-  drain?: true;
   caliber: number;
   fromId: number;
   bounced: boolean;
@@ -700,6 +698,7 @@ export interface SmokeCloudView {
 /**
  * A hive energy wall: an arc of radius `r` world px about (x, y), `half` radians
  * either side of `angle`. Stationary. Sent to its side and to whoever sees it.
+ * A dome (`dome`) is the whole circle and rides on the unit `fromId`.
  */
 export interface EnergyShieldView {
   id: number;
@@ -713,6 +712,9 @@ export interface EnergyShieldView {
   hpMax: number;
   /** A round struck it in the last few ticks. */
   hit?: true;
+  /** A Siphon's dome round the unit `fromId`. */
+  dome?: true;
+  fromId?: number;
 }
 
 /** Burning ground from a flamethrower or a Pyro's tanks. Burns every soldier standing in it. */

@@ -52,23 +52,23 @@ function still(e: Entity): Entity {
 
 describe("plasma cannon energy cell", () => {
   it("every Xenomorph plasma cannon carries a cell", () => {
-    for (const t of ["stalker", "ravager", "siphon", "behemoth", "pulsespire", "leech"] as const) {
+    for (const t of ["stalker", "ravager", "behemoth", "pulsespire", "leech"] as const) {
       const cell = plasmaCellOf(t);
       assert.ok(cell && cell.shots >= 1 && cell.rechargeSeconds > 0, t);
     }
     assert.equal(plasmaCellOf("warden"), undefined);
   });
 
-  /** A Siphon laying fire on bare ground six cells off. Counts the shots the cell gives up. */
+  /** A Leech laying fire on bare ground six cells off. Counts the shots the cell gives up. */
   function firing(): { state: MatchState; s: Entity; shots: () => number } {
     const state = field();
-    const s = at(state, "siphon", "B", 20, 30);
+    const s = at(state, "leech", "B", 20, 30);
     const aim = at(state, "rifleman", "B", 26, 30);
     const x = aim.x;
     const y = aim.y;
     destroyEntity(state, aim);
     assert.equal(applyCommand(state, "B", { type: "cmd.forceattack", ids: [s.id], x, y }).ok, true);
-    const full = plasmaCellOf("siphon")!.shots;
+    const full = plasmaCellOf("leech")!.shots;
     let n = 0;
     const shots = () => {
       const before = s.energy ?? full;
@@ -81,7 +81,7 @@ describe("plasma cannon energy cell", () => {
 
   it("waits on an empty cell, and fires again once a shot regrows", () => {
     const { s, shots } = firing();
-    const cell = plasmaCellOf("siphon")!;
+    const cell = plasmaCellOf("leech")!;
     s.energy = 0;
     for (let i = 0; i < secondsToTicks(cell.rechargeSeconds * 0.8); i++) shots();
     assert.equal(shots(), 0, "no bolt on an empty cell");
@@ -92,8 +92,8 @@ describe("plasma cannon energy cell", () => {
 
   it("a full cell fires at the gun's cadence until it runs low, then at the cell's pace", () => {
     const { s, shots } = firing();
-    const cell = plasmaCellOf("siphon")!;
-    const cd = catalog("siphon").cooldown;
+    const cell = plasmaCellOf("leech")!;
+    const cd = catalog("leech").cooldown;
     const span = 60;
     for (let i = 0; i < secondsToTicks(span); i++) shots();
     const n = shots();
