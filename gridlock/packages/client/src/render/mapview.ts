@@ -7,10 +7,12 @@ import {
   WEAVER_REACH_TILES,
   LASER_FENCE_REACH_TILES,
   costFor,
+  energyOf,
   factionOf,
   fencePostTile,
   isFenceLine,
   laserFenceLinks,
+  totalFenceLinkEnergy,
   AIRFIELD_BACK_DEPTH,
   BUILDING_TURN_STEP,
   buildingRect,
@@ -164,7 +166,7 @@ import {
   SIMUNIT_BLINK_RANGE_TILES,
   isSimUnit,
 } from "@gridlock/shared";
-import { WEAVE_THREAD_MS, drawShieldPanel, drawWeaveThread, shieldCurve, shieldGlow, shieldHeightElev } from "./energy-shield.js";
+import { WEAVE_THREAD_MS, domeHeightElev, drawDome, drawShieldPanel, drawWeaveThread, shieldCurve, shieldGlow, shieldHeightElev } from "./energy-shield.js";
 import { drawNuke, drawNukeFlash, drawNukeScorch, NUKE_FX_MS, NUKE_SCORCH_MS } from "./nuke-fx.js";
 import { drawTitanThrust } from "./titan-jet-fx.js";
 import {
@@ -322,7 +324,7 @@ import { drawTorpedoBody } from "./torpedo-draw.js";
 import { drawRadarContact, drawRadarOffline, radarContactLit } from "./radar-panel.js";
 import { drawSonarContact, drawWaterMine } from "./sonar-fx.js";
 import { drawHeatContact, drawScanContact } from "./thermal-fx.js";
-import { drawDeploymentGrid, drawHiveComet, drawHiveImpact, HIVE_IMPACT_MS } from "./hive-drop-fx.js";
+import { drawDeploymentGrid, drawHiveComet, drawHiveImpact, HIVE_IMPACT_MS, hiveShake } from "./hive-drop-fx.js";
 import {
   drawTrackKick,
   spawnTrackKickPuffs,
@@ -347,7 +349,7 @@ import {
 import { followCart, type CartPose } from "./mauler-cart.js";
 import { AMMO_PRIMARY_FILL, AMMO_SECONDARY_FILL, ENERGY_FILL, ammoBarRatios, outOfAmmo } from "./ammo-bars.js";
 import { hiveRecoilColumn, noteHiveGunShots, type HiveGunRecoil } from "./hive-gun-recoil.js";
-import { drawFenceBeam } from "./laser-fence-beam.js";
+import { drawFenceBeam, drawFenceZap } from "./laser-fence-beam.js";
 import { OUT_OF_AMMO_SIZE, drawOutOfAmmo } from "./out-of-ammo.js";
 import {
   backtrackPoints,
@@ -399,7 +401,7 @@ import {
 import { roofCiwsMuzzle } from "./roof-ciws.js";
 import { CIWS_INTERCEPT_LIFT, CIWS_MUZZLE_REACH, CIWS_SOURCE_ZOOM, ciwsMuzzleLift, ciwsTurretCell, ciwsTurretRow } from "./ciws.js";
 import { ciwsBurstTracers, ciwsTracers } from "./ciws-tracer.js";
-import { drawEnergyBolt, drawEnergyBurst, drawEnergyMuzzle, drawPlasmaOrb, energyBolts, energyBurstMs } from "./energy-fx.js";
+import { drawEnergyBolt, drawEnergyBurst, drawEnergyMuzzle, drawPlasmaOrb, energyBolts, energyBurstMs, plasmaOrbScale } from "./energy-fx.js";
 import { SCORCH_GLOW_MS, SCORCH_SMOKE_RADIUS, drawPlasmaSteam, drawScorchFallback, drawScorchGlow, plasmaSteamMs } from "./plasma-ground.js";
 import { PTRD_MUZZLE_LIFT, ptrdTracers } from "./ptrd-tracer.js";
 import { ROOF_CIWS_LIFT } from "./roof-ciws.js";
@@ -550,8 +552,6 @@ import {
 
 /** A cloaked Shade as its own side sees it. */
 const CLOAKED_UNIT_FILTER = "opacity(0.38) saturate(0.5) brightness(1.35)";
-/** An armored hull coated in a Spitter's acid. */
-const ACID_HULL_FILTER = "sepia(0.55) hue-rotate(28deg) saturate(1.7) brightness(0.92)";
 
 /** The hive cyborgs that share the Drone's sheet set: stand, fire, crawl, crawl-fire, die. */
 const HIVE_SHEETS: Partial<Record<string, { stand: UnitSpriteDef; fire: UnitSpriteDef; crawl: UnitSpriteDef; crawlFire: UnitSpriteDef; die: UnitSpriteDef }>> = {
@@ -570,6 +570,8 @@ import { lineFrame, lineProfile, lineShapes, type LineShape } from "./line-bend.
 
 /** Bridges lie on the water: over ground decals, under shadows, corpses, and everything standing. */
 const BRIDGE_DRAW_LAYER = -1.5;
+/** Laser Fence beams: over corpses, under everything that stands, so a unit in the beam covers it. */
+const FENCE_BEAM_DRAW_LAYER = 0.75;
 /** Screen px above a Weaver's feet where its nanite spindle sits: the thread to a wall starts there. */
 const WEAVER_SPINDLE_LIFT_PX = 12;
 
@@ -828,7 +830,7 @@ const EXTRUDE: Record<EntityType, number> = {
   stalker: 28,
   ravager: 22,
   siphon: 24,
-  broodmother: 34,
+  assembler: 28,
   mawcaster: 26,
   behemoth: 46,
   juggernaut: 44,
@@ -4657,7 +4659,13 @@ export class MapView {
     }
     this.syncCursor();
     this.poseFrame++;
+    // A Hive Core landing shakes the view for a moment.
+    const shake = this.hiveShakeNow();
+    this.camX += shake.x;
+    this.camY += shake.y;
     this.draw();
+    this.camX -= shake.x;
+    this.camY -= shake.y;
     this.drawMini();
     this.raf = requestAnimationFrame((nt) => this.frame(nt));
   }
@@ -4854,6 +4862,7 @@ export class MapView {
             const prev = ctx.globalAlpha;
             ctx.globalAlpha = prev * fade;
             this.drawUnit(e);
+            if (e.fenceZap) this.drawFenceZapOn(e, now);
             if (e.chute != null) this.drawTroopCanopy(e);
             ctx.globalAlpha = prev;
           }
@@ -4894,6 +4903,7 @@ export class MapView {
     this.collectMuzzleSmoke(items);
     this.collectFires(items, w, h);
     this.collectShields(items, w, h);
+    items.push({ layer: FENCE_BEAM_DRAW_LAYER, z: 0, run: () => this.drawLaserFences(now) });
     this.collectNukeScorch(items);
     this.collectAirdrops(items, w, h);
     for (const m of this.takeMoveClicks()) {
@@ -5029,6 +5039,17 @@ export class MapView {
       const d = screenDir(h.x, h.y, h.vx, h.vy);
       drawRamShock(this.ctx, s.x, s.y, { age: (now - h.atMs) / RAM_SHOCK_MS, ...d, unit, seed: h.seed });
     }
+  }
+
+  /** The strongest shake of any Hive Core that just landed, iso px. */
+  private hiveShakeNow(): { x: number; y: number } {
+    const now = performance.now();
+    let best = { x: 0, y: 0 };
+    for (const h of this.hiveImpacts) {
+      const s = hiveShake(now - h.atMs, now);
+      if (Math.hypot(s.x, s.y) > Math.hypot(best.x, best.y)) best = s;
+    }
+    return best;
   }
 
   /** Real ms the Hive Core takes to fall at the current game speed. */
@@ -5459,6 +5480,23 @@ export class MapView {
           n.globalCompositeOperation = "destination-out";
           for (const p of pools) fillPool(n, p, "0,0,0", POOL_CUT[p.kind] * p.a * glow);
         }
+        // The fence beams are drawn under the units now, so the dark is cut along them to keep them lit.
+        const beams = this.fenceBeamLines();
+        if (beams.length) {
+          n.setTransform(ctx.getTransform());
+          n.globalCompositeOperation = "destination-out";
+          n.lineCap = "round";
+          for (const l of beams) {
+            for (const [width, a] of [[10, 0.25], [3, 0.9]] as const) {
+              n.strokeStyle = `rgba(0, 0, 0, ${a})`;
+              n.lineWidth = width;
+              n.beginPath();
+              n.moveTo(l.from.x, l.from.y);
+              n.lineTo(l.to.x, l.to.y);
+              n.stroke();
+            }
+          }
+        }
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.drawImage(layer, 0, 0);
@@ -5716,7 +5754,11 @@ export class MapView {
     ctx.restore();
   }
 
-  /** Lunge armed: a dashed green ring of the legs' reach round each selected Behemoth. */
+  /**
+   * Lunge armed: a dashed green ring of the legs' reach round each selected Behemoth. With no
+   * Sim Unit selected the blink cursor never draws, so the lunge draws its own crosshair here:
+   * the armed mode hides the system cursor.
+   */
   private drawLungeReach(): void {
     const units = this.ownLungerIds()
       .map((id) => this.currById.get(id))
@@ -5738,6 +5780,37 @@ export class MapView {
       }
       ctx.stroke();
     }
+    ctx.restore();
+    if (this.ownSimUnitIds().length === 0) this.drawLungeCursor(units);
+  }
+
+  /** The lunge's crosshair and word at the mouse: green in reach, orange where it comes down short. */
+  private drawLungeCursor(units: EntityView[]): void {
+    if (this.overControl || this.mouseX < 0 || this.mouseY < 0) return;
+    const reach = BEHEMOTH_LUNGE_RANGE_TILES * this.ts();
+    const w = this.screenToWorld(this.mouseX, this.mouseY);
+    const inReach = units.some((e) => Math.hypot(w.x - e.x, w.y - e.y) <= reach);
+    const charged = units.some((e) => (e.lungeCharge ?? 1) >= 1);
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.setLineDash([]);
+    ctx.font = "11px 'Share Tech Mono', monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    const word = !charged ? "LUNGE (CHARGING)" : inReach ? "LUNGE" : "LUNGE (SHORT)";
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#140e0a";
+    ctx.fillStyle = inReach && charged ? "#6effb4" : "#dc7850";
+    ctx.strokeText(word, this.mouseX + 12, this.mouseY + 8);
+    ctx.fillText(word, this.mouseX + 12, this.mouseY + 8);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = ctx.fillStyle;
+    ctx.beginPath();
+    ctx.moveTo(this.mouseX, this.mouseY - 8);
+    ctx.lineTo(this.mouseX, this.mouseY + 8);
+    ctx.moveTo(this.mouseX - 8, this.mouseY);
+    ctx.lineTo(this.mouseX + 8, this.mouseY);
+    ctx.stroke();
     ctx.restore();
   }
 
@@ -8327,8 +8400,6 @@ export class MapView {
     else if (!e.wreck && (e.shutdown || e.dormant)) ctx.filter = SHUTDOWN_UNIT_FILTER;
     // Your Shade with its skin settled: a faint shimmer only its own side sees.
     else if (!e.wreck && e.cloaked) ctx.filter = CLOAKED_UNIT_FILTER;
-    // A hull under a Spitter's acid coat: the plate goes a sick yellow-green.
-    else if (!e.wreck && (e.acid ?? 0) > 0) ctx.filter = ACID_HULL_FILTER;
     // A map's neutral unit is grey: no one's colours, everyone's enemy.
     else if (!e.wreck && !e.ownerId) ctx.filter = NEUTRAL_UNIT_FILTER;
     // The ship's mounts are placed on the sim's own spots: no ground sink under the hull.
@@ -9116,7 +9187,7 @@ export class MapView {
     const now = performance.now();
     const blend = Math.min(1, (now - this.snapAt) / 100);
     const live = new Set<number>();
-    const heads: { x: number; y: number; dx: number; dy: number; id: number; heavy: boolean; energy: boolean }[] = [];
+    const heads: { x: number; y: number; dx: number; dy: number; id: number; heavy: boolean; energy: boolean; caliber: number; from?: string }[] = [];
     for (const p of this.curr.projectiles) {
       if (!p.rocket) continue;
       live.add(p.id);
@@ -9142,6 +9213,8 @@ export class MapView {
         id: p.id,
         heavy: !!p.heavy,
         energy: !!p.energy,
+        caliber: p.caliber,
+        from: this.currById.get(p.fromId)?.type,
       });
     }
     for (const id of [...this.rocketLast.keys()]) {
@@ -9171,7 +9244,7 @@ export class MapView {
     ctx.restore();
     this.rocketPuffs = keep;
     for (const h of heads) {
-      if (h.energy) drawPlasmaOrb(ctx, h.x, h.y, h.dx, h.dy, h.heavy);
+      if (h.energy) drawPlasmaOrb(ctx, h.x, h.y, h.dx, h.dy, h.heavy, plasmaOrbScale(h.caliber, h.from));
       else drawRocketHead(ctx, h.x, h.y, h.dx, h.dy, h.id, h.heavy);
     }
   }
@@ -9226,18 +9299,18 @@ export class MapView {
       const from = { x: s.x + lens.x, y: s.y + unitGroundSink(size) + lens.y };
       drawLaserBeam(ctx, from, this.toScreen(end.x, end.y), now, e.id);
     }
-    this.drawLaserFences(now);
     this.drawUplinks(now);
   }
 
-  /** Lit Laser Fence posts and the two beams between each linked pair, by the sim's own link rule. */
-  private drawLaserFences(now: number): void {
+  /** Each lit beam on screen: two between each linked pair of Laser Fence posts, by the sim's own link rule. */
+  private fenceBeamLines(): { from: { x: number; y: number }; to: { x: number; y: number }; seed: number }[] {
     const posts = this.curr.entities.filter((e) => e.type === "laserfence" && !e.wreck && !e.ruined && !e.unpowered && e.hp > 0);
-    if (posts.length < 2) return;
+    if (posts.length < 2) return [];
     const ts = this.ts();
     const layer = gunLayerFor("laserfence");
     const heights = layer?.beamZ ?? [5.6, 11.6];
     const byId = new Map(posts.map((e) => [e.id, e]));
+    const out: { from: { x: number; y: number }; to: { x: number; y: number }; seed: number }[] = [];
     for (const link of laserFenceLinks(posts, LASER_FENCE_REACH_TILES * ts)) {
       const a = byId.get(link.a)!;
       const b = byId.get(link.b)!;
@@ -9248,9 +9321,27 @@ export class MapView {
       heights.forEach((z, k) => {
         const la = layer ? this.buildingArtLift(a, ea, z, layer) : z * 2;
         const lb = layer ? this.buildingArtLift(b, eb, z, layer) : z * 2;
-        drawFenceBeam(this.ctx, { x: sa.x, y: sa.y - la }, { x: sb.x, y: sb.y - lb }, now, link.a * 7 + link.b * 3 + k);
+        out.push({ from: { x: sa.x, y: sa.y - la }, to: { x: sb.x, y: sb.y - lb }, seed: link.a * 7 + link.b * 3 + k });
       });
     }
+    return out;
+  }
+
+  /** The fence beams, laid in the depth sort under every standing unit (FENCE_BEAM_DRAW_LAYER). */
+  private drawLaserFences(now: number): void {
+    for (const l of this.fenceBeamLines()) drawFenceBeam(this.ctx, l.from, l.to, now, l.seed);
+  }
+
+  /**
+   * Crackling arcs over a unit a fence beam is burning, drawn on its sprite. The cell is padded
+   * round the art: a soldier's body is tall and narrow in it, a hull wide and low.
+   */
+  private drawFenceZapOn(e: EntityView, now: number): void {
+    const p = this.lerpEnt(e);
+    const size = spriteFor(e.type, e.stance)?.drawSize ?? 20;
+    const s = this.toScreen(p.x, p.y);
+    if (isInfantryType(e.type)) drawFenceZap(this.ctx, s.x, s.y - size * 0.32, size * 0.24, size * 0.36, now, e.id);
+    else drawFenceZap(this.ctx, s.x, s.y - size * 0.1, size * 0.3, size * 0.16, now, e.id);
   }
 
   /** Screen px above the ground that a height `z` of a building's art sits, at CIWS_SOURCE_ZOOM source px a unit, laid on its pad. */
@@ -9418,7 +9509,7 @@ export class MapView {
     }
   }
 
-  /** Hive energy walls: one panel per stretch of the curve, sorted with the units around it. */
+  /** Hive energy walls: one panel per stretch of the curve, sorted with the units around it. A Siphon's dome: one bubble over it. */
   private collectShields(items: DrawItem[], w: number, h: number): void {
     const walls = this.curr.shields;
     if (!walls || walls.length === 0) {
@@ -9427,6 +9518,10 @@ export class MapView {
     }
     const now = performance.now();
     for (const s of walls) {
+      if (s.dome) {
+        this.collectDome(items, w, h, s, now);
+        continue;
+      }
       const mid = this.toScreen(s.x, s.y);
       if (mid.x < -120 || mid.y < -120 || mid.x > w + 120 || mid.y > h + 120) continue;
       const glow = shieldGlow(s, now, s.id);
@@ -9474,6 +9569,34 @@ export class MapView {
       layer: STANDING_DRAW_LAYER + 0.5,
       z: isoDepth(s.x, s.y),
       run: () => drawWeaveThread(this.ctx, from, to, age, s.id),
+    });
+  }
+
+  /** The dome rides on its Siphon's drawn pose, so it never slides off the body between snapshots. */
+  private collectDome(items: DrawItem[], w: number, h: number, s: EnergyShieldView, now: number): void {
+    const host = s.fromId != null ? this.currById.get(s.fromId) : undefined;
+    const at = host ? this.lerpEnt(host) : { x: s.x, y: s.y };
+    const elev = this.elevAt(at.x, at.y);
+    const c = this.toScreen(at.x, at.y, elev);
+    const span = this.groundSpan(at.x, at.y, s.r) * 2;
+    if (c.x < -span || c.y < -span || c.x > w + span || c.y > h + span) return;
+    let rx = 0;
+    let ry = 0;
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      const p = this.toScreen(at.x + Math.cos(a) * s.r, at.y + Math.sin(a) * s.r, elev);
+      rx = Math.max(rx, Math.abs(p.x - c.x));
+      ry = Math.max(ry, Math.abs(p.y - c.y));
+    }
+    const lift = c.y - this.toScreen(at.x, at.y, elev + domeHeightElev(s.r)).y;
+    const glow = shieldGlow(s, now, s.id);
+    // Sorted at its front rim: what stands under it draws first and shows through.
+    const front = { x: at.x + s.r * Math.SQRT1_2, y: at.y + s.r * Math.SQRT1_2 };
+    items.push({
+      layer: STANDING_DRAW_LAYER,
+      z: isoDepth(front.x, front.y),
+      at: front,
+      run: () => drawDome(this.ctx, c, rx, ry, lift, glow),
     });
   }
 
@@ -11354,6 +11477,11 @@ export class MapView {
     const each = costFor("laserfence", faction);
     const count = this.fencePosts.length + (next && nextOk ? 1 : 0);
     const bill = each * count;
+    // The hive pays in energy: each post's own, and the links the line adds, more the longer they reach.
+    const hive = this.curr.you.energy;
+    const reach = LASER_FENCE_REACH_TILES * ts;
+    const links = hive ? totalFenceLinkEnergy(all, reach, ts) - totalFenceLinkEnergy(standing, reach, ts) : 0;
+    const energy = count * energyOf("laserfence") + Math.max(0, links);
     const s = this.toScreen(centre(tip).x, centre(tip).y);
     ctx.save();
     ctx.font = "11px 'Share Tech Mono', monospace";
@@ -11361,8 +11489,8 @@ export class MapView {
     ctx.textBaseline = "middle";
     ctx.lineWidth = 3;
     ctx.strokeStyle = "#140e0a";
-    ctx.fillStyle = this.curr.you.scrap >= bill ? "#e8b84a" : "#ff5a4a";
-    const label = `${count} × ${each} = ${bill}`;
+    ctx.fillStyle = (hive ? hive.cap - hive.used >= energy : this.curr.you.scrap >= bill) ? "#e8b84a" : "#ff5a4a";
+    const label = hive ? `${count} posts + links = ${energy} EN` : `${count} × ${each} = ${bill}`;
     ctx.strokeText(label, s.x + 14, s.y - 14);
     ctx.fillText(label, s.x + 14, s.y - 14);
     ctx.font = "10px 'Share Tech Mono', monospace";

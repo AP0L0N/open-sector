@@ -1,4 +1,4 @@
-import { shieldSweep, type ShieldHit } from "./energy-shield.js";
+import { shieldSweep, soakEnergyStrike, type ShieldHit } from "./energy-shield.js";
 import {
   COMMANDER_HP_REGEN_PER_SEC,
   FORCE_FIELD_DELAY,
@@ -31,7 +31,7 @@ import { coverStrike, wallSweep } from "./field.js";
 import { igniteAt } from "./flame.js";
 import { garrisonIsHostile, livingGarrison, woundGarrison } from "./garrison.js";
 import { allies, burnTreeAt, occupant, tileCenter, worldToTile } from "./geo.js";
-import type { Entity, LaserBeam, MatchState } from "./types.js";
+import type { Entity, EnergyShield, LaserBeam, MatchState } from "./types.js";
 
 /** Points along a sweep where the beam's length is measured. */
 export const LASER_SAMPLES = 9;
@@ -64,16 +64,18 @@ export function tickForceFields(state: MatchState, dt: number): void {
 
 /**
  * How far the beam reaches along `angle` before a building or a concrete line
- * stops it, out to `max`. The building he is holed up in does not count.
+ * stops it, out to `max`. The building he is holed up in does not count. An enemy
+ * energy wall that is what stops it goes into `guards`.
  */
-export function beamLength(state: MatchState, e: Entity, angle: number, max: number): number {
+export function beamLength(state: MatchState, e: Entity, angle: number, max: number, guards?: Set<EnergyShield>): number {
   const dx = Math.cos(angle);
   const dy = Math.sin(angle);
   let reach = max;
   const wall = wallSweep(state, e.x, e.y, e.x + dx * max, e.y + dy * max);
   if (wall) reach = Math.min(reach, wall.t * max);
   const guard = shieldSweep(state, e.ownerId, e.x, e.y, e.x + dx * max, e.y + dy * max);
-  if (guard) reach = Math.min(reach, guard.t * max);
+  const guardAt = guard && guard.t * max < reach ? guard.t * max : Infinity;
+  reach = Math.min(reach, guardAt);
   const step = state.tileSize * 0.25;
   for (let d = e.radius; d < reach; d += step) {
     const id = occupant(state, worldToTile(e.x + dx * d, state.tileSize), worldToTile(e.y + dy * d, state.tileSize));
@@ -82,7 +84,13 @@ export function beamLength(state: MatchState, e: Entity, angle: number, max: num
     if (!o || o.kind !== "building" || o.hp <= 0 || isFieldStructure(o.type)) continue;
     return d;
   }
+  if (guard && reach === guardAt) guards?.add(guard.s);
   return reach;
+}
+
+/** Every enemy energy wall a sweep's beam runs into pays one line beam's cut, however long it holds the beam. */
+function sweepOnShields(state: MatchState, e: Entity, guards: Set<EnergyShield>): void {
+  for (const s of guards) soakEnergyStrike(state, s, factionDamage(e.type, LASER_ARMOR_DAMAGE));
 }
 
 /**
@@ -141,9 +149,11 @@ export function fireLaser(
   const a0 = bearing - half * side;
   const a1 = bearing + half * side;
   const lens: number[] = [];
+  const guards = new Set<EnergyShield>();
   for (let i = 0; i < LASER_SAMPLES; i++) {
-    lens.push(Math.round(beamLength(state, e, a0 + ((a1 - a0) * i) / (LASER_SAMPLES - 1), range)));
+    lens.push(Math.round(beamLength(state, e, a0 + ((a1 - a0) * i) / (LASER_SAMPLES - 1), range, guards)));
   }
+  sweepOnShields(state, e, guards);
   e.laser = {
     a0,
     a1,
@@ -163,9 +173,11 @@ export function fireSweep(state: MatchState, e: Entity, bearing: number, half: n
   const a0 = bearing - half;
   const a1 = bearing + half;
   const lens: number[] = [];
+  const guards = new Set<EnergyShield>();
   for (let i = 0; i < LASER_SAMPLES; i++) {
-    lens.push(Math.round(beamLength(state, e, a0 + ((a1 - a0) * i) / (LASER_SAMPLES - 1), range)));
+    lens.push(Math.round(beamLength(state, e, a0 + ((a1 - a0) * i) / (LASER_SAMPLES - 1), range, guards)));
   }
+  sweepOnShields(state, e, guards);
   e.laser = {
     a0,
     a1,
@@ -307,9 +319,7 @@ function burnSoldier(state: MatchState, e: Entity, o: Entity, ux: number, uy: nu
 
 /** The beam meets an enemy energy wall: the wall loses what the beam would cut from a hull, and the beam glances off. */
 function glanceOffShield(state: MatchState, e: Entity, guard: ShieldHit, bearing: number): void {
-  const s = guard.s;
-  s.hp = Math.max(0, s.hp - factionDamage(e.type, LASER_ARMOR_DAMAGE));
-  s.hitTick = state.tick;
+  soakEnergyStrike(state, guard.s, factionDamage(e.type, LASER_ARMOR_DAMAGE));
   state.impacts.push({
     id: state.nextId++,
     ownerId: e.ownerId,

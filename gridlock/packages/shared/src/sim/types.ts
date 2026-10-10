@@ -347,6 +347,8 @@ export interface Entity {
    * then discarded with the entity. Not sent on a living unit.
    */
   fireDeath?: true;
+  /** Last tick a Laser Fence beam burned this unit (sim/laser-fence.ts). */
+  fenceZapTick?: number;
   state: EntityState;
   tileX: number;
   tileY: number;
@@ -424,6 +426,8 @@ export interface Entity {
   rocketSalvo?: number;
   /** Player switched the pods off. Missing means on. */
   rocketsOff?: boolean;
+  /** Set to Air attacks: fires its air rack (rocketRackFor) and lays only on what flies. Missing means Ground attacks. */
+  airMode?: boolean;
   /** CIWS or RAM set to Max range (RADAR_LONG_RANGE_MUL). Missing means normal reach. */
   longRange?: boolean;
   /** Building whose owner uses more power than they provide: its lamps are dark and a CIWS or RAM is silent. Set each tick. */
@@ -576,6 +580,11 @@ export interface Entity {
    * Cyborg Commander takes him over.
    */
   shutdown?: true;
+  /**
+   * Xenomorph unit or defence the hive has no energy for (sim/hive-energy.ts): a unit is also
+   * `shutdown`, a building `unpowered`. It wakes by itself once the hive has room for it.
+   */
+  hiveOffline?: true;
   /** Shut-down Cyborg only: the Cyborg Commander taking him over, and ticks of uplink so far. */
   takeover?: { by: number; ticks: number };
   /** Cyborg only: fires on what his side's thermal and APS read, seen or not, inside his reach. */
@@ -590,11 +599,15 @@ export interface Entity {
   dormant?: true;
   /** Sim Unit II: the tick his blink drive is charged again. Unset or past means ready. */
   blinkReady?: number;
-  /** Plasma cannon: shots of energy left in its cell (sim/hive-ammo.ts), fractional while it regrows. Unset means full. */
+  /**
+   * Plasma cannon: shots of energy left in its cell (sim/hive-ammo.ts), fractional while it regrows.
+   * Siphon: the energy kept while its dome is lowered without being drained.
+   * Assembler: Thralls it has left to build (sim/assembler.ts). Unset means full.
+   */
   energy?: number;
   /** Its cell ran dry: it holds fire until the cell regrows PLASMA_RESUME_SHARE (sim/hive-ammo.ts). */
   energyDrained?: true;
-  /** Behemoth, Drone, Lancer, Weaver: the tick it may raise its next energy wall (sim/energy-shield.ts, sim/weaver.ts). Unset means ready. */
+  /** Behemoth, Drone, Lancer, Weaver: the tick it may raise its next energy wall (sim/energy-shield.ts, sim/weaver.ts); Siphon: the tick its drained dome is cast again. Unset means ready. */
   shieldReady?: number;
   /** Behemoth in the air on a lunge (sim/lunge.ts): from, to, and the ticks it left and lands. */
   lunge?: { x0: number; y0: number; x1: number; y1: number; t0: number; t1: number };
@@ -604,8 +617,6 @@ export interface Entity {
   lungeRing?: number;
   /** Juggernaut running at what it is going for (sim/juggernaut.ts). */
   sprint?: true;
-  /** Armored hull coated by a Spitter (sim/acid.ts): mm off every face, and the tick the coat dries. */
-  acid?: { mm: number; until: number };
   /** Shade (sim/shade.ts): the tick its skin settles again after a shot or a hurt; HP last tick. */
   revealUntil?: number;
   shadeHpSeen?: number;
@@ -613,10 +624,10 @@ export interface Entity {
   cloaked?: true;
   /** Weaver (sim/weaver.ts): the tick of its next mend pulse. */
   mendNext?: number;
-  /** Broodmother (sim/brood.ts): the tick the next Thrall leaves the sac. */
-  broodNext?: number;
-  /** A Thrall born of a Broodmother: her id. */
-  broodOf?: number;
+  /** Assembler (sim/assembler.ts): the tick the Thrall in its bay is finished. */
+  assemblyDone?: number;
+  /** A Thrall an Assembler built: its id. */
+  assembledBy?: number;
   /** Juggernaut has thrown its hammer: it fights with its fists from now on. */
   fists?: true;
   /**
@@ -634,6 +645,8 @@ export interface Entity {
   field?: number;
   /** Cyborg Commander only: weapons power diverted to the field. The laser is dark; he does not fire. */
   fieldDivert?: true;
+  /** Behemoth only: Light Pulse, quick light bolts. Unset is High Pulse. */
+  lightPulse?: true;
   /** Cyborg Commander only: tick of the last hit on him, field or body. The recharge waits on it. */
   fieldHitTick?: number;
   /** Cyborg Commander only: the laser beam he is cutting with now. */
@@ -753,10 +766,6 @@ export interface Projectile {
    * Set by the scoped rifle and the PTRD. Omitted for every other gun.
    */
   hpFraction?: number;
-  /** A Spitter's glob: coats an armored hull (sim/acid.ts) and never ricochets. */
-  acid?: boolean;
-  /** A Siphon's bolt: what it takes off an enemy unit mends the Siphon. */
-  drain?: boolean;
   /** Elevation units at the current point. Omit in tests for ground-level. */
   z?: number;
   /** Elevation units per second along the shot. Direct fire only. */
@@ -793,6 +802,8 @@ export interface Projectile {
   aloft?: boolean;
   /** Rocket only: the carrier type whose rack (rocketRackOf) sets its splash and armor dent. */
   launcher?: EntityType;
+  /** Rocket only: left the carrier's air rack (airRackOf), not its own. */
+  airRack?: true;
   /** Lobbed rocket only: height it left the tubes at. `apex` rides on top of the line from here to the ground. */
   launchZ?: number;
   /** Rocket only: CIWS mounts that already fired a burst at it. An ordinary rocket gets one try. */
@@ -820,7 +831,8 @@ export interface Projectile {
 /** Lasting smoke screen from a 75mm smoke shell. */
 /**
  * A hive energy wall (sim/energy-shield.ts): an arc of radius `r` about (x, y),
- * `half` radians either side of `angle`. It stays where it was raised.
+ * `half` radians either side of `angle`. It stays where it was raised. A dome (`dome`)
+ * is the full circle, rides on the unit that holds it, and has no life limit.
  */
 export interface EnergyShield {
   id: number;
@@ -840,6 +852,10 @@ export interface EnergyShield {
   life: number;
   /** Tick a round last struck it. */
   hitTick?: number;
+  /** A pulse or laser has struck it: the one such hit it always lives through is spent. */
+  energyStruck?: true;
+  /** A Siphon's dome: stops only what comes in from outside, and follows its unit. */
+  dome?: true;
 }
 
 export interface SmokeCloud {

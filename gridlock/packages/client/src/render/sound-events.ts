@@ -363,9 +363,9 @@ export class SoundTracker {
           // A helicopter off its ship's deck is a sortie, not a new unit: its pilot answers, the announcer does not.
           if (e.type !== "aswheli") out.push({ kind: "announce", event: "ready" });
         }
-        // A Thrall tearing out of a Broodmother's sac beside her.
-        if (e.type === "thrall" && prev == null && broodmotherBeside(match.entities, e)) {
-          out.push({ kind: "unitsfx", type: "broodmother", cue: "birth", x: e.x, y: e.y });
+        // A Thrall stepping out of an Assembler's bay beside it.
+        if (e.type === "thrall" && prev == null && assemblerBeside(match.entities, e)) {
+          out.push({ kind: "unitsfx", type: "assembler", cue: "birth", x: e.x, y: e.y });
         }
         // One of your structures just went up: its own setting-up sound, where it has one.
         if (e.ownerId === me && e.kind === "building" && isBuildingType(e.type)) {
@@ -586,11 +586,11 @@ export class SoundTracker {
 
 /** Gap between two mend sounds from one Weaver. */
 const MEND_GAP_MS = 4000;
-/** World px from a Broodmother's centre inside which a new Thrall is hers. */
-const BROOD_BESIDE_PX = 64;
+/** World px from an Assembler's centre inside which a new Thrall is its. */
+const ASSEMBLER_BESIDE_PX = 64;
 
-function broodmotherBeside(all: readonly EntityView[], t: EntityView): boolean {
-  return all.some((m) => m.type === "broodmother" && m.ownerId === t.ownerId && !m.wreck && Math.hypot(m.x - t.x, m.y - t.y) <= BROOD_BESIDE_PX);
+function assemblerBeside(all: readonly EntityView[], t: EntityView): boolean {
+  return all.some((m) => m.type === "assembler" && m.ownerId === t.ownerId && !m.wreck && Math.hypot(m.x - t.x, m.y - t.y) <= ASSEMBLER_BESIDE_PX);
 }
 
 /** Some unit of the Weaver's side close by gained HP since the last snapshot. */

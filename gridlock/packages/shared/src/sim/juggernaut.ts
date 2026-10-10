@@ -47,6 +47,7 @@ import { mortarFalloff } from "./mortar.js";
 import { diving } from "./naval.js";
 import { nextRand } from "./rng.js";
 import { gapTo, hiddenFromAuto, inStrikeReach } from "./simunit.js";
+import { domeShelters } from "./energy-shield.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
 import { canSeeEntity } from "./vision.js";
 
@@ -142,6 +143,9 @@ export function hammerBlast(
   const spec = BLOWS[blow];
   const radius = spec.radius * state.tileSize;
   let kind: ImpactKind = "miss";
+  // A blow comes from the arm that swings it; a thrown hammer from where it lands.
+  const src = (blow !== "throw" && state.entities.get(by.id)) || { x, y };
+  const soaked = new Set<number>();
   for (const o of [...state.entities.values()]) {
     if (o.id === by.id || o.hp <= 0 || o.wreck || o.garrisonedIn != null) continue;
     // A submarine running below is under the blow.
@@ -149,6 +153,7 @@ export function hammerBlast(
     if (!harmAllies && allies(state, by.ownerId, o.ownerId)) continue;
     const gap = gapFrom(state, x, y, o);
     if (gap > radius) continue;
+    if (domeShelters(state, by.ownerId, src.x, src.y, o, isInfantryType(o.type) ? spec.soldier : spec.hull, soaked)) continue;
     const fall = mortarFalloff(gap, radius);
     const rand = 0.9 + 0.2 * nextRand(state);
     if (o.kind === "building") {
@@ -408,6 +413,8 @@ function trample(state: MatchState, e: Entity, x0: number, y0: number, mark: Ent
     if (Math.hypot(o.x - (x0 + sx * k), o.y - (y0 + sy * k)) > me + catalog(o.type).radius) continue;
     r.hit.push(o.id);
     const base = isInfantryType(o.type) ? JUGGERNAUT_RAM_TRAMPLE_SOLDIER : JUGGERNAUT_RAM_TRAMPLE_HULL;
+    // An enemy dome round them takes it, while the giant is still outside it.
+    if (domeShelters(state, e.ownerId, x0, y0, o, base)) continue;
     takeDamage(o, factionDamage("juggernaut", Math.round(base * (0.9 + 0.2 * nextRand(state)))), state.tick);
     ramImpact(state, e, o.x, o.y, "trample", o.hp <= 0 ? "kill" : "hit");
   }
@@ -417,6 +424,12 @@ function trample(state: MatchState, e: Entity, x0: number, y0: number, mark: Ent
 function slam(state: MatchState, e: Entity, t: Entity): void {
   const p = ramPoint(state, e, t);
   const rand = 0.9 + 0.2 * nextRand(state);
+  if (t.kind !== "building" && domeShelters(state, e.ownerId, e.x, e.y, t, JUGGERNAUT_RAM_HULL)) {
+    // The dome round it takes the slam.
+    ramImpact(state, e, p.x, p.y, "slam", "miss");
+    e.cooldown = Math.max(e.cooldown, 0.5);
+    return;
+  }
   if (t.kind === "building") {
     if (wallsShieldGarrison(state, t)) woundGarrison(state, t, factionDamage("juggernaut", JUGGERNAUT_THROW_SOLDIER), HAMMER_CALIBER);
     takeDamage(t, factionDamage("juggernaut", Math.round(JUGGERNAUT_RAM_BUILDING * rand)), state.tick);

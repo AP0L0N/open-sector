@@ -1,0 +1,58 @@
+{
+  "key": "assembler",
+  "out": "units/assembler",
+  "voice": {
+    "name": "Open Sector - Heavy Assimilator",
+    "voice_id": "Wgg1tJ9YWBePARF1jEf7",
+    "note": "Shares the Heavy Assimilator voice designed for the Stalker (voices/stalker.json): no new custom voice. A busy, methodical delivery for the walking forge. It carries no gun, so its attack lines send its Thralls instead (a right-click on an enemy still sends cmd.attack).",
+    "description": "Enormous, slow machine voice of a giant legged alien war machine of a cyborg hive: very deep sub-bass layered voice, as if several huge synthetic voices speak at once an octave apart, grinding metallic overtones and a rumbling engine-like drone beneath every word, cold, emotionless and inevitable, each word heavy and deliberate with long pauses.",
+    "stability": 0.7,
+    "similarity": 0.8,
+    "style": 0.3,
+    "speed": 0.9
+  },
+  "lines": {
+    "select": [
+      "Assembler.",
+      "The forge is warm.",
+      "We build the many."
+    ],
+    "move": [
+      "Forge on the move.",
+      "Relocating assembly.",
+      "Building as we walk."
+    ],
+    "attack": [
+      "Thralls will take them.",
+      "Send the assembled.",
+      "We build. They strike."
+    ],
+    "ready": [
+      "Assembler online. Nanites primed."
+    ],
+    "special": [
+      "Assembly complete.",
+      "Another Thrall. Go."
+    ]
+  },
+  "sfx": {
+    "birth": {
+      "prompt": "Small sci-fi nanite fabricator finishing a robot: a rising electric whir and crackle of assembling metal, quick ratcheting servo clicks, a hydraulic hiss as a hatch opens and a metal foot clanks down, close, no music, no voice",
+      "duration": 2.0,
+      "variants": 2,
+      "influence": 0.65
+    },
+    "move": {
+      "prompt": "Small four-legged alien machine walking: light quick metallic leg steps clicking on the ground, small servo whines, a soft electric hum of a portable forge and faint liquid slosh in glass tanks, close, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.65
+    },
+    "die": {
+      "prompt": "Small alien machine destroyed: a sharp electric overload crackle, glass tanks shattering, a hissing burst of fizzing liquid, metal frame clattering apart and a dying synthetic whine falling in pitch, medium distance outdoors, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

@@ -88,9 +88,21 @@ export function drawEnergyBolt(ctx: CanvasRenderingContext2D, tail: { x: number;
   ctx.restore();
 }
 
-/** A plasma orb in flight, with a short fading tail behind it along (dx, dy). */
-export function drawPlasmaOrb(ctx: CanvasRenderingContext2D, x: number, y: number, dx: number, dy: number, heavy: boolean): void {
-  const r = heavy ? 6 : 4.5;
+/** Calibers at or under this fly as a small orb: the Mawcaster's Air attacks. */
+const SMALL_ORB_CALIBER = 30;
+
+/** A Scourge's plasma bolt against the usual orb: the big one. */
+const SCOURGE_BOLT_SCALE = 1.8;
+
+/** Size of a plasma orb against the usual one: small for a light anti-air ball, big for a Scourge's bolt. */
+export function plasmaOrbScale(caliber: number, shooterType?: string): number {
+  if (shooterType === "scourge") return SCOURGE_BOLT_SCALE;
+  return caliber <= SMALL_ORB_CALIBER ? 0.55 : 1;
+}
+
+/** A plasma orb in flight, with a short fading tail behind it along (dx, dy). `scale` sizes it. */
+export function drawPlasmaOrb(ctx: CanvasRenderingContext2D, x: number, y: number, dx: number, dy: number, heavy: boolean, scale = 1): void {
+  const r = (heavy ? 6 : 4.5) * scale;
   const len = Math.hypot(dx, dy) || 1;
   const tx = x - (dx / len) * r * 3.2;
   const ty = y - (dy / len) * r * 3.2;

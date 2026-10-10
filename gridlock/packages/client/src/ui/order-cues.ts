@@ -38,6 +38,7 @@ const UNIT_CUES: Partial<Record<ClientMessage["type"], UnitCue>> = {
   "cmd.purge": "attack",
   "cmd.powerdown": "special",
   "cmd.lunge": "special",
+  "cmd.pulse": "special",
   "cmd.burrow": "special",
 };
 

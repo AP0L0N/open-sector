@@ -33,6 +33,8 @@ import {
   beltOf,
   buildRadiusOf,
   catalog,
+  energyOf,
+  usesHiveEnergy,
   crewGunOf,
   fieldSpan,
   fires,
@@ -66,6 +68,7 @@ import { canRepairTarget, canScrapWreck, gateSiteAt } from "./field.js";
 import { allies, footprintGap, hasCore, hqOf, inBuildRadius, isWater, nearestWalkable, scrapAt, tilesBlockedOrScrap, walkable } from "./geo.js";
 import { smelterRateOn, smelterSiteOk } from "./smelter.js";
 import { powerOf } from "./power.js";
+import { hiveEnergyOf } from "./hive-energy.js";
 import { needsSupply } from "./supply.js";
 import { canSeeEntity } from "./vision.js";
 import type { AiFleet, AiForce, AiPlan, Entity, MatchState, SimPlayer, StructureJob, Vec } from "./types.js";
@@ -255,9 +258,9 @@ const CREWED: readonly BuildingType[] = [...GARRISONS, "mgnest", "pak36", "pak43
 /** Turned toward the enemy when placed. A narrow arc is useless facing the yard. */
 const FACES_ENEMY: ReadonlySet<string> = new Set(["mgnest", "pak36", "pak43", "flak", "tobruk", "casemate", "hochstand", "leitturm"]);
 /** Long guns: they walk two ranks back and fire over the line. */
-const BACK_RANK: ReadonlySet<string> = new Set(["sniper", "mortarman", "nebelwerfer", "jagdtiger", "artillery", "shade", "mawcaster", "broodmother", "longspine", "sporemaw"]);
+const BACK_RANK: ReadonlySet<string> = new Set(["sniper", "mortarman", "nebelwerfer", "jagdtiger", "artillery", "shade", "mawcaster", "assembler", "longspine", "sporemaw", "spitter"]);
 /** Short reach and thick skin: the front rank beside the hulls. */
-const FRONT_INFANTRY: ReadonlySet<string> = new Set(["cyborg", "cyborgcommander", "simunit2", "xenodrone", "thrall", "lancer", "spitter", "pyro", "spawnling", "quillback", "bloater"]);
+const FRONT_INFANTRY: ReadonlySet<string> = new Set(["cyborg", "cyborgcommander", "simunit2", "xenodrone", "thrall", "lancer", "pyro", "spawnling", "quillback", "bloater"]);
 
 type Rank = "front" | "mid" | "back";
 interface Site {
@@ -339,15 +342,13 @@ function thinkCpu(state: MatchState, p: SimPlayer): void {
 }
 
 /**
- * Xenomorph base: Fusion Node, Assimilator, Conversion Chamber, then a second Assimilator and more power,
- * the Nanite Forge, a pair of Spine Turrets, and later the Neural Nexus and its Pulse Spires.
- * With all of that standing, more Assimilators up to the type's wantSmelters.
+ * Xenomorph base: Fusion Node, Conversion Chamber, a second Fusion Node, the Nanite Forge, a pair of
+ * Spine Turrets, and later the Neural Nexus and its Pulse Spires. The hive pays no scrap: it raises
+ * another Fusion Node whenever its energy runs low (HIVE_ENERGY_LOW).
  */
 const XENO_BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
   { type: "fusionnode", n: 1 },
-  { type: "assimilator", n: 1 },
   { type: "conversion", n: 1 },
-  { type: "assimilator", n: CPU_FORTIFY_SMELTERS },
   { type: "fusionnode", n: 2 },
   { type: "forge", n: 1 },
   { type: "spineturret", n: 2 },
@@ -371,7 +372,7 @@ export const XENO_HEAVY: readonly { unit: TrainType; want: number }[] = [
   { unit: "ravager", want: 2 },
   { unit: "siphon", want: 2 },
   { unit: "mawcaster", want: 1 },
-  { unit: "broodmother", want: 1 },
+  { unit: "assembler", want: 1 },
   { unit: "behemoth", want: 1 },
   { unit: "juggernaut", want: 1 },
 ];
@@ -420,14 +421,15 @@ export const BLOOM_BEASTS: readonly { unit: TrainType; want: number }[] = [
 /** How a hive-minded CPU (the Xenomorphs, the Bloom) raises its base and fills its ranks. */
 interface HiveDoctrine {
   power: BuildingType;
-  smelter: BuildingType;
+  /** None for the Xenomorphs: they pay no scrap. */
+  smelter?: BuildingType;
   /** Built again while campaigning, so the waves come faster. */
   surge: BuildingType;
   order: readonly { type: BuildingType; n: number }[];
   factories: readonly { factory: BuildingType; army: readonly { unit: TrainType; want: number }[] }[];
 }
 const HIVE_DOCTRINE: Partial<Record<Faction, HiveDoctrine>> = {
-  xeno: { power: "fusionnode", smelter: "assimilator", surge: "conversion", order: XENO_BUILD_ORDER, factories: XENO_FACTORIES },
+  xeno: { power: "fusionnode", surge: "conversion", order: XENO_BUILD_ORDER, factories: XENO_FACTORIES },
   bloom: {
     power: "lumenbulb",
     smelter: "gorger",
@@ -462,7 +464,7 @@ function thinkHive(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan, hi
     const reserve = next && countType(state, p.playerId, factory) === 0 ? catalog(next).cost : 0;
     if (queuedOn(state, p.playerId, factory) < TRAIN_QUEUE_SOFT * countType(state, p.playerId, factory)) {
       const pick = neediest(state, p, army);
-      if (pick && countType(state, p.playerId, pick.unit) < pick.want && p.scrap >= catalog(pick.unit).cost + reserve) {
+      if (pick && countType(state, p.playerId, pick.unit) < pick.want && p.scrap >= catalog(pick.unit).cost + reserve && hiveHasRoom(state, p, energyOf(pick.unit))) {
         applyCommand(state, p.playerId, { type: "cmd.train", unit: pick.unit });
       }
     }
@@ -483,7 +485,41 @@ function thinkHive(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan, hi
   }
 }
 
+/** Hive energy free for a new unit or defence; Infinity for a side that pays scrap. */
+function hiveFree(state: MatchState, p: SimPlayer): number {
+  if (!usesHiveEnergy(p.faction)) return Infinity;
+  const { cap, used } = hiveEnergyOf(state, p.playerId);
+  return cap - used;
+}
+
+function hiveHasRoom(state: MatchState, p: SimPlayer, energy: number): boolean {
+  return hiveFree(state, p) >= energy;
+}
+
+/** Below this much free energy the Xenomorph CPU raises another Fusion Node, up to HIVE_MAX_NODES. */
+const HIVE_ENERGY_LOW = 150;
+const HIVE_MAX_NODES = 10;
+
+/** The hive's next building by energy: a Fusion Node when the store runs low or `t` will not fit. */
+function nextEnergyBuilding(state: MatchState, p: SimPlayer, hive: HiveDoctrine): BuildingType | null {
+  const roomy = (t: BuildingType): boolean => (p.aiNoRoomUntil?.[t] ?? 0) <= state.tick;
+  const free = hiveFree(state, p);
+  const power = (): BuildingType | null =>
+    roomy(hive.power) && countType(state, p.playerId, hive.power) < HIVE_MAX_NODES ? hive.power : null;
+  for (const { type: t, n } of hive.order) {
+    if (countType(state, p.playerId, t) >= n || !roomy(t)) continue;
+    if (t !== hive.power && energyOf(t) > free) return power();
+    return t;
+  }
+  if (free < HIVE_ENERGY_LOW) return power();
+  if (aiPlanOf(p).posture === "campaign" && countType(state, p.playerId, hive.surge) < aiProfile(p.ai).campaignFactories && roomy(hive.surge)) {
+    return hive.surge;
+  }
+  return null;
+}
+
 function nextHiveBuilding(state: MatchState, p: SimPlayer, hive: HiveDoctrine): BuildingType | null {
+  if (usesHiveEnergy(p.faction)) return nextEnergyBuilding(state, p, hive);
   const pow = powerOf(state, p.playerId);
   const roomy = (t: BuildingType): boolean => (p.aiNoRoomUntil?.[t] ?? 0) <= state.tick;
   const power = (): BuildingType | null => (roomy(hive.power) ? hive.power : null);
@@ -494,7 +530,7 @@ function nextHiveBuilding(state: MatchState, p: SimPlayer, hive: HiveDoctrine): 
     return t;
   }
   if (pow.used >= pow.provided) return power();
-  if (countType(state, p.playerId, hive.smelter) < aiProfile(p.ai).wantSmelters && roomy(hive.smelter)) {
+  if (hive.smelter && countType(state, p.playerId, hive.smelter) < aiProfile(p.ai).wantSmelters && roomy(hive.smelter)) {
     if (pow.used + Math.max(0, -catalog(hive.smelter).power) > pow.provided) return power();
     return hive.smelter;
   }

@@ -105,6 +105,16 @@ describe("Laser Fence", () => {
     assert.ok(tank.hp <= hp * 0.5, `${tank.hp} of ${hp}`);
   });
 
+  it("marks a unit while a beam burns it, so the client can crackle arcs over it", () => {
+    const state = field();
+    fence(state);
+    const man = still(at(state, "jagdtiger", "A", 22, 30));
+    const own = still(at(state, "stalker", "B", 22, 31));
+    ticks(state, 2);
+    assert.ok(man.fenceZapTick != null && state.tick - man.fenceZapTick <= 1, `zap at ${man.fenceZapTick}, tick ${state.tick}`);
+    assert.equal(own.fenceZapTick, undefined);
+  });
+
   it("lets the hive's own units through unharmed", () => {
     const state = field();
     fence(state);
@@ -113,8 +123,10 @@ describe("Laser Fence", () => {
     assert.equal(s.hp, s.hpMax);
   });
 
-  it("goes dark without power", () => {
+  it("goes dark when the hive has no energy for it", () => {
     const state = field();
+    at(state, "fusionnode", "B", 40, 50);
+    for (const t of ["behemoth", "behemoth", "lancer", "lancer"] as const) still(at(state, t, "B", 50, 50));
     at(state, "laserfence", "B", 20, 30);
     at(state, "laserfence", "B", 24, 30);
     const man = still(at(state, "rifleman", "A", 22, 30));
