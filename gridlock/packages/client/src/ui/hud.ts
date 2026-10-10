@@ -983,7 +983,7 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
         : e.type === "aswheli"
           ? "  ·  on the hunt"
           : e.air
-            ? airLine(e.air, e.type)
+            ? airLine(e.air, e.type, e.energy)
             : "";
   const pads = e.pads ? `  ·  planes ${e.pads.used}/${e.pads.cap}` : "";
   const depth = e.dive
@@ -1006,9 +1006,12 @@ const AIR_PHASE_LABEL: Record<NonNullable<EntityView["air"]>["phase"], string> =
 };
 
 /** Phase, and for your own planes fuel, bomb, and belts. A fighter carries no bomb; it counts barrages. */
-function airLine(air: NonNullable<EntityView["air"]>, type: EntityType): string {
-  // A Xenomorph flier runs on the hive: no tank, no rack, no field to go home to.
-  if (staysAloft(type)) return `  ·  ${air.phase === "crash" ? "going down" : air.phase === "takeoff" ? "lifting off" : "hovering"}`;
+function airLine(air: NonNullable<EntityView["air"]>, type: EntityType, energy?: number): string {
+  // A Xenomorph flier runs on the hive: no tank, no rack, no field to go home to. Its weapon's energy cell is all that runs low.
+  if (staysAloft(type)) {
+    const cell = energy != null ? `  ·  energy ${Math.round(energy * 100)}%` : "";
+    return `  ·  ${air.phase === "crash" ? "going down" : air.phase === "takeoff" ? "lifting off" : "hovering"}${cell}`;
+  }
   let s = `  ·  ${AIR_PHASE_LABEL[air.phase]}`;
   if (air.fuel != null && air.fuelMax) s += `  ·  fuel ${Math.round((air.fuel / air.fuelMax) * 100)}%`;
   const load = airLoadoutOf(type);
