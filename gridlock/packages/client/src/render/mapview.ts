@@ -557,6 +557,7 @@ import {
   XENO_GLOW_RGB,
   xenoGlowPulse,
   xenoGlowRadius,
+  xenoGlowUnderShade,
 } from "./night.js";
 
 type NightPool = { x: number; y: number; rx: number; a: number; kind: "tower" | "head" | "work" | "missile" | "xeno" | LampType };
@@ -587,6 +588,23 @@ const POOL_RGB: Record<NightPool["kind"], string> = {
   xeno: XENO_GLOW_RGB,
   ...streetLampPools("rgb"),
 };
+
+/** One pool as a soft 2:1 ellipse, `rgb` at alpha `a` in the middle fading to nothing at the rim. */
+function fillPool(c: CanvasRenderingContext2D, p: NightPool, rgb: string, a: number): void {
+  if (a <= 0.002) return;
+  c.save();
+  c.translate(p.x, p.y);
+  c.scale(1, 0.5);
+  const g = c.createRadialGradient(0, 0, 0, 0, 0, p.rx);
+  g.addColorStop(0, `rgba(${rgb}, ${a})`);
+  g.addColorStop(0.5, `rgba(${rgb}, ${a * 0.55})`);
+  g.addColorStop(1, `rgba(${rgb}, 0)`);
+  c.fillStyle = g;
+  c.beginPath();
+  c.arc(0, 0, p.rx, 0, Math.PI * 2);
+  c.fill();
+  c.restore();
+}
 
 /** A live Borg unit or structure out in the open: it glows. Not a wreck, a ruin, a passenger, or a burrowed or submerged body. */
 function xenoGlows(e: EntityView): boolean {
@@ -990,6 +1008,8 @@ export class MapView {
   private nightLayer: HTMLCanvasElement | null = null;
   /** Small layer the lamps' warm light is summed and capped on. */
   private lightLayer: HTMLCanvasElement | null = null;
+  /** This frame's Borg glow pools: drawn on the ground, and cut from the night layer. */
+  private xenoFrame: NightPool[] = [];
   /** Lamp heading on screen per tower, eased toward the snapshot. */
   private spotShown = new Map<number, number>();
   /** Last heading each lamp showed, kept while it is dark so it does not snap. */
@@ -4624,6 +4644,10 @@ export class MapView {
     items.push({ layer: GROUND_DECAL_DRAW_LAYER, z: -Infinity, run: () => drawYardWear(this.ctx, yardWear) });
     // One path under craters and unit blobs, so overlapping shadows don't stack.
     items.push({ layer: HOLE_DRAW_LAYER, z: -Infinity, run: () => drawCastShadows(this.ctx, castShadows) });
+    // The Borg glow lights the ground they stand on: over craters and shadows, under everything that stands.
+    const xenoGlow = lampGlow(this.daylight());
+    this.xenoFrame = xenoGlow > 0 ? this.xenoPools(w, h) : [];
+    if (this.xenoFrame.length) items.push({ layer: HOLE_DRAW_LAYER, z: Infinity, run: () => this.drawXenoGlow(xenoGlow) });
     this.collectRemains(items);
     this.collectUnitShadows(items);
     this.collectOwnerRings(items, w, h, now);
@@ -4862,16 +4886,8 @@ export class MapView {
         lay(e.x + Math.cos(b) * orbit, e.y + Math.sin(b) * orbit, r, 0.8, "work");
       }
     }
-    // The Borg carry no lamps: every live unit and structure of theirs gives off a blue glow, sized to it.
-    for (const e of this.curr.entities) {
-      if (!xenoGlows(e)) continue;
-      const at = e.kind === "unit" ? this.lerpEnt(e) : e;
-      const r = xenoGlowRadius(e, catalog(e.type).radius, ts);
-      const a = xenoGlowPulse(e.id, nowSec);
-      // A soft wide halo with a brighter core, so the light reads as coming off the body.
-      lay(at.x, at.y, r, 0.75 * a, "xeno");
-      lay(at.x, at.y, r * 0.5, 0.5 * a, "xeno");
-    }
+    // The Borg glow, laid this frame under the units (drawXenoGlow); here it only cuts the dark.
+    out.push(...this.xenoFrame);
     // Gate lamps: a small pool off each post, on both sides of the boom.
     const gateSpan = fieldSpan("gate");
     if (gateSpan) {
@@ -4899,6 +4915,41 @@ export class MapView {
       for (const b of aimedLampGround(spec, wx, wy, ((lamp.facing ?? 90) * Math.PI) / 180, ts)) lay(b.x, b.y, b.r, b.a * flicker, lamp.type);
     }
     return out;
+  }
+
+  /**
+   * The Borg carry no lamps: every live unit and structure of theirs gives off
+   * a blue glow, sized to it, as pools in screen space like nightPools.
+   */
+  private xenoPools(w: number, h: number): NightPool[] {
+    const ts = this.ts();
+    const k = (Math.SQRT2 * ISO_TILE_W) / 2 / ts;
+    const nowSec = performance.now() / 1000;
+    const out: NightPool[] = [];
+    const lay = (wx: number, wy: number, r: number, a: number): void => {
+      const s = this.toScreen(wx, wy);
+      const rx = r * k;
+      if (s.x > -rx && s.y > -rx && s.x < w + rx && s.y < h + rx) out.push({ x: s.x, y: s.y, rx, a, kind: "xeno" });
+    };
+    for (const e of this.curr.entities) {
+      if (!xenoGlows(e)) continue;
+      const at = e.kind === "unit" ? this.lerpEnt(e) : e;
+      const r = xenoGlowRadius(e, catalog(e.type).radius, ts);
+      const a = xenoGlowPulse(e.id, nowSec);
+      // A soft wide halo with a brighter core, so the light reads as coming off the body.
+      lay(at.x, at.y, r, 0.75 * a);
+      lay(at.x, at.y, r * 0.5, 0.5 * a);
+    }
+    return out;
+  }
+
+  /**
+   * The Borg glow's blue, on the ground under units and structures. The night
+   * layer goes over it after, so it is lifted to make up for the shade left there.
+   */
+  private drawXenoGlow(glow: number): void {
+    const shade = nightShade(this.daylight());
+    this.drawLampLight(this.xenoFrame, glow * xenoGlowUnderShade(shade, POOL_CUT.xeno * glow));
   }
 
   /** Street lamps on the map that no structure has been raised over, with their world foot. */
@@ -5051,21 +5102,6 @@ export class MapView {
     const ctx = this.ctx;
     const { w: vw, h: vh } = this.viewSize();
     const pools = glow > 0 ? this.nightPools(lamps, vw, vh) : [];
-    const fillPool = (c: CanvasRenderingContext2D, p: NightPool, rgb: string, a: number): void => {
-      if (a <= 0.002) return;
-      c.save();
-      c.translate(p.x, p.y);
-      c.scale(1, 0.5);
-      const g = c.createRadialGradient(0, 0, 0, 0, 0, p.rx);
-      g.addColorStop(0, `rgba(${rgb}, ${a})`);
-      g.addColorStop(0.5, `rgba(${rgb}, ${a * 0.55})`);
-      g.addColorStop(1, `rgba(${rgb}, 0)`);
-      c.fillStyle = g;
-      c.beginPath();
-      c.arc(0, 0, p.rx, 0, Math.PI * 2);
-      c.fill();
-      c.restore();
-    };
     if (shade > 0.001) {
       const w = this.canvas.width;
       const h = this.canvas.height;
@@ -5094,8 +5130,10 @@ export class MapView {
       }
     }
     ctx.save();
+    // The Borg glow lifts the dark above, but its blue was laid on the ground under the units (drawXenoGlow).
+    const lit = pools.filter((p) => p.kind !== "xeno");
+    if (lit.length) this.drawLampLight(lit, glow);
     if (pools.length) {
-      this.drawLampLight(pools, glow, fillPool);
       this.drawLampBulbs(glow);
       ctx.globalCompositeOperation = "lighter";
       // The roof searchlight's lens: brightest when it looks at the viewer. Hull headlights stay a beam only.
@@ -5154,11 +5192,7 @@ export class MapView {
    * each pixel's sum goes through stackedLight, so overlapping lamps brighten
    * the ground a little more but never wash it out.
    */
-  private drawLampLight(
-    pools: NightPool[],
-    glow: number,
-    fillPool: (c: CanvasRenderingContext2D, p: NightPool, rgb: string, a: number) => void,
-  ): void {
+  private drawLampLight(pools: NightPool[], glow: number): void {
     const ctx = this.ctx;
     const S = LIGHT_LAYER_SCALE;
     const lw = Math.max(1, Math.ceil(this.canvas.width / S));
