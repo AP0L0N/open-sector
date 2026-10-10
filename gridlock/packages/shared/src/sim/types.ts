@@ -400,6 +400,12 @@ export interface Entity {
   charging?: true;
   /** The charge has multiplied hp and hpMax. Sim-only. */
   chargeBuff?: true;
+  /** Thrall: a bullet caught its shoulder. Slowed until `staggerUntil` (tick). */
+  staggered?: true;
+  /** Tick the Thrall's stagger ends. Sim-only. */
+  staggerUntil?: number;
+  /** Tick before which no new stagger lands on the Thrall. Sim-only. */
+  staggerGuard?: number;
   /** Titan outriggers are down: stationary, hull locked, braced max HP. Missing means false. */
   braced?: boolean;
   /** Seconds until the Titan's pods can fire the next rocket. Missing means ready. */

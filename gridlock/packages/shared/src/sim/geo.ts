@@ -24,6 +24,7 @@ import {
   isFieldStructure,
   isRubble,
   isInfantryType,
+  vaultsWalls,
   isNavalType,
   tooTallForBridge,
   isSupplyCarrier,
@@ -257,7 +258,8 @@ export function walkable(state: MatchState, x: number, y: number, type?: EntityT
   if ((state.occupy[i] ?? 0) !== 0) return false;
   if ((state.wreckBlock[i] ?? 0) !== 0) return false;
   const fort = state.fortBlock[i] ?? 0;
-  if (fort === 1) return false;
+  // Sandbags and walls: the Thrall vaults them.
+  if (fort === 1 && !(type && vaultsWalls(type))) return false;
   if (fort === 2 && !(type && isInfantryType(type))) return false;
   // Barbwire holds a man; a hull rolls it flat.
   if (fort === 4 && (!type || isInfantryType(type))) return false;

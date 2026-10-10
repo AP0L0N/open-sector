@@ -19,7 +19,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 130;
+export const PROTOCOL_VERSION = 131;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -192,6 +192,10 @@ export interface EntityView {
   engageContacts?: true;
   /** Walker is charging to detonate. Anyone who can see him sees it. */
   charging?: true;
+  /** Thrall staggered by a bullet in the shoulder: the client plays the hit sheet. */
+  stagger?: true;
+  /** Thrall on top of sandbags or a wall, vaulting it: the client lifts it over. */
+  vault?: true;
   /** Walker arms that fired during the last step. `off` is the second arm's bearing when it took another target. */
   gatling?: { arms: 1 | 2; off?: number };
   /** Apocalypse roof mount: its world facing, and `fire` when it shot during the last step. */

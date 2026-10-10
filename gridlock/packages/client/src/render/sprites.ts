@@ -65,6 +65,7 @@ import ravagerGunUrl from "../assets/units/ravager-gun.png";
 import leechWreckUrl from "../assets/units/wrecks/leech.png";
 import lurkerWreckUrl from "../assets/units/wrecks/lurker.png";
 import waspWreckUrl from "../assets/units/wrecks/wasp.png";
+import gnatWreckUrl from "../assets/units/wrecks/gnat.png";
 import scourgeWreckUrl from "../assets/units/wrecks/scourge.png";
 import overseerWreckUrl from "../assets/units/wrecks/overseer.png";
 import spawnPoolUrl from "../assets/buildings/spawnpool.png";
@@ -277,6 +278,13 @@ import borgdroneCrawlUrl from "../assets/units/borgdrone-crawl.png";
 import borgdroneCrawlFireUrl from "../assets/units/borgdrone-crawl-fire.png";
 import borgdroneDieUrl from "../assets/units/borgdrone-die.png";
 import borgdroneSwimUrl from "../assets/units/borgdrone-swim.png";
+import thrallWalkUrl from "../assets/units/thrall-walk.png";
+import thrallFireUrl from "../assets/units/thrall-fire.png";
+import thrallHitUrl from "../assets/units/thrall-hit.png";
+import thrallCrawlUrl from "../assets/units/thrall-crawl.png";
+import thrallCrawlFireUrl from "../assets/units/thrall-crawl-fire.png";
+import thrallDieUrl from "../assets/units/thrall-die.png";
+import thrallSwimUrl from "../assets/units/thrall-swim.png";
 import lancerWalkUrl from "../assets/units/lancer-walk.png";
 import lancerFireUrl from "../assets/units/lancer-fire.png";
 import lancerCrawlUrl from "../assets/units/lancer-crawl.png";
@@ -1082,6 +1090,18 @@ export const SIMUNIT2_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_FIRE_SPRITE, imag
 export const SIMUNIT2_CRAWL_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_SPRITE, image: loadSheet(simunit2CrawlUrl) };
 export const SIMUNIT2_CRAWL_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_FIRE_SPRITE, image: loadSheet(simunit2CrawlFireUrl) };
 export const SIMUNIT2_DIE_SPRITE: UnitSpriteDef = { ...CYBORG_DIE_SPRITE, image: loadSheet(simunit2DieUrl) };
+/**
+ * Thrall (render_thrall.py): the Cyborg's camera, cells, and contact points on a heavy brawler
+ * frame. Its walk is a sprint, so the stride cycles faster.
+ */
+export const THRALL_SPRITE: UnitSpriteDef = { ...CYBORG_SPRITE, image: loadSheet(thrallWalkUrl), fps: 14 };
+/** The pummel: one fist, then the other. Loops while the blows land. */
+export const THRALL_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_FIRE_SPRITE, image: loadSheet(thrallFireUrl), fps: 16 };
+/** A bullet in the shoulder: knocked back, twisted, and up again. Played once from the stagger. */
+export const THRALL_HIT_SPRITE: UnitSpriteDef = { ...CYBORG_FIRE_SPRITE, image: loadSheet(thrallHitUrl), fps: 7 };
+export const THRALL_CRAWL_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_SPRITE, image: loadSheet(thrallCrawlUrl) };
+export const THRALL_CRAWL_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_FIRE_SPRITE, image: loadSheet(thrallCrawlFireUrl) };
+export const THRALL_DIE_SPRITE: UnitSpriteDef = { ...CYBORG_DIE_SPRITE, image: loadSheet(thrallDieUrl) };
 /** Drone and Lancer (render_borgdrone.py, render_lancer.py): Sim Unit II's lock, their own frames. */
 export const BORGDRONE_SPRITE: UnitSpriteDef = { ...CYBORG_SPRITE, image: loadSheet(borgdroneWalkUrl) };
 export const BORGDRONE_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_FIRE_SPRITE, image: loadSheet(borgdroneFireUrl) };
@@ -1205,6 +1225,7 @@ const SWIM_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   cyborgcommander: swimSprite(cyborgCommanderSwimUrl),
   simunit2: swimSprite(simunit2SwimUrl),
   borgdrone: swimSprite(borgdroneSwimUrl),
+  thrall: swimSprite(thrallSwimUrl),
   lancer: swimSprite(lancerSwimUrl),
 };
 
@@ -1597,6 +1618,19 @@ export const SCOURGE_SPRITE: UnitSpriteDef = {
 };
 bindPlaneSheets("scourge", SCOURGE_SPRITE.image);
 
+/** Gnat: the Borg spy fly, the Fw 190's camera at true scale beside the Wasp: tiny on the map. */
+export const GNAT_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(41 * UNIT_VISUAL_SCALE),
+  contactY: 0.8,
+  facingSpace: "world",
+};
+bindPlaneSheets("gnat", GNAT_SPRITE.image);
+
 /**
  * Overseer: the Borg hover craft, the Stuka's camera and fit. At the Fw 190's px per meter
  * it would be 41 (render_borg_air.py check); drawn a little larger so the bell reads at play zoom.
@@ -1854,6 +1888,7 @@ const WRECK_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   wasp: wreckSheet(waspWreckUrl, WASP_SPRITE),
   scourge: wreckSheet(scourgeWreckUrl, SCOURGE_SPRITE),
   overseer: wreckSheet(overseerWreckUrl, OVERSEER_SPRITE),
+  gnat: wreckSheet(gnatWreckUrl, GNAT_SPRITE),
   bv222: wreckSheet(bv222WreckUrl, BV222_SPRITE),
   he111: wreckSheet(he111WreckUrl, HE111_SPRITE),
   horten: wreckSheet(hortenWreckUrl, HORTEN_SPRITE),
@@ -1904,6 +1939,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   stuka: STUKA_SPRITE,
   fw190: FW190_SPRITE,
   wasp: WASP_SPRITE,
+  gnat: GNAT_SPRITE,
   scourge: SCOURGE_SPRITE,
   overseer: OVERSEER_SPRITE,
   bv222: BV222_SPRITE,
@@ -1931,6 +1967,7 @@ const INFANTRY_DIE: Partial<Record<EntityType, UnitSpriteDef>> = {
   cyborgcommander: CYBORGCOMMANDER_DIE_SPRITE,
   simunit2: SIMUNIT2_DIE_SPRITE,
   borgdrone: BORGDRONE_DIE_SPRITE,
+  thrall: THRALL_DIE_SPRITE,
   lancer: LANCER_DIE_SPRITE,
 };
 
@@ -2000,6 +2037,7 @@ export function spriteFor(type: EntityType, stance?: Stance, swimming = false): 
   if (type === "cyborgcommander") return stance === "crawl" ? CYBORGCOMMANDER_CRAWL_SPRITE : CYBORGCOMMANDER_SPRITE;
   if (type === "simunit2") return stance === "crawl" ? SIMUNIT2_CRAWL_SPRITE : SIMUNIT2_SPRITE;
   if (type === "borgdrone") return stance === "crawl" ? BORGDRONE_CRAWL_SPRITE : BORGDRONE_SPRITE;
+  if (type === "thrall") return stance === "crawl" ? THRALL_CRAWL_SPRITE : THRALL_SPRITE;
   if (type === "lancer") return stance === "crawl" ? LANCER_CRAWL_SPRITE : LANCER_SPRITE;
   return UNIT_SPRITES[type];
 }

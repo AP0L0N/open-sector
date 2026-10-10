@@ -420,6 +420,7 @@ SPECS = [
     Spec("wasp", 128, 0.8, "plane", src="wasp", layers=["hull"], padding=2, holes=3, bites=2, debris=12),
     Spec("scourge", 128, 0.8, "plane", src="scourge", layers=["hull"], padding=2, holes=3, bites=2, debris=14),
     Spec("overseer", 128, 0.8, "plane", src="overseer", layers=["hull"], padding=2, holes=3, bites=2, debris=10),
+    Spec("gnat", 128, 0.8, "plane", src="gnat", layers=["hull"], padding=2, holes=1, bites=1, debris=5),
 ]
 
 

@@ -193,6 +193,7 @@ import {
 import { fireStats, hullTurnMul, immobilized, rollCrits, rollLamp, takeDamage } from "./crits.js";
 import { damageMaulerCart } from "./mauler-cart.js";
 import { hiddenFromAuto, inStrikeReach } from "./simunit.js";
+import { detonateThrall, maybeStagger, punch, punchAir, thrallDetonatesOn } from "./thrall.js";
 import { artilleryCanLay, artilleryReady, artilleryReloadMul, blastOnGun, bulletOnGun, gunCrewOf } from "./artillery.js";
 import { noteImpactSurface } from "./remains.js";
 import { stanceHitRadiusMul, stanceTargetSpreadMul, tickStance } from "./stance.js";
@@ -1661,6 +1662,8 @@ function infantryRoundCanHarm(state: MatchState, e: Entity, target: Entity): boo
   if (gun.id === "laser") return true;
   // The Sim Unit's daggers open a light hull; a heavy plate is not worth the run.
   if (gun.id === "daggers") return isLightHull(def);
+  // The Thrall's fists never touch a plate: it goes off against it.
+  if (gun.id === "fists") return true;
   if (entityIsScouting(target) && gun.caliber < GARRISON_STRUCTURAL_CALIBER) return true;
   const vx = target.x - e.x;
   const vy = target.y - e.y;
@@ -1960,6 +1963,18 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   if (infantryGun?.id === "daggers") {
     if (target) slash(state, e, target);
     else slashAir(state, e, aimX, aimY);
+    e.cooldown = infantryGun.cooldown;
+    if (e.order?.once) clearOrder(e);
+    return;
+  }
+  // The Thrall's fists: blows on soldiers and walls; on an armored hull it detonates.
+  if (infantryGun?.id === "fists") {
+    if (target && thrallDetonatesOn(target)) {
+      detonateThrall(state, e);
+      return;
+    }
+    if (target) punch(state, e, target);
+    else punchAir(state, e, aimX, aimY);
     e.cooldown = infantryGun.cooldown;
     if (e.order?.once) clearOrder(e);
     return;
@@ -3586,6 +3601,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
           p.caliber === PTRD_CALIBER && res.kind === "pen" && res.face === "side" ? PTRD_TRACK_CHANCE : undefined;
         rollCrits(e, res.face, res.kind, dealt, rand, tracks);
       }
+      if (dealt > 0) maybeStagger(state, e, p.caliber, rand);
       if (!p.bounced) {
         damageMaulerCart(e, {
           caliber: p.caliber,

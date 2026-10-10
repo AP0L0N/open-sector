@@ -21,6 +21,8 @@ import {
   stackedLight,
   workLightBearings,
   wreckNightAlpha,
+  xenoGlowPulse,
+  xenoGlowRadius,
 } from "./night.js";
 
 describe("night render", () => {
@@ -136,5 +138,21 @@ describe("spot beam on the ground", () => {
     const last = blobs[blobs.length - 1]!;
     assert.ok(last.r > first.r, "wider far out");
     assert.ok(last.a < 0.2, "faded at the end of its reach");
+  });
+
+  it("sizes a Borg glow to what gives it off", () => {
+    const tile = 8;
+    const unit = { kind: "unit", tileW: 1, tileH: 1 };
+    const small = xenoGlowRadius(unit, 7, tile);
+    const big = xenoGlowRadius(unit, 20, tile);
+    assert.ok(big > small * 2.5, "a Behemoth glows far wider than a Cyborg");
+    assert.equal(xenoGlowRadius(unit, 0, tile), tile, "never under one fine tile");
+    const node = xenoGlowRadius({ kind: "building", tileW: 8, tileH: 8 }, 0, tile);
+    const core = xenoGlowRadius({ kind: "building", tileW: 12, tileH: 12 }, 0, tile);
+    assert.ok(core > node && node > small, "structures glow by footprint");
+    for (let t = 0; t < 20; t += 0.7) {
+      const a = xenoGlowPulse(3, t);
+      assert.ok(a >= 0.88 - 1e-9 && a <= 1 + 1e-9);
+    }
   });
 });

@@ -179,6 +179,15 @@
     "clipped_dirs": []
   },
   {
+    "type": "gnat",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/gnat.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.8,
+    "clipped_dirs": []
+  },
+  {
     "type": "lurker",
     "out": "gridlock/packages/client/src/assets/units/wrecks/lurker.png",
     "cell": 128,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Borg aircraft: the Wasp (fighter), the Scourge (dive bomber), and the Overseer (hover craft). One 16-face hull each.
+"""Borg aircraft: the Wasp (fighter), the Scourge (dive bomber), the Gnat (spy drone), and the Overseer (hover craft). One 16-face hull each.
 
 The Borg answer to the Fw 190 and the Stuka (render_procedural.py), under
 their lock: same numpy rasterizer, camera, light, outline, 0.062 px-per-meter
@@ -25,12 +25,16 @@ membrane, translucent, with chitin spars and glowing veins.
            heading), a cluster of emitters round a hot core under the belly,
            and six tendrils trailing down and back: their tips are the lowest
            point (the plane's wheels).
+  gnat     spy drone: a tiny fat fly, one big glowing sensor eye over the face,
+           two sensor whiskers, short broad wings, no weapon. Kept at true
+           scale beside the Wasp, so it draws small (drawSize 41).
 
 0001 = nose screen-south, then clockwise 22.5 deg through 0016. No insignia.
 
   python3 tools/sprites/render_borg_air.py wasp
   python3 tools/sprites/render_borg_air.py scourge
   python3 tools/sprites/render_borg_air.py overseer
+  python3 tools/sprites/render_borg_air.py gnat
   python3 tools/sprites/render_borg_air.py all
 
 Writes gridlock/packages/client/src/assets/units/<id>/hull/0001..0016.png,
@@ -236,6 +240,38 @@ def build_overseer() -> Mesh:
         tube(m, (rx, ry, zb - 0.3), mid, 0.11, 0.08, "limb", n=5)
         tube(m, mid, (rx * 0.85 - 0.75, ry * 0.85, 0.05), 0.08, 0.03, "limb", n=5)
         knob(m, (rx * 0.85 - 0.75, ry * 0.85, 0.08), 0.07, "vein")
+def build_gnat() -> Mesh:
+    """Tiny spy fly in meters. +x nose, +y left wing, +z up. Dangling legs at z = 0.
+
+    Kept a little larger than a real fly would be beside the Wasp so it still reads
+    at its small draw size: the one big glowing sensor eye on the head is the tell.
+    """
+    m = Mesh()
+    zc = 0.7
+    # Head: one big sensor eye over the face, a compound eye each side.
+    shell(m, (0.95, 0.0, zc), (0.42, 0.44, 0.38), 1, seg=12)
+    ellipsoid(m, (1.22, 0.0, zc + 0.08), (0.3, 0.32, 0.3), "core", rings=6, seg=12)
+    for s in (-1, 1):
+        ellipsoid(m, (0.98, s * 0.36, zc + 0.04), (0.2, 0.15, 0.2), "eye", rings=4, seg=8)
+    # Antenna whiskers swept back off the crown.
+    for s in (-1, 1):
+        tube(m, (1.05, s * 0.1, zc + 0.32), (0.7, s * 0.36, zc + 0.7), 0.04, 0.018, "claw", n=4)
+        knob(m, (0.7, s * 0.36, zc + 0.7), 0.06, "seam")
+    # Thorax with the team plate on top, a fat ribbed abdomen with a glow tip.
+    shell(m, (0.22, 0.0, zc + 0.04), (0.55, 0.5, 0.44), 1, team=(0, 1), seg=12)
+    shell(m, (-0.78, 0.0, zc + 0.06), (0.7, 0.42, 0.38), 3, seg=12)
+    knob(m, (-1.48, 0.0, zc + 0.08), 0.1, "seam")
+    # Two pairs of short, broad wings, swept back a little.
+    wz = zc + 0.4
+    for s in (-1, 1):
+        wing(m, s, 0.6, -0.3, 0.3, 1.75, -0.2, -1.05, wz, wz + 0.16, veins=2, n=8)
+        wing(m, s, -0.1, -0.75, 0.28, 1.2, -0.75, -1.3, wz - 0.06, wz + 0.04, veins=1, n=6)
+    # Three pairs of thin legs hanging under the thorax: the lowest point.
+    for s in (-1, 1):
+        for hx, fx in ((0.5, 0.72), (0.22, 0.16), (-0.06, -0.4)):
+            knee = (hx + (fx - hx) * 0.4, s * 0.52, zc - 0.28)
+            tube(m, (hx, s * 0.24, zc - 0.26), knee, 0.05, 0.04, "limb", n=4)
+            tube(m, knee, (fx, s * 0.36, 0.03), 0.04, 0.02, "claw", n=4)
     return m
 
 
@@ -244,6 +280,7 @@ UNITS_SPEC = {
     "wasp": (build_wasp, 1.0, "fw190", 56.0),
     "scourge": (build_scourge, 1.2, "stuka", 63.0),
     "overseer": (build_overseer, 1.9, "fw190", 56.0),
+    "gnat": (build_gnat, 0.6, "fw190", 56.0),
 }
 
 
@@ -258,7 +295,7 @@ def render(unit: str, ss: int = 4, check_only: bool = False) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("what", choices=["wasp", "scourge", "overseer", "all"])
+    ap.add_argument("what", choices=["wasp", "scourge", "gnat", "overseer", "all"])
     ap.add_argument("--ss", type=int, default=4)
     ap.add_argument("--check-only", action="store_true")
     args = ap.parse_args()
