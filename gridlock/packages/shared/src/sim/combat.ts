@@ -211,6 +211,7 @@ import { hiddenFromAuto, inStrikeReach } from "./simunit.js";
 import { juggernautBlow, landHammer } from "./juggernaut.js";
 import { detonateThrall, maybeStagger, punch, punchAir, thrallDetonatesOn } from "./thrall.js";
 import { revealShade } from "./shade.js";
+import { cloakedOnOrder, dropCloak } from "./cloak.js";
 import { artilleryCanLay, artilleryReady, artilleryReloadMul, blastOnGun, bulletOnGun, gunCrewOf } from "./artillery.js";
 import { energyRound, noteImpactSurface } from "./remains.js";
 import { stanceHitRadiusMul, stanceTargetSpreadMul, tickStance } from "./stance.js";
@@ -1649,6 +1650,8 @@ function currentTarget(state: MatchState, e: Entity): Entity | undefined {
   // A bridge is held only by a force-attack, and only until it falls.
   if (isBridge(t.type) && (e.order?.kind !== "forceattack" || !aimableBridge(t))) return undefined;
   if (outOfReachAloft(state, e, t)) return undefined;
+  // Cloaked, it holds its fire on anything the player did not name.
+  if (cloakedOnOrder(e) && e.order?.kind !== "forceattack" && !(e.order?.kind === "attack" && !e.order.auto)) return undefined;
   // A powered-down machine, or a Sim Unit inside on a purge, is only a target the player named.
   if (e.order?.kind !== "forceattack" && !(e.order?.kind === "attack" && !e.order.auto) && hiddenFromAuto(t)) return undefined;
   if (e.order?.kind !== "forceattack" && skipsFriendly(state, e, t)) return undefined;
@@ -3540,6 +3543,7 @@ function fireRound(
     vz: ((zAim - z0) / Math.max(1e-6, aimDist)) * speed,
   };
   revealShade(state, e);
+  dropCloak(state, e);
   if (torpedoesOf(e.type)) {
     // The tube fires at the waterline, and the shot gives the boat away.
     armTorpedo(state, p, diving(e));
@@ -4142,6 +4146,8 @@ function sweepAgainst(
 }
 
 function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undefined {
+  // A cloaked Stalker picks nothing for itself: a shot would give it away.
+  if (cloakedOnOrder(e)) return undefined;
   // Dry tanks: the Pyro has nothing to go at them with until a truck refills him.
   if (e.type === "pyro" && e.clip <= 0) return undefined;
   // The knife reaches an arm; the man carrying it looks further and runs the target down.

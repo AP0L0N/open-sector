@@ -1,4 +1,5 @@
 import {
+  canCloak,
   canLunge,
   factionOf,
   isAirfieldType,
@@ -73,6 +74,7 @@ import { cyborgShutdownIn } from "./cyborg-link.js";
 import { blinkCharge, purgeProgress } from "./simunit.js";
 import { lungeAlt, lungeCharge } from "./lunge.js";
 import { ramCharge } from "./juggernaut.js";
+import { cloakCharge } from "./cloak.js";
 import { hiddenBurrowed } from "./burrow.js";
 import { hiddenCloaked } from "./shade.js";
 import { isSimUnit, onUplink, usesHiveEnergy, vaultsWalls } from "../catalog.js";
@@ -485,6 +487,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       burrow: e.burrow ? e.burrow.phase : undefined,
       sprint: e.sprint,
       cloaked: friendly ? e.cloaked : undefined,
+      cloakCharge: friendly && canCloak(e.type) && !e.wreck ? Math.round(cloakCharge(state, e) * 100) / 100 : undefined,
       fists: e.fists,
       ram: e.ram ? true : undefined,
       ramCharge: friendly && e.type === "juggernaut" && !e.wreck ? Math.round(ramCharge(state, e) * 100) / 100 : undefined,

@@ -56,6 +56,7 @@ import type { ClientMessage, ErrorCode } from "../protocol.js";
 import { powerDown, powerUp, purgeDenied } from "./simunit.js";
 import { startLunge } from "./lunge.js";
 import { startBurrow, startUnburrow } from "./burrow.js";
+import { startCloak } from "./cloak.js";
 import { pathToCapture, wantsCapture } from "./capture.js";
 import { allies, clearOrder, hqOf, worldToTile } from "./geo.js";
 import { endWalkerCharge } from "./walker-charge.js";
@@ -184,6 +185,9 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
     case "cmd.burrow":
       if (!Array.isArray(msg.ids) || typeof msg.on !== "boolean") return fail("bad_payload", "Bad burrow order.");
       return cmdBurrow(state, playerId, msg.ids, msg.on);
+    case "cmd.cloak":
+      if (!Array.isArray(msg.ids)) return fail("bad_payload", "Bad cloak order.");
+      return cmdCloak(state, playerId, msg.ids);
     case "cmd.blink":
       if (!Array.isArray(msg.ids) || typeof msg.x !== "number" || typeof msg.y !== "number") return fail("bad_payload", "Bad blink order.");
       return cmdBlink(state, playerId, msg.ids, msg.x, msg.y);
@@ -1548,7 +1552,7 @@ function cmdPulse(state: MatchState, playerId: string, ids: number[], light: boo
   return ok();
 }
 
-/** Stalker: dig in, or break back out. A burrowed Stalker still answers this order. */
+/** Siphon or Bile Worm: dig in, or break back out. A burrowed one still answers this order. */
 function cmdBurrow(state: MatchState, playerId: string, ids: number[], on: boolean): CmdResult {
   let n = 0;
   for (const id of ids) {
@@ -1556,7 +1560,19 @@ function cmdBurrow(state: MatchState, playerId: string, ids: number[], on: boole
     if (!e || e.ownerId !== playerId || !canBurrow(e.type) || e.hp <= 0 || e.wreck) continue;
     if (on ? startBurrow(state, e) : startUnburrow(state, e)) n++;
   }
-  if (n === 0) return fail("not_yours", on ? "Select a Stalker on its legs." : "Select a burrowed Stalker.");
+  if (n === 0) return fail("not_yours", on ? "Select a Siphon on its legs." : "Select a burrowed Siphon.");
+  return ok();
+}
+
+/** Stalker: cloak for a while. One already cloaked, or still recharging, is passed over. */
+function cmdCloak(state: MatchState, playerId: string, ids: number[]): CmdResult {
+  let n = 0;
+  for (const id of ids) {
+    const e = state.entities.get(id);
+    if (!e || e.ownerId !== playerId) continue;
+    if (startCloak(state, e)) n++;
+  }
+  if (n === 0) return fail("not_yours", "Select a Stalker with its cloak ready.");
   return ok();
 }
 

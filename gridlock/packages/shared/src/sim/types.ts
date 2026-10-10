@@ -620,7 +620,7 @@ export interface Entity {
   /** Shade (sim/shade.ts): the tick its skin settles again after a shot or a hurt; HP last tick. */
   revealUntil?: number;
   shadeHpSeen?: number;
-  /** Shade with its skin settled and no enemy close: hidden from every enemy. */
+  /** Shade with its skin settled and no enemy close, or a Stalker cloaked on order: hidden from every enemy. */
   cloaked?: true;
   /** Weaver (sim/weaver.ts): the tick of its next mend pulse. */
   mendNext?: number;
@@ -637,8 +637,15 @@ export interface Entity {
   ram?: { targetId: number; until: number; hit: number[] };
   /** Juggernaut: the tick it can ram again. Unset or past means ready. */
   ramReady?: number;
-  /** Stalker under the ground or on its way (sim/burrow.ts). Down, no enemy sees it. */
-  burrow?: { phase: "digging" | "down" | "rising"; until: number };
+  /**
+   * Siphon or Bile Worm dug in or on its way (sim/burrow.ts). A Bile Worm down is unseen by the
+   * enemy; a Siphon down is half under, seen, and `swell` marks its hit points multiplied.
+   */
+  burrow?: { phase: "digging" | "down" | "rising"; until: number; swell?: true };
+  /** Stalker cloaked on order (sim/cloak.ts): the tick the cloak drops by itself. */
+  cloakUntil?: number;
+  /** Stalker: the tick it can cloak again. Unset or past means ready. */
+  cloakReady?: number;
   /** Sim Unit II inside a hostile garrison: the host, where he came from, and the tick he is done. */
   purge?: { hostId: number; from: Vec; until: number };
   /** Cyborg Commander only: force-field points left. Hits come off these before HP. */

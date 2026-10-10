@@ -1,6 +1,7 @@
 import {
-  STALKER_BURROW_SECONDS,
-  STALKER_UNBURROW_SECONDS,
+  burrowSecondsOf,
+  canBurrow,
+  halfBurrow,
   canLunge,
   BEHEMOTH_LUNGE_RANGE_TILES,
   isDockType,
@@ -553,8 +554,6 @@ import {
   WEAVER_SPRITE,
 } from "./sprites.js";
 
-/** A cloaked Shade as its own side sees it. */
-const CLOAKED_UNIT_FILTER = "opacity(0.38) saturate(0.5) brightness(1.35)";
 
 /** The hive cyborgs that share the Drone's sheet set: stand, fire, crawl, crawl-fire, die. */
 const HIVE_SHEETS: Partial<Record<string, { stand: UnitSpriteDef; fire: UnitSpriteDef; crawl: UnitSpriteDef; crawlFire: UnitSpriteDef; die: UnitSpriteDef }>> = {
@@ -566,6 +565,8 @@ const HIVE_SHEETS: Partial<Record<string, { stand: UnitSpriteDef; fire: UnitSpri
   shade: { stand: SHADE_SPRITE, fire: SHADE_FIRE_SPRITE, crawl: SHADE_CRAWL_SPRITE, crawlFire: SHADE_CRAWL_FIRE_SPRITE, die: SHADE_DIE_SPRITE },
 };
 import { inScreenRect, unitGroundSink, unitPickRect, type ScreenRect } from "./unit-hit.js";
+import { burrowHole, clipAboveRim, drawBurrowBack, drawBurrowFront, drawBurrowScar } from "./burrow-dirt.js";
+import { CLOAK_IN_MS, CLOAK_OUT_MS, cloakFilter, drawCloakFx, type CloakFx } from "./cloak-fx.js";
 import { engineRowFromProjectedFacing, engineRowFromScreen } from "./turntable.js";
 import { drawSelectFrame, fieldFrameCorners } from "./select-frame.js";
 import { brickDeckElev, drawBrick, layoutBridges, type BrickIn, type BrickLayout } from "./bridge.js";
@@ -950,8 +951,12 @@ function ownerAllied(match: MatchSnapshot, ownerId: string | undefined): boolean
 
 /** How much of a submerged submarine its owner still sees through the water. */
 const SUBMERGED_ALPHA = 0.5;
-/** Share of a burrowed Stalker's drawn height under the ground line. */
+/** Share of a burrowed Bile Worm's drawn height under the ground line. */
 const BURROW_DOWN_SINK = 0.85;
+/** A dug-in Siphon sinks only this far: its back and emitter stay above the dirt. */
+const HALF_BURROW_SINK = 0.42;
+/** How long the filled-in scar of a burrow stays on the ground after the unit climbs out, ms. */
+const BURROW_SCAR_MS = 9000;
 /** Hull fires on a sunk ship sit this share of the usual height: the hulk rides low in the water. */
 const WRECK_FIRE_LIFT: Partial<Record<EntityType, number>> = { gunboat: 0.75, destroyer: 0.5, lst: 0.45, battleship: 0.3 };
 /** Half a torpedo's drawn length, world px, and how far behind it its wake trails, in body halves. */
@@ -1330,6 +1335,10 @@ export class MapView {
   blinkMode = false;
   /** Each burrowing Stalker's phase and when this client first drew it, for the sink animation. */
   private burrowSeen = new Map<number, { phase: string; at: number }>();
+  /** Where a unit climbed out of its burrow, and when: the scar it leaves. */
+  private burrowScars = new Map<number, { x: number; y: number; size: number; at: number }>();
+  /** Each cloaking unit's cloak, on or off, and when this client saw it change, for the shimmer. */
+  private cloakSeen = new Map<number, { on: boolean; at: number }>();
   /** Blink flashes in flight: both ends in world px and when they started. */
   private blinkFx: { from: { x: number; y: number }; to: { x: number; y: number }; at: number; inside?: boolean }[] = [];
   /** Overseer pulses still showing: the craft that fired and the spot it burned. */
@@ -8148,8 +8157,8 @@ export class MapView {
     }
   }
 
-  /** Share of a Stalker's body under the ground now, 0–1: sinking while it digs, rising as it breaks out. */
-  private burrowSink(e: EntityView): number {
+  /** How far the dig has come now, 0–1: growing while it digs, 1 down, shrinking as it breaks out. */
+  private burrowDepth(e: EntityView): number {
     const phase = e.burrow;
     if (!phase) return 0;
     const now = performance.now();
@@ -8157,40 +8166,79 @@ export class MapView {
     const since = seen && seen.phase === phase ? seen.at : now;
     if (!seen || seen.phase !== phase) this.burrowSeen.set(e.id, { phase, at: now });
     const speed = Math.max(1, this.curr.gameSpeed || 1);
-    if (phase === "down") return BURROW_DOWN_SINK;
-    if (phase === "digging") return BURROW_DOWN_SINK * Math.min(1, ((now - since) * speed) / (STALKER_BURROW_SECONDS * 1000));
-    return BURROW_DOWN_SINK * (1 - Math.min(1, ((now - since) * speed) / (STALKER_UNBURROW_SECONDS * 1000)));
+    const secs = burrowSecondsOf(e.type);
+    if (phase === "down") return 1;
+    if (phase === "digging") return Math.min(1, ((now - since) * speed) / (secs.down * 1000));
+    return 1 - Math.min(1, ((now - since) * speed) / (secs.up * 1000));
   }
 
   /**
-   * A Stalker going under, under, or coming up: the body sinks below the ground line, which
-   * cuts it off, over a churned ring of dirt. Down, its owner sees only its back, faint.
+   * A Siphon or Bile Worm going under, down, or coming up: the body sinks into a pit and is cut
+   * off along its near rim, with spoil heaped round it and dirt flying while it digs or climbs.
+   * The worm goes all the way under, and down its owner sees only its back, faint; the Siphon
+   * sinks half way and stays solid, its back and emitter above the dirt.
    */
   private drawBurrowed(e: EntityView, spr: UnitSpriteDef): void {
     const ctx = this.ctx;
-    const sink = this.burrowSink(e);
+    const now = performance.now();
+    const depth = this.burrowDepth(e);
+    const sink = depth * (halfBurrow(e.type) ? HALF_BURROW_SINK : BURROW_DOWN_SINK);
     const p = this.lerpEnt(e);
     const g = this.toScreen(p.x, p.y);
     const size = spr.drawSize;
-    // Churned earth round the hole.
+    const hole = burrowHole(g.x, g.y, size);
+    // The spoil stays heaped while it climbs out; it only grows as it digs.
+    const grow = e.burrow === "digging" ? depth : 1;
+    const flying = e.burrow === "down" ? 0 : 1;
+    drawBurrowBack(ctx, e.id, hole, grow);
     ctx.save();
-    ctx.fillStyle = "rgba(62, 46, 30, 0.85)";
-    ctx.beginPath();
-    ctx.ellipse(g.x, g.y, size * 0.42, size * 0.2, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "rgba(96, 74, 48, 0.9)";
-    ctx.beginPath();
-    ctx.ellipse(g.x, g.y - 1, size * 0.3, size * 0.13, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(g.x - size * 2, g.y - size * 3, size * 4, size * 3);
-    ctx.clip();
+    clipAboveRim(ctx, hole, size);
     ctx.translate(0, sink * size * 0.7);
-    if (e.burrow === "down") ctx.globalAlpha *= 0.55;
+    if (e.burrow === "down" && !halfBurrow(e.type)) ctx.globalAlpha *= 0.55;
     this.drawSpritedUnit(e, spr);
     ctx.restore();
+    drawBurrowFront(ctx, e.id, hole, grow, flying, now);
+  }
+
+  /** The scar a burrow leaves once the unit has climbed out, fading over BURROW_SCAR_MS. */
+  private drawBurrowScarOf(e: EntityView, size: number): void {
+    if (this.burrowSeen.has(e.id)) {
+      // It was dug in last frame and is out now: the hole stays behind it.
+      this.burrowSeen.delete(e.id);
+      const p = this.lerpEnt(e);
+      this.burrowScars.set(e.id, { x: p.x, y: p.y, size, at: performance.now() });
+    }
+    const scar = this.burrowScars.get(e.id);
+    if (!scar) return;
+    const u = (performance.now() - scar.at) / BURROW_SCAR_MS;
+    if (u >= 1) {
+      this.burrowScars.delete(e.id);
+      return;
+    }
+    const g = this.toScreen(scar.x, scar.y);
+    drawBurrowScar(this.ctx, e.id, burrowHole(g.x, g.y, scar.size), u);
+  }
+
+  /** The cloak going on or off right now, or null when it is steady (on or off). */
+  private cloakFxOf(e: EntityView): CloakFx | null {
+    const on = !!e.cloaked && !e.wreck;
+    const now = performance.now();
+    const seen = this.cloakSeen.get(e.id);
+    if (!seen) {
+      // First sight: no shimmer for a cloak that was already on.
+      if (on) this.cloakSeen.set(e.id, { on, at: -Infinity });
+      return null;
+    }
+    if (seen.on !== on) {
+      seen.on = on;
+      seen.at = now;
+    }
+    const u = (now - seen.at) / (on ? CLOAK_IN_MS : CLOAK_OUT_MS);
+    if (u >= 1) {
+      if (!on) this.cloakSeen.delete(e.id);
+      return null;
+    }
+    return { kind: on ? "in" : "out", u: Math.max(0, u) };
   }
 
   private drawUnitAt(e: EntityView): void {
@@ -8208,11 +8256,19 @@ export class MapView {
         this.drawBurrowed(e, spr);
         return;
       }
+      if (canBurrow(e.type)) this.drawBurrowScarOf(e, spr.drawSize);
       // Your own submarine running submerged shows faint under the surface.
       const prev = this.ctx.globalAlpha;
       if (e.submerged && !e.wreck) this.ctx.globalAlpha = prev * SUBMERGED_ALPHA;
       this.drawSpritedUnit(e, spr);
       this.ctx.globalAlpha = prev;
+      // A cloak going on or off: the scan band, sparks, and ripple over the body.
+      const fx = e.cloaked || this.cloakSeen.has(e.id) ? this.cloakFxOf(e) : null;
+      if (fx) {
+        const p = this.lerpEnt(e);
+        const g = this.toScreen(p.x, p.y);
+        drawCloakFx(this.ctx, e.id, g.x, g.y, spr.drawSize, fx);
+      }
       return;
     }
     const ctx = this.ctx;
@@ -8485,8 +8541,11 @@ export class MapView {
     if (e.wreck && !corpse && sheet === def) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
     // A shut-down or powered-down Cyborg is dark: the machine is off.
     else if (!e.wreck && (e.shutdown || e.dormant)) ctx.filter = SHUTDOWN_UNIT_FILTER;
-    // Your Shade with its skin settled: a faint shimmer only its own side sees.
-    else if (!e.wreck && e.cloaked) ctx.filter = CLOAKED_UNIT_FILTER;
+    // Your Shade with its skin settled, or your Stalker cloaked: a faint shimmer only its own side sees, flaring as it goes on or off.
+    else if (!e.wreck && (e.cloaked || this.cloakSeen.has(e.id))) {
+      const fx = this.cloakFxOf(e);
+      if (e.cloaked || fx) ctx.filter = cloakFilter(fx, performance.now());
+    }
     // A map's neutral unit is grey: no one's colours, everyone's enemy.
     else if (!e.wreck && !e.ownerId) ctx.filter = NEUTRAL_UNIT_FILTER;
     // The ship's mounts are placed on the sim's own spots: no ground sink under the hull.

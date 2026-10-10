@@ -113,6 +113,7 @@ const ICONS: Record<string, string> = {
   ram: '<path d="M2 8h7"/><path d="M1.5 5.5h4M1.5 10.5h4"/><path d="M9 4.5h3.5v7H9z"/><path d="M14.5 3.5v9"/>',
   burrow: '<path d="M1.5 9.5h13"/><path d="M8 2v9M5 8.5l3 3 3-3"/><path d="M3 12.5h10M5 14.5h6"/>',
   unburrow: '<path d="M1.5 9.5h13"/><path d="M8 14V3M5 5.5l3-3 3 3"/><path d="M3 12.5h3M10 12.5h3"/>',
+  cloak: '<path d="M8 1.5L2.5 4v4c0 3.5 2.5 5.5 5.5 6.5 3-1 5.5-3 5.5-6.5V4z" stroke-dasharray="2 1.6"/><path d="M5.5 8.5c1.5-1.5 3.5-1.5 5 0"/>',
   "power-off": '<circle cx="8" cy="8.5" r="5.5"/><path d="M8 2v6"/><path d="M2.5 13.5L13.5 2.5"/>',
   "power-on": '<path d="M4.5 4.5a5.5 5.5 0 107 0"/><path d="M8 1.5v6.5"/>',
   "lay-mine": '<circle cx="8" cy="9.5" r="4"/><path d="M8 2.5v3M3.2 4.7l2 2M12.8 4.7l-2 2M1.5 9.5h2.5M12 9.5h2.5"/>',

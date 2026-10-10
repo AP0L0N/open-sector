@@ -40,6 +40,7 @@ const UNIT_CUES: Partial<Record<ClientMessage["type"], UnitCue>> = {
   "cmd.lunge": "special",
   "cmd.pulse": "special",
   "cmd.burrow": "special",
+  "cmd.cloak": "special",
 };
 
 /** The type that answers for a group: the most common one among your units, first picked on a tie. */

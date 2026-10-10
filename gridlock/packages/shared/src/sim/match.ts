@@ -66,6 +66,7 @@ import { tickJuggernauts } from "./juggernaut.js";
 import { holdShieldLines, shieldWatch, tickEnergyShields } from "./energy-shield.js";
 import { tickLunges } from "./lunge.js";
 import { tickBurrows } from "./burrow.js";
+import { tickCloaks } from "./cloak.js";
 import { tickMatriarchs } from "./matriarch.js";
 import { tickRegrowth } from "./regrowth.js";
 import type { BlinkView } from "../protocol.js";
@@ -391,6 +392,7 @@ function stepHeld(state: MatchState, dt: number): void {
   tickAssemblers(state);
   tickLunges(state);
   tickBurrows(state);
+  tickCloaks(state);
   tickMatriarchs(state, dt);
   tickOrderQueue(state);
   tickPatrol(state);
