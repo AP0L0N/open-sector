@@ -5,14 +5,21 @@ import {
   AIR_FUEL_SECONDS,
   FW190_BARRAGE_TILES,
   HIVE_BOMB_SECONDS,
+  HIVE_BOMB_ENERGY,
   HIVE_WASP_STANDOFF_TILES,
+  OVERSEER_PULSE_SECONDS,
   TICK_DT,
+  WASP_BURST_BOLTS,
+  WASP_BURST_COOLDOWN,
+  WASP_BURST_SCATTER_TILES,
+  WASP_BURST_TILES,
   TRAIN_TYPES,
   catalog,
   factionOf,
   isAircraftType,
   isAirfieldType,
   isHq,
+  plasmaCellOf,
   secondsToTicks,
   staysAloft,
 } from "../catalog.js";
@@ -151,28 +158,103 @@ describe("Xenomorph fliers", () => {
     assert.ok(wander(state, g, 60) < 1);
   });
 
-  it("a Wasp hangs a few cells off its target, turned on it, and lays barrage after barrage", () => {
+  it("a Wasp hangs far off its target, still in the air, and looses scattered energy bursts at the spot", () => {
     const state = twoPlayerMatch();
     const w = grow(state, "wasp");
     const ts = state.tileSize;
-    const truck = makeEntity(state, "supply", "B", w.x + 24 * ts, w.y + 16 * ts);
+    const truck = makeEntity(state, "supply", "B", w.x + 40 * ts, w.y + 24 * ts);
     truck.holdPosition = true;
     applyCommand(state, "A", { type: "cmd.attack", ids: [w.id], targetId: truck.id });
-    let firstHit = -1;
-    let barrages = 0;
+    const full = plasmaCellOf("wasp")!.shots;
+    const lands: { x: number; y: number }[] = [];
+    let bursts = 0;
+    let firstBurst = -1;
     for (let i = 0; i < 1500 && truck.hp > 0 && !truck.wreck; i++) {
-      const cd = w.cooldown;
-      const hp = truck.hp;
+      const before = w.energy ?? full;
+      // The bolts land in the tick they are fired: catch them as they go out.
+      const out = state.projectiles;
+      const push = out.push.bind(out);
+      out.push = (...ps) => {
+        for (const p of ps) if (p.fromId === w.id && p.landX != null && p.landY != null) lands.push({ x: p.landX, y: p.landY });
+        return push(...ps);
+      };
       step(state, TICK_DT);
-      if (w.cooldown > cd) barrages++;
-      if (firstHit < 0 && truck.hp < hp) firstHit = Math.hypot(w.x - truck.x, w.y - truck.y);
+      if ((w.energy ?? full) < before) {
+        bursts++;
+        if (firstBurst < 0) firstBurst = Math.hypot(w.x - truck.x, w.y - truck.y);
+      }
     }
-    assert.ok(barrages >= 2, `barrages ${barrages}`);
-    assert.ok(firstHit > 0, "it hits");
+    assert.ok(bursts >= 2, `bursts ${bursts}`);
+    assert.ok(truck.wreck || truck.hp < truck.hpMax, "the bolts that come down on it hurt it");
+    assert.equal(lands.length % WASP_BURST_BOLTS, 0, "whole bursts");
+    assert.ok(lands.length >= WASP_BURST_BOLTS * 2);
+    const scatter = WASP_BURST_SCATTER_TILES * ts;
+    const off = lands.map((l) => Math.hypot(l.x - truck.x, l.y - truck.y));
+    assert.ok(Math.max(...off) <= scatter + 1, "every bolt lands on the spot");
+    assert.ok(Math.max(...off) > scatter * 0.6, "and they spread over it: poor aim");
+    assert.ok(firstBurst > 0 && firstBurst <= WASP_BURST_TILES * ts + 1, `within reach (${firstBurst.toFixed(0)})`);
     const standoff = HIVE_WASP_STANDOFF_TILES * ts;
-    assert.ok(firstHit <= FW190_BARRAGE_TILES * ts + 1, `within the barrage's reach (${firstHit.toFixed(0)})`);
     const settled = Math.hypot(w.x - truck.x, w.y - truck.y);
-    assert.ok(settled > standoff * 0.6 && settled < standoff * 1.2, `it hangs a few cells off (${settled.toFixed(0)} of ${standoff})`);
+    assert.ok(standoff > FW190_BARRAGE_TILES * ts, "it stands off further than a fighter's barrage reaches");
+    assert.ok(settled > standoff * 0.6 && settled < standoff * 1.2, `it hangs far off (${settled.toFixed(0)} of ${standoff})`);
+  });
+
+  it("a Wasp's cell drains with each burst and it waits in the air for the charge", () => {
+    const state = twoPlayerMatch();
+    const w = grow(state, "wasp");
+    const ts = state.tileSize;
+    const cell = plasmaCellOf("wasp")!;
+    applyCommand(state, "A", { type: "cmd.forceattack", ids: [w.id], x: w.x + 30 * ts, y: w.y + 20 * ts });
+    let bursts = 0;
+    let drained = false;
+    const seconds = 40;
+    for (let i = 0; i < secondsToTicks(seconds); i++) {
+      const before = w.energy ?? cell.shots;
+      step(state, TICK_DT);
+      if ((w.energy ?? cell.shots) < before) bursts++;
+      if ((w.energy ?? cell.shots) < 1) drained = true;
+    }
+    assert.ok(drained, "the cell runs low");
+    assert.ok(bursts >= cell.shots, `bursts ${bursts}`);
+    assert.ok(bursts <= cell.shots + Math.ceil(seconds / cell.rechargeSeconds) + 1, `the cell sets the pace: ${bursts}`);
+    assert.ok(bursts < seconds / WASP_BURST_COOLDOWN / 2, "far slower than the emitters could cycle");
+    assert.ok(isAirborne(w), "it never goes home to recharge");
+    applyCommand(state, "A", { type: "cmd.stop", ids: [w.id] });
+    ticks(state, secondsToTicks(cell.shots * cell.rechargeSeconds + 1));
+    assert.equal(w.energy, cell.shots, "it charges back up while it hangs");
+  });
+
+  it("every armed Xenomorph flier carries an energy cell; the Gnat has nothing to draw on", () => {
+    for (const t of ["wasp", "scourge", "overseer"] as const) {
+      const cell = plasmaCellOf(t);
+      assert.ok(cell && cell.shots >= 1 && cell.rechargeSeconds > 0, t);
+    }
+    assert.equal(plasmaCellOf("gnat"), undefined);
+    assert.ok(plasmaCellOf("scourge")!.shots >= HIVE_BOMB_ENERGY, "a full cell holds a bomb");
+  });
+
+  it("an Overseer's pulse slows to its cell's pace once the cell runs low", () => {
+    const state = twoPlayerMatch();
+    const o = grow(state, "overseer");
+    const ts = state.tileSize;
+    const cell = plasmaCellOf("overseer")!;
+    applyCommand(state, "A", { type: "cmd.forceattack", ids: [o.id], x: o.x + 10 * ts, y: o.y + 6 * ts });
+    const pulsesIn = (sec: number): number => {
+      let n = 0;
+      for (let i = 0; i < secondsToTicks(sec); i++) {
+        const before = o.energy ?? cell.shots;
+        step(state, TICK_DT);
+        if ((o.energy ?? cell.shots) < before) n++;
+      }
+      return n;
+    };
+    // Fly over, then burn long enough to drain the cell.
+    assert.ok(until(state, 600, () => (o.energy ?? cell.shots) < cell.shots) >= 0, "it starts burning");
+    pulsesIn(20);
+    const late = pulsesIn(10);
+    assert.ok(late >= 1, "it still burns");
+    assert.ok(late <= Math.ceil(10 / cell.rechargeSeconds) + 1, `drained, it fires at the cell's pace: ${late}`);
+    assert.ok(late < 10 / OVERSEER_PULSE_SECONDS - 3, "slower than its full rate");
   });
 
   it("a Scourge hangs off its target and lobs a bomb on it every few seconds", () => {
