@@ -91,8 +91,12 @@ export function drawEnergyBolt(ctx: CanvasRenderingContext2D, tail: { x: number;
 /** Calibers at or under this fly as a small orb: the Mawcaster's Air attacks. */
 const SMALL_ORB_CALIBER = 30;
 
-/** Size of a plasma orb against the usual one: small for a light anti-air ball. */
-export function plasmaOrbScale(caliber: number): number {
+/** A Scourge's plasma bolt against the usual orb: the big one. */
+const SCOURGE_BOLT_SCALE = 1.8;
+
+/** Size of a plasma orb against the usual one: small for a light anti-air ball, big for a Scourge's bolt. */
+export function plasmaOrbScale(caliber: number, shooterType?: string): number {
+  if (shooterType === "scourge") return SCOURGE_BOLT_SCALE;
   return caliber <= SMALL_ORB_CALIBER ? 0.55 : 1;
 }
 

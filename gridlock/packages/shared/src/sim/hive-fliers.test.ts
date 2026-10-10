@@ -6,9 +6,14 @@ import {
   FW190_BARRAGE_TILES,
   HIVE_BOMB_SECONDS,
   HIVE_BOMB_ENERGY,
+  HIVE_SCOURGE_STANDOFF_TILES,
   HIVE_WASP_STANDOFF_TILES,
+  SCOURGE_BOLT_RACK,
+  SCOURGE_BOLT_TILES,
+  airCruiseAltOf,
   OVERSEER_PULSE_SECONDS,
   TICK_DT,
+  TILE_SUBDIV,
   WASP_BURST_BOLTS,
   WASP_BURST_COOLDOWN,
   WASP_BURST_SCATTER_TILES,
@@ -150,7 +155,8 @@ describe("Xenomorph fliers", () => {
     const state = twoPlayerMatch();
     const g = grow(state, "gnat");
     const ts = state.tileSize;
-    const man = makeEntity(state, "rifleman", "B", g.x + 20 * ts, g.y + 12 * ts);
+    // An unarmed truck: a rifleman's lucky wing hit would bring the Gnat down and end the watch.
+    const man = makeEntity(state, "supply", "B", g.x + 20 * ts, g.y + 12 * ts);
     man.holdPosition = true;
     applyCommand(state, "A", { type: "cmd.attack", ids: [g.id], targetId: man.id });
     ticks(state, 400);
@@ -230,7 +236,7 @@ describe("Xenomorph fliers", () => {
       assert.ok(cell && cell.shots >= 1 && cell.rechargeSeconds > 0, t);
     }
     assert.equal(plasmaCellOf("gnat"), undefined);
-    assert.ok(plasmaCellOf("scourge")!.shots >= HIVE_BOMB_ENERGY, "a full cell holds a bomb");
+    assert.ok(plasmaCellOf("scourge")!.shots >= HIVE_BOMB_ENERGY, "a full cell holds a bolt");
   });
 
   it("an Overseer's pulse slows to its cell's pace once the cell runs low", () => {
@@ -257,27 +263,82 @@ describe("Xenomorph fliers", () => {
     assert.ok(late < 10 / OVERSEER_PULSE_SECONDS - 3, "slower than its full rate");
   });
 
-  it("a Scourge hangs off its target and lobs a bomb on it every few seconds", () => {
+  it("a Scourge hangs off its target at cruise height and throws a big plasma bolt on it every few seconds", () => {
     const state = twoPlayerMatch();
     const s = grow(state, "scourge");
     const ts = state.tileSize;
     const depot = makeEntity(state, "dynamo", "B", s.x + 24 * ts, s.y + 16 * ts);
     applyCommand(state, "A", { type: "cmd.attack", ids: [s.id], targetId: depot.id });
-    const drops: number[] = [];
+    const shots: number[] = [];
     const seen = new Set<number>();
+    // Once it has fired it never comes down: it may still be climbing out of the Aerie, never sinking.
+    let sank = 0;
     for (let i = 0; i < secondsToTicks(HIVE_BOMB_SECONDS * 4) + 600; i++) {
+      const alt = s.air!.alt;
       step(state, TICK_DT);
+      if (shots.length > 0) sank = Math.max(sank, alt - s.air!.alt);
       for (const p of state.projectiles) {
-        if (p.fromId !== s.id || p.flight !== "bomb" || seen.has(p.id)) continue;
+        if (p.fromId !== s.id || seen.has(p.id)) continue;
+        if (p.caliber !== SCOURGE_BOLT_RACK.caliber) continue;
         seen.add(p.id);
-        drops.push(state.tick);
+        assert.equal(p.flight, "rocket", "a bolt, not a falling bomb");
+        assert.equal(p.launcher, "scourge");
+        shots.push(state.tick);
       }
     }
-    assert.ok(drops.length >= 3, `bombs ${drops.length}`);
-    const gap = drops[1]! - drops[0]!;
+    assert.ok(shots.length >= 3, `bolts ${shots.length}`);
+    const gap = shots[1]! - shots[0]!;
     assert.ok(Math.abs(gap - secondsToTicks(HIVE_BOMB_SECONDS)) <= 1, `gap ${gap}`);
     assert.ok(depot.hp < depot.hpMax);
+    assert.equal(sank, 0, "it never sinks to fire");
+    assert.equal(s.air!.alt, airCruiseAltOf("scourge"), "it fires from its cruise height");
+    const off = Math.hypot(s.x - depot.x, s.y - depot.y);
+    assert.ok(off > HIVE_SCOURGE_STANDOFF_TILES * ts * 0.6 && off <= SCOURGE_BOLT_TILES * ts, `it hangs off (${off.toFixed(0)})`);
     assert.ok(isAirborne(s), "still up: no trip home to rearm");
+  });
+
+  it("come round on a point behind them like a dragonfly: carry on, whip round, dart in", () => {
+    for (const type of ["wasp", "scourge", "gnat"] as const) {
+      const state = twoPlayerMatch();
+      const f = grow(state, type);
+      const ts = state.tileSize;
+      // A gameplay tile: four of the sim's cells.
+      const tile = ts * TILE_SUBDIV;
+      // Get it flying east at full pace first.
+      applyCommand(state, "A", { type: "cmd.move", ids: [f.id], x: f.x + 30 * tile, y: f.y });
+      ticks(state, 15);
+      assert.ok(f.air!.speed > 0.9 && f.order != null, `${type} is up to speed`);
+      const x0 = f.x;
+      const y0 = f.y;
+      const gx = x0 - 6 * tile;
+      const gy = y0;
+      applyCommand(state, "A", { type: "cmd.move", ids: [f.id], x: gx, y: gy });
+      let carry = 0;
+      let swing = 0;
+      let sideways = 0;
+      const arrived = until(state, 600, () => {
+        const px = f.x;
+        const py = f.y;
+        step(state, TICK_DT);
+        carry = Math.max(carry, f.x - x0);
+        swing = Math.max(swing, Math.abs(f.y - y0));
+        const run = Math.hypot(f.x - px, f.y - py);
+        // Any real move off the last half cell runs along the nose: no sliding sideways.
+        if (run > 0.5 && Math.hypot(gx - f.x, gy - f.y) > ts * 0.5) {
+          let skew = Math.atan2(f.y - py, f.x - px) - f.facing;
+          while (skew > Math.PI) skew -= Math.PI * 2;
+          while (skew < -Math.PI) skew += Math.PI * 2;
+          sideways = Math.max(sideways, Math.abs(skew));
+        }
+        return f.order == null;
+      });
+      assert.ok(arrived >= 0, `${type} gets there`);
+      assert.ok(Math.hypot(f.x - gx, f.y - gy) < 1, `${type} ends on the point`);
+      assert.ok(carry > tile * 0.3, `${type} carries on a little before it turns (${(carry / tile).toFixed(2)} tiles)`);
+      assert.ok(carry < tile * 3, `${type} turns sharply, not a plane's wide loop (${(carry / tile).toFixed(2)} tiles)`);
+      assert.ok(swing > tile * 0.1 && swing < tile * 3, `${type} comes round on a small arc (${(swing / tile).toFixed(2)} tiles)`);
+      assert.ok(sideways < 0.02, `${type} flies along its nose (${sideways.toFixed(3)} rad off)`);
+    }
   });
 
   it("a Weaver mends them in the air", () => {
