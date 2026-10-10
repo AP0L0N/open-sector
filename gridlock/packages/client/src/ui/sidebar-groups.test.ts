@@ -25,9 +25,9 @@ describe("sidebarGroupOf", () => {
     assert.equal(all.some((e) => e.id === "build-teeth" || e.id === "build-trench"), false);
   });
 
-  it("gives the Xenomorphs their base, defences, cyborgs, and heavy assimilators, and nothing of the Alliance's but the Central", () => {
+  it("gives the Xenomorphs their base, defences, cyborgs, and heavy assimilators, and nothing of the Alliance's", () => {
     const g = groupEntries("xeno");
-    assert.deepEqual(g.structures.map((e) => e.type).sort(), ["aerie", "assimilator", "cyborgcentral", "forge", "fusionnode", "nexus", "spawnpool"]);
+    assert.deepEqual(g.structures.map((e) => e.type).sort(), ["aerie", "assimilator", "conversion", "forge", "fusionnode", "nexus", "spawnpool"]);
     assert.deepEqual(g.defences.map((e) => e.type).sort(), ["laserfence", "pulsespire", "spineturret"]);
     assert.deepEqual(g.infantry.map((e) => e.type).sort(), ["lancer", "shade", "simunit2", "spitter", "thrall", "weaver", "xenodrone"]);
     assert.deepEqual(g.tanks.map((e) => e.type).sort(), ["behemoth", "broodmother", "juggernaut", "mawcaster", "ravager", "siphon", "stalker"]);
@@ -36,6 +36,7 @@ describe("sidebarGroupOf", () => {
     const alliance = groupEntries("alliance");
     assert.deepEqual(alliance.infantry.map((e) => e.type).filter((t) => t.startsWith("cyborg")).sort(), ["cyborg", "cyborgcommander"]);
     assert.ok(alliance.structures.some((e) => e.type === "cyborgcentral"));
+    assert.equal(alliance.structures.some((e) => e.type === "conversion"), false);
     assert.equal(Object.values(alliance).flat().some((e) => e.type === "xenodrone" || e.type === "simunit2"), false);
   });
 
@@ -87,7 +88,7 @@ describe("sidebarGroupOf", () => {
 
   it("lays the Xenomorph base out as the Alliance's: power, scrap, barracks, factory, air, sea, tech", () => {
     const xeno = groupEntries("xeno").structures.map((e) => e.type);
-    assert.deepEqual(xeno, ["fusionnode", "assimilator", "cyborgcentral", "forge", "aerie", "spawnpool", "nexus"]);
+    assert.deepEqual(xeno, ["fusionnode", "assimilator", "conversion", "forge", "aerie", "spawnpool", "nexus"]);
     const alliance = groupEntries().structures.map((e) => e.type);
     assert.deepEqual(alliance.slice(0, 4), ["dynamo", "smelter", "muster", "armory"]);
   });
@@ -96,13 +97,13 @@ describe("sidebarGroupOf", () => {
     const pairs = [
       ["fusionnode", "dynamo"],
       ["assimilator", "smelter"],
+      ["conversion", "muster"],
       ["forge", "armory"],
       ["aerie", "airfield"],
       ["spawnpool", "dock"],
       ["nexus", "research"],
     ] as const;
     for (const [x, a] of pairs) assert.equal(catalog(x).cost, catalog(a).cost, x);
-    assert.equal(costFor("cyborgcentral", "xeno"), catalog("muster").cost);
     assert.equal(costFor("cyborgcentral", "alliance"), catalog("cyborgcentral").cost);
   });
 });

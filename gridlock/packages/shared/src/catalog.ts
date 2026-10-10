@@ -640,6 +640,7 @@ export type EntityType =
   | "research"
   | "radar"
   | "cyborgcentral"
+  | "conversion"
   | "forge"
   | "nexus"
   | "spineturret"
@@ -717,6 +718,7 @@ export type BuildingType =
   | "research"
   | "radar"
   | "cyborgcentral"
+  | "conversion"
   | "fusionnode"
   | "assimilator"
   | "forge"
@@ -906,6 +908,7 @@ export const BUILDING_TYPES: readonly BuildingType[] = [
   "research",
   "radar",
   "cyborgcentral",
+  "conversion",
   "fusionnode",
   "assimilator",
   "forge",
@@ -1011,13 +1014,13 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly Bu
   jagdtiger: "research",
   cyborg: "cyborgcentral",
   cyborgcommander: "cyborgcentral",
-  simunit2: "cyborgcentral",
-  xenodrone: "cyborgcentral",
-  thrall: "cyborgcentral",
-  lancer: "cyborgcentral",
-  spitter: "cyborgcentral",
-  weaver: "cyborgcentral",
-  shade: ["cyborgcentral", "nexus"],
+  simunit2: "conversion",
+  xenodrone: "conversion",
+  thrall: "conversion",
+  lancer: "conversion",
+  spitter: "conversion",
+  weaver: "conversion",
+  shade: ["conversion", "nexus"],
   behemoth: "nexus",
   juggernaut: "nexus",
   broodmother: "nexus",
@@ -1064,12 +1067,13 @@ export function isFaction(v: unknown): v is Faction {
 export function migrateFaction(v: unknown): unknown {
   return v === "eu" ? "alliance" : v === "borg" ? "xeno" : v;
 }
-/** Everything the Xenomorphs build, train, or start with. The Cyborg Central is in SHARED_TYPES. */
+/** Everything the Xenomorphs build, train, or start with. */
 export const XENO_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([
   "seed",
   "hivecore",
   "fusionnode",
   "assimilator",
+  "conversion",
   "simunit2",
   "xenodrone",
   "thrall",
@@ -1141,10 +1145,10 @@ export const BLOOM_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([
   "harpy",
 ]);
 /**
- * Built by the Alliance and the Xenomorphs (not the Bloom). The Cyborg Central trains the Alliance's Cyborg and Cyborg Commander,
- * and the Xenomorphs' Drone, Lancer, and Sim Unit II; each side sees only its own units there.
+ * Built by the Alliance and the Xenomorphs (not the Bloom). None today: the Cyborg Central is the
+ * Alliance's, and the Xenomorphs raise their infantry in the Conversion Chamber.
  */
-export const SHARED_TYPES: ReadonlySet<EntityType> = new Set<EntityType>(["cyborgcentral"]);
+export const SHARED_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([]);
 /**
  * The faction that fields `type`. Neutral structures, civilian buildings, and shared buildings
  * read as Alliance.
@@ -1153,13 +1157,8 @@ export function factionOf(type: string): Faction {
   if (XENO_TYPES.has(type as EntityType)) return "xeno";
   return BLOOM_TYPES.has(type as EntityType) ? "bloom" : "alliance";
 }
-/**
- * A shared building's price for one faction, where it plays a different part: the Cyborg Central is
- * the Alliance's late cyborg works but the Xenomorphs' only barracks, so the hive pays a Barracks' price.
- */
-const FACTION_COST: Partial<Record<EntityType, Partial<Record<Faction, number>>>> = {
-  cyborgcentral: { xeno: 500 },
-};
+/** A shared building's price for one faction, where it plays a different part there. */
+const FACTION_COST: Partial<Record<EntityType, Partial<Record<Faction, number>>>> = {};
 /** Scrap `type` costs a player of `faction`. */
 export function costFor(type: EntityType, faction: Faction): number {
   return FACTION_COST[type]?.[faction] ?? catalog(type).cost;
@@ -1250,8 +1249,10 @@ export const BUILD_REQUIRES: Partial<Record<BuildingType, readonly BuildingType[
   bilelance: ["braincoral"],
 };
 
-/** The Xenomorph vehicle factory: trains every Xenomorph unit that is not a cyborg. */
+/** The Xenomorph vehicle factory: trains every Xenomorph unit that is not infantry. */
 export const XENO_FACTORY = "forge";
+/** The Xenomorph barracks: the Conversion Chamber turns out the hive's foot soldiers, and carries their link. */
+export const XENO_BARRACKS = "conversion";
 /** The Bloom brood nest (infantry) and gestator (beasts). */
 export const BLOOM_NEST = "broodnest";
 export const BLOOM_GESTATOR = "gestator";
@@ -1329,7 +1330,8 @@ export const MATRIARCH_BROOD = 4;
 export const BROOD_GARRISON: readonly EntityType[] = ["spawnling", "gobber", "quillback", "bloater", "longspine", "mender"];
 
 /**
- * Cyborg link. A Cyborg runs on the uplink from a standing, powered Cyborg Central,
+ * Cyborg link. A Cyborg runs on the uplink from a standing, powered Cyborg Central (a
+ * Xenomorph's on the synapse link from a Conversion Chamber),
  * or on a living Cyborg Commander of his own side. With neither, CYBORG_SHUTDOWN_SECONDS
  * after the link drops every Cyborg of that player on the field shuts down: still his,
  * but he stops where he stands, answers no orders, and fires at nothing. When that
@@ -4636,7 +4638,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `Assembly hall and uplink mast that run your cyborgs. Both sides raise one: the Alliance trains the Cyborg and the Cyborg Commander here, the Xenomorphs the Drone, the Lancer, and the Sim Unit II. Your cyborgs live on its uplink: if it falls or your power runs short while no Cyborg Commander of yours lives, ${CYBORG_SHUTDOWN_SECONDS} seconds later every Cyborg of yours on the field shuts down: still yours, but dead still and silent. Get the link back (a new Central, or the power) and they wake up, unless an enemy Cyborg Commander took them first. A living Cyborg Commander keeps yours running without it, and takes over any enemy's shut-down Cyborg near him.`,
+    blurb: `Assembly hall and uplink mast that run your cyborgs. Trains the Cyborg and the Cyborg Commander. Your cyborgs live on its uplink: if it falls or your power runs short while no Cyborg Commander of yours lives, ${CYBORG_SHUTDOWN_SECONDS} seconds later every Cyborg of yours on the field shuts down: still yours, but dead still and silent. Get the link back (a new Central, or the power) and they wake up, unless an enemy Cyborg Commander took them first. A living Cyborg Commander keeps yours running without it, and takes over any enemy's shut-down Cyborg near him.`,
   },
   radar: {
     type: "radar",
@@ -5898,7 +5900,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: DAGGERS.penetration,
     caliber: DAGGERS.caliber,
     spreadDeg: DAGGERS.spreadDeg,
-    blurb: `A light, fast cyborg built for the knife. An energy dagger in each hand: one slash kills a soldier, but only at arm's reach. He opens a Walker or a truck slowly and barely scratches a tank or a wall. A blink drive throws him up to ${SIMUNIT_BLINK_RANGE_TILES / TILE_SUBDIV} cells in an instant on one charge, back by itself in ${SIMUNIT_BLINK_RECHARGE_SECONDS} seconds: an enemy he goes for inside that reach, he blinks straight onto while the charge is up. Right-click an enemy structure or hull with soldiers inside and he blinks in among them, kills every soldier aboard in ${SIMUNIT_PURGE_SECONDS} seconds, and blinks back out; only a hostile garrison offers it. Like the Cyborg he can shut down where he stands: dark and still, he reads as no one's machine and enemy guns pass him by until he powers up. Near death his legs are torn off and he crawls on, still cutting. Medics heal him, engineers repair him. He runs on your Cyborg Central's uplink or a living Cyborg Commander, like the Cyborg.`,
+    blurb: `A light, fast cyborg built for the knife. An energy dagger in each hand: one slash kills a soldier, but only at arm's reach. He opens a Walker or a truck slowly and barely scratches a tank or a wall. A blink drive throws him up to ${SIMUNIT_BLINK_RANGE_TILES / TILE_SUBDIV} cells in an instant on one charge, back by itself in ${SIMUNIT_BLINK_RECHARGE_SECONDS} seconds: an enemy he goes for inside that reach, he blinks straight onto while the charge is up. Right-click an enemy structure or hull with soldiers inside and he blinks in among them, kills every soldier aboard in ${SIMUNIT_PURGE_SECONDS} seconds, and blinks back out; only a hostile garrison offers it. Like the Cyborg he can shut down where he stands: dark and still, he reads as no one's machine and enemy guns pass him by until he powers up. Near death his legs are torn off and he crawls on, still cutting. Medics heal him, engineers repair him. He hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
   },
   xenodrone: {
     type: "xenodrone",
@@ -5923,7 +5925,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: RIFLE.penetration,
     caliber: RIFLE.caliber,
     spreadDeg: RIFLE.spreadDeg,
-    blurb: `The hive's line soldier: a body taken and fitted with a pulse carbine in place of a forearm. It shoots like a rifle, a clip and then a short recharge. Several times a soldier's hit points for a few riflemen's price, but slower on its feet. No stance orders; it fights standing. In a fight it raises a small energy wall in front of it, like the Behemoth's but far weaker (${INFANTRY_SHIELD.hp} points): enemy rounds stop on it and enemies cannot walk through, while it and its side shoot and walk through. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It runs on your Cyborg Central's uplink or a living Cyborg Commander, like the Cyborg, and shuts down without them.`,
+    blurb: `The hive's line soldier: a body taken and fitted with a pulse carbine in place of a forearm. It shoots like a rifle, a clip and then a short recharge. Several times a soldier's hit points for a few riflemen's price, but slower on its feet. No stance orders; it fights standing. In a fight it raises a small energy wall in front of it, like the Behemoth's but far weaker (${INFANTRY_SHIELD.hp} points): enemy rounds stop on it and enemies cannot walk through, while it and its side shoot and walk through. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
   },
   thrall: {
     type: "thrall",
@@ -5948,7 +5950,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: FISTS.penetration,
     caliber: FISTS.caliber,
     spreadDeg: FISTS.spreadDeg,
-    blurb: "The hive's cheap brawler, quick off the line: a taken body on a heavy frame. It always runs, and it fights with two armoured fists: a soldier it reaches is pummelled down in a few fast blows. An armored hull it reaches, it does not punch: it detonates against the plate and is gone. Sandbags and walls do not stop it; it vaults them. Bullets do little to its plating, but now and then one catches a shoulder and staggers it for a moment. No stance orders. Near death its legs are torn off and it crawls on, still swinging. Medics heal it, engineers repair it. It runs on your Cyborg Central's uplink or a living Cyborg Commander, and shuts down without them.",
+    blurb: "The hive's cheap brawler, quick off the line: a taken body on a heavy frame. It always runs, and it fights with two armoured fists: a soldier it reaches is pummelled down in a few fast blows. An armored hull it reaches, it does not punch: it detonates against the plate and is gone. Sandbags and walls do not stop it; it vaults them. Bullets do little to its plating, but now and then one catches a shoulder and staggers it for a moment. No stance orders. Near death its legs are torn off and it crawls on, still swinging. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.",
   },
   lancer: {
     type: "lancer",
@@ -5973,7 +5975,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: LAUNCHER.penetration,
     caliber: LAUNCHER.caliber,
     spreadDeg: LAUNCHER.spreadDeg,
-    blurb: `Anti-armor cyborg. A plasma lance rides its shoulder and throws a burning bolt like a rocket: loose at full reach, tighter up close, a burst among soldiers that dents a tank. The capacitor on its back recharges the lance between shots. Heavy plating keeps it standing where a Rocketer would fall. In a fight it raises the Drone's small energy wall in front of it (${INFANTRY_SHIELD.hp} points). No stance orders. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It runs on your Cyborg Central's uplink or a living Cyborg Commander, and shuts down without them.`,
+    blurb: `Anti-armor cyborg. A plasma lance rides its shoulder and throws a burning bolt like a rocket: loose at full reach, tighter up close, a burst among soldiers that dents a tank. The capacitor on its back recharges the lance between shots. Heavy plating keeps it standing where a Rocketer would fall. In a fight it raises the Drone's small energy wall in front of it (${INFANTRY_SHIELD.hp} points). No stance orders. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
   },
   /** Xenomorph cyborg: acid spitter whose globs eat tank plate. */
   spitter: {
@@ -5999,7 +6001,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: ACID.penetration,
     caliber: ACID.caliber,
     spreadDeg: ACID.spreadDeg,
-    blurb: `A taken body with a swollen throat sac. It rears back and spits globs of corrosive bile, four and then a short refill from the bladder on its back: about a rifle round on a soldier, from a little less reach. On a tank the glob does not have to get through. It eats the plate: every glob that lands takes ${ACID_CORRODE_MM} mm off every face, up to half the plate, and the coat dries ${ACID_CORRODE_SECONDS} seconds after the last one. Spit a Tiger down and let the Stalkers and Lancers finish it. No stance orders. Near death its legs are torn off and it crawls on, still spitting. It runs on your Cyborg Central's uplink or a living Cyborg Commander, and shuts down without them.`,
+    blurb: `A taken body with a swollen throat sac. It rears back and spits globs of corrosive bile, four and then a short refill from the bladder on its back: about a rifle round on a soldier, from a little less reach. On a tank the glob does not have to get through. It eats the plate: every glob that lands takes ${ACID_CORRODE_MM} mm off every face, up to half the plate, and the coat dries ${ACID_CORRODE_SECONDS} seconds after the last one. Spit a Tiger down and let the Stalkers and Lancers finish it. No stance orders. Near death its legs are torn off and it crawls on, still spitting. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
   },
   /** Xenomorph cyborg: unarmed nanite mender. */
   weaver: {
@@ -6022,7 +6024,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `No weapon. Four needle arms and a spindle of nanites on its back. Every second it sends a mend into each hive unit of yours within ${WEAVER_REACH_TILES / TILE_SUBDIV} cells: ${WEAVER_MEND_CYBORG} HP to a cyborg, ${WEAVER_MEND_HEAVY} to a heavy assimilator or anything else the hive fields. Two Weavers on one unit mend it once. It cannot mend itself; another Weaver can. Torn legs grow back once the body is whole enough. No stance orders. It runs on your Cyborg Central's uplink or a living Cyborg Commander, and mends nothing while shut down.`,
+    blurb: `No weapon. Four needle arms and a spindle of nanites on its back. Every second it sends a mend into each hive unit of yours within ${WEAVER_REACH_TILES / TILE_SUBDIV} cells: ${WEAVER_MEND_CYBORG} HP to a cyborg, ${WEAVER_MEND_HEAVY} to a heavy assimilator or anything else the hive fields. Two Weavers on one unit mend it once. It cannot mend itself; another Weaver can. Torn legs grow back once the body is whole enough. No stance orders. It hears the hive through your Conversion Chamber's spire, and mends nothing while dark.`,
   },
   /** Xenomorph cyborg: cloaked spine sniper. */
   shade: {
@@ -6049,7 +6051,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: SCOPED.penetration,
     caliber: SCOPED.caliber,
     spreadDeg: SCOPED.spreadDeg,
-    blurb: `A lean hunter with a spine rifle grown along its forearm and a skin that drinks the light. The spine reaches as far as a sniper's scope; a hit takes most of a soldier's health, and the hive's spine never needs a truck. While its skin is settled no enemy sees it or can pick it, even on the move. Each shot, and any hit that hurts it, shows it for ${SHADE_REVEAL_SECONDS} seconds, and an enemy within ${SHADE_SPOT_TILES / TILE_SUBDIV} cells always sees it. Thin plating for a cyborg. No stance orders. Near death its legs are torn off and it crawls on, still firing. It runs on your Cyborg Central's uplink or a living Cyborg Commander, and shuts down without them. Needs a Neural Nexus.`,
+    blurb: `A lean hunter with a spine rifle grown along its forearm and a skin that drinks the light. The spine reaches as far as a sniper's scope; a hit takes most of a soldier's health, and the hive's spine never needs a truck. While its skin is settled no enemy sees it or can pick it, even on the move. Each shot, and any hit that hurts it, shows it for ${SHADE_REVEAL_SECONDS} seconds, and an enemy within ${SHADE_SPOT_TILES / TILE_SUBDIV} cells always sees it. Thin plating for a cyborg. No stance orders. Near death its legs are torn off and it crawls on, still firing. It hears the hive through your Conversion Chamber's spire, and goes dark without it. Needs a Neural Nexus.`,
   },
   /** Xenomorph heavy assimilator: four legs and a turreted disruptor, the hive's answer to the Tiger. */
   stalker: {
@@ -6292,6 +6294,29 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rocketAmmo: MAWCASTER_SALVO * 5,
     rocketRack: MAWCASTER_POD,
     blurb: `Spore artillery on four legs. A maw of ${MAWCASTER_SALVO} launch tubes throws its pods on a high arc over your own troops, from nearly the Nebelwerfer's reach: half its salvo, but it draws its pods from the hive and never needs a truck. Force attack sends them anywhere in that reach, seen or not. It will not fire inside ${MAWCASTER_MIN_RANGE_TILES / TILE_SUBDIV} cells, and must stop and swing the maw onto the target first. Pods scatter wide at full reach: a salvo blankets an area and shreds soldiers in the open; armor only dents. Now and then a pod leaves burning bile on the ground. Thin hide and short eyes — keep it behind the line.`,
+  },
+  /** Xenomorph infantry: the hive's barracks, and the synapse link its foot soldiers run on. */
+  conversion: {
+    type: "conversion",
+    kind: "building",
+    name: "Conversion Chamber",
+    letter: "C",
+    cost: 500,
+    buildSeconds: 16,
+    hp: 900,
+    power: -30,
+    tileW: t(2),
+    tileH: t(2),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: `A low chitin dome ringed with glowing conversion pods, under a synapse spire. Taken bodies go into the pods and walk out as the hive's foot soldiers: the Drone, the Thrall, the Lancer, the Spitter, the Weaver, the Sim Unit II, and, with a Neural Nexus standing, the Shade. They hear the hive through its spire: if it falls or your power runs short, ${CYBORG_SHUTDOWN_SECONDS} seconds later every one of them on the field goes dark: still yours, but dead still and silent. Raise the link again (a new Chamber, or the power) and they wake up, unless an enemy Cyborg Commander took them first.`,
   },
   /** Xenomorph vehicle factory. */
   forge: {
@@ -8794,8 +8819,9 @@ export function isCyborg(type: EntityType): boolean {
 }
 
 /**
- * Runs on the uplink from a Cyborg Central or a living Cyborg Commander, and shuts down
- * without either: every cyborg but the Commander himself.
+ * Runs on a link and shuts down without it: every cyborg but the Commander himself. The
+ * Alliance's run on a Cyborg Central or a living Cyborg Commander, the Xenomorphs' on a
+ * Conversion Chamber.
  */
 export function onUplink(type: EntityType): boolean {
   return isCyborg(type) && type !== "cyborgcommander";

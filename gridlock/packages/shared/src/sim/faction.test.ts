@@ -81,7 +81,7 @@ function unpack(state: MatchState, pid: string): void {
 }
 
 describe("factions in the catalog", () => {
-  it("gives the Xenomorphs their cyborgs and their own base, and shares the Central", () => {
+  it("gives the Xenomorphs their foot soldiers and their own base, the Conversion Chamber in place of the Central", () => {
     assert.deepEqual(
       [...XENO_TYPES].sort(),
       [
@@ -89,6 +89,7 @@ describe("factions in the catalog", () => {
         "assimilator",
         "behemoth",
         "broodmother",
+        "conversion",
         "forge",
         "fusionnode",
         "gnat",
@@ -119,12 +120,14 @@ describe("factions in the catalog", () => {
       ],
     );
     for (const t of ["rig", "core", "dynamo", "smelter", "rifleman", "ss3", "muster", "sandbags", "cyborg", "cyborgcommander"]) assert.equal(factionOf(t), "alliance", t);
-    assert.deepEqual([...SHARED_TYPES], ["cyborgcentral"]);
-    for (const f of ["alliance", "xeno"] as const) assert.ok(inFaction("cyborgcentral", f), f);
+    // The Cyborg Central is the Alliance's alone; the Xenomorphs raise their infantry in the Conversion Chamber.
+    assert.deepEqual([...SHARED_TYPES], []);
+    assert.ok(inFaction("cyborgcentral", "alliance") && !inFaction("cyborgcentral", "xeno"));
+    assert.ok(inFaction("conversion", "xeno") && !inFaction("conversion", "alliance") && !inFaction("conversion", "bloom"));
     for (const t of BUILDING_TYPES.filter((b) => factionOf(b) === "xeno")) assert.ok(XENO_TYPES.has(t));
-    // Cyborgs come from the Central, ships from the Spawning Pool, planes from the Aerie, the rest from the Nanite Forge.
+    // Foot soldiers come from the Conversion Chamber, ships from the Spawning Pool, planes from the Aerie, the rest from the Nanite Forge.
     for (const t of TRAIN_TYPES.filter((u) => factionOf(u) === "xeno")) {
-      const want = isCyborg(t) ? "cyborgcentral" : isNavalType(t) ? "spawnpool" : isAircraftType(t) ? "aerie" : "forge";
+      const want = isCyborg(t) ? "conversion" : isNavalType(t) ? "spawnpool" : isAircraftType(t) ? "aerie" : "forge";
       assert.equal(producerType(t), want, t);
     }
     for (const t of ["stalker", "ravager", "behemoth", "juggernaut", "siphon", "broodmother", "mawcaster"] as const) assert.equal(producerType(t), "forge");
@@ -183,13 +186,15 @@ describe("a Xenomorph seat", () => {
     unpack(state, "B");
     state.players.get("A")!.scrap = 50_000;
     state.players.get("B")!.scrap = 50_000;
-    const refuse = (pid: string, building: "dynamo" | "fusionnode" | "cyborgcentral" | "muster") => {
+    const refuse = (pid: string, building: "dynamo" | "fusionnode" | "cyborgcentral" | "conversion" | "muster") => {
       const r = applyCommand(state, pid, { type: "cmd.build", building });
       assert.equal(r.ok, false, `${pid} ${building}`);
       if (!r.ok) assert.equal(r.message, "Not available to your faction.");
     };
     refuse("B", "dynamo");
     refuse("B", "muster");
+    refuse("B", "cyborgcentral");
+    refuse("A", "conversion");
     const bags = applyCommand(state, "B", { type: "cmd.field", ids: [], structure: "sandbags", x: 100, y: 100, facing: 0 });
     assert.equal(bags.ok, false);
     if (!bags.ok) assert.equal(bags.message, "Not available to your faction.");
@@ -198,13 +203,14 @@ describe("a Xenomorph seat", () => {
     assert.equal(applyCommand(state, "A", { type: "cmd.build", building: "dynamo" }).ok, true);
   });
 
-  it("trains its three cyborgs at a Cyborg Central, with no Research Facility", () => {
+  it("trains its foot soldiers at a Conversion Chamber, with no Research Facility", () => {
     const state = match();
     unpack(state, "B");
     const ts = state.tileSize;
     const p = state.players.get("B")!;
     p.scrap = 50_000;
-    const central = makeEntity(state, "cyborgcentral", "B", tileCenter(40, ts), tileCenter(40, ts), { tileX: 40, tileY: 40 });
+    assert.equal(applyCommand(state, "B", { type: "cmd.build", building: "conversion" }).ok, true);
+    const central = makeEntity(state, "conversion", "B", tileCenter(40, ts), tileCenter(40, ts), { tileX: 40, tileY: 40 });
     for (const unit of ["xenodrone", "simunit2", "lancer"] as const) {
       const r = applyCommand(state, "B", { type: "cmd.train", unit });
       assert.equal(r.ok, true, r.ok ? unit : r.message);

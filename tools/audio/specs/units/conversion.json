@@ -1,0 +1,18 @@
+{
+  "key": "conversion",
+  "out": "units/conversion",
+  "sfx": {
+    "special": {
+      "prompt": "Alien conversion chamber at work: wet organic hiss of glass pods venting, a slow pulsing heartbeat-like throb, bubbling liquid, a body twitching against glass, a rising synthetic neural hum crackling with faint electric chirps, close, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Alien conversion chamber destroyed: glass pods shattering one after another with a gush of liquid, a neural spire crackling and shrieking with electric arcs, a chitin dome cracking and collapsing, medium distance outdoors, no music, no voice",
+      "duration": 4.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

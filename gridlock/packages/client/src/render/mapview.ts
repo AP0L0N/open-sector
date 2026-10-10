@@ -724,6 +724,7 @@ const EXTRUDE: Record<EntityType, number> = {
   seed: 22,
   forge: 52,
   nexus: 58,
+  conversion: 52,
   spineturret: 14,
   pulsespire: 30,
   laserfence: 20,
@@ -918,7 +919,7 @@ const TORPEDO_WAKE_MUL = 6;
 
 function isProducerView(e: EntityView): boolean {
   // The Airfield trains too, but its planes park on the strip; it has no rally point.
-  return e.kind === "building" && (e.type === "muster" || isSmelterType(e.type) || e.type === "armory" || isDockType(e.type) || e.type === "cyborgcentral" || e.type === "forge");
+  return e.kind === "building" && (e.type === "muster" || isSmelterType(e.type) || e.type === "armory" || isDockType(e.type) || e.type === "cyborgcentral" || e.type === "conversion" || e.type === "forge");
 }
 
 function hpBarFill(ratio: number, hostile: boolean, vivid = false): string {
