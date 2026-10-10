@@ -8,6 +8,8 @@ import {
   LASER_FENCE_REACH_TILES,
   costFor,
   factionOf,
+  fencePostTile,
+  isFenceLine,
   laserFenceLinks,
   AIRFIELD_BACK_DEPTH,
   BUILDING_TURN_STEP,
@@ -1288,6 +1290,10 @@ export class MapView {
   placePick: BuildingType | null = null;
   /** Defences-tab sandbags or wall, armed before the line is sited. */
   yardArm: YardFieldType | null = null;
+  /** Defences-tab Laser Fence armed: its posts are clicked in, start to end, before the yard builds them. */
+  fenceArm = false;
+  /** The fence posts clicked so far, start first, as top-left tiles. */
+  fencePosts: { tx: number; ty: number }[] = [];
   attackMoveMode = false;
   /** Left click adds a point. Click an earlier point to close a loop. Right click sends, or cancels when none are down. */
   patrolMode = false;
@@ -1898,8 +1904,12 @@ export class MapView {
     if (this.placePick && !this.typeReady(this.placePick)) this.placePick = null;
     if (!this.placeMode) this.yardArm = null;
     if (this.yardArm && this.curr.you.lineQueue) this.yardArm = null;
+    if (!this.placeMode || (this.fenceArm && this.curr.you.lineQueue)) {
+      this.fenceArm = false;
+      this.fencePosts = [];
+    }
     const placing = this.placeMode;
-    if (!this.placingKind() && !this.yardArm) this.placeMode = false;
+    if (!this.placingKind() && !this.yardArm && !this.fenceArm) this.placeMode = false;
     if (this.placeMode !== placing) this.onPlaceMode();
     this.syncAtlases();
     this.revealFrom(match);
@@ -2812,6 +2822,8 @@ export class MapView {
   armPlace(type: BuildingType): void {
     this.placePick = type;
     this.yardArm = null;
+    this.fenceArm = false;
+    this.fencePosts = [];
     this.fieldPlace = null;
     this.constructPlace = null;
     this.bridgePlace = null;
@@ -2847,6 +2859,8 @@ export class MapView {
     this.fieldPath = [];
     this.placePick = null;
     this.yardArm = type;
+    this.fenceArm = false;
+    this.fencePosts = [];
     this.placeMode = true;
     this.attackMoveMode = false;
     this.forceAttackMode = false;
@@ -2856,6 +2870,59 @@ export class MapView {
     this.guardDragging = false;
     this.onAttackMoveMode();
     this.onPlaceMode();
+  }
+
+  /** Armed Defences-tab Laser Fence. The engineer's field button wins when both are on. */
+  private readyFence(): boolean {
+    return this.placeMode && this.fenceArm && !this.fieldPlace;
+  }
+
+  /** Clicking Laser Fence on the Defences tab sites its posts, like a wall, before it builds. */
+  armFence(): void {
+    this.armYardField("wall");
+    this.yardArm = null;
+    this.fenceArm = true;
+    this.onPlaceMode();
+  }
+
+  /**
+   * Where a click would set the next fence post: under the cursor, drawn in along the way to it
+   * when that is past the last post's reach, so every post links to the one before.
+   */
+  private fencePostAt(mx: number, my: number): { tx: number; ty: number } {
+    const at = this.placeSite("laserfence", mx, my);
+    const last = this.fencePosts[this.fencePosts.length - 1];
+    if (!last) return { tx: at.tx, ty: at.ty };
+    const dx = at.tx - last.tx;
+    const dy = at.ty - last.ty;
+    const d = Math.hypot(dx, dy);
+    if (d <= LASER_FENCE_REACH_TILES) return { tx: at.tx, ty: at.ty };
+    const k = LASER_FENCE_REACH_TILES / d;
+    // Truncated toward the last post, so the gap never rounds out past reach.
+    return { tx: last.tx + Math.trunc(dx * k), ty: last.ty + Math.trunc(dy * k) };
+  }
+
+  /** A post may go here: open ground in range of the base, clear of the posts already clicked. */
+  private fencePostOk(post: { tx: number; ty: number }): boolean {
+    const def = catalog("laserfence");
+    if (this.fencePosts.some((p) => Math.abs(p.tx - post.tx) < def.tileW && Math.abs(p.ty - post.ty) < def.tileH)) return false;
+    return previewPlace(this.curr, "laserfence", post.tx, post.ty);
+  }
+
+  /** Click: one post. The first is the fence's start; Confirm takes the last as its end. */
+  private addFencePost(mx: number, my: number): void {
+    const post = this.fencePostAt(mx, my);
+    if (!this.fencePostOk(post)) return;
+    this.fencePosts = [...this.fencePosts, post];
+    this.onPlaceMode();
+  }
+
+  /** The yard pays for every clicked post and raises them together. */
+  private confirmFence(): void {
+    if (this.fencePosts.length === 0) return;
+    this.command({ type: "cmd.fence", posts: this.fencePosts.map((p) => ({ tx: p.tx, ty: p.ty })) });
+    // The fence is placed: the tool is put down, like a wall line after Confirm.
+    this.cancelFieldPlacing();
   }
 
   /** Daylight at the frame's tick: 0 all match on an always-night map. */
@@ -2903,6 +2970,11 @@ export class MapView {
           this.onPlaceMode();
           return;
         }
+        if (this.fencePosts.length > 0 && this.readyFence()) {
+          this.fencePosts = this.fencePosts.slice(0, -1);
+          this.onPlaceMode();
+          return;
+        }
         if (this.attackMoveMode || this.forceAttackMode || this.mineLayMode || this.blinkMode || this.rotateMode || this.guardMode || this.fieldPlace || this.constructPlace || this.bridgePlace) {
           this.setAttackMoveMode(false);
           this.setForceAttackMode(false);
@@ -2940,6 +3012,10 @@ export class MapView {
         }
         if (!this.bridgePlace && !this.fieldPlace && this.readyYardField() === "gate") {
           this.commitGate(mx, my);
+          return;
+        }
+        if (!this.bridgePlace && this.readyFence()) {
+          this.addFencePost(mx, my);
           return;
         }
         if (this.bridgePlace || this.fieldPlace || this.readyYardField()) {
@@ -3726,11 +3802,16 @@ export class MapView {
 
   /** A line is drawn and waits for Confirm. */
   fieldPending(): boolean {
+    if (this.readyFence()) return this.fencePosts.length > 0;
     return this.fieldPath.length > 0 && !!(this.fieldPlace || this.readyYardField() || this.bridgePlace);
   }
 
   /** Lay the drawn line: one order for the selected engineers, or one yard job. Clears the drawing. `join`: it finishes on that open end. */
   confirmField(): void {
+    if (this.readyFence()) {
+      this.confirmFence();
+      return;
+    }
     if (this.bridgePlace) {
       this.confirmBridge();
       return;
@@ -3818,7 +3899,9 @@ export class MapView {
 
   /** Drop the line being drawn and the placing mode with it. True when there was one. */
   cancelFieldPlacing(): boolean {
-    if (!this.fieldPlace && !this.readyYardField() && !this.constructPlace && !this.bridgePlace) return false;
+    if (!this.fieldPlace && !this.readyYardField() && !this.readyFence() && !this.constructPlace && !this.bridgePlace) return false;
+    this.fencePosts = [];
+    this.fenceArm = false;
     this.fieldPath = [];
     this.fieldDrag = null;
     this.fieldPlace = null;
@@ -4378,6 +4461,8 @@ export class MapView {
       }
       this.placeMode = false;
       this.yardArm = null;
+      this.fenceArm = false;
+      this.fencePosts = [];
       this.fieldPlace = null;
       this.constructPlace = null;
       this.bridgePlace = null;
@@ -4856,6 +4941,7 @@ export class MapView {
       this.drawBridgeGhost(this.bridgePlace);
     }
     this.drawYardBuild();
+    if (this.readyFence()) this.drawFenceGhost();
     if (this.fieldPlace && this.mouseX >= 0) this.drawFieldGhost(this.fieldPlace, false);
     else if (this.mouseX >= 0) {
       const yard = this.readyYardField();
@@ -10127,10 +10213,11 @@ export class MapView {
     return colorHex(p?.colorId ?? 0);
   }
 
-  private drawGhost(type: BuildingType, siteOk: typeof previewPlace = previewPlace): void {
-    const placed = this.placeSite(type, this.mouseX, this.mouseY);
+  /** The building as it would land: at the cursor, or at `at` with `ok` already decided. */
+  private drawGhost(type: BuildingType, siteOk: typeof previewPlace = previewPlace, at?: { tx: number; ty: number; ok: boolean }): void {
+    const placed = at ? { tx: at.tx, ty: at.ty, facing: 0 } : this.placeSite(type, this.mouseX, this.mouseY);
     const facing = placed.facing;
-    const ok = siteOk(this.curr, type, placed.tx, placed.ty, facing);
+    const ok = at ? at.ok : siteOk(this.curr, type, placed.tx, placed.ty, facing);
     const ts = this.ts();
     const site = buildingSite(type, placed.tx, placed.ty, facing, ts);
     const turned = isTurnedBuilding(site);
@@ -11159,6 +11246,77 @@ export class MapView {
     ctx.restore();
   }
 
+  /**
+   * The fence being sited: each clicked post, the next one at the cursor, and the beams they would
+   * hold, linked by the sim's own rule with the posts already standing. Then the bill.
+   */
+  private drawFenceGhost(): void {
+    const ts = this.ts();
+    const def = catalog("laserfence");
+    const onMap = this.mouseX >= 0;
+    const next = onMap ? this.fencePostAt(this.mouseX, this.mouseY) : null;
+    const nextOk = next ? this.fencePostOk(next) : false;
+    const centre = (p: { tx: number; ty: number }) => ({ x: (p.tx + def.tileW / 2) * ts, y: (p.ty + def.tileH / 2) * ts });
+    // New posts take ids below zero, so a link touching one is a beam this fence would add.
+    const sited = [...this.fencePosts, ...(next && nextOk ? [next] : [])].map((p, i) => ({ id: -1 - i, ownerId: this.curr.youPlayerId, ...centre(p) }));
+    const standing = this.curr.entities
+      .filter((e) => e.type === "laserfence" && e.ownerId === this.curr.youPlayerId && !e.wreck && !e.ruined && e.hp > 0)
+      .map((e) => ({ id: e.id, ownerId: e.ownerId, x: e.x, y: e.y }));
+    const all = [...standing, ...sited];
+    const byId = new Map(all.map((p) => [p.id, p]));
+    const layer = gunLayerFor("laserfence");
+    const heights = layer?.beamZ ?? [5.6, 11.6];
+    const now = performance.now();
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    for (const link of laserFenceLinks(all, LASER_FENCE_REACH_TILES * ts)) {
+      if (link.a >= 0 && link.b >= 0) continue;
+      const a = byId.get(link.a)!;
+      const b = byId.get(link.b)!;
+      const ea = this.elevAt(a.x, a.y);
+      const eb = this.elevAt(b.x, b.y);
+      const sa = this.toScreen(a.x, a.y, ea);
+      const sb = this.toScreen(b.x, b.y, eb);
+      heights.forEach((z, k) => {
+        const la = layer ? this.buildingArtLift({ type: "laserfence", x: a.x, y: a.y }, ea, z, layer) : z * 2;
+        const lb = layer ? this.buildingArtLift({ type: "laserfence", x: b.x, y: b.y }, eb, z, layer) : z * 2;
+        drawFenceBeam(ctx, { x: sa.x, y: sa.y - la }, { x: sb.x, y: sb.y - lb }, now, Math.abs(link.a * 7 + link.b * 3) + k);
+      });
+    }
+    ctx.restore();
+    const ghosts = [...this.fencePosts.map((p) => ({ ...p, ok: true })), ...(next ? [{ ...next, ok: nextOk }] : [])];
+    for (const g of ghosts.sort((u, v) => isoDepth(centre(u).x, centre(u).y) - isoDepth(centre(v).x, centre(v).y))) {
+      this.drawGhost("laserfence", previewPlace, g);
+    }
+    const tip = next ?? this.fencePosts[this.fencePosts.length - 1];
+    if (!tip) return;
+    const faction = this.curr.players.find((p) => p.playerId === this.curr.youPlayerId)?.faction ?? "xeno";
+    const each = costFor("laserfence", faction);
+    const count = this.fencePosts.length + (next && nextOk ? 1 : 0);
+    const bill = each * count;
+    const s = this.toScreen(centre(tip).x, centre(tip).y);
+    ctx.save();
+    ctx.font = "11px 'Share Tech Mono', monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#140e0a";
+    ctx.fillStyle = this.curr.you.scrap >= bill ? "#e8b84a" : "#ff5a4a";
+    const label = `${count} × ${each} = ${bill}`;
+    ctx.strokeText(label, s.x + 14, s.y - 14);
+    ctx.fillText(label, s.x + 14, s.y - 14);
+    ctx.font = "10px 'Share Tech Mono', monospace";
+    ctx.fillStyle = "#e8dcc4";
+    const hint =
+      this.fencePosts.length === 0
+        ? "Click the fence's start"
+        : "Click a post · Enter / Confirm placement to build · right-click takes one back";
+    ctx.strokeText(hint, s.x + 14, s.y + 2);
+    ctx.fillText(hint, s.x + 14, s.y + 2);
+    ctx.restore();
+  }
+
   /** The armed gate snaps over the two own wall sections nearest the pointer; off a pair it says what it wants. */
   private drawGateGhost(): void {
     const w = this.screenToWorld(this.mouseX, this.mouseY);
@@ -11186,7 +11344,13 @@ export class MapView {
   /** The line sited from the Defences tab, drawn until the yard finishes it. */
   private drawYardBuild(): void {
     const q = this.curr.you.lineQueue;
-    if (!q?.sites || q.sites.length === 0 || !isYardField(q.type)) return;
+    if (!q?.sites || q.sites.length === 0) return;
+    if (isFenceLine(q.type)) {
+      const ts = this.ts();
+      for (const s of q.sites) this.drawGhost("laserfence", previewPlace, { ...fencePostTile(ts, s.x, s.y), ok: true });
+      return;
+    }
+    if (!isYardField(q.type)) return;
     for (const s of q.sites) {
       if (q.type === "gate") {
         // Over the walls it replaces: the gate as it will stand, boom down.

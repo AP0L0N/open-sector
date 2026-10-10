@@ -81,6 +81,7 @@ import {
   launcherOnlyOf,
   isStance,
   isYardField,
+  isFenceLine,
   onLineLane,
   producerType,
   productionSpeed,
@@ -296,7 +297,7 @@ export function mountBattlefield(
       const m = ctx.match;
       const q = laneQueue(m, type);
       const mine = q?.type === type ? q : null;
-      if (isYardField(type)) {
+      if (isYardField(type) || isFenceLine(type)) {
         if (mine && !mine.ready) {
           if ((e.target as HTMLElement | null)?.closest(".cameo-hold, .cameo-paused") || mine.paused) {
             ctx.net.send({ type: "cmd.pause", what: "structure", paused: !mine.paused, building: type });
@@ -304,7 +305,9 @@ export function mountBattlefield(
           return;
         }
         if (q) return;
-        view.armYardField(type);
+        if (m && buildTechNeed(m, type).length > 0) return;
+        if (isFenceLine(type)) view.armFence();
+        else if (isYardField(type)) view.armYardField(type);
         paintBattleHud(ctx);
         return;
       }
@@ -326,10 +329,12 @@ export function mountBattlefield(
     btn?.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       const q = laneQueue(ctx.match, type);
-      if (isYardField(type)) {
+      if (isYardField(type) || isFenceLine(type)) {
         if (q?.type === type) ctx.net.send({ type: "cmd.cancel", what: "structure", building: type });
         else {
           view.yardArm = null;
+          view.fenceArm = false;
+          view.fencePosts = [];
           view.placeMode = false;
           paintBattleHud(ctx);
         }
@@ -686,7 +691,7 @@ export function paintBattleHud(ctx: Ctx): void {
     const ready = job?.ready === true;
     const paused = !!job && job.paused && !job.ready;
     const stalled = !!job && !job.ready && !job.paused && m.you.scrap <= 0;
-    const siting = isYardField(type) && viewRef?.yardArm === type && !!viewRef.placeMode;
+    const siting = ((isYardField(type) && viewRef?.yardArm === type) || (isFenceLine(type) && !!viewRef?.fenceArm)) && !!viewRef?.placeMode;
     btn.classList.toggle("is-ready", ready);
     btn.classList.toggle("is-building", !!job && !ready);
     btn.classList.toggle("is-placing", (ready && !!viewRef?.placeMode && viewRef.placePick === type) || siting);
