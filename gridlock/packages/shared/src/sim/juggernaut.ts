@@ -31,6 +31,7 @@ import { takeDamage } from "./crits.js";
 import { wallsShieldGarrison, woundGarrison } from "./garrison.js";
 import { allies, buildingBounds, ownerless, playerTeam } from "./geo.js";
 import { mortarFalloff } from "./mortar.js";
+import { diving } from "./naval.js";
 import { nextRand } from "./rng.js";
 import { gapTo, hiddenFromAuto, inStrikeReach } from "./simunit.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
@@ -122,7 +123,8 @@ export function hammerBlast(
   let kind: ImpactKind = "miss";
   for (const o of [...state.entities.values()]) {
     if (o.id === by.id || o.hp <= 0 || o.wreck || o.garrisonedIn != null) continue;
-    if (isAirborne(o) || isBridge(o.type) || isRubble(o)) continue;
+    // A submarine running below is under the blow.
+    if (isAirborne(o) || isBridge(o.type) || isRubble(o) || diving(o)) continue;
     if (!harmAllies && allies(state, by.ownerId, o.ownerId)) continue;
     const gap = gapFrom(state, x, y, o);
     if (gap > radius) continue;
@@ -194,7 +196,7 @@ function strongestInReach(state: MatchState, e: Entity): Entity | undefined {
   let bestScore = -Infinity;
   for (const o of state.entities.values()) {
     if (o.id === e.id || o.hp <= 0 || o.wreck || o.garrisonedIn != null || hiddenFromAuto(o)) continue;
-    if (ownerless(o) || isAirborne(o) || isBridge(o.type) || isRubble(o)) continue;
+    if (ownerless(o) || isAirborne(o) || isBridge(o.type) || isRubble(o) || diving(o)) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
     if (gapTo(state, e, o) > reach) continue;
     // Units first: a building only scores under every unit.

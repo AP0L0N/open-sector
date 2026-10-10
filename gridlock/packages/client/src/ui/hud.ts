@@ -1,6 +1,7 @@
 import {
   canLunge,
   canBurrow,
+  neverSurfacesOf,
   costFor,
   energyOf,
   energySupplyOf,
@@ -1030,7 +1031,13 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
             ? airLine(e.air, e.type)
             : "";
   const pads = e.pads ? `  ·  planes ${e.pads.used}/${e.pads.cap}` : "";
-  const depth = e.dive ? diveLine(e.dive, !!e.submerged) : e.asw ? aswLine(e.asw) : "";
+  const depth = e.dive
+    ? diveLine(e.dive, !!e.submerged)
+    : e.asw
+      ? aswLine(e.asw)
+      : neverSurfacesOf(e.type) && !e.wreck && e.ownerId === ctx.match.youPlayerId
+        ? `  ·  ${e.submerged ? "submerged" : "surfaced to bite"}`
+        : "";
   box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${field}${plates}${injuries}${posture}${mag}${rack}${rockets}${mg}${flight}${depth}  ·  ${who}${q}${cart}${smoke}${dep}${special}${garrison}${scout}${bed}${pads}${capturing}${holding}${selfDestroy}${tending}`;
   box.style.borderColor = occ ? colorHex(occ.colorId) : "#b08968";
 }
