@@ -59,6 +59,9 @@ function nest(state: MatchState): { aerie: Entity; craft: Entity } {
   makeEntity(state, "nexus", "A", tileCenter(tx, ts), tileCenter(ty - 8, ts), { tileX: tx, tileY: ty - 8 });
   makeEntity(state, "fusionnode", "A", tileCenter(tx + 8, ts), tileCenter(ty - 8, ts), { tileX: tx + 8, tileY: ty - 8 });
   makeEntity(state, "fusionnode", "A", tileCenter(tx + 14, ts), tileCenter(ty - 8, ts), { tileX: tx + 14, tileY: ty - 8 });
+  makeEntity(state, "fusionnode", "A", tileCenter(tx + 0, ts), tileCenter(ty - 14, ts), { tileX: tx + 0, tileY: ty - 14 });
+  makeEntity(state, "fusionnode", "A", tileCenter(tx + 8, ts), tileCenter(ty - 14, ts), { tileX: tx + 8, tileY: ty - 14 });
+  makeEntity(state, "fusionnode", "A", tileCenter(tx + 14, ts), tileCenter(ty - 14, ts), { tileX: tx + 14, tileY: ty - 14 });
   const def = catalog("aerie");
   const aerie = makeEntity(state, "aerie", "A", (tx + def.tileW / 2) * ts, (ty + def.tileH / 2) * ts, { tileX: tx, tileY: ty });
   const craft = spawnUnit(state, "A", "overseer", aerie, false);
