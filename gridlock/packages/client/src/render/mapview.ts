@@ -146,6 +146,7 @@ import {
   type MapLamp,
   type FieldStructureType,
   type ConcreteLineType,
+  type EnergyShieldView,
   type EntityView,
   type IsoPt,
   type MapDef,
@@ -161,7 +162,7 @@ import {
   SIMUNIT_BLINK_RANGE_TILES,
   isSimUnit,
 } from "@gridlock/shared";
-import { drawShieldPanel, shieldCurve, shieldGlow, shieldHeightElev } from "./energy-shield.js";
+import { WEAVE_THREAD_MS, drawShieldPanel, drawWeaveThread, shieldCurve, shieldGlow, shieldHeightElev } from "./energy-shield.js";
 import { drawNuke, drawNukeFlash, drawNukeScorch, NUKE_FX_MS, NUKE_SCORCH_MS } from "./nuke-fx.js";
 import { drawTitanThrust } from "./titan-jet-fx.js";
 import {
@@ -543,6 +544,8 @@ import { lineFrame, lineProfile, lineShapes, type LineShape } from "./line-bend.
 
 /** Bridges lie on the water: over ground decals, under shadows, corpses, and everything standing. */
 const BRIDGE_DRAW_LAYER = -1.5;
+/** Screen px above a Weaver's feet where its nanite spindle sits: the thread to a wall starts there. */
+const WEAVER_SPINDLE_LIFT_PX = 12;
 
 /** One bridge brick as it is drawn: where it lies, and how it meets its neighbours. */
 interface BridgeLook {
@@ -1134,6 +1137,10 @@ export class MapView {
   private ruinSmokeAt = new Map<number, number>();
   /** Wall-clock ms of the last small-arms shot from an infantry unit. */
   private infantryShotAt = new Map<number, number>();
+  /** Energy wall id -> when it first showed (performance.now ms); kept for Weaver walls only. */
+  private shieldBorn = new Map<number, number>();
+  /** Weaver id -> until when it holds its working pose for a wall it just threw. */
+  private weaveUntil = new Map<number, number>();
   /** Fw 190 barrage streaks in flight, with the gun and impact heights (absolute elevation). */
   private tracers: (BarrageTracer & { z0: number; z1: number; energy?: true; heavy?: boolean })[] = [];
   /** Spine Turret and Pulse Spire: which barrel last kicked back, and when (hive-gun-recoil.ts). */
@@ -7759,6 +7766,7 @@ export class MapView {
   /** A working Weaver with a hurt hive unit of its side in reach: it holds the mending pose. */
   private weaverMending(w: EntityView): boolean {
     if (w.hp <= 0 || w.wreck || w.shutdown || w.dormant || w.garrisonedIn != null) return false;
+    if ((this.weaveUntil.get(w.id) ?? 0) > performance.now()) return true;
     const reach = WEAVER_REACH_TILES * this.ts();
     for (const o of this.currById.values()) {
       if (o === w || o.kind !== "unit" || o.ownerId !== w.ownerId || o.hp <= 0 || o.wreck || o.hp >= o.hpMax) continue;
@@ -9246,7 +9254,10 @@ export class MapView {
   /** Hive energy walls: one panel per stretch of the curve, sorted with the units around it. */
   private collectShields(items: DrawItem[], w: number, h: number): void {
     const walls = this.curr.shields;
-    if (!walls || walls.length === 0) return;
+    if (!walls || walls.length === 0) {
+      this.shieldBorn.clear();
+      return;
+    }
     const now = performance.now();
     for (const s of walls) {
       const mid = this.toScreen(s.x, s.y);
@@ -9269,7 +9280,34 @@ export class MapView {
           run: () => drawShieldPanel(this.ctx, a.base, b.base, (a.lift + b.lift) / 2, glow),
         });
       }
+      this.collectWeaveThread(items, s, pts, now);
     }
+    if (this.shieldBorn.size > 0) {
+      const up = new Set(walls.map((s) => s.id));
+      for (const id of this.shieldBorn.keys()) if (!up.has(id)) this.shieldBorn.delete(id);
+    }
+    for (const [id, until] of this.weaveUntil) if (until <= now) this.weaveUntil.delete(id);
+  }
+
+  /** A Weaver's fresh wall: the thread from its spindle to the curtain, and the Weaver held in its working pose. */
+  private collectWeaveThread(items: DrawItem[], s: EnergyShieldView, pts: { base: { x: number; y: number }; lift: number }[], now: number): void {
+    if (s.by == null) return;
+    let born = this.shieldBorn.get(s.id);
+    if (born == null) this.shieldBorn.set(s.id, (born = now));
+    const age = now - born;
+    if (age >= WEAVE_THREAD_MS) return;
+    const w = this.currById.get(s.by);
+    if (!w || w.hp <= 0 || w.wreck) return;
+    this.weaveUntil.set(w.id, born + WEAVE_THREAD_MS);
+    const mid = pts[pts.length >> 1]!;
+    const to = { x: mid.base.x, y: mid.base.y - mid.lift * 0.5 };
+    const foot = this.toScreen(w.x, w.y, this.elevAt(w.x, w.y));
+    const from = { x: foot.x, y: foot.y - WEAVER_SPINDLE_LIFT_PX };
+    items.push({
+      layer: STANDING_DRAW_LAYER + 0.5,
+      z: isoDepth(s.x, s.y),
+      run: () => drawWeaveThread(this.ctx, from, to, age, s.id),
+    });
   }
 
   private collectFires(items: DrawItem[], w: number, h: number): void {
