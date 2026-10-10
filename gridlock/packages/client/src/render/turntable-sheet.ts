@@ -923,6 +923,64 @@ const planeHullGlobs = {
 
 const planePrevious = new Map<keyof typeof planeHullGlobs, ComposedTurntable>();
 
+/** The wing strokes of the Xenomorph insects (render_xeno_air.py): the hull is the mid stroke. */
+const wingStrokeGlobs = {
+  wasp: {
+    up: import.meta.glob("../assets/units/wasp/wingup/*.png", { eager: true, import: "default" }) as Record<string, string>,
+    down: import.meta.glob("../assets/units/wasp/wingdown/*.png", { eager: true, import: "default" }) as Record<string, string>,
+  },
+  scourge: {
+    up: import.meta.glob("../assets/units/scourge/wingup/*.png", { eager: true, import: "default" }) as Record<string, string>,
+    down: import.meta.glob("../assets/units/scourge/wingdown/*.png", { eager: true, import: "default" }) as Record<string, string>,
+  },
+  gnat: {
+    up: import.meta.glob("../assets/units/gnat/wingup/*.png", { eager: true, import: "default" }) as Record<string, string>,
+    down: import.meta.glob("../assets/units/gnat/wingdown/*.png", { eager: true, import: "default" }) as Record<string, string>,
+  },
+} as const;
+
+/** Frames of a flutter sheet, left to right: up, mid, down, mid. The wings beat through them in a loop. */
+export const FLUTTER_FRAMES = 4;
+
+const flutterPrevious = new Map<keyof typeof wingStrokeGlobs, string>();
+
+/**
+ * A Xenomorph insect's flutter sheet: the hull and both wing strokes fitted in one box (the body
+ * sits on the same pixels in all three), laid out as FLUTTER_FRAMES columns of 16 rows.
+ */
+export function bindFlutterSheets(kind: keyof typeof wingStrokeGlobs, hullImage: HTMLImageElement): void {
+  let layers: string[][];
+  try {
+    const g = wingStrokeGlobs[kind];
+    layers = [pickTurntableUrls(planeHullGlobs[kind]), pickTurntableUrls(g.up), pickTurntableUrls(g.down)];
+  } catch (err) {
+    console.error(`${kind} flutter`, err);
+    return;
+  }
+  void Promise.all(layers.map((urls) => Promise.all(urls.map(loadImage))))
+    .then((imgs) => composeAligned(imgs, STUKA_OPTS))
+    .then(async (next) => {
+      URL.revokeObjectURL(next.cameoUrl);
+      const [mid, up, down] = await Promise.all(next.sheetUrls.map(loadImage));
+      for (const url of next.sheetUrls) URL.revokeObjectURL(url);
+      const cell = STUKA_OPTS.cell;
+      const strip = document.createElement("canvas");
+      strip.width = cell * FLUTTER_FRAMES;
+      strip.height = TURNTABLE_DIRS * cell;
+      const g = strip.getContext("2d");
+      if (!g) throw new Error("2d context");
+      [up!, mid!, down!, mid!].forEach((sheet, i) => g.drawImage(sheet, i * cell, 0));
+      const url = await canvasPngUrl(strip);
+      const old = flutterPrevious.get(kind);
+      if (old) URL.revokeObjectURL(old);
+      flutterPrevious.set(kind, url);
+      hullImage.src = url;
+    })
+    .catch((err) => {
+      console.error(`${kind} flutter`, err);
+    });
+}
+
 export function bindPlaneSheets(kind: keyof typeof planeHullGlobs, hullImage: HTMLImageElement): void {
   let hullUrls: string[];
   try {

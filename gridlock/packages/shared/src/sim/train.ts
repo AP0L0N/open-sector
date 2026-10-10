@@ -1,4 +1,4 @@
-import { AIRFIELD_PADS, BLOOM_GESTATOR, BLOOM_NEST, XENO_BARRACKS, XENO_FACTORY, airfieldOf, canContinuousTrain, catalog, dockOf, isDockType, factionOf, inFaction, isAirfieldType, isAircraftType, isCyborg, isInfantryType, isNavalType, isOneAtATime, secondsToTicks, techNeeds, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, usesHiveEnergy, type BuildingType, type TrainType } from "../catalog.js";
+import { AIRFIELD_PADS, BLOOM_GESTATOR, BLOOM_NEST, XENO_BARRACKS, XENO_FACTORY, airfieldOf, canContinuousTrain, catalog, dockOf, isDockType, factionOf, inFaction, isAirfieldType, isAircraftType, isCyborg, isInfantryType, isNavalType, isOneAtATime, secondsToTicks, staysAloft, techNeeds, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, usesHiveEnergy, type BuildingType, type TrainType } from "../catalog.js";
 import { airfieldPadWorld, freePad, padsSpoken, parkHeading } from "./air.js";
 import { makeEntity, newAirState, ownedUnits, rallyPoint, worldToTile } from "./geo.js";
 import { openSpotNear, packRadius, packSlots } from "./formation.js";
@@ -345,6 +345,20 @@ export function spawnUnit(
   ignoreCap: boolean,
 ): Entity | null {
   if (!ignoreCap && ownedUnits(state, playerId) >= UNIT_CAP) return null;
+  if (staysAloft(type)) {
+    // A Xenomorph flier lifts straight up out of the Aerie and hovers off to the rally point, or just outside the door.
+    const ts = state.tileSize;
+    const cx = (from.tileX + from.tileW / 2) * ts;
+    const cy = (from.tileY + from.tileH / 2) * ts;
+    const door = rallyPoint(state, from, type);
+    const flier = makeEntity(state, type, playerId, cx, cy, { facing: Math.atan2(door.y - cy, door.x - cx) });
+    flier.air = newAirState(null, 0, type);
+    flier.air.phase = "takeoff";
+    const to = from.rally ?? door;
+    flier.order = { kind: "move", x: to.x, y: to.y };
+    flier.state = "move";
+    return flier;
+  }
   if (isAircraftType(type)) {
     // A plane rolls out onto a free hardstand and waits there for orders.
     const pad = isAirfieldType(from.type) ? freePad(state, from) : null;

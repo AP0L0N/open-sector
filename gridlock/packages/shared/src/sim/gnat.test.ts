@@ -109,7 +109,8 @@ describe("Gnat", () => {
     const p = at(state, 120, 120);
     const g = flyerOver(state, "gnat", 120, 120, HORTEN_CRUISE_ALT);
     for (let i = 0; i < 4; i++) {
-      const s = makeEntity(state, "gunner", "B", p.x + (i - 1.5) * 12, p.y + 10);
+      // Off to the side: a round climbing straight up crosses the hit band within a tick.
+      const s = makeEntity(state, "gunner", "B", p.x + (i - 1.5) * 12, p.y + 100);
       s.holdPosition = true;
     }
     // Shot down, it crashes and lies as a wreck under the same id.

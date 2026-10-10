@@ -1247,18 +1247,23 @@ export type DockType = "dock" | "spawnpool" | "tidewomb";
 export function isDockType(type: string): type is DockType {
   return type === "dock" || type === "spawnpool" || type === "tidewomb";
 }
-/** A field planes live on: the Airfield, the Xenomorph Aerie, the Bloom Roost. Same footprint, same four pads. */
-export type AirfieldType = "airfield" | "aerie" | "roost";
+/**
+ * A field planes live on: the Airfield and the Bloom Roost. Same footprint, same four pads.
+ * The Xenomorph Aerie is not one: its fliers never land (staysAloft), so it is a plain producer.
+ */
+export type AirfieldType = "airfield" | "roost";
 export function isAirfieldType(type: string): type is AirfieldType {
-  return type === "airfield" || type === "aerie" || type === "roost";
+  return type === "airfield" || type === "roost";
 }
+/** Where each faction's aircraft are trained: an Airfield or Roost with pads, or the Aerie. */
+export type AirProducerType = AirfieldType | "aerie";
 const DOCK_OF: Record<Faction, DockType> = { alliance: "dock", xeno: "spawnpool", bloom: "tidewomb" };
-const AIRFIELD_OF: Record<Faction, AirfieldType> = { alliance: "airfield", xeno: "aerie", bloom: "roost" };
+const AIRFIELD_OF: Record<Faction, AirProducerType> = { alliance: "airfield", xeno: "aerie", bloom: "roost" };
 /** The faction's own shipyard and airfield. */
 export function dockOf(faction: Faction): DockType {
   return DOCK_OF[faction];
 }
-export function airfieldOf(faction: Faction): AirfieldType {
+export function airfieldOf(faction: Faction): AirProducerType {
   return AIRFIELD_OF[faction];
 }
 
@@ -4227,6 +4232,17 @@ export const OVERSEER_HULL_MUL = 0.6;
 export const OVERSEER_BUILDING_MUL = 0.4;
 /** Climb and descent rate on and off its nest, elevation units a second. */
 export const OVERSEER_LIFT_PER_SEC = 5;
+/**
+ * The hovering Xenomorph fliers (staysAloft) on station. A Wasp hangs HIVE_WASP_STANDOFF_TILES
+ * off its target and lays a barrage whenever its cannon are clear; a Scourge hangs
+ * HIVE_SCOURGE_STANDOFF_TILES off and lobs a bomb every HIVE_BOMB_SECONDS, its pulse guns firing
+ * a burst of one tick every HIVE_GUN_BURST_SECONDS at soft targets. They lift and sink at
+ * OVERSEER_LIFT_PER_SEC.
+ */
+export const HIVE_WASP_STANDOFF_TILES = t(3);
+export const HIVE_SCOURGE_STANDOFF_TILES = t(2);
+export const HIVE_BOMB_SECONDS = 5;
+export const HIVE_GUN_BURST_SECONDS = 0.5;
 /** Seconds of flight in a full tank: it hangs in the air longer than a plane flies. */
 export const OVERSEER_FUEL_SECONDS = 140;
 
@@ -6544,7 +6560,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     onWater: true,
     blurb: "A ring of ribbed chitin around a glowing birthing pool. It can only grow on water: every tile under it must be open water. Grows the Leech and, with a Neural Nexus standing, the Lurker, which slip into the water beside it and never come ashore.",
   },
-  /** Xenomorph airfield: a launch spine and four nests. Same footprint and pads as the Airfield. */
+  /** Xenomorph flier hive: grows the fliers, which lift straight out of it. No strip, no pads; the Nanite Forge's footprint. */
   aerie: {
     type: "aerie",
     kind: "building",
@@ -6554,8 +6570,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     buildSeconds: 26,
     hp: 1100,
     power: 0,
-    tileW: t(7.5),
-    tileH: t(3.75),
+    tileW: t(3),
+    tileH: t(3),
     radius: 0,
     moveTilesPerSec: 0,
     turnDegPerSec: 0,
@@ -6565,7 +6581,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `A long spine of fused chitin with four landing nests beside it. Grows the Wasp, the Gnat, and, with a Neural Nexus standing, the Scourge and the Overseer, and keeps up to ${AIRFIELD_PADS} of them. They never run out of anything to fire; they come back to their nests to refuel and mend.`,
+    blurb: "A ribbed chitin hive where the fliers are grown. Grows the Wasp, the Gnat, and, with a Neural Nexus standing, the Scourge and the Overseer. They lift straight up out of it and never come down: no runway, no fuel, nothing to rearm. A Weaver mends them in the air.",
   },
   /** Xenomorph fast attack boat: a skimming chitin hull with a plasma cannon. */
   leech: {
@@ -6667,7 +6683,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     aircraft: true,
     fighter: true,
     wreckHp: 20,
-    blurb: `Insect fighter on green-veined wings, a pulse cannon under each. They never run dry: on every pass it lines up on the target and lays two straight lines of pulses through it, coming down through a tank's thin roof. It chases enemy planes out of the sky the same way. A shade faster and tighter than the Fw 190, a little lighter. Lands in an Aerie nest to refuel and mend. A hit that tears a wing brings it down at once.`,
+    blurb: `Insect fighter on buzzing green-veined wings, a pulse cannon under each. It never lands and never runs dry. It hovers: sent at something it flies straight there, hangs a few cells off it, turns on it, and lays two straight lines of pulses through it, coming down through a tank's thin roof. It chases enemy planes out of the sky the same way. A hit that tears a wing brings it down at once.`,
   },
   /** Xenomorph dive bomber: beetle carapace and a plasma bomb pod. Lives in an Aerie nest. */
   scourge: {
@@ -6696,7 +6712,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: STUKA_MG.spreadDeg,
     aircraft: true,
     wreckHp: 23,
-    blurb: "Dive bomber with a beetle's carapace. A plasma bomb in a glowing pod that grows the next one as soon as the last falls, so it bombs on every pass and never goes home to rearm, and two pulse guns for soft targets. Flies over everything; only rifles, machine guns, the Walker, and the Titan's rockets can reach it in the air. Lands in an Aerie nest to refuel and mend. A hit that tears a wing brings it down at once. Needs a Neural Nexus.",
+    blurb: `Hovering bomber with a beetle's carapace and buzzing wings. A plasma bomb in a glowing pod that grows the next one ${HIVE_BOMB_SECONDS} seconds after the last falls, and two pulse guns for soft targets. It never lands and never runs dry: sent at something it hangs just off it, lobbing bomb after bomb and raking it in bursts. Flies over everything; only rifles, machine guns, the Walker, and the Titan's rockets can reach it in the air. A hit that tears a wing brings it down at once. Needs a Neural Nexus.`,
   },
   /** Xenomorph hover craft: hangs over its target and burns straight down. Lives in an Aerie nest. */
   overseer: {
@@ -6724,7 +6740,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     aircraft: true,
     hovers: true,
     wreckHp: 20,
-    blurb: `A floating hive eye: a bell of chitin on a ring of humming vanes, glowing membrane round its rim and a cluster of emitters under its belly. It lifts straight off its Aerie nest and flies slowly. Sent at something on the ground it stops right over it and hangs there, burning straight down with a green laser pulse every ${OVERSEER_PULSE_SECONDS} seconds, and follows it as it moves. Every enemy soldier in the beam's spot burns; a tank's thin roof gives under it slowly, a building slower still. It never runs dry. It cannot touch a plane, and it hovers low: rifles, machine guns, and anti-air reach it. It sets down on its nest to refuel and mend. Needs a Neural Nexus.`,
+    blurb: `A floating hive eye: a spinning bell of chitin on a ring of humming vanes, glowing membrane round its rim and a cluster of emitters under its belly. It lifts straight out of the Aerie, never lands, and flies slowly. Sent at something on the ground it stops right over it and hangs there, burning straight down with a green laser pulse every ${OVERSEER_PULSE_SECONDS} seconds, and follows it as it moves. Every enemy soldier in the beam's spot burns; a tank's thin roof gives under it slowly, a building slower still. It never runs dry. It cannot touch a plane, and it hovers low: rifles, machine guns, and anti-air reach it. Needs a Neural Nexus.`,
   },
   /** Xenomorph spy drone: a tiny fly with one big sensor eye. Lives in an Aerie nest. */
   gnat: {
@@ -6751,7 +6767,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     aircraft: true,
     recon: true,
     wreckHp: 6,
-    blurb: `A spy fly the size of a man, grown in an Aerie nest in a few seconds for a sliver of hive energy. No weapon: one great sensor eye. It flies as high as the Horten VII and sees almost as far from up there, ${(t(11) + HORTEN_FLYING_SIGHT_BONUS) / TILE_SUBDIV} tiles around it. Only anti-air guns and a fighter that climbs after it can reach it, but its shell is paper: one burst brings it down. Its charge holds ${HORTEN_FUEL_SECONDS} seconds of flight. Send it at a point or a unit and it flies over and circles there; on guard or patrol it keeps watching the area. It comes home to its nest to recharge when it runs low.`,
+    blurb: `A spy fly the size of a man on buzzing wings, grown in the Aerie in a few seconds for a sliver of hive energy. No weapon: one great sensor eye. It flies as high as the Horten VII and sees almost as far from up there, ${(t(11) + HORTEN_FLYING_SIGHT_BONUS) / TILE_SUBDIV} tiles around it. Only anti-air guns and a fighter that climbs after it can reach it, but its shell is paper: one burst brings it down. It never lands and never tires. Send it at a point or a unit and it flies straight over and hangs there, following a unit it can see; on guard or patrol it keeps watching the area.`,
   },
   // ── The Bloom ───────────────────────────────────────────────────────────────────────────
   /** Bloom HQ on the move: a fat seed-pod on root legs. */
@@ -8861,9 +8877,18 @@ export function isFighterType(type: EntityType): boolean {
   return type === "fw190" || catalog(type).fighter === true;
 }
 
-/** Hovers like a helicopter: the Xenomorph Overseer. */
+/** Hovers like a helicopter: the Xenomorph Overseer, the Bloom Drifter. */
 export function isHoverType(type: EntityType): boolean {
   return catalog(type).hovers === true;
+}
+
+/**
+ * A Xenomorph flier: the Wasp, the Scourge, the Gnat, the Overseer. It lifts straight out of
+ * the Aerie and never comes down: no runway, no nest, no fuel. It flies straight at where it
+ * is sent and hangs there (sim/air.ts tickHover); it never circles like a plane.
+ */
+export function staysAloft(type: EntityType): boolean {
+  return isAircraftType(type) && XENO_TYPES.has(type);
 }
 
 /** Fights with its jaws: the Xenomorph Lurker. */
