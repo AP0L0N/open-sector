@@ -8565,10 +8565,20 @@ export function isYardField(type: string): type is YardFieldType {
   return (YARD_FIELD_TYPES as readonly string[]).includes(type);
 }
 
-/** Builds in the yard's line lane, beside sandbags and walls, apart from the other defences: the lines and the Spotlight post. */
+/** Builds in the yard's line lane, beside sandbags and walls, apart from the other defences: the lines, the Laser Fence, and the Spotlight post. */
 export function onLineLane(type: string): boolean {
-  return isYardField(type) || type === "spotlight";
+  return isYardField(type) || type === "spotlight" || isFenceLine(type);
 }
+
+/**
+ * Sited like a wall from the Defences tab, before it builds: a post at every corner clicked, then
+ * Confirm. The yard pays for every post and they all go up together.
+ */
+export function isFenceLine(type: string): type is "laserfence" {
+  return type === "laserfence";
+}
+/** Most posts one fence order can site. */
+export const FENCE_POSTS_MAX = 64;
 
 /**
  * Guns, garrisons, and the sandbag and wall lines: the Defences tab.

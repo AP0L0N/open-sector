@@ -976,6 +976,11 @@ export type ClientMessage =
        */
       lead?: { x: number; y: number };
     }
+  /**
+   * Site a Laser Fence from the Defences tab: a post on each top-left tile, start first, the
+   * end last. The yard pays for every post and raises them all together, like a wall line.
+   */
+  | { type: "cmd.fence"; posts: { tx: number; ty: number }[] }
   /** Selected engineers walk to the tile and raise this base building there. A Smelter on distant scrap. */
   | { type: "cmd.construct"; ids: number[]; building: BuildingType; tx: number; ty: number }
   /**

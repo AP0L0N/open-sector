@@ -13,6 +13,7 @@ import {
   type EntityType,
 } from "../catalog.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
+import { raiseBuilding } from "./build.js";
 import { applyCommand } from "./commands.js";
 import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
 import { laserFenceLinks, liveFenceLinks } from "./laser-fence.js";
@@ -113,6 +114,51 @@ describe("Laser Fence", () => {
     ticks(state, secondsToTicks(1.5));
     assert.equal(liveFenceLinks(state).links.length, 0);
     assert.equal(man.hp, man.hpMax);
+  });
+
+  it("is sited like a wall: no bare build order, every clicked post goes up together once the yard pays for them", () => {
+    const state = field();
+    const S = TILE_SUBDIV;
+    raiseBuilding(state, "B", "hivecore", 40 * S, 40 * S);
+    raiseBuilding(state, "B", "fusionnode", 46 * S, 40 * S);
+    const b = state.players.get("B")!;
+    b.scrap = 10_000;
+    assert.equal(applyCommand(state, "B", { type: "cmd.build", building: "laserfence" }).ok, false);
+    const posts = [
+      { tx: 36 * S, ty: 38 * S },
+      { tx: 40 * S, ty: 38 * S },
+      { tx: 44 * S, ty: 38 * S },
+    ];
+    assert.equal(applyCommand(state, "B", { type: "cmd.fence", posts }).ok, true);
+    assert.equal(b.line?.type, "laserfence");
+    assert.equal(b.line?.sites?.length, 3);
+    const standing = () => [...state.entities.values()].filter((e) => e.type === "laserfence" && e.ownerId === "B");
+    ticks(state, secondsToTicks(1));
+    assert.equal(standing().length, 0, "nothing stands while the yard builds");
+    // The line lane holds one fence at a time.
+    assert.notEqual(applyCommand(state, "B", { type: "cmd.fence", posts: [{ tx: 50 * S, ty: 38 * S }] }).ok, true, "one fence at a time");
+    ticks(state, secondsToTicks(120));
+    assert.equal(b.line, null);
+    const up = standing();
+    assert.equal(up.length, 3);
+    assert.deepEqual(up.map((e) => e.tileX).sort((u, v) => u! - v!), posts.map((p) => p.tx));
+    assert.equal(b.scrap <= 10_000 - 3 * catalog("laserfence").cost, true);
+    assert.equal(liveFenceLinks(state).links.length, 2, "a row of three is one fence");
+  });
+
+  it("stops the fence at a post set on top of another, and is the hive's alone", () => {
+    const state = field();
+    const S = TILE_SUBDIV;
+    raiseBuilding(state, "B", "hivecore", 40 * S, 40 * S);
+    state.players.get("B")!.scrap = 10_000;
+    const posts = [
+      { tx: 36 * S, ty: 38 * S },
+      { tx: 36 * S + 1, ty: 38 * S },
+      { tx: 44 * S, ty: 38 * S },
+    ];
+    assert.equal(applyCommand(state, "B", { type: "cmd.fence", posts }).ok, true);
+    assert.equal(state.players.get("B")!.line?.sites?.length, 1);
+    assert.equal(applyCommand(state, "A", { type: "cmd.fence", posts: [{ tx: 10 * S, ty: 10 * S }] }).ok, false);
   });
 
   it("does not block the way: a unit walks straight through the line", () => {
