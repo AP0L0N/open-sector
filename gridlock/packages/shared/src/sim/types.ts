@@ -845,6 +845,8 @@ export interface EnergyShield {
   life: number;
   /** Tick a round last struck it. */
   hitTick?: number;
+  /** A pulse or laser has struck it: the one such hit it always lives through is spent. */
+  energyStruck?: true;
   /** A Siphon's dome: stops only what comes in from outside, and follows its unit. */
   dome?: true;
 }
