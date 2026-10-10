@@ -71,12 +71,12 @@ function unit(state: MatchState, type: "simunit2" | "cyborg" | "rifleman" | "wal
 }
 
 describe("Sim Unit II catalog", () => {
-  it("is a trainable cyborg-class soldier with the daggers, gated on the Central", () => {
+  it("is a trainable cyborg-class soldier with the daggers, gated on the Conversion Chamber", () => {
     assert.ok(TRAIN_TYPES.includes("simunit2"));
     assert.equal(catalog("simunit2").name, "Sim Unit II");
     assert.equal(isInfantryType("simunit2"), true);
     assert.equal(isCyborg("simunit2"), true);
-    assert.equal(TECH_REQUIRES.simunit2, "cyborgcentral");
+    assert.equal(TECH_REQUIRES.simunit2, "conversion");
     assert.equal(infantryGunFor({ type: "simunit2", crits: [] })?.id, "daggers");
     assert.equal(catalog("simunit2").rangeTiles, SIMUNIT_REACH_TILES);
     assert.ok(catalog("simunit2").moveTilesPerSec > catalog("cyborg").moveTilesPerSec, "faster than the Cyborg");

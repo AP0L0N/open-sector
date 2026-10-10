@@ -83,12 +83,12 @@ function fortLine(state: MatchState, type: "sandbags" | "wall", tx: number): voi
 }
 
 describe("Thrall catalog", () => {
-  it("is a cheap, quick, tanky Xenomorph cyborg with fists, gated on the Central", () => {
+  it("is a cheap, quick, tanky Xenomorph cyborg with fists, gated on the Conversion Chamber", () => {
     const d = catalog("thrall");
     assert.ok(TRAIN_TYPES.includes("thrall"));
     assert.equal(d.name, "Thrall");
     assert.ok(isInfantryType("thrall") && isCyborg("thrall") && meleeOf("thrall") && vaultsWalls("thrall"));
-    assert.equal(TECH_REQUIRES.thrall, "cyborgcentral");
+    assert.equal(TECH_REQUIRES.thrall, "conversion");
     assert.equal(infantryGunFor({ type: "thrall", crits: [] })?.id, "fists");
     assert.ok(d.energy! < catalog("xenodrone").energy! && d.buildSeconds < catalog("xenodrone").buildSeconds, "cheaper and quicker than the Drone");
     assert.ok(d.hp > catalog("xenodrone").hp, "tankier than the Drone");

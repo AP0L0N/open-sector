@@ -74,7 +74,7 @@ describe("hive energy", () => {
   it("draws no power and builds no Assimilator", () => {
     const state = field();
     at(state, "forge", 30, 30);
-    at(state, "cyborgcentral", 34, 30);
+    at(state, "conversion", 34, 30);
     assert.deepEqual(powerOf(state, "B"), { provided: 0, used: 0, lowPower: false });
     assert.equal(inFaction("assimilator", "xeno"), false);
     assert.equal(inFaction("fusionnode", "xeno"), true);
@@ -95,7 +95,7 @@ describe("hive energy", () => {
 
   it("trains a unit for its energy, waits when the hive is full, and frees it on cancel", () => {
     const state = field();
-    at(state, "cyborgcentral", 30, 30);
+    at(state, "conversion", 30, 30);
     const scrap = state.players.get("B")!.scrap;
     // 200 energy: four Lancers (50 each) fill it; the fifth waits.
     for (let i = 0; i < 5; i++) assert.equal(applyCommand(state, "B", { type: "cmd.train", unit: "lancer" }).ok, true);

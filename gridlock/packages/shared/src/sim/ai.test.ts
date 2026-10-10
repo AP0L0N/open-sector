@@ -1462,36 +1462,29 @@ describe("Xenomorph CPU", () => {
     assert.ok(hiveOf(state, aiId));
   });
 
-  it("raises a Fusion Node, then the Cyborg Central, and never an Assimilator", () => {
+  it("raises a Fusion Node, then the Conversion Chamber, and never an Assimilator", () => {
     const { state, aiId } = humanVsXeno();
     waitCore(state, aiId);
     assert.equal(nextStructure(state, aiId), "fusionnode");
     standBy(state, aiId, ["fusionnode"]);
-    assert.equal(nextStructure(state, aiId), "cyborgcentral");
+    assert.equal(nextStructure(state, aiId), "conversion");
   });
 
-  it("raises the Cyborg Central once power and an Assimilator stand", () => {
+  it("trains its army at the Conversion Chamber", () => {
     const { state, aiId } = humanVsXeno();
     waitCore(state, aiId);
-    standBy(state, aiId, ["fusionnode", "assimilator"]);
-    assert.equal(nextStructure(state, aiId), "cyborgcentral");
-  });
-
-  it("trains its army at the Cyborg Central", () => {
-    const { state, aiId } = humanVsXeno();
-    waitCore(state, aiId);
-    standBy(state, aiId, ["fusionnode", "assimilator", "cyborgcentral", "fusionnode"]);
+    standBy(state, aiId, ["fusionnode", "assimilator", "conversion", "fusionnode"]);
     state.players.get(aiId)!.scrap = 5000;
     tickAi(state);
-    const central = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "cyborgcentral")!;
-    assert.ok(central.queue.length > 0, "nothing queued at the Central");
+    const central = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "conversion")!;
+    assert.ok(central.queue.length > 0, "nothing queued at the Chamber");
     assert.ok(XENO_ARMY.some((r) => r.unit === central.queue[0]!.type));
   });
 
-  it("lists only Xenomorph units, all from the Cyborg Central", () => {
+  it("lists only Xenomorph units, all from the Conversion Chamber", () => {
     for (const row of XENO_ARMY) {
       assert.equal(factionOf(row.unit), "xeno", row.unit);
-      assert.equal(producerType(row.unit), "cyborgcentral", row.unit);
+      assert.equal(producerType(row.unit), "conversion", row.unit);
     }
   });
 });

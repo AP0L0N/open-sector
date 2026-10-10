@@ -223,7 +223,7 @@ export function createMatch(
     const pid = slot.playerId!;
     const pos = spawns.get(pid);
     if (!pos) continue;
-    // A start the map built a Core on begins from that Core, grown as its seat's own; the rest unpack a Rig or a Seed.
+    // A start the map built a Core on begins from that Core, grown as its seat's own; the rest unpack a Rig, a Deployment, or a Spore Pod.
     const faction: Faction = slot.faction ?? "alliance";
     const core = coreOf.get(pos.spawnId);
     let hqId: number;
@@ -238,6 +238,7 @@ export function createMatch(
       const towardY = map.height / 2 - pos.y;
       rig.facing = Math.atan2(towardY, towardX);
       rig.turretFacing = rig.facing;
+      if (rig.type === "seed") rig.anchor = { x, y };
       hqId = rig.id;
     }
     players.set(pid, {

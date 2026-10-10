@@ -1004,6 +1004,7 @@ input[type="range"] { padding: 0; }
 #build-research,
 #build-radar,
 #build-cyborgcentral,
+#build-conversion,
 #build-fusionnode,
 #build-assimilator,
 #build-spawnpool,
@@ -1383,6 +1384,11 @@ input[type="range"] { padding: 0; }
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/buildings/forge-cameo.png");
+}
+#build-conversion {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/conversion-cameo.png");
 }
 #build-nexus {
   background-image:
@@ -1786,6 +1792,7 @@ input[type="range"] { padding: 0; }
 .config-type[data-type="assimilator"] { background-image: url("../assets/buildings/assimilator-cameo.png"); }
 .config-type[data-type="forge"] { background-image: url("../assets/buildings/forge-cameo.png"); }
 .config-type[data-type="nexus"] { background-image: url("../assets/buildings/nexus-cameo.png"); }
+.config-type[data-type="conversion"] { background-image: url("../assets/buildings/conversion-cameo.png"); }
 .config-type[data-type="spineturret"] { background-image: url("../assets/buildings/spineturret-cameo.png"); }
 .config-type[data-type="pulsespire"] { background-image: url("../assets/buildings/pulsespire-cameo.png"); }
 .config-type[data-type="dynamo"] { background-image: url("../assets/buildings/dynamo-cameo.png"); }
