@@ -204,5 +204,32 @@
     "frames": 1,
     "contactY": 0.8,
     "clipped_dirs": []
+  },
+  {
+    "type": "siphon",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/siphon.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.92,
+    "clipped_dirs": []
+  },
+  {
+    "type": "broodmother",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/broodmother.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.92,
+    "clipped_dirs": []
+  },
+  {
+    "type": "mawcaster",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/mawcaster.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.92,
+    "clipped_dirs": []
   }
 ]

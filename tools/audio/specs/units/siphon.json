@@ -1,0 +1,54 @@
+{
+  "key": "siphon",
+  "out": "units/siphon",
+  "voice": {
+    "name": "Open Sector - Heavy Assimilator",
+    "voice_id": "Wgg1tJ9YWBePARF1jEf7",
+    "note": "Shares the Heavy Assimilator voice designed for the Stalker (voices/stalker.json): no new custom voice. A slow, hungry delivery for the draining four-legger.",
+    "description": "Enormous, slow machine voice of a giant legged alien war machine of a cyborg hive: very deep sub-bass layered voice, as if several huge synthetic voices speak at once an octave apart, grinding metallic overtones and a rumbling engine-like drone beneath every word, cold, emotionless and inevitable, each word heavy and deliberate with long pauses.",
+    "stability": 0.65,
+    "similarity": 0.8,
+    "style": 0.3,
+    "speed": 0.88
+  },
+  "lines": {
+    "select": [
+      "Siphon.",
+      "We thirst.",
+      "Their strength is ours."
+    ],
+    "move": [
+      "Walking.",
+      "Seeking a vein.",
+      "The hive directs."
+    ],
+    "attack": [
+      "Drain them.",
+      "Feed the hive.",
+      "Take their strength."
+    ],
+    "ready": [
+      "Siphon awakened. Thirsting."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Sci-fi draining disruptor bolt: a deep sucking inhale of energy pulling in, a heavy warbling plasma bolt fired with a hollow vacuum whoop, then a crackling draining hum sliding down in pitch like energy being sucked away, energy weapon, no gunpowder, close, outdoors battlefield, no music, no voice",
+      "duration": 1.8,
+      "variants": 2,
+      "influence": 0.65
+    },
+    "move": {
+      "prompt": "Large four-legged alien war machine walking forward: heavy hydraulic legs stepping in steady rhythm, sharp chitinous metallic clicking and clacking at every footfall, deep thuds on dirt, servo whine and pneumatic hiss, close, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.65
+    },
+    "die": {
+      "prompt": "Large four-legged alien war machine destroyed: an energy explosion that implodes with a deep sucking whoomp, crackling electric arcs discharging, a dying synthetic drone winding down in pitch, metal legs buckling and the body crashing to the ground, medium distance outdoors, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

@@ -248,9 +248,9 @@ const CREWED: readonly BuildingType[] = [...GARRISONS, "mgnest", "pak36", "pak43
 /** Turned toward the enemy when placed. A narrow arc is useless facing the yard. */
 const FACES_ENEMY: ReadonlySet<string> = new Set(["mgnest", "pak36", "pak43", "flak", "tobruk", "casemate", "hochstand", "leitturm"]);
 /** Long guns: they walk two ranks back and fire over the line. */
-const BACK_RANK: ReadonlySet<string> = new Set(["sniper", "mortarman", "nebelwerfer", "jagdtiger", "artillery"]);
+const BACK_RANK: ReadonlySet<string> = new Set(["sniper", "mortarman", "nebelwerfer", "jagdtiger", "artillery", "shade", "mawcaster", "broodmother"]);
 /** Short reach and thick skin: the front rank beside the hulls. */
-const FRONT_INFANTRY: ReadonlySet<string> = new Set(["cyborg", "cyborgcommander", "simunit2", "borgdrone", "thrall", "lancer", "pyro"]);
+const FRONT_INFANTRY: ReadonlySet<string> = new Set(["cyborg", "cyborgcommander", "simunit2", "borgdrone", "thrall", "lancer", "spitter", "pyro"]);
 
 type Rank = "front" | "mid" | "back";
 interface Site {
@@ -353,6 +353,9 @@ export const BORG_ARMY: readonly { unit: TrainType; want: number }[] = [
   { unit: "thrall", want: 4 },
   { unit: "cyborg", want: 6 },
   { unit: "lancer", want: 3 },
+  { unit: "spitter", want: 2 },
+  { unit: "weaver", want: 2 },
+  { unit: "shade", want: 1 },
   { unit: "simunit2", want: 2 },
   { unit: "cyborgcommander", want: 1 },
 ];
@@ -360,6 +363,9 @@ export const BORG_ARMY: readonly { unit: TrainType; want: number }[] = [
 export const BORG_HEAVY: readonly { unit: TrainType; want: number }[] = [
   { unit: "stalker", want: 4 },
   { unit: "ravager", want: 2 },
+  { unit: "siphon", want: 2 },
+  { unit: "mawcaster", want: 1 },
+  { unit: "broodmother", want: 1 },
   { unit: "behemoth", want: 1 },
   { unit: "juggernaut", want: 1 },
 ];
@@ -2087,6 +2093,7 @@ function microUnits(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): 
         if ((e.gatlingGuns ?? 1) === 1) applyCommand(state, p.playerId, { type: "cmd.guns", ids: [e.id], guns: 2 });
         break;
       case "nebelwerfer":
+      case "mawcaster":
         settleLauncher(state, p, e);
         break;
       case "engineer":

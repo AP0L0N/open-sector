@@ -171,6 +171,7 @@ const HEAVY_FIRE = new Set([
   "stalker",
   "behemoth",
   "pulsespire",
+  "mawcaster",
 ]);
 const HEAVY_FIRE_VOLUME = 1;
 /** Their `fire` is a cannon, a bomb or a broadside: their machine guns and CIWS must not set it off. */

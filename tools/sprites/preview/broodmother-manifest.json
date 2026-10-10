@@ -1,0 +1,60 @@
+{
+  "unit": "broodmother",
+  "fit_scale": 0.7692,
+  "empty_dirs": [],
+  "clipped_dirs": [],
+  "hull_size_pop_dirs": [],
+  "hull_heights": [
+    69,
+    72,
+    76,
+    79,
+    67,
+    80,
+    76,
+    74,
+    69,
+    74,
+    76,
+    80,
+    67,
+    79,
+    76,
+    72
+  ],
+  "hull_bottoms": [
+    117,
+    117,
+    119,
+    121,
+    116,
+    123,
+    121,
+    118,
+    114,
+    118,
+    121,
+    123,
+    116,
+    121,
+    119,
+    117
+  ],
+  "cellPerMeter": 0.1077,
+  "originCell": [
+    0.5,
+    0.7289
+  ],
+  "originLift": 0.1911,
+  "union_m": [
+    8.71,
+    7.37
+  ],
+  "drawSize_at_ref": 50,
+  "model": {
+    "turretRingZ": 1.72,
+    "chuteX": 1.75,
+    "chuteZ": 4.75,
+    "sacTopZ": 4.32
+  }
+}

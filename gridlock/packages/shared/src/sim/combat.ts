@@ -161,6 +161,10 @@ import {
   meleeOf,
   biteOf,
   factionDamage,
+  factionOf,
+  BORG_DAMAGE_MUL,
+  SIPHON_DRAIN,
+  MAWCASTER_BILE_CHANCE,
   LURKER_BITE_DAMAGE,
   LURKER_BITE_SOLDIER_DAMAGE,
   LURKER_BUILDING_MUL,
@@ -198,6 +202,8 @@ import { damageMaulerCart } from "./mauler-cart.js";
 import { hiddenFromAuto, inStrikeReach } from "./simunit.js";
 import { juggernautBlow, landHammer } from "./juggernaut.js";
 import { detonateThrall, maybeStagger, punch, punchAir, thrallDetonatesOn } from "./thrall.js";
+import { coatAcid, corrodedDef } from "./acid.js";
+import { revealShade } from "./shade.js";
 import { artilleryCanLay, artilleryReady, artilleryReloadMul, blastOnGun, bulletOnGun, gunCrewOf } from "./artillery.js";
 import { energyRound, noteImpactSurface } from "./remains.js";
 import { stanceHitRadiusMul, stanceTargetSpreadMul, tickStance } from "./stance.js";
@@ -262,7 +268,7 @@ import { setPath } from "./path.js";
 import { nextRand } from "./rng.js";
 import { isSupplyBullet, noteSupplyHit, stowedInTransport, supplyRiderFights, syncSupplyRiders } from "./supply.js";
 import { spawnSmokeCloud } from "./smoke.js";
-import { burnShare, heGroundFire, hullHose, stepFlame, throwFlame } from "./flame.js";
+import { burnShare, heGroundFire, hullHose, igniteAt, stepFlame, throwFlame } from "./flame.js";
 import { fireLaser } from "./laser.js";
 import { distToRoute } from "./patrol.js";
 import { activateSpatial, anyHostileNear, clearSpatial, queryCapsules, queryCircle, querySegment, spatialGrid, type SpatialGrid } from "./spatial.js";
@@ -1644,6 +1650,8 @@ function infantryRoundCanHarm(state: MatchState, e: Entity, target: Entity): boo
   }
   const def = catalog(target.type);
   if (!isArmored(def)) return true;
+  // Acid need not get through: it eats the plate of any live hull it lands on.
+  if (infantryGunFor(e)?.id === "acid" && !target.wreck) return true;
   // A gatling turret's rounds sometimes bite a Walker or a truck, like the Cyborg's arm.
   if (twinCiwsOf(e.type) && isLightHull(def)) return true;
   if (radarLaidOf(e.type) || twinCiwsOf(e.type)) {
@@ -2636,7 +2644,7 @@ function stepRocket(state: MatchState, p: Projectile, dt: number, rand: () => nu
   // A forced Nebelwerfer rocket is fused on the point. It clears walls, trees,
   // and hulls on the way and bursts where it was aimed. Any other rocket flies
   // low, so the first thing in the path takes the burst.
-  if (!(p.harmAllies && p.launcher === "nebelwerfer")) {
+  if (!(p.harmAllies && (p.launcher === "nebelwerfer" || p.launcher === "mawcaster"))) {
     const wallHit = wallSweep(state, x0, y0, p.x, p.y);
     const struck = nearestSweepHit(state, x0, y0, p, z0, p.z);
     const tree = nearestTreeSweep(state, x0, y0, p, z0, p.z, rand);
@@ -2740,6 +2748,8 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
     if (energyRound(state, p.ownerId)) burnTreeAt(state, tx, ty);
     else fellTreeAt(state, tx, ty);
   }
+  // A Mawcaster pod now and then leaves its bile burning where it bursts.
+  if (!inAir && p.launcher === "mawcaster" && rand() < MAWCASTER_BILE_CHANCE) igniteAt(state, p.x, p.y, p.ownerId);
   const rack = p.heavy ? PENETRATOR_RACK : rocketRackOf(p.launcher ?? "titan");
   const lob = p.shipBarrel != null ? BATTLESHIP_SHELL : p.big ? ARTILLERY_SHELL : MORTAR_LOB;
   const radius = (rocket ? rack.splashTiles : p.big ? lob.splashTiles : MORTAR_SPLASH_TILES) * state.tileSize;
@@ -3332,7 +3342,7 @@ function fireRound(
     fromId: e.id,
     bounced: false,
     shell: opts?.shell ?? null,
-    hpFraction: gunId === "scoped" || gunId === "ptrd" ? scopedHpFraction(dist, range) : undefined,
+    hpFraction: gunId === "scoped" || gunId === "ptrd" ? scopedHpFraction(dist, range) * (factionOf(e.type) === "borg" ? BORG_DAMAGE_MUL : 1) : undefined,
     antiAir:
       opts?.radar ||
       (!opts?.shell && (e.type === "walker" || radarLaidOf(e.type) || antiAirGunOf(e.type) || !!infantryGunFor(e)?.antiAir))
@@ -3341,9 +3351,12 @@ function fireRound(
     gatling: gatling || undefined,
     plunging: plunging || undefined,
     aloft: aloft || undefined,
+    acid: gunId === "acid" || undefined,
+    drain: e.type === "siphon" || undefined,
     z: z0,
     vz: ((zAim - z0) / Math.max(1e-6, aimDist)) * speed,
   };
+  revealShade(state, e);
   if (torpedoesOf(e.type)) {
     // The tube fires at the waterline, and the shot gives the boat away.
     armTorpedo(state, p, diving(e));
@@ -3540,7 +3553,8 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       pushImpact(state, p, crewHit ? "hit" : "ricochet", struck.x, struck.y, -p.vx * 0.2, -p.vy * 0.2);
       continue;
     }
-    const liveDef = catalog(e.type);
+    // A Spitter's coat thins every plate the round can meet.
+    const liveDef = corrodedDef(e, catalog(e.type), state.tick);
     const targetDef = e.wreck ? wreckHitDef(e, p.caliber) : liveDef;
     const frac = p.hpFraction;
     const scopedInfantry = frac != null && isInfantryType(e.type) && !e.wreck;
@@ -3640,6 +3654,12 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     }
     if (occupied) woundGarrison(state, e, res.damage, p.caliber, !!p.plunging, isBulletRound(p));
     else woundDeckGunners(state, e, p.damage);
+    // Acid coats the plate whether or not it bit.
+    if (p.acid) coatAcid(state, e);
+    // The Siphon drinks what its bolt took off an enemy body.
+    if (p.drain && chipWalls && dealt > 0 && shooter && shooter.hp > 0 && !shooter.wreck && e.kind === "unit" && !e.wreck && !allies(state, shooter.ownerId, e.ownerId)) {
+      shooter.hp = Math.min(shooter.hpMax, shooter.hp + Math.max(1, Math.round(dealt * SIPHON_DRAIN)));
+    }
     // A bullet that meets the body can smash the lamps, even when it only sparks.
     if (e.hp > 0 && !e.wreck) rollLamp(e, lampShotOf(p), rand);
     if (e.type === "supply" && !e.wreck && e.hp > 0) {
@@ -3661,7 +3681,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       res.kind === "ricochet" ? res.bounceVy : p.vy,
       blast,
     );
-    if (res.kind !== "ricochet" || heBursts(p)) continue;
+    if (res.kind !== "ricochet" || heBursts(p) || p.acid) continue;
     if (p.caliber === PTRD_CALIBER) p.penetration = 0;
     p.vx = res.bounceVx;
     p.vy = res.bounceVy;

@@ -4,6 +4,7 @@ import {
   canLunge,
   BEHEMOTH_LUNGE_RANGE_TILES,
   isDockType,
+  WEAVER_REACH_TILES,
   factionOf,
   AIRFIELD_BACK_DEPTH,
   BUILDING_TURN_STEP,
@@ -489,7 +490,37 @@ import {
   LANCER_DIE_SPRITE,
   LANCER_FIRE_SPRITE,
   LANCER_SPRITE,
+  SHADE_CRAWL_FIRE_SPRITE,
+  SHADE_CRAWL_SPRITE,
+  SHADE_DIE_SPRITE,
+  SHADE_FIRE_SPRITE,
+  SHADE_SPRITE,
+  SPITTER_CRAWL_FIRE_SPRITE,
+  SPITTER_CRAWL_SPRITE,
+  SPITTER_DIE_SPRITE,
+  SPITTER_FIRE_SPRITE,
+  SPITTER_SPRITE,
+  WEAVER_CRAWL_FIRE_SPRITE,
+  WEAVER_CRAWL_SPRITE,
+  WEAVER_DIE_SPRITE,
+  WEAVER_FIRE_SPRITE,
+  WEAVER_SPRITE,
 } from "./sprites.js";
+
+/** A cloaked Shade as its own side sees it. */
+const CLOAKED_UNIT_FILTER = "opacity(0.38) saturate(0.5) brightness(1.35)";
+/** An armored hull coated in a Spitter's acid. */
+const ACID_HULL_FILTER = "sepia(0.55) hue-rotate(28deg) saturate(1.7) brightness(0.92)";
+
+/** The hive cyborgs that share the Drone's sheet set: stand, fire, crawl, crawl-fire, die. */
+const HIVE_SHEETS: Partial<Record<string, { stand: UnitSpriteDef; fire: UnitSpriteDef; crawl: UnitSpriteDef; crawlFire: UnitSpriteDef; die: UnitSpriteDef }>> = {
+  borgdrone: { stand: BORGDRONE_SPRITE, fire: BORGDRONE_FIRE_SPRITE, crawl: BORGDRONE_CRAWL_SPRITE, crawlFire: BORGDRONE_CRAWL_FIRE_SPRITE, die: BORGDRONE_DIE_SPRITE },
+  lancer: { stand: LANCER_SPRITE, fire: LANCER_FIRE_SPRITE, crawl: LANCER_CRAWL_SPRITE, crawlFire: LANCER_CRAWL_FIRE_SPRITE, die: LANCER_DIE_SPRITE },
+  spitter: { stand: SPITTER_SPRITE, fire: SPITTER_FIRE_SPRITE, crawl: SPITTER_CRAWL_SPRITE, crawlFire: SPITTER_CRAWL_FIRE_SPRITE, die: SPITTER_DIE_SPRITE },
+  // The Weaver's "fire" sheet is its mending pose.
+  weaver: { stand: WEAVER_SPRITE, fire: WEAVER_FIRE_SPRITE, crawl: WEAVER_CRAWL_SPRITE, crawlFire: WEAVER_CRAWL_FIRE_SPRITE, die: WEAVER_DIE_SPRITE },
+  shade: { stand: SHADE_SPRITE, fire: SHADE_FIRE_SPRITE, crawl: SHADE_CRAWL_SPRITE, crawlFire: SHADE_CRAWL_FIRE_SPRITE, die: SHADE_DIE_SPRITE },
+};
 import { inScreenRect, unitGroundSink, unitPickRect, type ScreenRect } from "./unit-hit.js";
 import { engineRowFromProjectedFacing, engineRowFromScreen } from "./turntable.js";
 import { drawSelectFrame, fieldFrameCorners } from "./select-frame.js";
@@ -723,8 +754,14 @@ const EXTRUDE: Record<EntityType, number> = {
   borgdrone: 24,
   thrall: 27,
   lancer: 27,
+  spitter: 24,
+  weaver: 28,
+  shade: 26,
   stalker: 28,
   ravager: 22,
+  siphon: 24,
+  broodmother: 34,
+  mawcaster: 26,
   behemoth: 46,
   juggernaut: 44,
   sandbags: 12,
@@ -7393,20 +7430,20 @@ export class MapView {
       if (sheet === "fire") return THRALL_FIRE_SPRITE;
       return THRALL_SPRITE;
     }
-    if (e.type === "borgdrone" || e.type === "lancer") {
-      const drone = e.type === "borgdrone";
+    const hive = HIVE_SHEETS[e.type];
+    if (hive) {
       const sheet = cyborgSheet({
         swimming: e.swimming,
         wreck: e.wreck,
         stance: e.stance,
-        shotAgeMs: this.infantryShotAge(e.id),
+        shotAgeMs: e.type === "weaver" ? (this.weaverMending(e) ? 0 : null) : this.infantryShotAge(e.id),
       });
-      if (sheet === "die") return drone ? BORGDRONE_DIE_SPRITE : LANCER_DIE_SPRITE;
-      if (sheet === "fire") return drone ? BORGDRONE_FIRE_SPRITE : LANCER_FIRE_SPRITE;
-      if (sheet === "crawl-fire") return drone ? BORGDRONE_CRAWL_FIRE_SPRITE : LANCER_CRAWL_FIRE_SPRITE;
-      if (sheet === "crawl") return drone ? BORGDRONE_CRAWL_SPRITE : LANCER_CRAWL_SPRITE;
+      if (sheet === "die") return hive.die;
+      if (sheet === "fire") return hive.fire;
+      if (sheet === "crawl-fire") return hive.crawlFire;
+      if (sheet === "crawl") return hive.crawl;
       if (sheet === "swim") return spriteFor(e.type, "stand", true);
-      return drone ? BORGDRONE_SPRITE : LANCER_SPRITE;
+      return hive.stand;
     }
     if (e.type === "cyborgcommander") {
       // He holds the firing pose while the beam is out.
@@ -7428,6 +7465,18 @@ export class MapView {
       return ENGINEER_SPRITE;
     }
     return spriteFor(e.type, e.stance, e.swimming);
+  }
+
+  /** A working Weaver with a hurt hive unit of its side in reach: it holds the mending pose. */
+  private weaverMending(w: EntityView): boolean {
+    if (w.hp <= 0 || w.wreck || w.shutdown || w.dormant || w.garrisonedIn != null) return false;
+    const reach = WEAVER_REACH_TILES * this.ts();
+    for (const o of this.currById.values()) {
+      if (o === w || o.kind !== "unit" || o.ownerId !== w.ownerId || o.hp <= 0 || o.wreck || o.hp >= o.hpMax) continue;
+      if (factionOf(o.type) !== "borg") continue;
+      if (Math.abs(o.x - w.x) <= reach && Math.abs(o.y - w.y) <= reach && Math.hypot(o.x - w.x, o.y - w.y) <= reach) return true;
+    }
+    return false;
   }
 
   private infantryShotAge(id: number): number | null {
@@ -7801,6 +7850,10 @@ export class MapView {
     if (e.wreck && !corpse && sheet === def) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
     // A shut-down or powered-down Cyborg is dark: the machine is off.
     else if (!e.wreck && (e.shutdown || e.dormant)) ctx.filter = SHUTDOWN_UNIT_FILTER;
+    // Your Shade with its skin settled: a faint shimmer only its own side sees.
+    else if (!e.wreck && e.cloaked) ctx.filter = CLOAKED_UNIT_FILTER;
+    // A hull under a Spitter's acid coat: the plate goes a sick yellow-green.
+    else if (!e.wreck && (e.acid ?? 0) > 0) ctx.filter = ACID_HULL_FILTER;
     // A map's neutral unit is grey: no one's colours, everyone's enemy.
     else if (!e.wreck && !e.ownerId) ctx.filter = NEUTRAL_UNIT_FILTER;
     // The ship's mounts are placed on the sim's own spots: no ground sink under the hull.

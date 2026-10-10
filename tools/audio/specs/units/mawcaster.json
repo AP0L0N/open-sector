@@ -1,0 +1,55 @@
+{
+  "key": "mawcaster",
+  "out": "units/mawcaster",
+  "voice": {
+    "name": "Open Sector - Heavy Assimilator",
+    "voice_id": "Wgg1tJ9YWBePARF1jEf7",
+    "note": "Shares the Heavy Assimilator voice designed for the Stalker (voices/stalker.json): no new custom voice. Its salvo is `fire`, as on the Nebelwerfer (the client's rocket shot falls back from sfx-rockets to sfx-fire), mastered hot like the other artillery.",
+    "description": "Enormous, slow machine voice of a giant legged alien war machine of a cyborg hive: very deep sub-bass layered voice, as if several huge synthetic voices speak at once an octave apart, grinding metallic overtones and a rumbling engine-like drone beneath every word, cold, emotionless and inevitable, each word heavy and deliberate with long pauses.",
+    "stability": 0.65,
+    "similarity": 0.8,
+    "style": 0.3,
+    "speed": 0.88
+  },
+  "lines": {
+    "select": [
+      "Mawcaster.",
+      "The pods are ripe.",
+      "Give us a horizon."
+    ],
+    "move": [
+      "Relocating the maw.",
+      "Moving. Pods sealed.",
+      "The hive directs."
+    ],
+    "attack": [
+      "Sow the spores.",
+      "Rain upon them.",
+      "Full salvo. Seed the ground."
+    ],
+    "ready": [
+      "Mawcaster grown. Pods swelling."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Close, loud salvo of an alien organic rocket artillery launcher in an open field: six heavy hollow booming thumps of spore pods launching in rapid succession, each a deep powerful wet whump with a punchy bass kick, followed by a loud rushing whoosh as the pods tear away, no gunpowder, no music, no voice",
+      "duration": 3.5,
+      "variants": 3,
+      "influence": 0.6,
+      "lufs": -9
+    },
+    "move": {
+      "prompt": "Large legged alien artillery creature-machine walking forward: heavy hydraulic legs stepping in rhythm, deep thuds on dirt, organic pods rattling and sloshing on its back, servo whine and pneumatic hiss, close, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.65
+    },
+    "die": {
+      "prompt": "Alien rocket artillery machine destroyed: a heavy explosion followed by several organic spore pods bursting and popping in quick secondary wet blasts, crackling electric arcs, a dying synthetic drone winding down, medium distance outdoors, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

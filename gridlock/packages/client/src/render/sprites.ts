@@ -294,6 +294,36 @@ import thrallCrawlUrl from "../assets/units/thrall-crawl.png";
 import thrallCrawlFireUrl from "../assets/units/thrall-crawl-fire.png";
 import thrallDieUrl from "../assets/units/thrall-die.png";
 import thrallSwimUrl from "../assets/units/thrall-swim.png";
+import spitterWalkUrl from "../assets/units/spitter-walk.png";
+import spitterFireUrl from "../assets/units/spitter-fire.png";
+import spitterCrawlUrl from "../assets/units/spitter-crawl.png";
+import spitterCrawlFireUrl from "../assets/units/spitter-crawl-fire.png";
+import spitterDieUrl from "../assets/units/spitter-die.png";
+import spitterSwimUrl from "../assets/units/spitter-swim.png";
+import weaverWalkUrl from "../assets/units/weaver-walk.png";
+import weaverFireUrl from "../assets/units/weaver-fire.png";
+import weaverCrawlUrl from "../assets/units/weaver-crawl.png";
+import weaverCrawlFireUrl from "../assets/units/weaver-crawl-fire.png";
+import weaverDieUrl from "../assets/units/weaver-die.png";
+import weaverSwimUrl from "../assets/units/weaver-swim.png";
+import shadeWalkUrl from "../assets/units/shade-walk.png";
+import shadeFireUrl from "../assets/units/shade-fire.png";
+import shadeCrawlUrl from "../assets/units/shade-crawl.png";
+import shadeCrawlFireUrl from "../assets/units/shade-crawl-fire.png";
+import shadeDieUrl from "../assets/units/shade-die.png";
+import shadeSwimUrl from "../assets/units/shade-swim.png";
+import siphonLegsUrl from "../assets/units/siphon-legs.png";
+import siphonTurretUrl from "../assets/units/siphon-turret.png";
+import siphonGunUrl from "../assets/units/siphon-gun.png";
+import siphonWreckUrl from "../assets/units/wrecks/siphon.png";
+import broodmotherLegsUrl from "../assets/units/broodmother-legs.png";
+import broodmotherTurretUrl from "../assets/units/broodmother-turret.png";
+import broodmotherGunUrl from "../assets/units/broodmother-gun.png";
+import broodmotherWreckUrl from "../assets/units/wrecks/broodmother.png";
+import mawcasterLegsUrl from "../assets/units/mawcaster-legs.png";
+import mawcasterTurretUrl from "../assets/units/mawcaster-turret.png";
+import mawcasterGunUrl from "../assets/units/mawcaster-gun.png";
+import mawcasterWreckUrl from "../assets/units/wrecks/mawcaster.png";
 import lancerWalkUrl from "../assets/units/lancer-walk.png";
 import lancerFireUrl from "../assets/units/lancer-fire.png";
 import lancerCrawlUrl from "../assets/units/lancer-crawl.png";
@@ -1123,6 +1153,22 @@ export const LANCER_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_FIRE_SPRITE, image:
 export const LANCER_CRAWL_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_SPRITE, image: loadSheet(lancerCrawlUrl) };
 export const LANCER_CRAWL_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_FIRE_SPRITE, image: loadSheet(lancerCrawlFireUrl) };
 export const LANCER_DIE_SPRITE: UnitSpriteDef = { ...CYBORG_DIE_SPRITE, image: loadSheet(lancerDieUrl) };
+/** Spitter, Weaver, and Shade (render_spitter.py, render_weaver.py, render_shade.py): the Drone's lock, their own frames. */
+export const SPITTER_SPRITE: UnitSpriteDef = { ...CYBORG_SPRITE, image: loadSheet(spitterWalkUrl) };
+export const SPITTER_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_FIRE_SPRITE, image: loadSheet(spitterFireUrl) };
+export const SPITTER_CRAWL_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_SPRITE, image: loadSheet(spitterCrawlUrl) };
+export const SPITTER_CRAWL_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_FIRE_SPRITE, image: loadSheet(spitterCrawlFireUrl) };
+export const SPITTER_DIE_SPRITE: UnitSpriteDef = { ...CYBORG_DIE_SPRITE, image: loadSheet(spitterDieUrl) };
+export const WEAVER_SPRITE: UnitSpriteDef = { ...CYBORG_SPRITE, image: loadSheet(weaverWalkUrl) };
+export const WEAVER_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_FIRE_SPRITE, image: loadSheet(weaverFireUrl) };
+export const WEAVER_CRAWL_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_SPRITE, image: loadSheet(weaverCrawlUrl) };
+export const WEAVER_CRAWL_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_FIRE_SPRITE, image: loadSheet(weaverCrawlFireUrl) };
+export const WEAVER_DIE_SPRITE: UnitSpriteDef = { ...CYBORG_DIE_SPRITE, image: loadSheet(weaverDieUrl) };
+export const SHADE_SPRITE: UnitSpriteDef = { ...CYBORG_SPRITE, image: loadSheet(shadeWalkUrl) };
+export const SHADE_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_FIRE_SPRITE, image: loadSheet(shadeFireUrl) };
+export const SHADE_CRAWL_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_SPRITE, image: loadSheet(shadeCrawlUrl) };
+export const SHADE_CRAWL_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_FIRE_SPRITE, image: loadSheet(shadeCrawlFireUrl) };
+export const SHADE_DIE_SPRITE: UnitSpriteDef = { ...CYBORG_DIE_SPRITE, image: loadSheet(shadeDieUrl) };
 
 export const ENGINEER_SPRITE: UnitSpriteDef = {
   image: loadSheet(engineerWalkUrl),
@@ -1237,6 +1283,9 @@ const SWIM_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   borgdrone: swimSprite(borgdroneSwimUrl),
   thrall: swimSprite(thrallSwimUrl),
   lancer: swimSprite(lancerSwimUrl),
+  spitter: swimSprite(spitterSwimUrl),
+  weaver: swimSprite(weaverSwimUrl),
+  shade: swimSprite(shadeSwimUrl),
 };
 
 /** 16-dir hatch head (helmet + face). Row 0 = 0001 = south, one frame. */
@@ -1323,6 +1372,9 @@ function borgWalker(legs: string, turret: string, gun: string, size: number, fps
 export const STALKER_SPRITE = borgWalker(stalkerLegsUrl, stalkerTurretUrl, stalkerGunUrl, 49, 10);
 export const BEHEMOTH_SPRITE = borgWalker(behemothLegsUrl, behemothTurretUrl, behemothGunUrl, 68, 7);
 export const RAVAGER_SPRITE = borgWalker(ravagerLegsUrl, ravagerTurretUrl, ravagerGunUrl, 29, 12);
+export const SIPHON_SPRITE = borgWalker(siphonLegsUrl, siphonTurretUrl, siphonGunUrl, 32, 10);
+export const BROODMOTHER_SPRITE = borgWalker(broodmotherLegsUrl, broodmotherTurretUrl, broodmotherGunUrl, 40, 6);
+export const MAWCASTER_SPRITE = borgWalker(mawcasterLegsUrl, mawcasterTurretUrl, mawcasterGunUrl, 33, 9);
 
 /**
  * Juggernaut (tools/sprites/render_juggernaut.py): one model on the Titan's 192 cell, the
@@ -1903,6 +1955,9 @@ const WRECK_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   // Face down on the dirt: its own pivot (the body's footprint centre), the live cell and size.
   juggernaut: { ...wreckSheet(juggernautWreckUrl, JUGGERNAUT_SPRITE), contactY: 0.62 },
   ravager: wreckSheet(ravagerWreckUrl, RAVAGER_SPRITE),
+  siphon: wreckSheet(siphonWreckUrl, SIPHON_SPRITE),
+  broodmother: wreckSheet(broodmotherWreckUrl, BROODMOTHER_SPRITE),
+  mawcaster: wreckSheet(mawcasterWreckUrl, MAWCASTER_SPRITE),
   ss3: wreckSheet(ss3WreckUrl, SS3_SPRITE),
   jagdtiger: wreckSheet(jagdtigerWreckUrl, JAGDTIGER_SPRITE),
   feuerwirbel: wreckSheet(feuerwirbelWreckUrl, FEUERWIRBEL_SPRITE),
@@ -1951,6 +2006,9 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   behemoth: BEHEMOTH_SPRITE,
   juggernaut: JUGGERNAUT_SPRITE,
   ravager: RAVAGER_SPRITE,
+  siphon: SIPHON_SPRITE,
+  broodmother: BROODMOTHER_SPRITE,
+  mawcaster: MAWCASTER_SPRITE,
   ss3: SS3_SPRITE,
   jagdtiger: JAGDTIGER_SPRITE,
   feuerwirbel: FEUERWIRBEL_SPRITE,
@@ -1999,6 +2057,9 @@ const INFANTRY_DIE: Partial<Record<EntityType, UnitSpriteDef>> = {
   borgdrone: BORGDRONE_DIE_SPRITE,
   thrall: THRALL_DIE_SPRITE,
   lancer: LANCER_DIE_SPRITE,
+  spitter: SPITTER_DIE_SPRITE,
+  weaver: WEAVER_DIE_SPRITE,
+  shade: SHADE_DIE_SPRITE,
 };
 
 /** The one-shot collapse sheet. Undefined for vehicles and buildings. */
@@ -2069,6 +2130,9 @@ export function spriteFor(type: EntityType, stance?: Stance, swimming = false): 
   if (type === "borgdrone") return stance === "crawl" ? BORGDRONE_CRAWL_SPRITE : BORGDRONE_SPRITE;
   if (type === "thrall") return stance === "crawl" ? THRALL_CRAWL_SPRITE : THRALL_SPRITE;
   if (type === "lancer") return stance === "crawl" ? LANCER_CRAWL_SPRITE : LANCER_SPRITE;
+  if (type === "spitter") return stance === "crawl" ? SPITTER_CRAWL_SPRITE : SPITTER_SPRITE;
+  if (type === "weaver") return stance === "crawl" ? WEAVER_CRAWL_SPRITE : WEAVER_SPRITE;
+  if (type === "shade") return stance === "crawl" ? SHADE_CRAWL_SPRITE : SHADE_SPRITE;
   return UNIT_SPRITES[type];
 }
 

@@ -19,7 +19,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 133;
+export const PROTOCOL_VERSION = 134;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -157,6 +157,10 @@ export interface EntityView {
   greenLaser?: true;
   /** Juggernaut running at what it is going for. */
   sprint?: true;
+  /** Shade with its skin settled, own side only: enemies cannot see it. */
+  cloaked?: true;
+  /** Armored hull under a Spitter's acid coat: mm off every face. */
+  acid?: number;
   /** Juggernaut has thrown its hammer and fights with its fists. */
   fists?: true;
   /** Stalker digging in, under the ground (own side only), or rising. */
@@ -499,6 +503,10 @@ export interface ProjectileView {
   vy: number;
   /** Fired by the Borg: drawn and heard as an energy bolt, pulse, or plasma shot. The sim treats it as its round kind. */
   energy?: true;
+  /** A Spitter's acid glob. */
+  acid?: true;
+  /** A Siphon's draining bolt. */
+  drain?: true;
   caliber: number;
   fromId: number;
   bounced: boolean;

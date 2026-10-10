@@ -67,6 +67,7 @@ import { cyborgShutdownIn } from "./cyborg-link.js";
 import { blinkCharge, purgeProgress } from "./simunit.js";
 import { lungeAlt, lungeCharge } from "./lunge.js";
 import { hiddenBurrowed } from "./burrow.js";
+import { hiddenCloaked } from "./shade.js";
 import { isSimUnit, onUplink, vaultsWalls } from "../catalog.js";
 import { onFortTop } from "./thrall.js";
 import { aswDeckView, sonarContacts } from "./destroyer.js";
@@ -401,6 +402,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
     if (!friendly && hiddenSubmarine(state, youPlayerId, e)) continue;
     // A Stalker down under the ground shows to no enemy.
     if (hiddenBurrowed(state, youPlayerId, e)) continue;
+    // A Shade with its skin settled shows to no enemy.
+    if (hiddenCloaked(state, youPlayerId, e)) continue;
     // Houses and untaken map defences out of sight are part of the ground: the client draws them from the scenery list.
     if (!friendly && !sonarSpotted(state, youPlayerId, e) && !entityOnMask(e, vis, state.width, state.height, state.tileSize)) continue;
     const job = e.queue[0];
@@ -453,6 +456,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       greenLaser: e.laser && factionOf(e.type) === "borg" && e.type !== "cyborgcommander" ? true : undefined,
       burrow: e.burrow ? e.burrow.phase : undefined,
       sprint: e.sprint,
+      cloaked: friendly ? e.cloaked : undefined,
+      acid: e.acid && state.tick < e.acid.until ? Math.round(e.acid.mm) : undefined,
       fists: e.fists,
       purge: friendly && e.purge ? { hostId: e.purge.hostId, u: purgeProgress(state, e) ?? 0 } : undefined,
       takeover: e.takeover ? { by: e.takeover.by, u: Math.min(1, e.takeover.ticks / secondsToTicks(CYBORG_TAKEOVER_SECONDS)) } : undefined,
@@ -690,6 +695,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
         // A mine canister falls like a small bomb; its caliber tells the client it is not an SC 250.
         bomb: p.flight === "bomb" || p.flight === "cluster" ? true : undefined,
         rocket: p.flight === "rocket" ? true : undefined,
+        acid: p.acid ? true : undefined,
+        drain: p.drain ? true : undefined,
         heavy: p.heavy ? true : undefined,
         hammer: p.hammer,
         ...(p.flight === "bomb" || p.flight === "rocket" || p.flight === "cluster" ? { z: p.z ?? 0 } : {}),

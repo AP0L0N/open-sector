@@ -588,6 +588,19 @@ export interface Entity {
   lungeRing?: number;
   /** Juggernaut running at what it is going for (sim/juggernaut.ts). */
   sprint?: true;
+  /** Armored hull coated by a Spitter (sim/acid.ts): mm off every face, and the tick the coat dries. */
+  acid?: { mm: number; until: number };
+  /** Shade (sim/shade.ts): the tick its skin settles again after a shot or a hurt; HP last tick. */
+  revealUntil?: number;
+  shadeHpSeen?: number;
+  /** Shade with its skin settled and no enemy close: hidden from every enemy. */
+  cloaked?: true;
+  /** Weaver (sim/weaver.ts): the tick of its next mend pulse. */
+  mendNext?: number;
+  /** Broodmother (sim/brood.ts): the tick the next Thrall leaves the sac. */
+  broodNext?: number;
+  /** A Thrall born of a Broodmother: her id. */
+  broodOf?: number;
   /** Juggernaut has thrown its hammer: it fights with its fists from now on. */
   fists?: true;
   /** Stalker under the ground or on its way (sim/burrow.ts). Down, no enemy sees it. */
@@ -717,6 +730,10 @@ export interface Projectile {
    * Set by the scoped rifle and the PTRD. Omitted for every other gun.
    */
   hpFraction?: number;
+  /** A Spitter's glob: coats an armored hull (sim/acid.ts) and never ricochets. */
+  acid?: boolean;
+  /** A Siphon's bolt: what it takes off an enemy unit mends the Siphon. */
+  drain?: boolean;
   /** Elevation units at the current point. Omit in tests for ground-level. */
   z?: number;
   /** Elevation units per second along the shot. Direct fire only. */

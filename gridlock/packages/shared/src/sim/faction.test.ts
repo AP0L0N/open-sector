@@ -87,6 +87,7 @@ describe("factions in the catalog", () => {
         "assimilator",
         "behemoth",
         "borgdrone",
+        "broodmother",
         "cyborg",
         "cyborgcentral",
         "cyborgcommander",
@@ -98,18 +99,23 @@ describe("factions in the catalog", () => {
         "lancer",
         "leech",
         "lurker",
+        "mawcaster",
         "nexus",
         "overseer",
         "pulsespire",
         "ravager",
         "scourge",
         "seed",
+        "shade",
         "simunit2",
+        "siphon",
         "spawnpool",
         "spineturret",
+        "spitter",
         "stalker",
         "thrall",
         "wasp",
+        "weaver",
       ],
     );
     for (const t of ["rig", "core", "dynamo", "smelter", "rifleman", "ss3", "muster", "sandbags"]) assert.equal(factionOf(t), "eu", t);
@@ -119,8 +125,8 @@ describe("factions in the catalog", () => {
       const want = isCyborg(t) ? "cyborgcentral" : isNavalType(t) ? "spawnpool" : isAircraftType(t) ? "aerie" : "forge";
       assert.equal(producerType(t), want, t);
     }
-    for (const t of ["stalker", "ravager", "behemoth", "juggernaut"] as const) assert.equal(producerType(t), "forge");
-    for (const t of ["borgdrone", "thrall", "lancer"] as const) assert.ok(isCyborg(t) && onUplink(t) && isInfantryType(t), t);
+    for (const t of ["stalker", "ravager", "behemoth", "juggernaut", "siphon", "broodmother", "mawcaster"] as const) assert.equal(producerType(t), "forge");
+    for (const t of ["borgdrone", "thrall", "lancer", "spitter", "weaver", "shade"] as const) assert.ok(isCyborg(t) && onUplink(t) && isInfantryType(t), t);
     assert.ok(!onUplink("cyborgcommander"));
   });
 

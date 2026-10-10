@@ -1,0 +1,63 @@
+{
+  "unit": "mawcaster",
+  "fit_scale": 0.7407,
+  "empty_dirs": [],
+  "clipped_dirs": [],
+  "hull_size_pop_dirs": [
+    "S"
+  ],
+  "hull_heights": [
+    63,
+    67,
+    72,
+    75,
+    68,
+    79,
+    78,
+    72,
+    67,
+    72,
+    78,
+    79,
+    68,
+    75,
+    72,
+    67
+  ],
+  "hull_bottoms": [
+    112,
+    115,
+    118,
+    120,
+    117,
+    122,
+    121,
+    118,
+    115,
+    118,
+    121,
+    122,
+    117,
+    120,
+    118,
+    115
+  ],
+  "cellPerMeter": 0.1185,
+  "originCell": [
+    0.5,
+    0.7707
+  ],
+  "originLift": 0.1493,
+  "union_m": [
+    7.91,
+    5.52
+  ],
+  "drawSize_at_ref": 40,
+  "model": {
+    "boreZ": 2.3,
+    "muzzleReach": 1.292,
+    "muzzleZ": 3.487,
+    "podElevDeg": 58,
+    "turretRingZ": 1.92
+  }
+}

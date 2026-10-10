@@ -17,7 +17,7 @@ export function unitStepping(opts: {
 }): boolean {
   const travelled = !!opts.prev && Math.hypot(opts.prev.x - opts.curr.x, opts.prev.y - opts.curr.y) > STEP_MIN_TRAVEL;
   // Big walkers (the Borg spiders too, and the Mammoth) only stride while the hull really moves, not while turning in place.
-  if (opts.type === "walker" || opts.type === "titan" || opts.type === "mammoth" || opts.type === "stalker" || opts.type === "behemoth" || opts.type === "ravager" || opts.type === "juggernaut") return travelled;
+  if (opts.type === "walker" || opts.type === "titan" || opts.type === "mammoth" || opts.type === "stalker" || opts.type === "behemoth" || opts.type === "ravager" || opts.type === "juggernaut" || opts.type === "siphon" || opts.type === "broodmother" || opts.type === "mawcaster") return travelled;
   return travelled || opts.state === "move" || !!opts.swimming || opts.state === "build" || opts.state === "repair";
 }
 

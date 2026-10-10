@@ -70,7 +70,7 @@ export type SoundEvent =
    * (crush) an Apocalypse rolling a hull flat, (dive) a Stuka's siren as it tips over into its dive, or
    * a Thrall going off on a hull (detonate), leaping sandbags or a wall (vault), or rocked by a bullet (stagger).
    */
-  | { kind: "unitsfx"; type: string; cue: "special" | "crush" | "dive" | "lunge" | "burrow" | "unburrow" | ThrallSfx | LinkSfx | JuggernautSfx; x: number; y: number }
+  | { kind: "unitsfx"; type: string; cue: "special" | "crush" | "dive" | "lunge" | "burrow" | "unburrow" | "cloak" | "mend" | "birth" | ThrallSfx | LinkSfx | JuggernautSfx; x: number; y: number }
   | { kind: "announce"; event: AnnounceEvent };
 
 /**
@@ -169,6 +169,8 @@ function isShell(caliber: number | undefined): boolean {
 export class SoundTracker {
   private started = false;
   private prevById = new Map<number, EntityView>();
+  /** Weaver id -> when its mend was last heard. */
+  private lastMend = new Map<number, number>();
   private everSeen = new Set<number>();
   private seenShots = new Set<number>();
   private seenImpacts = new Set<number>();
@@ -351,6 +353,10 @@ export class SoundTracker {
           // A helicopter off its ship's deck is a sortie, not a new unit: its pilot answers, the announcer does not.
           if (e.type !== "aswheli") out.push({ kind: "announce", event: "ready" });
         }
+        // A Thrall tearing out of a Broodmother's sac beside her.
+        if (e.type === "thrall" && prev == null && broodmotherBeside(match.entities, e)) {
+          out.push({ kind: "unitsfx", type: "broodmother", cue: "birth", x: e.x, y: e.y });
+        }
         // One of your structures just went up: its own setting-up sound, where it has one.
         if (e.ownerId === me && e.kind === "building" && isBuildingType(e.type)) {
           out.push({ kind: "unitsfx", type: e.type, cue: "special", x: e.x, y: e.y });
@@ -381,6 +387,15 @@ export class SoundTracker {
       if (prev && prev.lungeAlt == null && e.lungeAlt != null) out.push({ kind: "unitsfx", type: e.type, cue: "lunge", x: e.x, y: e.y });
       if (prev && !prev.vault && e.vault) out.push({ kind: "unitsfx", type: e.type, cue: "vault", x: e.x, y: e.y });
       if (prev && !prev.stagger && e.stagger) out.push({ kind: "unitsfx", type: e.type, cue: "stagger", x: e.x, y: e.y });
+      // Your Shade's skin settles.
+      if (prev && !prev.cloaked && e.cloaked && e.ownerId === me) out.push({ kind: "unitsfx", type: e.type, cue: "cloak", x: e.x, y: e.y });
+      // Your Weaver's mend lands on a hurt unit beside it; heard now and then, not every pulse.
+      if (e.type === "weaver" && e.ownerId === me && !e.wreck && e.hp > 0 && now - (this.lastMend.get(e.id) ?? -Infinity) >= MEND_GAP_MS) {
+        if (mendLanded(this.prevById, match.entities, e)) {
+          this.lastMend.set(e.id, now);
+          out.push({ kind: "unitsfx", type: e.type, cue: "mend", x: e.x, y: e.y });
+        }
+      }
       if (prev && prev.burrow !== e.burrow) {
         if (e.burrow === "digging") out.push({ kind: "unitsfx", type: e.type, cue: "burrow", x: e.x, y: e.y });
         else if (e.burrow === "rising") out.push({ kind: "unitsfx", type: e.type, cue: "unburrow", x: e.x, y: e.y });
@@ -549,6 +564,26 @@ export class SoundTracker {
       this.queueReady.set(lane, ready);
     }
   }
+}
+
+/** Gap between two mend sounds from one Weaver. */
+const MEND_GAP_MS = 4000;
+/** World px from a Broodmother's centre inside which a new Thrall is hers. */
+const BROOD_BESIDE_PX = 64;
+
+function broodmotherBeside(all: readonly EntityView[], t: EntityView): boolean {
+  return all.some((m) => m.type === "broodmother" && m.ownerId === t.ownerId && !m.wreck && Math.hypot(m.x - t.x, m.y - t.y) <= BROOD_BESIDE_PX);
+}
+
+/** Some unit of the Weaver's side close by gained HP since the last snapshot. */
+function mendLanded(prevById: ReadonlyMap<number, EntityView>, all: readonly EntityView[], w: EntityView): boolean {
+  for (const o of all) {
+    if (o === w || o.ownerId !== w.ownerId || o.kind !== "unit") continue;
+    if (Math.abs(o.x - w.x) > 96 || Math.abs(o.y - w.y) > 96) continue;
+    const was = prevById.get(o.id);
+    if (was && o.hp > was.hp) return true;
+  }
+  return false;
 }
 
 export function impactSound(i: MatchSnapshot["impacts"][number]): ImpactSound | null {

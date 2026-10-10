@@ -1,0 +1,64 @@
+{
+  "key": "shade",
+  "out": "units/shade",
+  "voice": {
+    "name": "Open Sector - Borg Drone",
+    "voice_id": "502QtipFv6YOD230VZTi",
+    "note": "Shares the Borg Drone voice (voices/borgdrone.json): no new custom voice. Quiet, mostly whispered delivery for the cloaked sniper.",
+    "description": "A thin, flat, hollow chorus of many young androgynous voices speaking the same words in perfect unison, like a single drone of an alien cyborg hive: lighter and younger than a commander, emotionless and obedient, airy and slightly metallic with a faint electronic buzz and a hollow tube-like resonance, quick clipped machine cadence, no personality of its own.",
+    "stability": 0.7,
+    "similarity": 0.8,
+    "style": 0.25,
+    "speed": 0.95
+  },
+  "lines": {
+    "select": [
+      "[whispers] Shade.",
+      "Unseen.",
+      "[whispers] We watch.",
+      "Spine loaded."
+    ],
+    "move": [
+      "[whispers] Moving unseen.",
+      "Shifting.",
+      "Into the dark.",
+      "No trace."
+    ],
+    "attack": [
+      "One spine. One less.",
+      "[whispers] They never see.",
+      "Target pinned."
+    ],
+    "ready": [
+      "Shade grown. Fading in."
+    ],
+    "special": [
+      "[whispers] Fading.",
+      "Gone."
+    ],
+    "die": [
+      "[gasps] Seen...",
+      "Shade... dims..."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Sci-fi bone spine sniper shot: one very sharp loud supersonic crack like a sniper rifle, with a thin hissing whip of a bone needle streaking away fast, no gunpowder echo, close, outdoors battlefield, no music, no voice",
+      "duration": 1.0,
+      "variants": 3,
+      "influence": 0.65
+    },
+    "cloak": {
+      "prompt": "Faint sci-fi cloaking device engaging: a soft airy shimmering whoosh bending down in pitch, a thin glassy warble fading into silence, subtle and quiet, close, no music, no voice",
+      "duration": 1.2,
+      "variants": 2,
+      "influence": 0.6
+    },
+    "move": {
+      "prompt": "Quick light running footsteps of a slender cyborg on gravel, eight fast clearly audible footfalls with crunching grit and small soft metal clicks, steady rhythm spread evenly over two seconds, close, no music, no voice",
+      "duration": 2.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

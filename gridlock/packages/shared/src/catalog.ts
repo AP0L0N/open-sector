@@ -564,10 +564,16 @@ export type EntityType =
   | "borgdrone"
   | "thrall"
   | "lancer"
+  | "spitter"
+  | "weaver"
+  | "shade"
   | "stalker"
   | "ravager"
   | "behemoth"
   | "juggernaut"
+  | "siphon"
+  | "broodmother"
+  | "mawcaster"
   | "leech"
   | "lurker"
   | "wasp"
@@ -804,7 +810,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "shed",
   "boiler",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "simunit2" | "borgdrone" | "thrall" | "lancer" | "stalker" | "ravager" | "behemoth" | "juggernaut" | "leech" | "lurker" | "wasp" | "scourge" | "gnat" | "overseer" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "horten" | "droneop" | "jumpjet";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "simunit2" | "borgdrone" | "thrall" | "lancer" | "spitter" | "weaver" | "shade" | "stalker" | "ravager" | "behemoth" | "juggernaut" | "siphon" | "broodmother" | "mawcaster" | "leech" | "lurker" | "wasp" | "scourge" | "gnat" | "overseer" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "horten" | "droneop" | "jumpjet";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -915,7 +921,7 @@ export const BUILDING_FACINGS = 24;
 export function isRotatableBuilding(type: string): type is BuildingType {
   return (ROTATABLE_BUILDINGS as readonly string[]).includes(type);
 }
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "simunit2", "borgdrone", "thrall", "lancer", "stalker", "ravager", "behemoth", "juggernaut", "leech", "lurker", "wasp", "scourge", "gnat", "overseer", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "horten", "droneop", "jumpjet"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "simunit2", "borgdrone", "thrall", "lancer", "spitter", "weaver", "shade", "stalker", "ravager", "behemoth", "juggernaut", "siphon", "broodmother", "mawcaster", "leech", "lurker", "wasp", "scourge", "gnat", "overseer", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "horten", "droneop", "jumpjet"];
 
 /**
  * A player fields only one of each of these at a time. While it lives, another
@@ -946,8 +952,12 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly Bu
   borgdrone: "cyborgcentral",
   thrall: "cyborgcentral",
   lancer: "cyborgcentral",
+  spitter: "cyborgcentral",
+  weaver: "cyborgcentral",
+  shade: ["cyborgcentral", "nexus"],
   behemoth: "nexus",
   juggernaut: "nexus",
+  broodmother: "nexus",
   lurker: "nexus",
   scourge: "nexus",
   overseer: "nexus",
@@ -995,10 +1005,16 @@ export const BORG_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([
   "borgdrone",
   "thrall",
   "lancer",
+  "spitter",
+  "weaver",
+  "shade",
   "stalker",
   "ravager",
   "behemoth",
   "juggernaut",
+  "siphon",
+  "broodmother",
+  "mawcaster",
   "forge",
   "nexus",
   "spineturret",
@@ -1392,8 +1408,8 @@ export interface ShellDef {
 }
 
 /** Infantry small-arm. CatalogEntry still holds the unit; this is the gun. */
-export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar" | "ptrd" | "gatling" | "launcher" | "flamer" | "assault" | "penetrator" | "laser" | "daggers" | "fists" | "deckmg";
-export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar", "ptrd", "gatling", "launcher", "flamer", "assault", "penetrator", "laser", "daggers", "fists", "deckmg"];
+export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar" | "ptrd" | "gatling" | "launcher" | "flamer" | "assault" | "penetrator" | "laser" | "daggers" | "fists" | "deckmg" | "acid";
+export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar", "ptrd", "gatling", "launcher", "flamer", "assault", "penetrator", "laser", "daggers", "fists", "deckmg", "acid"];
 export interface InfantryGun {
   id: InfantryWeaponId;
   name: string;
@@ -3406,6 +3422,97 @@ export const DECK_MG: InfantryGun = {
   antiAir: true,
 };
 
+/**
+ * The Spitter's acid. A glob does a rifle round's work on a soldier, but on a hull it does not
+ * need to get through: it coats the plate and eats it (sim/acid.ts). Each glob that lands on an
+ * armored hull, whatever the face and whether or not it bites, takes ACID_CORRODE_MM off every
+ * face, up to ACID_CORRODE_MAX_SHARE of the plate. Shells, bolts, and rounds that hit the hull
+ * meet the thinner plate. The coat dries ACID_CORRODE_SECONDS after the last glob, all at once.
+ */
+export const ACID_RANGE_TILES = t(8);
+export const ACID_CORRODE_MM = 6;
+export const ACID_CORRODE_MAX_SHARE = 0.5;
+export const ACID_CORRODE_SECONDS = 10;
+export const ACID = {
+  id: "acid" as const,
+  name: "Acid spit",
+  blurb: "A glob of corrosive bile from the throat sac. A soldier takes a rifle round's worth. On a hull it does not have to get through: it eats the plate, every face of it, for a while.",
+  damage: 14,
+  penetration: 4,
+  caliber: 11,
+  spreadDeg: 3,
+  cooldown: 1.3,
+  clip: 4,
+  reload: 3,
+  rangeTiles: ACID_RANGE_TILES,
+} as const satisfies InfantryGun;
+
+/**
+ * The Weaver's mend (sim/weaver.ts). Every WEAVER_PULSE_SECONDS each hive unit of its side within
+ * WEAVER_REACH_TILES gets HP back: a cyborg WEAVER_MEND_CYBORG, a heavy assimilator or any other
+ * Borg body WEAVER_MEND_HEAVY. Weavers do not stack: a unit in reach of two mends once. A Weaver
+ * does not mend itself, and nothing mends while the Weaver is shut down or powered down.
+ */
+export const WEAVER_REACH_TILES = t(3.5);
+export const WEAVER_PULSE_SECONDS = 1;
+export const WEAVER_MEND_CYBORG = 5;
+export const WEAVER_MEND_HEAVY = 4;
+
+/**
+ * The Shade's skin (sim/shade.ts). While cloaked no enemy sees it or can pick it. Firing, or any
+ * hit that takes HP, shows it for SHADE_REVEAL_SECONDS; an enemy unit within SHADE_SPOT_TILES
+ * always sees it. It walks cloaked.
+ */
+export const SHADE_REVEAL_SECONDS = 3;
+export const SHADE_SPOT_TILES = t(2);
+
+/**
+ * The Siphon's drain: SIPHON_DRAIN of the HP its bolt takes off an enemy unit (not a building
+ * or a wreck) flows back into its own body.
+ */
+export const SIPHON_DRAIN = 0.6;
+
+/**
+ * The Broodmother's brood (sim/brood.ts). A Thrall leaves the sac every BROOD_SECONDS while
+ * fewer than BROOD_MAX of hers live; the first BROOD_FIRST_SECONDS after she is born. Brood
+ * count against the unit cap and run on the uplink like any Thrall.
+ */
+export const BROOD_MAX = 3;
+export const BROOD_SECONDS = 30;
+export const BROOD_FIRST_SECONDS = 12;
+
+/**
+ * Mawcaster: the hive's answer to the Nebelwerfer. Six spore pods per salvo on a high arc, half
+ * the Nebelwerfer's frame, from a little less reach, but it draws on the hive and never runs dry.
+ * Each pod that bursts on open ground has MAWCASTER_BILE_CHANCE to leave burning bile there.
+ */
+export const MAWCASTER_RANGE_TILES = t(21);
+export const MAWCASTER_MIN_RANGE_TILES = t(5);
+export const MAWCASTER_SALVO = 6;
+export const MAWCASTER_BILE_CHANCE = 0.25;
+export const MAWCASTER_POD: RocketRackDef = {
+  salvo: MAWCASTER_SALVO,
+  interval: 0.15,
+  intervalJitter: 0.2,
+  volleyMax: 2,
+  reload: 14,
+  scatterNearTiles: t(0.5),
+  scatterFarTiles: t(3),
+  splashTiles: t(1.4),
+  speed: t(13) * TILE_SIZE,
+  podLift: 5,
+  damage: 30,
+  armorDamage: 6,
+  airMul: 0,
+  penetration: 20,
+  caliber: 150,
+  antiAir: false,
+  apexNear: 26,
+  apexFar: 52,
+  minRangeTiles: MAWCASTER_MIN_RANGE_TILES,
+  laid: true,
+};
+
 export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
   rifle: RIFLE,
   assault: ASSAULT,
@@ -3422,6 +3529,7 @@ export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
   daggers: DAGGERS,
   fists: FISTS,
   deckmg: DECK_MG,
+  acid: ACID,
 };
 
 /**
@@ -5618,6 +5726,82 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: LAUNCHER.spreadDeg,
     blurb: "Anti-armor cyborg. A plasma lance rides its shoulder and throws a burning bolt like a rocket: loose at full reach, tighter up close, a burst among soldiers that dents a tank. The capacitor on its back recharges the lance between shots. Heavy plating keeps it standing where a Rocketer would fall. No stance orders. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It runs on your Cyborg Central's uplink or a living Cyborg Commander, and shuts down without them.",
   },
+  /** Borg cyborg: acid spitter whose globs eat tank plate. */
+  spitter: {
+    type: "spitter",
+    kind: "unit",
+    name: "Spitter",
+    letter: "i",
+    cost: 550,
+    buildSeconds: 11,
+    hp: 170,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: paced(1.7 * INFANTRY_PACE),
+    turnDegPerSec: 1100,
+    rangeTiles: ACID_RANGE_TILES,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: ACID.cooldown,
+    damage: ACID.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    ...UNARMED,
+    penetration: ACID.penetration,
+    caliber: ACID.caliber,
+    spreadDeg: ACID.spreadDeg,
+    blurb: `A taken body with a swollen throat sac. It rears back and spits globs of corrosive bile, four and then a short refill from the bladder on its back: about a rifle round on a soldier, from a little less reach. On a tank the glob does not have to get through. It eats the plate: every glob that lands takes ${ACID_CORRODE_MM} mm off every face, up to half the plate, and the coat dries ${ACID_CORRODE_SECONDS} seconds after the last one. Spit a Tiger down and let the Stalkers and Lancers finish it. No stance orders. Near death its legs are torn off and it crawls on, still spitting. It runs on your Cyborg Central's uplink or a living Cyborg Commander, and shuts down without them.`,
+  },
+  /** Borg cyborg: unarmed nanite mender. */
+  weaver: {
+    type: "weaver",
+    kind: "unit",
+    name: "Weaver",
+    letter: "w",
+    cost: 600,
+    buildSeconds: 11,
+    hp: 160,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: paced(2 * INFANTRY_PACE),
+    turnDegPerSec: 1200,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: `No weapon. Four needle arms and a spindle of nanites on its back. Every second it sends a mend into each hive unit of yours within ${WEAVER_REACH_TILES / TILE_SUBDIV} cells: ${WEAVER_MEND_CYBORG} HP to a cyborg, ${WEAVER_MEND_HEAVY} to a heavy assimilator or anything else the hive fields. Two Weavers on one unit mend it once. It cannot mend itself; another Weaver can. Torn legs grow back once the body is whole enough. No stance orders. It runs on your Cyborg Central's uplink or a living Cyborg Commander, and mends nothing while shut down.`,
+  },
+  /** Borg cyborg: cloaked spine sniper. */
+  shade: {
+    type: "shade",
+    kind: "unit",
+    name: "Shade",
+    letter: "h",
+    cost: 750,
+    buildSeconds: 12,
+    hp: 110,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: paced(1.8 * INFANTRY_PACE),
+    turnDegPerSec: 1400,
+    rangeTiles: SCOPED_RANGE_TILES,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    sightBonusTiles: t(4),
+    cooldown: SCOPED.cooldown,
+    damage: SCOPED.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    ...UNARMED,
+    penetration: SCOPED.penetration,
+    caliber: SCOPED.caliber,
+    spreadDeg: SCOPED.spreadDeg,
+    blurb: `A lean hunter with a spine rifle grown along its forearm and a skin that drinks the light. The spine reaches as far as a sniper's scope; a hit takes most of a soldier's health, and the hive's spine never needs a truck. While its skin is settled no enemy sees it or can pick it, even on the move. Each shot, and any hit that hurts it, shows it for ${SHADE_REVEAL_SECONDS} seconds, and an enemy within ${SHADE_SPOT_TILES / TILE_SUBDIV} cells always sees it. Thin plating for a cyborg. No stance orders. Near death its legs are torn off and it crawls on, still firing. It runs on your Cyborg Central's uplink or a living Cyborg Commander, and shuts down without them. Needs a Neural Nexus.`,
+  },
   /** Borg heavy assimilator: four legs and a turreted disruptor, the hive's answer to the Tiger. */
   stalker: {
     type: "stalker",
@@ -5754,6 +5938,107 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     leavesWreck: true,
     wreckHp: 50,
     blurb: `A giant of the hive on two legs, swinging a two-handed hammer. It fights only at arm's reach, and runs at what it goes for at ${JUGGERNAUT_SPRINT_MUL} times its walk. Every blow lands in an area: it kills a soldier outright, staves in a tank's plate whatever its armor, and knocks whole walls out of a building. Only its own side is spared. Plated like a light tank and slow to fall. Brought down to ${Math.round(JUGGERNAUT_RAGE_HP * 100)}% it hurls the hammer at the strongest enemy within ${JUGGERNAUT_THROW_RANGE_TILES / TILE_SUBDIV} cells, a heavy blast where it lands, then fights on with its fists: lighter blows, three for every swing of the hammer, and it moves faster. Needs a Neural Nexus.`,
+  },
+  /** Borg heavy assimilator: four legs and a draining disruptor that feeds its own body. */
+  siphon: {
+    type: "siphon",
+    kind: "unit",
+    name: "Siphon",
+    letter: "s",
+    cost: 850,
+    buildSeconds: 16,
+    hp: 140,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 12,
+    moveTilesPerSec: paced(1.6),
+    turnDegPerSec: 110,
+    rangeTiles: t(11),
+    sightTiles: t(8),
+    cooldown: 3.4,
+    damage: 34,
+    projectileSpeed: TANK_SHELL_SPEED,
+    turnInPlace: true,
+    turretTurnDegPerSec: 220,
+    armorFront: 55,
+    armorSide: 28,
+    armorRear: 16,
+    penetration: 75,
+    caliber: 75,
+    spreadDeg: 3,
+    ammo: { ap: 12, he: 6 },
+    defaultShell: "ap",
+    leavesWreck: true,
+    wreckHp: 32,
+    blurb: `Heavy assimilator on four legs with a forked drain emitter on a quick turret. Its bolt is lighter than a Stalker's and bites only medium plate from the front, but it fires twice as often, from a little less reach. What the bolt takes off an enemy unit flows back: ${Math.round(SIPHON_DRAIN * 100)}% of every hit mends its own body. A building or a wreck gives nothing back. Thinner in front than a Stalker. It draws its bolts from the hive and never runs dry.`,
+  },
+  /** Borg heavy assimilator: a brood sac on six legs that births Thralls. Unarmed. */
+  broodmother: {
+    type: "broodmother",
+    kind: "unit",
+    name: "Broodmother",
+    letter: "m",
+    cost: 1800,
+    buildSeconds: 22,
+    hp: 300,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 16,
+    moveTilesPerSec: paced(0.85),
+    turnDegPerSec: 50,
+    rangeTiles: 0,
+    sightTiles: t(8),
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    turnInPlace: true,
+    armorFront: 50,
+    armorSide: 40,
+    armorRear: 30,
+    penetration: 0,
+    caliber: 0,
+    spreadDeg: 0,
+    leavesWreck: true,
+    wreckHp: 45,
+    blurb: `A living hatchery: a great brood sac on six short legs. It carries no weapon. Every ${BROOD_SECONDS} seconds a Thrall tears out of the sac beside it, while fewer than ${BROOD_MAX} of its brood live; the first comes ${BROOD_FIRST_SECONDS} seconds after it leaves the Forge. Its brood are Thralls like any other: they count against your units and run on the uplink. Thick hide on every face and slow on its legs. Keep it behind the line. Needs a Neural Nexus.`,
+  },
+  /** Borg heavy assimilator: spore-pod rocket artillery. */
+  mawcaster: {
+    type: "mawcaster",
+    kind: "unit",
+    name: "Mawcaster",
+    letter: "c",
+    cost: 1500,
+    buildSeconds: 18,
+    hp: 100,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 12,
+    moveTilesPerSec: paced(1.6),
+    turnDegPerSec: 110,
+    rangeTiles: MAWCASTER_RANGE_TILES,
+    sightTiles: t(6),
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    turnInPlace: true,
+    turretTurnDegPerSec: 50,
+    gunArcDeg: 4,
+    armorFront: 24,
+    armorSide: 14,
+    armorRear: 10,
+    penetration: 0,
+    caliber: 0,
+    spreadDeg: 0,
+    leavesWreck: true,
+    wreckHp: 20,
+    rockets: true,
+    rocketAmmo: MAWCASTER_SALVO * 5,
+    rocketRack: MAWCASTER_POD,
+    blurb: `Spore artillery on four legs. A maw of ${MAWCASTER_SALVO} launch tubes throws its pods on a high arc over your own troops, from nearly the Nebelwerfer's reach: half its salvo, but it draws its pods from the hive and never needs a truck. Force attack sends them anywhere in that reach, seen or not. It will not fire inside ${MAWCASTER_MIN_RANGE_TILES / TILE_SUBDIV} cells, and must stop and swing the maw onto the target first. Pods scatter wide at full reach: a salvo blankets an area and shreds soldiers in the open; armor only dents. Now and then a pod leaves burning bile on the ground. Thin hide and short eyes — keep it behind the line.`,
   },
   /** Borg vehicle factory. */
   forge: {
@@ -7091,7 +7376,7 @@ export function armorLabel(type: EntityType): string | null {
   return `F${d.armorFront} / S${d.armorSide} / R${d.armorRear}`;
 }
 
-const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "cyborg", "cyborgcommander", "simunit2", "borgdrone", "thrall", "lancer", "droneop", "jumpjet"];
+const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "cyborg", "cyborgcommander", "simunit2", "borgdrone", "thrall", "lancer", "spitter", "weaver", "shade", "droneop", "jumpjet"];
 
 /** Soldier with a jet pack: the Jump Jet. */
 export function isJumpJetType(type: EntityType): boolean {
@@ -7187,7 +7472,7 @@ export function isInfantryType(type: EntityType): boolean {
  * no random limb hits, legs tied to HP.
  */
 export function isCyborg(type: EntityType): boolean {
-  return type === "cyborg" || type === "cyborgcommander" || isSimUnit(type) || type === "borgdrone" || type === "thrall" || type === "lancer";
+  return type === "cyborg" || type === "cyborgcommander" || isSimUnit(type) || type === "borgdrone" || type === "thrall" || type === "lancer" || type === "spitter" || type === "weaver" || type === "shade";
 }
 
 /**
@@ -7282,6 +7567,8 @@ export function primaryInfantryGun(type: EntityType): InfantryGun | null {
   if (type === "borgdrone") return RIFLE;
   if (type === "thrall") return FISTS;
   if (type === "lancer") return LAUNCHER;
+  if (type === "spitter") return ACID;
+  if (type === "shade") return SCOPED;
   if (type === "jumpjet") return ASSAULT;
   return null;
 }
@@ -7301,6 +7588,8 @@ export function infantryLoadout(type: EntityType): readonly InfantryGun[] {
   if (type === "borgdrone") return [RIFLE];
   if (type === "thrall") return [FISTS];
   if (type === "lancer") return [LAUNCHER];
+  if (type === "spitter") return [ACID];
+  if (type === "shade") return [SCOPED];
   if (type === "jumpjet") return [ASSAULT, HANDGUN];
   return [];
 }
