@@ -1,0 +1,62 @@
+{
+  "unit": "assembler",
+  "fit_scale": 1,
+  "empty_dirs": [],
+  "clipped_dirs": [],
+  "hull_size_pop_dirs": [
+    "S"
+  ],
+  "hull_heights": [
+    53,
+    59,
+    66,
+    71,
+    64,
+    71,
+    67,
+    63,
+    59,
+    63,
+    67,
+    71,
+    64,
+    71,
+    66,
+    59
+  ],
+  "hull_bottoms": [
+    111,
+    114,
+    118,
+    121,
+    117,
+    121,
+    118,
+    114,
+    111,
+    114,
+    118,
+    121,
+    117,
+    121,
+    118,
+    114
+  ],
+  "cellPerMeter": 0.14,
+  "originCell": [
+    0.5,
+    0.7576
+  ],
+  "originLift": 0.1624,
+  "union_m": [
+    5.47,
+    4.8
+  ],
+  "drawSize_at_ref": 39,
+  "model": {
+    "turretRingZ": 1.32,
+    "craneX": 1.45,
+    "craneZ": 2.71,
+    "vaultTopZ": 2.66
+  }
+}

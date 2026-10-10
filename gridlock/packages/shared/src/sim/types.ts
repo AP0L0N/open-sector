@@ -588,7 +588,7 @@ export interface Entity {
   dormant?: true;
   /** Sim Unit II: the tick his blink drive is charged again. Unset or past means ready. */
   blinkReady?: number;
-  /** Plasma cannon: shots of energy left in its cell (sim/hive-ammo.ts), fractional while it regrows. Unset means full. */
+  /** Plasma cannon: shots of energy left in its cell (sim/hive-ammo.ts), fractional while it regrows. Assembler: Thralls it has left to build (sim/assembler.ts). Unset means full. */
   energy?: number;
   /** Behemoth, Drone, Lancer: the tick it may raise its next energy wall (sim/energy-shield.ts). Unset means ready. */
   shieldReady?: number;
@@ -609,10 +609,10 @@ export interface Entity {
   cloaked?: true;
   /** Weaver (sim/weaver.ts): the tick of its next mend pulse. */
   mendNext?: number;
-  /** Broodmother (sim/brood.ts): the tick the next Thrall leaves the sac. */
-  broodNext?: number;
-  /** A Thrall born of a Broodmother: her id. */
-  broodOf?: number;
+  /** Assembler (sim/assembler.ts): the tick the Thrall in its bay is finished. */
+  assemblyDone?: number;
+  /** A Thrall an Assembler built: its id. */
+  assembledBy?: number;
   /** Juggernaut has thrown its hammer: it fights with its fists from now on. */
   fists?: true;
   /** Stalker under the ground or on its way (sim/burrow.ts). Down, no enemy sees it. */

@@ -790,7 +790,7 @@ const EXTRUDE: Record<EntityType, number> = {
   stalker: 28,
   ravager: 22,
   siphon: 24,
-  broodmother: 34,
+  assembler: 28,
   mawcaster: 26,
   behemoth: 46,
   juggernaut: 44,

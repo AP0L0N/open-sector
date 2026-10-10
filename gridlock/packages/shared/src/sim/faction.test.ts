@@ -86,9 +86,9 @@ describe("factions in the catalog", () => {
       [...XENO_TYPES].sort(),
       [
         "aerie",
+        "assembler",
         "assimilator",
         "behemoth",
-        "broodmother",
         "forge",
         "fusionnode",
         "gnat",
@@ -127,7 +127,7 @@ describe("factions in the catalog", () => {
       const want = isCyborg(t) ? "cyborgcentral" : isNavalType(t) ? "spawnpool" : isAircraftType(t) ? "aerie" : "forge";
       assert.equal(producerType(t), want, t);
     }
-    for (const t of ["stalker", "ravager", "behemoth", "juggernaut", "siphon", "broodmother", "mawcaster"] as const) assert.equal(producerType(t), "forge");
+    for (const t of ["stalker", "ravager", "behemoth", "juggernaut", "siphon", "assembler", "mawcaster"] as const) assert.equal(producerType(t), "forge");
     for (const t of ["xenodrone", "thrall", "lancer", "spitter", "weaver", "shade"] as const) assert.ok(isCyborg(t) && onUplink(t) && isInfantryType(t), t);
     assert.ok(!onUplink("cyborgcommander"));
   });

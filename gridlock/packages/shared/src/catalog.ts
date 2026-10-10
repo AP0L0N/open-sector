@@ -573,7 +573,7 @@ export type EntityType =
   | "behemoth"
   | "juggernaut"
   | "siphon"
-  | "broodmother"
+  | "assembler"
   | "mawcaster"
   | "leech"
   | "lurker"
@@ -860,7 +860,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "shed",
   "boiler",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "simunit2" | "xenodrone" | "thrall" | "lancer" | "spitter" | "weaver" | "shade" | "stalker" | "ravager" | "behemoth" | "juggernaut" | "siphon" | "broodmother" | "mawcaster" | "leech" | "lurker" | "wasp" | "scourge" | "gnat" | "overseer" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "horten" | "droneop" | "jumpjet" | "spawnling" | "gobber" | "quillback" | "bloater" | "longspine" | "mender" | "skitter" | "goretusk" | "mantis" | "bileworm" | "sporemaw" | "matriarch" | "driftjelly" | "spineback" | "abyssray" | "leviathan" | "broodbarge" | "moth" | "razorwing" | "gasbag" | "drifter" | "harpy";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "simunit2" | "xenodrone" | "thrall" | "lancer" | "spitter" | "weaver" | "shade" | "stalker" | "ravager" | "behemoth" | "juggernaut" | "siphon" | "assembler" | "mawcaster" | "leech" | "lurker" | "wasp" | "scourge" | "gnat" | "overseer" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "horten" | "droneop" | "jumpjet" | "spawnling" | "gobber" | "quillback" | "bloater" | "longspine" | "mender" | "skitter" | "goretusk" | "mantis" | "bileworm" | "sporemaw" | "matriarch" | "driftjelly" | "spineback" | "abyssray" | "leviathan" | "broodbarge" | "moth" | "razorwing" | "gasbag" | "drifter" | "harpy";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -984,7 +984,7 @@ export const BUILDING_FACINGS = 24;
 export function isRotatableBuilding(type: string): type is BuildingType {
   return (ROTATABLE_BUILDINGS as readonly string[]).includes(type);
 }
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "simunit2", "xenodrone", "thrall", "lancer", "spitter", "weaver", "shade", "stalker", "ravager", "behemoth", "juggernaut", "siphon", "broodmother", "mawcaster", "leech", "lurker", "wasp", "scourge", "gnat", "overseer", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "horten", "droneop", "jumpjet", "spawnling", "gobber", "quillback", "bloater", "longspine", "mender", "skitter", "goretusk", "mantis", "bileworm", "sporemaw", "matriarch", "driftjelly", "spineback", "abyssray", "leviathan", "broodbarge", "moth", "razorwing", "gasbag", "drifter", "harpy"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "simunit2", "xenodrone", "thrall", "lancer", "spitter", "weaver", "shade", "stalker", "ravager", "behemoth", "juggernaut", "siphon", "assembler", "mawcaster", "leech", "lurker", "wasp", "scourge", "gnat", "overseer", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "horten", "droneop", "jumpjet", "spawnling", "gobber", "quillback", "bloater", "longspine", "mender", "skitter", "goretusk", "mantis", "bileworm", "sporemaw", "matriarch", "driftjelly", "spineback", "abyssray", "leviathan", "broodbarge", "moth", "razorwing", "gasbag", "drifter", "harpy"];
 
 /**
  * A player fields only one of each of these at a time. While it lives, another
@@ -1020,7 +1020,7 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly Bu
   shade: ["cyborgcentral", "nexus"],
   behemoth: "nexus",
   juggernaut: "nexus",
-  broodmother: "nexus",
+  assembler: "nexus",
   lurker: "nexus",
   scourge: "nexus",
   overseer: "nexus",
@@ -1082,7 +1082,7 @@ export const XENO_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([
   "behemoth",
   "juggernaut",
   "siphon",
-  "broodmother",
+  "assembler",
   "mawcaster",
   "forge",
   "nexus",
@@ -3722,13 +3722,12 @@ export const SHADE_SPOT_TILES = t(2);
 export const SIPHON_DRAIN = 0.6;
 
 /**
- * The Broodmother's brood (sim/brood.ts). A Thrall leaves the sac every BROOD_SECONDS while
- * fewer than BROOD_MAX of hers live; the first BROOD_FIRST_SECONDS after she is born. Brood
- * count against the unit cap and run on the uplink like any Thrall.
+ * The Assembler's nanite store (sim/assembler.ts). It builds Thralls on its own, ASSEMBLER_SPEEDUP
+ * times as fast as the Forge, each one spending 1 / ASSEMBLER_THRALLS of its energy. Empty, it builds
+ * no more. Its Thralls count against the unit cap and run on the uplink like any Thrall.
  */
-export const BROOD_MAX = 3;
-export const BROOD_SECONDS = 30;
-export const BROOD_FIRST_SECONDS = 12;
+export const ASSEMBLER_THRALLS = 10;
+export const ASSEMBLER_SPEEDUP = 3;
 
 /**
  * Mawcaster: the hive's answer to the Nebelwerfer. Six spore pods per salvo on a high arc, half
@@ -6226,11 +6225,11 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     wreckHp: 32,
     blurb: `Heavy assimilator on four legs with a forked drain emitter on a quick turret. Its bolt is lighter than a Stalker's and bites only medium plate from the front, but it fires twice as often, from a little less reach. What the bolt takes off an enemy unit flows back: ${Math.round(SIPHON_DRAIN * 100)}% of every hit mends its own body. A building or a wreck gives nothing back. Thinner in front than a Stalker. Each bolt draws on an energy cell that holds 6 and regrows one every 7 seconds.`,
   },
-  /** Xenomorph heavy assimilator: a brood sac on six legs that births Thralls. Unarmed. */
-  broodmother: {
-    type: "broodmother",
+  /** Xenomorph heavy assimilator: a small walking nanite forge that builds Thralls. Unarmed. */
+  assembler: {
+    type: "assembler",
     kind: "unit",
-    name: "Broodmother",
+    name: "Assembler",
     letter: "m",
     cost: 1800,
     buildSeconds: 22,
@@ -6238,9 +6237,9 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     power: 0,
     tileW: 1,
     tileH: 1,
-    radius: 16,
-    moveTilesPerSec: paced(0.85),
-    turnDegPerSec: 50,
+    radius: 12,
+    moveTilesPerSec: paced(1.1),
+    turnDegPerSec: 70,
     rangeTiles: 0,
     sightTiles: t(8),
     cooldown: 0,
@@ -6254,8 +6253,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     caliber: 0,
     spreadDeg: 0,
     leavesWreck: true,
-    wreckHp: 45,
-    blurb: `A living hatchery: a great brood sac on six short legs. It carries no weapon. Every ${BROOD_SECONDS} seconds a Thrall tears out of the sac beside it, while fewer than ${BROOD_MAX} of its brood live; the first comes ${BROOD_FIRST_SECONDS} seconds after it leaves the Forge. Its brood are Thralls like any other: they count against your units and run on the uplink. Thick hide on every face and slow on its legs. Keep it behind the line. Needs a Neural Nexus.`,
+    wreckHp: 35,
+    blurb: `A small nanite forge on four short legs. It carries no weapon. From the moment it leaves the Forge it builds Thralls by itself, ${ASSEMBLER_SPEEDUP} times as fast as a Forge, and sets each one down behind it. Every Thrall spends ${Math.round(100 / ASSEMBLER_THRALLS)}% of its energy: ${ASSEMBLER_THRALLS} in all, then it builds no more. Its Thralls are Thralls like any other: they count against your units and run on the uplink. At the unit cap it holds the next one until there is room. Thick plate on every face. Keep it behind the line. Needs a Neural Nexus.`,
   },
   /** Xenomorph heavy assimilator: spore-pod rocket artillery. */
   mawcaster: {

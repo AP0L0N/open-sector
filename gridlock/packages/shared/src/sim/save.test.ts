@@ -148,6 +148,22 @@ describe("skirmish save", () => {
     assert.equal(next.value.slots[1]?.faction, "xeno");
   });
 
+  it("loads a save from before the Broodmother became the Assembler", () => {
+    const { state, room } = skirmish();
+    const saved = exportSave(state, room, 1_700_000_000_000);
+    const old = JSON.parse(JSON.stringify(saved));
+    const rig = old.entities.find((e: { type: string; ownerId: string }) => e.type === "rig" && e.ownerId === "A");
+    const motherId = old.nextId++;
+    old.entities.push({ ...rig, id: motherId, type: "broodmother", kind: "unit", broodNext: 99 });
+    old.entities.push({ ...rig, id: old.nextId++, type: "thrall", kind: "unit", broodOf: motherId });
+    const back = restoreMatch(old, { roomId: "OLD", humanPlayerId: "A" });
+    assert.equal(back.ok, true, !back.ok ? back.message : "");
+    if (!back.ok) return;
+    const ents = [...back.value.state.entities.values()];
+    assert.equal(ents.find((e) => e.id === motherId)?.type, "assembler");
+    assert.ok(ents.some((e) => e.type === "thrall" && e.assembledBy === motherId));
+  });
+
   it("holds the sim while paused and rejects orders", () => {
     const { state } = skirmish();
     const tick = state.tick;

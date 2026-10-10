@@ -316,10 +316,10 @@ import siphonLegsUrl from "../assets/units/siphon-legs.png";
 import siphonTurretUrl from "../assets/units/siphon-turret.png";
 import siphonGunUrl from "../assets/units/siphon-gun.png";
 import siphonWreckUrl from "../assets/units/wrecks/siphon.png";
-import broodmotherLegsUrl from "../assets/units/broodmother-legs.png";
-import broodmotherTurretUrl from "../assets/units/broodmother-turret.png";
-import broodmotherGunUrl from "../assets/units/broodmother-gun.png";
-import broodmotherWreckUrl from "../assets/units/wrecks/broodmother.png";
+import assemblerLegsUrl from "../assets/units/assembler-legs.png";
+import assemblerTurretUrl from "../assets/units/assembler-turret.png";
+import assemblerGunUrl from "../assets/units/assembler-gun.png";
+import assemblerWreckUrl from "../assets/units/wrecks/assembler.png";
 import mawcasterLegsUrl from "../assets/units/mawcaster-legs.png";
 import mawcasterTurretUrl from "../assets/units/mawcaster-turret.png";
 import mawcasterGunUrl from "../assets/units/mawcaster-gun.png";
@@ -1373,7 +1373,7 @@ export const STALKER_SPRITE = xenoWalker(stalkerLegsUrl, stalkerTurretUrl, stalk
 export const BEHEMOTH_SPRITE = xenoWalker(behemothLegsUrl, behemothTurretUrl, behemothGunUrl, 68, 7);
 export const RAVAGER_SPRITE = xenoWalker(ravagerLegsUrl, ravagerTurretUrl, ravagerGunUrl, 29, 12);
 export const SIPHON_SPRITE = xenoWalker(siphonLegsUrl, siphonTurretUrl, siphonGunUrl, 32, 10);
-export const BROODMOTHER_SPRITE = xenoWalker(broodmotherLegsUrl, broodmotherTurretUrl, broodmotherGunUrl, 40, 6);
+export const ASSEMBLER_SPRITE = xenoWalker(assemblerLegsUrl, assemblerTurretUrl, assemblerGunUrl, 32, 9);
 export const MAWCASTER_SPRITE = xenoWalker(mawcasterLegsUrl, mawcasterTurretUrl, mawcasterGunUrl, 33, 9);
 
 /**
@@ -1956,7 +1956,7 @@ const WRECK_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   juggernaut: { ...wreckSheet(juggernautWreckUrl, JUGGERNAUT_SPRITE), contactY: 0.62 },
   ravager: wreckSheet(ravagerWreckUrl, RAVAGER_SPRITE),
   siphon: wreckSheet(siphonWreckUrl, SIPHON_SPRITE),
-  broodmother: wreckSheet(broodmotherWreckUrl, BROODMOTHER_SPRITE),
+  assembler: wreckSheet(assemblerWreckUrl, ASSEMBLER_SPRITE),
   mawcaster: wreckSheet(mawcasterWreckUrl, MAWCASTER_SPRITE),
   ss3: wreckSheet(ss3WreckUrl, SS3_SPRITE),
   jagdtiger: wreckSheet(jagdtigerWreckUrl, JAGDTIGER_SPRITE),
@@ -2007,7 +2007,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   juggernaut: JUGGERNAUT_SPRITE,
   ravager: RAVAGER_SPRITE,
   siphon: SIPHON_SPRITE,
-  broodmother: BROODMOTHER_SPRITE,
+  assembler: ASSEMBLER_SPRITE,
   mawcaster: MAWCASTER_SPRITE,
   ss3: SS3_SPRITE,
   jagdtiger: JAGDTIGER_SPRITE,

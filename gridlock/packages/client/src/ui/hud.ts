@@ -1221,7 +1221,7 @@ const TYPE_ORDER: EntityType[] = [
   "siphon",
   "ravager",
   "mawcaster",
-  "broodmother",
+  "assembler",
   "matriarch",
   "goretusk",
   "mantis",
