@@ -8,6 +8,7 @@ import type { Entity, EnergyShield, MatchState, Projectile } from "./types.js";
  * raises a curved wall across its front. The wall stays where it went up. Enemy
  * rounds and beams that meet it stop there and take points off it; enemy ground
  * units cannot walk through it. Its own side walks and shoots through.
+ * A Weaver throws smaller ones in front of friends under fire (sim/weaver.ts).
  */
 
 /** Where a line first meets an enemy wall: `t` along it, 0–1. */

@@ -3,13 +3,18 @@ import {
   WEAVER_MEND_HEAVY,
   WEAVER_PULSE_SECONDS,
   WEAVER_REACH_TILES,
+  WEAVER_SHIELD,
+  WEAVER_SHIELD_GAP_SECONDS,
+  WEAVER_SHIELD_REACH_TILES,
   factionOf,
   isCyborg,
   secondsToTicks,
   staysAloft,
 } from "../catalog.js";
 import { isAirborne } from "./air.js";
+import { weaponRangeWorld } from "./elevation.js";
 import { allies } from "./geo.js";
+import { drawPlasma, plasmaShots } from "./hive-ammo.js";
 import type { Entity, MatchState } from "./types.js";
 
 /**
@@ -60,4 +65,82 @@ export function tickWeavers(state: MatchState): void {
       mended.add(o.id);
     }
   }
+}
+
+/**
+ * The Weaver's shields. A working Weaver with a quarter of its cell charged throws a WEAVER_SHIELD in
+ * front of a unit of its side under fire within WEAVER_SHIELD_REACH_TILES, itself included: the wall
+ * stands about the friend, facing the nearest enemy shooting at it. "Under fire" means an enemy has it
+ * as its target and in reach. The friend most hurt goes first, then the nearest. A friend behind its own
+ * wall or another Weaver's gets none, so two Weavers never double up on one unit.
+ */
+export function tickWeaverShields(state: MatchState): void {
+  let ready: Entity[] | null = null;
+  for (const e of state.entities.values()) {
+    if (!mending(e) || isAirborne(e) || plasmaShots(e) < 1) continue;
+    if (e.shieldReady != null && state.tick < e.shieldReady) continue;
+    (ready ??= []).push(e);
+  }
+  if (!ready) return;
+  const fire = underFire(state);
+  if (fire.size === 0) return;
+  const walls = (state.energyShields ??= []);
+  const guarded = new Set<number>();
+  for (const s of walls) if (s.hp > 0) guarded.add(s.forId ?? s.fromId);
+  const reach = WEAVER_SHIELD_REACH_TILES * state.tileSize;
+  for (const w of ready) {
+    let best: Entity | null = null;
+    let bestHurt = Infinity;
+    let bestD = Infinity;
+    for (const id of fire.keys()) {
+      if (guarded.has(id)) continue;
+      const o = state.entities.get(id)!;
+      if (!allies(state, w.ownerId, o.ownerId)) continue;
+      const d = Math.hypot(o.x - w.x, o.y - w.y);
+      if (d > reach + o.radius) continue;
+      const hurt = o.hp / Math.max(1, o.hpMax);
+      if (hurt > bestHurt || (hurt === bestHurt && d >= bestD)) continue;
+      best = o;
+      bestHurt = hurt;
+      bestD = d;
+    }
+    if (!best) continue;
+    const from = fire.get(best.id)!;
+    walls.push({
+      id: state.nextId++,
+      ownerId: w.ownerId,
+      fromId: w.id,
+      forId: best.id,
+      x: best.x,
+      y: best.y,
+      angle: Math.atan2(from.y - best.y, from.x - best.x),
+      half: (WEAVER_SHIELD.halfDeg * Math.PI) / 180,
+      r: WEAVER_SHIELD.arcPx,
+      hp: WEAVER_SHIELD.hp,
+      hpMax: WEAVER_SHIELD.hp,
+      life: WEAVER_SHIELD.seconds,
+    });
+    drawPlasma(w);
+    w.shieldReady = state.tick + secondsToTicks(WEAVER_SHIELD_GAP_SECONDS);
+    guarded.add(best.id);
+  }
+}
+
+/** Ground units under fire, each with the nearest enemy that has it targeted and in reach. */
+function underFire(state: MatchState): Map<number, Entity> {
+  const out = new Map<number, Entity>();
+  const dist = new Map<number, number>();
+  for (const a of state.entities.values()) {
+    if (a.attackTarget == null || a.hp <= 0 || a.wreck || a.shutdown || a.dormant || isAirborne(a)) continue;
+    const o = state.entities.get(a.attackTarget);
+    if (!o || o.kind !== "unit" || o.hp <= 0 || o.wreck || o.garrisonedIn != null || isAirborne(o)) continue;
+    if (allies(state, a.ownerId, o.ownerId)) continue;
+    const range = weaponRangeWorld(state, a);
+    if (range <= 0) continue;
+    const d = Math.hypot(o.x - a.x, o.y - a.y);
+    if (d > range + o.radius || d >= (dist.get(o.id) ?? Infinity)) continue;
+    out.set(o.id, a);
+    dist.set(o.id, d);
+  }
+  return out;
 }
