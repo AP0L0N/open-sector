@@ -1,0 +1,49 @@
+{
+  "unit": "scourge-wingup",
+  "fit_scale": 0.7654,
+  "empty_dirs": [],
+  "clipped_dirs": [],
+  "size_pop_dirs": [
+    "N"
+  ],
+  "heights": [
+    101,
+    106,
+    112,
+    117,
+    111,
+    104,
+    99,
+    94,
+    89,
+    94,
+    99,
+    104,
+    111,
+    117,
+    112,
+    106
+  ],
+  "bottoms": [
+    126,
+    126,
+    126,
+    123,
+    112,
+    112,
+    115,
+    116,
+    116,
+    116,
+    115,
+    112,
+    112,
+    123,
+    126,
+    126
+  ],
+  "ref": "stuka",
+  "ref_fit_scale": 0.5586,
+  "drawSize_base": 46.0,
+  "ref_note": "STUKA_OPTS"
+}

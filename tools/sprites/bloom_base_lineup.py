@@ -31,11 +31,13 @@ PAIRS = [
     ("tidewomb", "spawnpool", 2.5, 2.5, False),
     ("roost", "aerie", 7.5, 3.75, True),
 ]
+# Xenomorph buildings whose footprint differs from their Bloom pair's (the Aerie is no longer an airfield).
+XENO_FOOT = {"aerie": (3, 3)}
 
 
 def load(bid: str, ground: bool) -> tuple[Image.Image, dict]:
     img = Image.open(B / f"{bid}.png").convert("RGBA")
-    if ground:
+    if ground and (B / f"{bid}-ground.png").exists():
         gr = Image.open(B / f"{bid}-ground.png").convert("RGBA")
         gr.alpha_composite(img)
         img = gr
@@ -74,7 +76,8 @@ def main() -> None:
             for base_y in (250, 520):
                 dr.rectangle((sx - tw * TILE - 10, base_y - 150, sx + th * TILE + 10, base_y + 4), fill=(44, 74, 98, 255))
         place(canvas, dr, bloom, tw, th, gnd, sx, 250)
-        place(canvas, dr, xeno, tw, th, gnd, sx, 520)
+        xw, xh = XENO_FOOT.get(xeno, (tw, th))
+        place(canvas, dr, xeno, xw, xh, gnd, sx, 520)
     OUT.parent.mkdir(exist_ok=True)
     canvas.save(OUT)
     print("wrote", OUT, canvas.size)

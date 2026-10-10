@@ -41,6 +41,7 @@ import {
   beltOf,
   carriesShell,
   airLoadoutOf,
+  staysAloft,
   AIR_DROPS,
   AIR_DROP_INFO,
   BV222_TROOPS,
@@ -1003,6 +1004,8 @@ const AIR_PHASE_LABEL: Record<NonNullable<EntityView["air"]>["phase"], string> =
 
 /** Phase, and for your own planes fuel, bomb, and belts. A fighter carries no bomb; it counts barrages. */
 function airLine(air: NonNullable<EntityView["air"]>, type: EntityType): string {
+  // A Xenomorph flier runs on the hive: no tank, no rack, no field to go home to.
+  if (staysAloft(type)) return `  ·  ${air.phase === "crash" ? "going down" : air.phase === "takeoff" ? "lifting off" : "hovering"}`;
   let s = `  ·  ${AIR_PHASE_LABEL[air.phase]}`;
   if (air.fuel != null && air.fuelMax) s += `  ·  fuel ${Math.round((air.fuel / air.fuelMax) * 100)}%`;
   const load = airLoadoutOf(type);
@@ -2516,7 +2519,8 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       disabled: mines <= 0 || clearing,
     });
   }
-  if (units.some((e) => e.air && !e.drone && e.type !== "aswheli" && e.air.phase !== "parked")) {
+  // A Xenomorph flier never lands: it has no field to return to.
+  if (units.some((e) => e.air && !e.drone && e.type !== "aswheli" && !staysAloft(e.type) && e.air.phase !== "parked")) {
     out.push({
       slot: "land",
       act: "land",
