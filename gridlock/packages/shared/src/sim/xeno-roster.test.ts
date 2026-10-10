@@ -86,6 +86,8 @@ function at(state: MatchState, type: EntityType, owner: string, cx: number, cy: 
 function still(e: Entity): Entity {
   e.holdPosition = true;
   e.cooldown = 1e9;
+  // A launcher (the Spitter's sac, the Mawcaster's maw) keeps its own clock: hold the rack too.
+  e.rocketsOff = true;
   return e;
 }
 
