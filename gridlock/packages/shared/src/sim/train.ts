@@ -1,11 +1,10 @@
-import { AIRFIELD_PADS, BLOOM_GESTATOR, BLOOM_NEST, XENO_BARRACKS, XENO_FACTORY, airfieldOf, canContinuousTrain, catalog, dockOf, isDockType, factionOf, inFaction, isAirfieldType, isAircraftType, isCyborg, isInfantryType, isNavalType, isOneAtATime, secondsToTicks, staysAloft, techNeeds, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, usesHiveEnergy, type BuildingType, type TrainType } from "../catalog.js";
+import { AIRFIELD_PADS, BLOOM_GESTATOR, BLOOM_NEST, XENO_BARRACKS, XENO_FACTORY, airfieldOf, canContinuousTrain, catalog, dockOf, isDockType, factionOf, inFaction, isAirfieldType, isAircraftType, isCyborg, isInfantryType, isNavalType, isOneAtATime, secondsToTicks, staysAloft, techNeeds, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, type BuildingType, type TrainType } from "../catalog.js";
 import { airfieldPadWorld, freePad, padsSpoken, parkHeading } from "./air.js";
 import { makeEntity, newAirState, ownedUnits, rallyPoint, worldToTile } from "./geo.js";
 import { openSpotNear, packRadius, packSlots } from "./formation.js";
 import { setPath } from "./path.js";
-import { powerOf, productionSpeed } from "./power.js";
 import { advancePaidJob, jobFullyPaid } from "./production.js";
-import { hiveEnergyWallet, jobBill, refundJob } from "./hive-energy.js";
+import { jobBill, jobSpeed, refundJob } from "./hive-energy.js";
 import type { Entity, MatchState, TrainJob } from "./types.js";
 
 /** The refusal when a player asks for the other faction's building or unit. */
@@ -312,8 +311,8 @@ export function cancelTrain(
 }
 
 export function tickTrain(state: MatchState, _dt: number): void {
-  // Each hive's free energy, read once this tick and drawn down as its factories take their share.
-  const hives = new Map<string, { scrap: number }>();
+  // Each side's factory pace (power, or the hive's energy), read once this tick.
+  const speeds = new Map<string, number>();
   for (const e of state.entities.values()) {
     if (e.kind !== "building" || e.queue.length === 0 || e.hp <= 0) continue;
     const job = e.queue[0];
@@ -321,11 +320,10 @@ export function tickTrain(state: MatchState, _dt: number): void {
     const p = state.players.get(e.ownerId);
     if (!p) continue;
     const def = catalog(job.type);
-    let hive = hives.get(p.playerId);
-    if (!hive && usesHiveEnergy(p.faction)) hives.set(p.playerId, (hive = hiveEnergyWallet(state, p)));
-    const { wallet, cost } = jobBill(state, p, job.type, def.cost, hive);
-    const pow = powerOf(state, e.ownerId);
-    advancePaidJob(wallet, job, cost, productionSpeed(pow.provided, pow.used));
+    let speed = speeds.get(p.playerId);
+    if (speed === undefined) speeds.set(p.playerId, (speed = jobSpeed(state, p.playerId)));
+    const cost = jobBill(p, def.cost);
+    advancePaidJob(p, job, cost, speed);
     if (jobFullyPaid(job, cost)) {
       const spawned = spawnUnit(state, e.ownerId, job.type, e, false);
       if (spawned) e.queue.shift();

@@ -4,6 +4,8 @@ import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
   FUSION_NODE_ENERGY,
   HIVE_CORE_ENERGY,
+  HIVE_SWITCH_SECONDS,
+  LOW_POWER_MIN_SPEED,
   LASER_FENCE_ENERGY_PER_CELL,
   TICK_DT,
   TILE_SUBDIV,
@@ -11,12 +13,13 @@ import {
   energyOf,
   inFaction,
   isCivilianType,
+  secondsToTicks,
   type EntityType,
 } from "../catalog.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { destroyEntity, hasCore, hqOf, makeEntity, tileCenter } from "./geo.js";
-import { fenceEnergyToAdd, hiveEnergyOf } from "./hive-energy.js";
+import { fenceEnergyToAdd, hiveEnergyOf, hiveSpeed, jobSpeed } from "./hive-energy.js";
 import { liveFenceLinks } from "./laser-fence.js";
 import { createMatch, step } from "./match.js";
 import { powerOf } from "./power.js";
@@ -80,67 +83,104 @@ describe("hive energy", () => {
     assert.equal(inFaction("fusionnode", "xeno"), true);
   });
 
-  it("builds a structure for nothing, and a defence for its energy", () => {
+  it("counts down from the full store: base structures, units, and defences each take their share", () => {
     const state = field();
-    const scrap = state.players.get("B")!.scrap;
-    assert.equal(applyCommand(state, "B", { type: "cmd.build", building: "forge" }).ok, true);
-    assert.equal(applyCommand(state, "B", { type: "cmd.build", building: "spineturret" }).ok, true);
-    ticks(state, 400);
-    const p = state.players.get("B")!;
-    assert.equal(p.structure?.ready, true);
-    assert.equal(p.defence?.ready, true);
-    assert.equal(p.scrap, scrap, "no scrap spent");
-    assert.equal(hiveEnergyOf(state, "B").used, energyOf("spineturret"), "the ready turret holds its energy");
+    at(state, "forge", 30, 30);
+    at(state, "conversion", 34, 30);
+    at(state, "lancer", 20, 20);
+    const want = energyOf("forge") + energyOf("conversion") + energyOf("lancer");
+    assert.ok(energyOf("forge") > 0 && energyOf("conversion") > 0 && energyOf("nexus") > 0 && energyOf("aerie") > 0 && energyOf("spawnpool") > 0);
+    assert.equal(energyOf("hivecore"), 0);
+    assert.equal(energyOf("fusionnode"), 0);
+    ticks(state, 1);
+    assert.deepEqual(snapshotFor(state, "B").you.energy, { cap: 200, used: want, offline: 0 });
   });
 
-  it("trains a unit for its energy, waits when the hive is full, and frees it on cancel", () => {
+  it("never refuses or waits on energy: it builds and trains below zero, and pays no scrap", () => {
     const state = field();
     at(state, "conversion", 30, 30);
     const scrap = state.players.get("B")!.scrap;
-    // 200 energy: four Lancers (50 each) fill it; the fifth waits.
+    // 160 left after the Chamber: five Lancers (50 each) take the hive below zero, and all five come out.
     for (let i = 0; i < 5; i++) assert.equal(applyCommand(state, "B", { type: "cmd.train", unit: "lancer" }).ok, true);
-    ticks(state, 5 * Math.ceil(catalog("lancer").buildSeconds / TICK_DT) + 40);
-    const lancers = () => [...state.entities.values()].filter((e) => e.type === "lancer" && e.ownerId === "B").length;
-    assert.equal(lancers(), 4);
+    ticks(state, 8 * Math.ceil(catalog("lancer").buildSeconds / TICK_DT));
+    const lancers = [...state.entities.values()].filter((e) => e.type === "lancer" && e.ownerId === "B");
+    assert.equal(lancers.length, 5);
     assert.equal(state.players.get("B")!.scrap, scrap, "no scrap spent");
-    assert.equal(hiveEnergyOf(state, "B").used, 200);
-    // A Fusion Node makes room: the fifth comes out.
-    at(state, "fusionnode", 40, 40);
-    ticks(state, Math.ceil(catalog("lancer").buildSeconds / TICK_DT) + 20);
-    assert.equal(lancers(), 5);
+    assert.equal(applyCommand(state, "B", { type: "cmd.build", building: "spineturret" }).ok, true);
   });
 
-  it("puts the newest units offline when the hive runs short, and wakes them once there is room", () => {
+  it("builds slower below zero, in proportion", () => {
+    assert.equal(hiveSpeed(200, 150), 1);
+    assert.equal(hiveSpeed(200, 200), 1);
+    assert.equal(hiveSpeed(200, 400), 0.5);
+    assert.equal(hiveSpeed(200, 100_000), LOW_POWER_MIN_SPEED);
+    const state = field();
+    // Base structures never go offline: a Nexus and an Aerie keep the hive at -20.
+    at(state, "nexus", 30, 30);
+    at(state, "aerie", 40, 30);
+    ticks(state, 20);
+    const { cap, used, offline } = hiveEnergyOf(state, "B");
+    assert.equal(offline, 0);
+    assert.ok(used > cap);
+    assert.equal(jobSpeed(state, "B"), cap / used);
+    const time = (slow: boolean): number => {
+      const s = field();
+      if (slow) {
+        at(s, "nexus", 30, 30);
+        at(s, "aerie", 40, 30);
+      }
+      applyCommand(s, "B", { type: "cmd.build", building: "spineturret" });
+      for (let i = 1; i < 2000; i++) {
+        ticks(s, 1);
+        if (s.players.get("B")!.defence?.ready) return i;
+      }
+      return Infinity;
+    };
+    assert.ok(time(true) > time(false), "the turret takes longer while the hive is short");
+  });
+
+  it("shuts down the hungriest first, one at a time, and only as many as it takes", () => {
     const state = field();
     const node = at(state, "fusionnode", 40, 40);
-    const old = at(state, "behemoth", 20, 20);
-    const units = [0, 1].map((i) => at(state, "behemoth", 24 + i * 4, 20));
+    const behemoth = at(state, "behemoth", 20, 20);
+    const ravagers = [0, 1, 2, 3].map((i) => at(state, "ravager", 24 + i * 2, 24));
+    const juggernaut = at(state, "juggernaut", 30, 20);
     ticks(state, 2);
-    assert.ok([old, ...units].every((u) => !u.shutdown), "700 holds three Behemoths");
+    // 700 holds 200 + 4 × 50 + 150 = 550.
+    assert.ok([behemoth, juggernaut, ...ravagers].every((u) => !u.shutdown));
     destroyEntity(state, node);
-    ticks(state, 2);
-    // 200 left: the oldest Behemoth stays, the rest go dark.
-    assert.ok(!old.shutdown && !old.hiveOffline);
-    assert.ok(units.every((u) => u.shutdown && u.hiveOffline));
+    ticks(state, 1);
+    // 200 against 550: the Behemoth (200) goes first.
+    assert.ok(behemoth.shutdown && behemoth.hiveOffline);
+    assert.ok(!juggernaut.shutdown, "one at a time");
+    ticks(state, secondsToTicks(HIVE_SWITCH_SECONDS));
+    // Still 350 against 200: the Juggernaut (150) next, and that is enough.
+    assert.ok(juggernaut.shutdown && juggernaut.hiveOffline);
+    ticks(state, secondsToTicks(HIVE_SWITCH_SECONDS) * 6);
+    assert.ok(ravagers.every((u) => !u.shutdown), "the Ravagers fit: they stay up");
     assert.deepEqual(hiveEnergyOf(state, "B"), { cap: 200, used: 200, offline: 2 });
-    assert.equal(snapshotFor(state, "B").entities.find((e) => e.id === units[0]!.id)?.shutdown, true);
+    assert.equal(snapshotFor(state, "B").entities.find((e) => e.id === behemoth.id)?.shutdown, true);
     // An order to an offline unit goes nowhere.
-    const before = { x: units[0]!.x, y: units[0]!.y };
-    applyCommand(state, "B", { type: "cmd.move", ids: [units[0]!.id], x: before.x + 200, y: before.y });
+    const before = { x: behemoth.x, y: behemoth.y };
+    applyCommand(state, "B", { type: "cmd.move", ids: [behemoth.id], x: before.x + 200, y: before.y });
     ticks(state, 20);
-    assert.deepEqual({ x: units[0]!.x, y: units[0]!.y }, before);
+    assert.deepEqual({ x: behemoth.x, y: behemoth.y }, before);
+    // A new Fusion Node: they wake one at a time, the hungriest that fits first.
     at(state, "fusionnode", 44, 40);
-    ticks(state, 2);
-    assert.ok(units.every((u) => !u.shutdown && !u.hiveOffline), "a new Fusion Node wakes them");
+    ticks(state, 1);
+    assert.ok(!behemoth.shutdown && juggernaut.shutdown);
+    ticks(state, secondsToTicks(HIVE_SWITCH_SECONDS));
+    assert.ok(!juggernaut.shutdown && !juggernaut.hiveOffline);
   });
 
   it("silences an offline defence", () => {
     const state = field();
-    at(state, "behemoth", 10, 10);
-    const turret = at(state, "spineturret", 30, 30);
+    for (let i = 0; i < 4; i++) at(state, "ravager", 20 + i * 2, 20);
+    const spire = at(state, "pulsespire", 30, 30);
     ticks(state, 2);
-    assert.equal(turret.hiveOffline, true);
-    assert.equal(turret.unpowered, true);
+    // 300 against 200: the Pulse Spire (100) is the hungriest.
+    assert.equal(spire.hiveOffline, true);
+    assert.equal(spire.unpowered, true);
   });
 
   it("charges a Laser Fence more the longer its link", () => {
@@ -157,7 +197,7 @@ describe("hive energy", () => {
     assert.equal(liveFenceLinks(state).links.length, 1);
   });
 
-  it("builds a sited fence line for its posts and links, and waits while the hive is full", () => {
+  it("raises a sited fence line while the hive is short, and the hungriest goes dark instead", () => {
     const state = field();
     const core = hqOf(state, "B")!;
     // Toward the middle of the map from the Hive Core.
@@ -165,21 +205,17 @@ describe("hive energy", () => {
     const sy = core.tileY > state.height / 2 ? -1 : 1;
     const cx = core.tileX / TILE_SUBDIV + 1 + sx * 5;
     const cy = core.tileY / TILE_SUBDIV + 1 + sy * 5;
-    at(state, "behemoth", cx, cy + sy * 4);
+    const behemoth = at(state, "behemoth", cx, cy + sy * 4);
     const posts = [0, 5].map((d) => ({ tx: Math.round((cx + sx * d) * TILE_SUBDIV), ty: Math.round(cy * TILE_SUBDIV) }));
     assert.equal(applyCommand(state, "B", { type: "cmd.fence", posts }).ok, true);
     const scrap = state.players.get("B")!.scrap;
-    // The Behemoth holds all 200: the line waits.
-    ticks(state, 200);
-    const fence = () => [...state.entities.values()].filter((e) => e.type === "laserfence" && e.ownerId === "B");
-    assert.equal(fence().length, 0);
-    const line = state.players.get("B")!.line!;
-    assert.ok(line.progressTicks < line.totalTicks / 10, `stalled at ${line.progressTicks} of ${line.totalTicks}`);
-    at(state, "fusionnode", cx + sx * 4, cy + sy * 8);
     ticks(state, 300);
-    assert.equal(fence().length, 2, "with a Fusion Node the line goes up");
+    const fence = [...state.entities.values()].filter((e) => e.type === "laserfence" && e.ownerId === "B");
+    assert.equal(fence.length, 2, "the line goes up though the Behemoth holds all 200");
     assert.equal(state.players.get("B")!.scrap, scrap, "no scrap spent");
-    assert.equal(hiveEnergyOf(state, "B").used, 200 + 2 * energyOf("laserfence") + 5 * LASER_FENCE_ENERGY_PER_CELL);
+    assert.ok(behemoth.hiveOffline, "the Behemoth, the hungriest, goes dark");
+    assert.ok(fence.every((f) => !f.hiveOffline));
+    assert.equal(hiveEnergyOf(state, "B").used, 2 * energyOf("laserfence") + 5 * LASER_FENCE_ENERGY_PER_CELL);
   });
 });
 

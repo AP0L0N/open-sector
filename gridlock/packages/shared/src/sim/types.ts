@@ -1037,6 +1037,8 @@ export interface SimPlayer {
   scrapCarry: number;
   /** Sim tick this side's Cyborgs lost their link (no powered Cyborg Central, no living Commander). Absent while linked. */
   cyborgLinkLostTick?: number;
+  /** Xenomorph hive: the sim tick before which no further unit or defence goes offline or wakes (sim/hive-energy.ts). */
+  hiveSwitchTick?: number;
   /** The seat's faction. Missing reads as Alliance (old saves, hand-built test players). */
   faction?: Faction;
   /**

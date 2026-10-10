@@ -5,6 +5,7 @@ import {
   costFor,
   energyOf,
   energySupplyOf,
+  hiveSpeed,
   usesHiveEnergy,
   isAirfieldType,
   BUILDING_TYPES,
@@ -659,18 +660,23 @@ function scrapYieldLookup(cells: readonly ScrapCell[]): (x: number, y: number) =
 
 /** Nothing left to pay the next step of a job with: scrap, or the hive's free energy. */
 function outOfFunds(m: MatchSnapshot): boolean {
-  const hive = m.you.energy;
-  return hive ? hive.used >= hive.cap : m.you.scrap <= 0;
+  // The hive never waits on energy: below zero it only builds slower.
+  return m.you.energy ? false : m.you.scrap <= 0;
 }
 
-/** The hive's store as a bar, like a Cyborg Commander's field: what is taken against what the hive holds. */
+/**
+ * The hive's store as a bar, like a Cyborg Commander's field: what is left of what the hive holds,
+ * full at 200 / 200 with a bare Hive Core, emptying as it feeds more, and below zero when short.
+ */
 function hiveEnergyHtml(hive: { cap: number; used: number; offline: number }): string {
-  const share = hive.cap > 0 ? Math.min(1, hive.used / hive.cap) : 1;
-  const full = hive.used >= hive.cap;
+  const left = hive.cap - hive.used;
+  const share = hive.cap > 0 ? Math.max(0, Math.min(1, left / hive.cap)) : 0;
+  const speed = hiveSpeed(hive.cap, hive.used);
+  const slow = speed < 1 ? ` · SLOW ×${speed.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}` : "";
   const offline = hive.offline > 0 ? ` <b class="cyborg-link">${hive.offline} OFFLINE</b>` : "";
   return (
-    `ENERGY <span class="energy-bar${full ? " is-full" : ""}" role="meter" aria-valuemin="0" aria-valuemax="${hive.cap}" aria-valuenow="${hive.used}">` +
-    `<i style="width:${Math.round(share * 100)}%"></i></span> <b>${hive.used} / ${hive.cap}</b>${offline}`
+    `ENERGY <span class="energy-bar${left <= 0 ? " is-full" : ""}" role="meter" aria-valuemin="0" aria-valuemax="${hive.cap}" aria-valuenow="${left}">` +
+    `<i style="width:${Math.round(share * 100)}%"></i></span> <b>${left} / ${hive.cap}</b>${slow}${offline}`
   );
 }
 
@@ -683,7 +689,7 @@ export function paintBattleHud(ctx: Ctx): void {
     const next = hiveEnergyHtml(hive);
     if (scrap.innerHTML !== next) scrap.innerHTML = next;
     scrap.classList.toggle("hive-energy", true);
-    scrap.classList.toggle("low-power", hive.offline > 0);
+    scrap.classList.toggle("low-power", hive.offline > 0 || hive.used > hive.cap);
   } else if (scrap) {
     const yieldAt = scrapYieldLookup(m.scrap ?? []);
     let rate = 0;

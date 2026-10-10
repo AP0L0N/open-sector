@@ -1181,16 +1181,19 @@ const FACTION_COST: Partial<Record<EntityType, Partial<Record<Faction, number>>>
 const SHELVED_TYPES: ReadonlySet<EntityType> = new Set<EntityType>(["assimilator"]);
 /**
  * Hive energy (sim/hive-energy.ts): the Xenomorphs pay no scrap and draw no power. Their Hive Core
- * holds HIVE_CORE_ENERGY and each Fusion Node FUSION_NODE_ENERGY more; every unit and defence takes
- * its catalog `energy` while it lives. Asked for more than the hive holds, the newest go offline.
+ * holds HIVE_CORE_ENERGY and each Fusion Node FUSION_NODE_ENERGY more; every unit, defence, and base
+ * structure takes its catalog `energy` while it stands. Below zero the hive builds slower, and its
+ * units and defences go offline one by one, the hungriest first, until it is back at zero.
  */
 export const HIVE_CORE_ENERGY = 200;
 export const FUSION_NODE_ENERGY = 500;
+/** Below zero, one more unit or defence goes offline this often; with room again, one wakes this often. */
+export const HIVE_SWITCH_SECONDS = 0.5;
 /** Does `faction` run on hive energy instead of scrap and power? */
 export function usesHiveEnergy(faction: Faction | undefined): boolean {
   return faction === "xeno";
 }
-/** Hive energy `type` takes while it lives: 0 for everything but Xenomorph units and defences. */
+/** Hive energy `type` takes while it stands: 0 for everything but the Xenomorphs' units, defences, and base. */
 export function energyOf(type: string): number {
   return catalog(type as EntityType).energy ?? 0;
 }
@@ -1560,8 +1563,9 @@ export interface CatalogEntry {
    */
   plasmaCell?: PlasmaCellDef;
   /**
-   * Hive energy this Xenomorph unit or defence holds while it lives (sim/hive-energy.ts). The
-   * Xenomorphs pay no scrap: each one takes a share of the Hive Core's and Fusion Nodes' energy.
+   * Hive energy this Xenomorph unit, defence, or base structure takes while it stands
+   * (sim/hive-energy.ts). The Xenomorphs pay no scrap: each takes a share of the Hive Core's and
+   * Fusion Nodes' energy.
    */
   energy?: number;
   /**
@@ -4835,7 +4839,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `Twin coils around a caged plasma core. Feeds the hive: each Fusion Node adds ${FUSION_NODE_ENERGY} energy to the store your Hive Core starts with. Every Xenomorph unit and defence takes a share while it lives; asked for more than the hive holds, the newest go offline until there is room again. Costs nothing to grow.`,
+    blurb: `Twin coils around a caged plasma core. Feeds the hive: each Fusion Node adds ${FUSION_NODE_ENERGY} energy to the store your Hive Core starts with. Every Xenomorph unit, defence, and base structure takes a share while it stands. Below zero the hive builds and grows slower, and its units and defences go offline one by one, the hungriest first, until it is back above zero; they wake again once there is room. Costs nothing to grow.`,
   },
   assimilator: {
     type: "assimilator",
@@ -6670,6 +6674,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Conversion Chamber",
     letter: "C",
     cost: 0,
+    energy: 40,
     buildSeconds: 16,
     hp: 900,
     power: 0,
@@ -6693,6 +6698,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Nanite Forge",
     letter: "N",
     cost: 0,
+    energy: 60,
     buildSeconds: 20,
     hp: 1000,
     power: 0,
@@ -6716,6 +6722,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Neural Nexus",
     letter: "X",
     cost: 0,
+    energy: 120,
     buildSeconds: 26,
     hp: 900,
     power: 0,
@@ -6730,7 +6737,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "A neural core in a cage of ribs under a crown of sensor spines: the hive thinks here. It unlocks the Behemoth and the Pulse Spire, and it lights the radar panel like a Radar Station: an enemy plane or drone nobody can see shows as a blinking contact on the panel. Costs nothing to grow.",
+    blurb: "A neural core in a cage of ribs under a crown of sensor spines: the hive thinks here. It unlocks the Behemoth and the Pulse Spire, and it lights the radar panel like a Radar Station: an enemy plane or drone nobody can see shows as a blinking contact on the panel. Takes a large share of the hive's energy.",
   },
   /** Xenomorph anti-infantry gun: crewless, runs on base power. */
   spineturret: {
@@ -6835,6 +6842,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Spawning Pool",
     letter: "W",
     cost: 0,
+    energy: 80,
     buildSeconds: 20,
     hp: 1000,
     power: 0,
@@ -6859,6 +6867,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Aerie",
     letter: "E",
     cost: 0,
+    energy: 100,
     buildSeconds: 26,
     hp: 1100,
     power: 0,
