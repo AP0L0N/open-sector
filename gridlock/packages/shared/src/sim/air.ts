@@ -150,6 +150,7 @@ import { hideScout } from "./scout.js";
 import { canSeeEntity } from "./vision.js";
 import { blastWrecks, toWreck } from "./wreck.js";
 import { blastClutter } from "./clutter.js";
+import { catchLanding, domeOver, domeShelters, soakShield } from "./energy-shield.js";
 import type { AirState, Entity, MatchState, Order, Projectile } from "./types.js";
 
 /** Runway heading of an unturned Airfield, world radians: the strip runs east–west. A turned one adds its facing. */
@@ -1331,6 +1332,8 @@ export function stepBomb(state: MatchState, p: Projectile, dt: number): boolean 
     p.y = p.landY;
   }
   p.z = 0;
+  // An enemy dome under the bomb takes it on its skin.
+  if (catchLanding(state, p)) return false;
   detonateBomb(state, p);
   return false;
 }
@@ -1345,6 +1348,7 @@ function detonateBomb(state: MatchState, p: Projectile): void {
   // A Xenomorph bomb was laid at its lighter damage: the whole burst scales with it.
   const mul = p.damage / BOMB_DAMAGE;
   let killed = false;
+  const soaked = new Set<number>();
   for (const e of [...state.entities.values()]) {
     if (e.hp <= 0 || e.wreck || e.garrisonedIn != null) continue;
     if (isLowFieldWork(e.type)) continue;
@@ -1354,6 +1358,7 @@ function detonateBomb(state: MatchState, p: Projectile): void {
     if (d > reach) continue;
     const friendly = e.ownerId !== "" && allies(state, p.ownerId, e.ownerId);
     if (friendly && !p.harmAllies) continue;
+    if (domeShelters(state, p.ownerId, p.x, p.y, e, p.damage, soaked)) continue;
     const fall = mortarFalloff(d, reach);
     let dmg: number;
     if (e.kind === "building") {
@@ -2124,11 +2129,18 @@ function firePulse(state: MatchState, e: Entity, x: number, y: number, target: E
   const spot = OVERSEER_BEAM_TILES * ts;
   let struck = false;
   let killed = false;
-  for (const o of state.entities.values()) {
+  const dome = domeOver(state, e.ownerId, x, y);
+  if (dome) {
+    soakShield(state, dome, base);
+    target = undefined;
+  }
+  const soaked = new Set<number>(dome ? [dome.id] : []);
+  for (const o of dome ? [] : state.entities.values()) {
     if (o.kind !== "unit" || o.id === target?.id || o.hp <= 0 || o.wreck || o.garrisonedIn != null) continue;
     if (!isInfantryType(o.type) || o.drone || isAirborne(o)) continue;
     if (Math.hypot(o.x - x, o.y - y) > spot + o.radius) continue;
     if (!forced && allies(state, e.ownerId, o.ownerId)) continue;
+    if (domeShelters(state, e.ownerId, x, y, o, base, soaked)) continue;
     coverStrike(o, roll(), state.tick, true);
     struck = true;
     if (o.hp <= 0) killed = true;
