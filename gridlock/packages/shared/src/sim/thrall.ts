@@ -27,6 +27,7 @@ import { rollCrits, takeDamage } from "./crits.js";
 import { buildingBounds, destroyEntity, inBounds, tileIndex, worldToTile } from "./geo.js";
 import { mortarFalloff } from "./mortar.js";
 import { nextRand } from "./rng.js";
+import { domeShelters } from "./energy-shield.js";
 import type { Entity, MatchState } from "./types.js";
 
 /** Shown as the burst on the client, like the Walker's. */
@@ -49,7 +50,9 @@ export function punch(state: MatchState, e: Entity, target: Entity): void {
   const mul = target.kind === "building" ? THRALL_BUILDING_MUL : 1;
   const dmg = factionDamage(e.type, Math.round(THRALL_PUNCH_DAMAGE * mul * (0.85 + 0.3 * rand())));
   let kind: ImpactKind = "hit";
-  if (dmg > 0) {
+  if (dmg > 0 && domeShelters(state, e.ownerId, e.x, e.y, target, dmg)) {
+    kind = "glance";
+  } else if (dmg > 0) {
     takeDamage(target, dmg, state.tick);
     if (target.hp <= 0) kind = "kill";
     else if (soldier) rollCrits(target, "none", "hit", dmg, rand);
@@ -81,6 +84,7 @@ export function punchAir(state: MatchState, e: Entity, x: number, y: number): vo
  */
 export function detonateThrall(state: MatchState, e: Entity): void {
   const radius = THRALL_BLAST_TILES * state.tileSize;
+  const soaked = new Set<number>();
   for (const o of [...state.entities.values()]) {
     if (o.id === e.id || o.hp <= 0 || o.wreck) continue;
     if (isAirborne(o) || o.garrisonedIn != null) continue;
@@ -88,6 +92,7 @@ export function detonateThrall(state: MatchState, e: Entity): void {
     if (dist > radius) continue;
     const heavy = o.kind === "unit" && catalog(o.type).armorFront > PTRD_LIGHT_FRONT;
     const raw = (heavy ? THRALL_BLAST_HEAVY : THRALL_BLAST_SOFT) * mortarFalloff(dist, radius);
+    if (domeShelters(state, e.ownerId, e.x, e.y, o, raw, soaked)) continue;
     takeDamage(o, factionDamage(e.type, Math.max(1, Math.round(raw))), state.tick);
   }
   state.impacts.push({

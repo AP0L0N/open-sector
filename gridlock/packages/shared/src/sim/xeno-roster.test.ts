@@ -321,18 +321,17 @@ describe("Shade cloak", () => {
   });
 });
 
-describe("Siphon drain", () => {
-  it("mends itself from what its bolt takes off an enemy hull", () => {
+describe("Siphon", () => {
+  it("is unarmed support: it never fires, and holds its dome", () => {
     const state = field();
     const s = at(state, "siphon", "B", 20, 30);
-    const foe = still(at(state, "warden", "A", 27, 30));
-    foe.facing = Math.PI / 2; // side on
+    const foe = still(at(state, "warden", "A", 24, 30));
     foe.hp = foe.hpMax = 5000;
-    s.hp = 60;
-    assert.equal(applyCommand(state, "B", { type: "cmd.attack", ids: [s.id], targetId: foe.id }).ok, true);
-    ticks(state, secondsToTicks(8));
-    assert.ok(foe.hp < 5000, "it hit");
-    assert.ok(s.hp > 60, `drank back to ${s.hp}`);
+    assert.equal(catalog("siphon").damage, 0);
+    assert.equal(plasmaCellOf("siphon"), undefined);
+    ticks(state, secondsToTicks(6));
+    assert.equal(foe.hp, 5000, "no shot left it");
+    assert.ok(state.energyShields?.some((w) => w.dome && w.fromId === s.id), "dome up");
   });
 });
 
