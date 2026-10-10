@@ -713,6 +713,8 @@ export interface EnergyShieldView {
   hpMax: number;
   /** A round struck it in the last few ticks. */
   hit?: true;
+  /** The Weaver that threw it in front of a friend (sim/weaver.ts); unset for a unit's own wall. */
+  by?: number;
 }
 
 /** Burning ground from a flamethrower or a Pyro's tanks. Burns every soldier standing in it. */
