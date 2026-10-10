@@ -160,4 +160,5 @@ export {
 export { bridgeBrickProblemFor, bridgeSpanOf, bridgeTilesOf, restampBridges } from "./bridge.js";
 export type { FieldEnd, GateSite, WallTopSample } from "./field.js";
 export { laserFenceLinks, totalFenceLinkEnergy } from "./laser-fence.js";
+export { hiveSpeed } from "./hive-energy.js";
 export type { FenceLink, FencePost } from "./laser-fence.js";

@@ -347,8 +347,8 @@ describe("a Xenomorph seat", () => {
       const state = openField();
       const ts = state.tileSize;
       makeEntity(state, "fusionnode", "B", tileCenter(100, ts), tileCenter(100, ts), { tileX: 100, tileY: 100 });
-      // Short: older units already take all 500 of the Fusion Node's energy.
-      if (!powered) for (const t of ["behemoth", "behemoth", "lancer", "lancer"] as const) makeEntity(state, t, "B", tileCenter(10, ts), tileCenter(10, ts));
+      // Short: 25 Thralls (20 each) take all 500 of the Fusion Node's energy, so the turret (40) is the hungriest.
+      if (!powered) for (let i = 0; i < 25; i++) makeEntity(state, "thrall", "B", tileCenter(10 + i, ts), tileCenter(10, ts)).holdPosition = true;
       makeEntity(state, "spineturret", "B", tileCenter(120, ts), tileCenter(120, ts), { tileX: 120, tileY: 120 });
       const target = makeEntity(state, "rifleman", "A", tileCenter(120, ts), tileCenter(128, ts));
       for (let i = 0; i < 60; i++) step(state, TICK_DT);
