@@ -23,6 +23,8 @@ import {
   wreckNightAlpha,
   xenoGlowPulse,
   xenoGlowRadius,
+  xenoGlowUnderShade,
+  XENO_GLOW_BOOST,
 } from "./night.js";
 
 describe("night render", () => {
@@ -153,6 +155,17 @@ describe("spot beam on the ground", () => {
     for (let t = 0; t < 20; t += 0.7) {
       const a = xenoGlowPulse(3, t);
       assert.ok(a >= 0.88 - 1e-9 && a <= 1 + 1e-9);
+    }
+  });
+
+  it("lifts the Borg glow for the shade it lies under, 20% over a lamp", () => {
+    assert.equal(XENO_GLOW_BOOST, 1.2);
+    assert.equal(xenoGlowUnderShade(0, 0), 1.2, "by day it is only the boost");
+    const night = xenoGlowUnderShade(NIGHT_SHADE_MAX, 0.45);
+    assert.ok(night > 1.2 && night < 2, "made up for the dark left over it");
+    assert.ok(xenoGlowUnderShade(NIGHT_SHADE_MAX, 1) < night, "a fully cut dark needs no lift");
+    for (const s of [0, 0.3, 1, 5]) {
+      assert.ok(Number.isFinite(xenoGlowUnderShade(s, 0)));
     }
   });
 });
