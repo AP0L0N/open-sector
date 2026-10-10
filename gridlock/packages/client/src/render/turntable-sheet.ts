@@ -966,6 +966,35 @@ const planeHullGlobs = {
 
 const planePrevious = new Map<keyof typeof planeHullGlobs, ComposedTurntable>();
 
+/** The Overseer's bell and eye on the 16 facings, over its slowly spinning base (the hull glob). */
+const overseerDomeGlob = import.meta.glob("../assets/units/overseer/dome/*.png", { eager: true, import: "default" }) as Record<string, string>;
+
+/** The Overseer: base (16 spin frames) and dome (16 facings) fitted in one box, the Stuka's fit. */
+export function bindOverseerSheets(baseImage: HTMLImageElement, domeImage: HTMLImageElement): void {
+  let baseUrls: string[];
+  let domeUrls: string[];
+  try {
+    baseUrls = pickTurntableUrls(planeHullGlobs.overseer);
+    domeUrls = pickTurntableUrls(overseerDomeGlob);
+  } catch (err) {
+    console.error("overseer turntable", err);
+    return;
+  }
+  void Promise.all([Promise.all(baseUrls.map(loadImage)), Promise.all(domeUrls.map(loadImage))])
+    .then(([baseImgs, domeImgs]) => composeAligned([baseImgs, domeImgs], STUKA_OPTS))
+    .then((next) => {
+      revoke(planePrevious.get("overseer") ?? null);
+      planePrevious.set("overseer", next);
+      baseImage.src = next.sheetUrls[0] ?? "";
+      domeImage.src = next.sheetUrls[1] ?? "";
+      // The static overseer-cameo.png stands in the sidebar.
+      URL.revokeObjectURL(next.cameoUrl);
+    })
+    .catch((err) => {
+      console.error("overseer turntable", err);
+    });
+}
+
 /** The wing strokes of the Xenite insects (render_xeno_air.py): the hull is the mid stroke. */
 const wingStrokeGlobs = {
   wasp: {

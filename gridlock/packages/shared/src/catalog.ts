@@ -2042,10 +2042,18 @@ export function behemothPulseOf(e: { type: EntityType; lightPulse?: true }): (ty
 export function hasPulseModes(type: EntityType): boolean {
   return type === "behemoth";
 }
-/** Stalker: seconds to dig in, in plain sight. */
+/** Bile Worm (the full burrow, first grown for the Stalker): seconds to dig in, in plain sight. */
 export const STALKER_BURROW_SECONDS = 1.6;
-/** Stalker: seconds to break back out; it comes up with its gun laid. */
+/** Bile Worm: seconds to break back out; it comes up with its gun laid. */
 export const STALKER_UNBURROW_SECONDS = 0.8;
+/** Siphon: seconds to sink half its body into the ground, and to haul it back out. */
+export const SIPHON_BURROW_SECONDS = 2;
+export const SIPHON_UNBURROW_SECONDS = 1.2;
+/** Siphon dug in: times its hit points, same share of the bar. */
+export const SIPHON_BURROW_HP = 5;
+/** Stalker cloak (sim/cloak.ts): seconds unseen, and seconds after it drops before it can cloak again. */
+export const STALKER_CLOAK_SECONDS = 8;
+export const STALKER_CLOAK_COOLDOWN_SECONDS = 30;
 /**
  * Juggernaut (sim/juggernaut.ts): a giant with a two-handed hammer. Reach is measured like the
  * Sim Unit's blades, from its centre to the target's body or wall.
@@ -2176,9 +2184,23 @@ const ENERGY_DOMES: Partial<Record<EntityType, EnergyDomeDef>> = {
 export function energyDomeOf(type: EntityType): EnergyDomeDef | undefined {
   return ENERGY_DOMES[type];
 }
-/** Digs in under the ground and waits (sim/burrow.ts): the Stalker, and the Bloom Bile Worm. */
+/** Digs in where it stands (sim/burrow.ts): the Siphon, half way, and the Bloom Bile Worm, all the way under. */
 export function canBurrow(type: EntityType): boolean {
-  return type === "stalker" || type === "bileworm";
+  return type === "siphon" || type === "bileworm";
+}
+/** Sinks only half way: its back stays above the ground, seen and shot at, but it takes SIPHON_BURROW_HP times the beating. */
+export function halfBurrow(type: EntityType): boolean {
+  return type === "siphon";
+}
+/** Seconds to dig in and to come back out. */
+export function burrowSecondsOf(type: EntityType): { down: number; up: number } {
+  return halfBurrow(type)
+    ? { down: SIPHON_BURROW_SECONDS, up: SIPHON_UNBURROW_SECONDS }
+    : { down: STALKER_BURROW_SECONDS, up: STALKER_UNBURROW_SECONDS };
+}
+/** Cloaks for a while on order (sim/cloak.ts): the Stalker. */
+export function canCloak(type: EntityType): boolean {
+  return type === "stalker";
 }
 /** Seconds inside a hostile garrison before every soldier in it is dead and he is out again. */
 export const SIMUNIT_PURGE_SECONDS = 2;
@@ -6454,7 +6476,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     defaultShell: "ap",
     leavesWreck: true,
     wreckHp: 35,
-    blurb: "Heavy assimilator on four long legs, a domed turret on its back. The disruptor throws a piercing plasma bolt about as hard as a Tiger's shell, or a scattering burst for soldiers, from a little less reach. Thinner in front than a Tiger, but its legs turn it quicker. No tracks to lose. Burrow digs it in where it stands: under the ground no enemy sees it or can pick it, but it neither moves nor fires; it rises with its gun laid and fires at once. Each bolt draws on an energy cell that holds 4 and regrows one every 12 seconds: a short burst, then it waits on the cell.",
+    blurb: `Heavy assimilator on four long legs, a domed turret on its back. The disruptor throws a piercing plasma bolt about as hard as a Tiger's shell, or a scattering burst for soldiers, from a little less reach. Thinner in front than a Tiger, but its legs turn it quicker. No tracks to lose. Cloak bends the light round it for ${STALKER_CLOAK_SECONDS} seconds: no enemy sees it or can pick it, and it walks unseen. Cloaked, it fires only at what you name, and that shot drops the cloak; then it needs ${STALKER_CLOAK_COOLDOWN_SECONDS} seconds before it can cloak again. Each bolt draws on an energy cell that holds 4 and regrows one every 12 seconds: a short burst, then it waits on the cell.`,
   },
   /** Xenite heavy assimilator: fast raptor hull, spine gatling turret, nanite flamer in the jaw. */
   ravager: {
@@ -6599,7 +6621,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: 0,
     leavesWreck: true,
     wreckHp: 32,
-    blurb: `Heavy assimilator on four legs with a forked emitter on its back. It carries no weapon. Instead it holds a dome of energy ${SIPHON_DOME.radiusTiles / TILE_SUBDIV} cells wide round itself, and the dome walks with it. Everything that comes in from outside stops on the dome: rounds, rockets, beams and flame, shells and bombs falling from above, the blast of a burst outside it, a blow at arm's reach. Your own units under it shoot and walk out freely; no enemy walks in. Every hit drains the Siphon's energy (${SIPHON_DOME.energy}) by its damage, and a standing dome slowly regains it. Drained to nothing, the dome is gone until the energy fills all the way back, ${SIPHON_DOME.rechargeSeconds} seconds, and then it is cast again.`,
+    blurb: `Heavy assimilator on four legs with a forked emitter on its back. It carries no weapon. Instead it holds a dome of energy ${SIPHON_DOME.radiusTiles / TILE_SUBDIV} cells wide round itself, and the dome walks with it. Everything that comes in from outside stops on the dome: rounds, rockets, beams and flame, shells and bombs falling from above, the blast of a burst outside it, a blow at arm's reach. Your own units under it shoot and walk out freely; no enemy walks in. Every hit drains the Siphon's energy (${SIPHON_DOME.energy}) by its damage, and a standing dome slowly regains it. Drained to nothing, the dome is gone until the energy fills all the way back, ${SIPHON_DOME.rechargeSeconds} seconds, and then it is cast again. Burrow sinks it half into the ground where it stands: its back and emitter stay above the dirt, seen and shot at, but dug in it takes ${SIPHON_BURROW_HP} times the beating. It cannot walk until it hauls itself back out; the dome stands all the while.`,
   },
   /** Xenite heavy assimilator: a small walking nanite forge that builds Thralls. Unarmed. */
   assembler: {
@@ -6703,7 +6725,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Nanite Forge",
     letter: "N",
     cost: 0,
-    energy: 210,
+    energy: 315,
     buildSeconds: 20,
     hp: 1000,
     power: 0,
@@ -6727,7 +6749,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Neural Nexus",
     letter: "X",
     cost: 0,
-    energy: 420,
+    energy: 1260,
     buildSeconds: 26,
     hp: 900,
     power: 0,
@@ -6847,7 +6869,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Spawning Pool",
     letter: "W",
     cost: 0,
-    energy: 280,
+    energy: 560,
     buildSeconds: 20,
     hp: 1000,
     power: 0,
@@ -6872,7 +6894,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Aerie",
     letter: "E",
     cost: 0,
-    energy: 350,
+    energy: 700,
     buildSeconds: 26,
     hp: 1100,
     power: 0,

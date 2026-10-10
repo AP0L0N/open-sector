@@ -1013,11 +1013,13 @@ def render_turntable(
     outline_px: int = 1,
     clip_z: float | None = None,
     underlay: Mesh | None = None,
+    yaws: list[float] | None = None,
 ) -> None:
     """16 unique faces of one mesh, 0001 = nose screen-south, clockwise. `scale_frac` is px per model unit / cell px.
 
     `clip_z` cuts the mesh on a model-height plane. `underlay` (a pool) is drawn
     first, without an outline, and the outlined mesh is painted over it.
+    `yaws` (16 ground yaws, radians) replaces the facings: frames of a spin, not headings.
     """
     out.mkdir(parents=True, exist_ok=True)
     size = cell * ss
@@ -1027,7 +1029,7 @@ def render_turntable(
     names = ["S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW", "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE"]
     for k in range(16):
         phi = math.pi / 2 + k * math.pi / 8  # screen angle: row 0 down, then clockwise on screen
-        yaw = screen_to_ground_yaw(phi)
+        yaw = yaws[k] if yaws is not None else screen_to_ground_yaw(phi)
         cy, sy_ = math.cos(yaw), math.sin(yaw)
 
         def to_world(p: np.ndarray) -> np.ndarray:

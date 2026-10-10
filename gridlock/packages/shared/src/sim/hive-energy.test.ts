@@ -116,8 +116,7 @@ describe("hive energy", () => {
     assert.equal(hiveSpeed(200, 400), 0.5);
     assert.equal(hiveSpeed(200, 100_000), LOW_POWER_MIN_SPEED);
     const state = field();
-    // Base structures never go offline: a Nexus and an Aerie keep the hive at -570.
-    at(state, "nexus", 30, 30);
+    // Base structures never go offline: an Aerie keeps the hive at -500.
     at(state, "aerie", 40, 30);
     ticks(state, 20);
     const { cap, used, offline } = hiveEnergyOf(state, "B");
@@ -126,10 +125,7 @@ describe("hive energy", () => {
     assert.equal(jobSpeed(state, "B"), cap / used);
     const time = (slow: boolean): number => {
       const s = field();
-      if (slow) {
-        at(s, "nexus", 30, 30);
-        at(s, "aerie", 40, 30);
-      }
+      if (slow) at(s, "aerie", 40, 30);
       applyCommand(s, "B", { type: "cmd.build", building: "spineturret" });
       for (let i = 1; i < 2000; i++) {
         ticks(s, 1);

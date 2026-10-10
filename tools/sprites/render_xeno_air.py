@@ -18,13 +18,15 @@ membrane, translucent, with chitin spars and glowing veins.
            a glow seam down the join, a plated pronotum and a horned head,
            long veined wings from under the elytra, and a glowing plasma bomb
            pod slung in chitin claws under the belly.
-  overseer hover craft: a floating hive eye, nothing like a plane. A ribbed
-           chitin bell with glow seams and the gray team band, a skirt of
-           glowing membrane round its rim, four humming membrane vanes out to
-           the sides, a chitin prow with one great green eye on the nose (the
-           heading), a cluster of emitters round a hot core under the belly,
-           and six tendrils trailing down and back: their tips are the lowest
-           point (the plane's wheels).
+  overseer hover craft: a floating hive eye, nothing like a plane. Two layers:
+           the dome (dome/, on the 16 facings) is a ribbed chitin bell with
+           glow seams, the gray team band, a crest, and a chitin prow with one
+           great green eye on the nose (the heading). The base (hull/) turns
+           slowly under it: a skirt of glowing membrane round the rim, four
+           humming membrane vanes on the diagonals, a cluster of emitters round
+           a hot core under the belly, and eight tendrils hanging down, their
+           tips the lowest point (the plane's wheels). The base repeats every
+           quarter turn, so its 16 frames are a spin over 90 deg, not facings.
   gnat     spy drone: a tiny fat fly, one big glowing sensor eye over the face,
            two sensor whiskers, short broad wings, no weapon. Kept at true
            scale beside the Wasp, so it draws small (drawSize 41).
@@ -71,7 +73,7 @@ from render_procedural import Mesh, render_turntable
 
 import xeno_walker as bw
 from xeno_walker import dome, ellipsoid, knob, shell, tube, tube_x
-from render_xeno_naval import UNITS, cameo72, check
+from render_xeno_naval import PREVIEW, UNITS, cameo72, check
 
 # Wing membrane: pale green, see-through; its own edge gets the outline (alpha > 0.5).
 rp.MAT.update(
@@ -220,13 +222,33 @@ def build_scourge(fore: float = 0.0, hind: float = 0.0) -> Mesh:
     return m
 
 
-def build_overseer() -> Mesh:
-    """Hover craft in meters. +x nose, +y left, +z up. Tendril tips at z = 0."""
-    m = Mesh()
-    zb = 1.9  # rim of the bell
+OVERSEER_ZB = 1.9  # rim of the bell
+# The base turns slowly under the bell; it repeats every quarter turn, so its 16 frames span 90 deg.
+OVERSEER_SPIN_PERIOD = math.pi / 2
+
+
+def overseer_dome(m: Mesh) -> Mesh:
+    """The part that faces the heading: the bell, crest, prow and the great eye on the nose. +x nose."""
+    zb = OVERSEER_ZB
     seg = 20
     # The bell: ribbed chitin over alloy, glow seams, the team band near the crown.
     dome(m, 0.0, 0.0, zb, 1.9, 1.9, 1.35, bw.banded_dome_mat(seg, (3,), team_seg=None, team_rings=(5,)), rings=7, seg=seg)
+    # Prow and the great eye on the nose: the heading.
+    tube(m, (1.4, 0.0, zb + 0.55), (2.75, 0.0, zb + 0.25), 0.55, 0.12, "chitin", n=9)
+    ellipsoid(m, (2.05, 0.0, zb + 0.62), (0.42, 0.44, 0.4), "eye", rings=6, seg=12)
+    for s in (-1, 1):
+        knob(m, (1.75, s * 0.62, zb + 0.48), 0.15, "eye")
+    # Crest down the crown, front to back.
+    tube(m, (0.9, 0.0, zb + 1.3), (-1.3, 0.0, zb + 1.55), 0.16, 0.05, "claw", n=5)
+    for x in (0.4, -0.4):
+        tube(m, (x, 0.0, zb + 1.4), (x - 0.4, 0.0, zb + 1.9), 0.11, 0.02, "claw", n=5)
+    return m
+
+
+def overseer_base(m: Mesh) -> Mesh:
+    """The part that spins: skirt, vanes, belly emitters and tendrils. Same every quarter turn. Tendril tips at z = 0."""
+    zb = OVERSEER_ZB
+    seg = 24
     # Membrane skirt round the rim, flaring down and out.
     top = [np.array([1.9 * math.cos(2 * math.pi * s / seg), 1.9 * math.sin(2 * math.pi * s / seg), zb + 0.02]) for s in range(seg)]
     low = [np.array([2.35 * math.cos(2 * math.pi * s / seg), 2.35 * math.sin(2 * math.pi * s / seg), zb - 0.45]) for s in range(seg)]
@@ -234,8 +256,9 @@ def build_overseer() -> Mesh:
     for s in range(0, seg, 2):
         a = 2 * math.pi * s / seg
         tube(m, (1.9 * math.cos(a), 1.9 * math.sin(a), zb + 0.02), (2.33 * math.cos(a), 2.33 * math.sin(a), zb - 0.43), 0.05, 0.03, "vein", n=4)
-    # Four humming vanes out to the sides, a little swept: chitin spar, membrane blade, glowing vein.
-    for ang in (math.radians(55), math.radians(125), math.radians(-55), math.radians(-125)):
+    # Four humming vanes on the diagonals: chitin spar, membrane blade, glowing vein.
+    for k in range(4):
+        ang = math.pi / 4 + k * math.pi / 2
         ux, uy = math.cos(ang), math.sin(ang)
         r0, r1 = 1.75, 3.6
         z0, z1 = zb + 0.35, zb + 0.55
@@ -248,32 +271,48 @@ def build_overseer() -> Mesh:
         tube(m, (ux * r0, uy * r0, z0 + 0.03), (ux * r1, uy * r1, z1 + 0.03), 0.09, 0.04, "chitin", n=5)
         tube(m, (ux * (r0 + 0.3) + px * 0.2, uy * (r0 + 0.3) + py * 0.2, z0 + 0.05), (ux * (r1 - 0.2), uy * (r1 - 0.2), z1 + 0.05), 0.04, 0.03, "vein", n=4)
         knob(m, (ux * r0, uy * r0, z0), 0.2, "seam")
-    # Prow and the great eye on the nose: the heading.
-    tube(m, (1.4, 0.0, zb + 0.55), (2.75, 0.0, zb + 0.25), 0.55, 0.12, "chitin", n=9)
-    ellipsoid(m, (2.05, 0.0, zb + 0.62), (0.42, 0.44, 0.4), "eye", rings=6, seg=12)
-    for s in (-1, 1):
-        knob(m, (1.75, s * 0.62, zb + 0.48), 0.15, "eye")
-    # Crest down the crown, front to back.
-    tube(m, (0.9, 0.0, zb + 1.3), (-1.3, 0.0, zb + 1.55), 0.16, 0.05, "claw", n=5)
-    for x in (0.4, -0.4):
-        tube(m, (x, 0.0, zb + 1.4), (x - 0.4, 0.0, zb + 1.9), 0.11, 0.02, "claw", n=5)
     # Emitter cluster round a hot core under the belly.
     ellipsoid(m, (0.0, 0.0, zb - 0.15), (1.5, 1.5, 0.35), "chitin", rings=6, seg=16)
     knob(m, (0.0, 0.0, zb - 0.55), 0.5, "core")
-    for k in range(6):
-        a = 2 * math.pi * (k + 0.5) / 6
+    for k in range(8):
+        a = 2 * math.pi * (k + 0.5) / 8
         ex, ey = 0.85 * math.cos(a), 0.85 * math.sin(a)
         tube(m, (ex, ey, zb - 0.25), (ex * 0.8, ey * 0.8, zb - 0.95), 0.13, 0.09, "barrel", n=6)
         knob(m, (ex * 0.8, ey * 0.8, zb - 0.98), 0.1, "seam")
-    # Six tendrils trailing down and back: the lowest point.
-    for k in range(6):
-        a = 2 * math.pi * k / 6 + math.pi / 6
+    # Eight tendrils hanging down, swept a little against the turn: the lowest point.
+    for k in range(8):
+        a = 2 * math.pi * k / 8
+        sweep = math.radians(-18)
         rx, ry = 1.45 * math.cos(a), 1.45 * math.sin(a)
-        mid = (rx * 0.95 - 0.35, ry * 0.95, zb - 1.0)
-        tube(m, (rx, ry, zb - 0.3), mid, 0.11, 0.08, "limb", n=5)
-        tube(m, mid, (rx * 0.85 - 0.75, ry * 0.85, 0.05), 0.08, 0.03, "limb", n=5)
-        knob(m, (rx * 0.85 - 0.75, ry * 0.85, 0.08), 0.07, "vein")
+        mx, my = 1.35 * math.cos(a + sweep * 0.5), 1.35 * math.sin(a + sweep * 0.5)
+        tx, ty = 1.2 * math.cos(a + sweep), 1.2 * math.sin(a + sweep)
+        mid = (mx, my, zb - 1.0)
+        tube(m, (rx, ry, zb - 0.3), mid, 0.1, 0.07, "limb", n=5)
+        tube(m, mid, (tx, ty, 0.05), 0.07, 0.03, "limb", n=5)
+        knob(m, (tx, ty, 0.08), 0.07, "vein")
     return m
+
+
+def build_overseer() -> Mesh:
+    """Hover craft in meters, both parts at rest. +x nose, +y left, +z up. Tendril tips at z = 0."""
+    return overseer_dome(overseer_base(Mesh()))
+
+
+def render_overseer(ss: int, check_only: bool) -> None:
+    """Two layers, composed in one box at runtime: hull/ = the base spinning (16 frames over a
+    quarter turn, not facings), dome/ = the bell and eye on the 16 facings."""
+    z_mid = UNITS_SPEC["overseer"][1]
+    base_dir, dome_dir = UNITS / "overseer" / "hull", UNITS / "overseer" / "dome"
+    if not check_only:
+        spin = [OVERSEER_SPIN_PERIOD * k / 16 for k in range(16)]
+        render_turntable(overseer_base(Mesh()), base_dir, "overseer_hull", "overseer-hull.json", SCALE_FRAC, z_mid, cell=256, ss=ss, yaws=spin)
+        render_turntable(overseer_dome(Mesh()), dome_dir, "overseer_dome", "overseer-dome.json", SCALE_FRAC, z_mid, cell=256, ss=ss)
+        # The cameo shows the whole craft, both parts at rest.
+        whole = PREVIEW / "overseer-whole"
+        render_turntable(build_overseer(), whole, "overseer_whole", "overseer-whole.json", SCALE_FRAC, z_mid, cell=256, ss=ss)
+        cameo72(whole, UNITS / "overseer-cameo.png")
+    check("overseer", base_dir, 0.8, 2, "fw190", 56.0, "STUKA_OPTS")
+    check("overseer-dome", dome_dir, 0.8, 2, "fw190", 56.0, "STUKA_OPTS")
 
 
 def build_gnat(fore: float = 0.0, hind: float = 0.0) -> Mesh:
@@ -341,6 +380,9 @@ def strokes_of(unit: str) -> list[str]:
 
 
 def render(unit: str, ss: int = 4, check_only: bool = False, only: str | None = None) -> None:
+    if unit == "overseer":
+        render_overseer(ss, check_only)
+        return
     build, z_mid, ref, ref_draw = UNITS_SPEC[unit]
     for stroke in strokes_of(unit):
         if only and stroke != only:

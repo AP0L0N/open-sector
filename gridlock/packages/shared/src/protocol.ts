@@ -19,7 +19,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 151;
+export const PROTOCOL_VERSION = 152;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -157,15 +157,17 @@ export interface EntityView {
   greenLaser?: true;
   /** Juggernaut running at what it is going for. */
   sprint?: true;
-  /** Shade with its skin settled, own side only: enemies cannot see it. */
+  /** Shade with its skin settled, or a Stalker cloaked on order, own side only: enemies cannot see it. */
   cloaked?: true;
+  /** Stalker, own side only: cloak charge, 0–1. 1 is ready; 0 while cloaked. */
+  cloakCharge?: number;
   /** Juggernaut has thrown its hammer and fights with its fists. */
   fists?: true;
   /** Juggernaut charging something down. */
   ram?: true;
   /** Juggernaut, own side only: ram charge, 0–1. 1 is ready. */
   ramCharge?: number;
-  /** Stalker digging in, under the ground (own side only), or rising. */
+  /** Siphon or Bile Worm digging in, down (a Bile Worm only to its own side), or rising. */
   burrow?: "digging" | "down" | "rising";
   /** Sim Unit II inside a hostile garrison, own side only: the host and the share of the purge done, 0–1. */
   purge?: { hostId: number; u: number };
@@ -935,8 +937,10 @@ export type ClientMessage =
   | { type: "cmd.lunge"; ids: number[]; x: number; y: number }
   /** Behemoth: `light` sets Light Pulse (quick, light bolts); false is High Pulse. */
   | { type: "cmd.pulse"; ids: number[]; light: boolean }
-  /** Stalker: dig in under the ground (`on`), or break back out. */
+  /** Siphon or Bile Worm: dig in (`on`), or break back out. */
   | { type: "cmd.burrow"; ids: number[]; on: boolean }
+  /** Stalker: cloak for a while. */
+  | { type: "cmd.cloak"; ids: number[] }
   /** Sim Unit II: blink to (x, y). Past his reach he walks until it is in reach, then blinks. */
   | { type: "cmd.blink"; ids: number[]; x: number; y: number; queue?: boolean }
   /** Sim Unit II: blink into a hostile garrison (`targetId`), kill every soldier aboard, and blink back out. */

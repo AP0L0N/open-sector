@@ -1,6 +1,10 @@
 import {
   canLunge,
   canBurrow,
+  canCloak,
+  halfBurrow,
+  SIPHON_BURROW_HP,
+  STALKER_CLOAK_SECONDS,
   neverSurfacesOf,
   costFor,
   energyOf,
@@ -2613,16 +2617,40 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       badge: ready ? undefined : `${Math.round(charge * 100)}%`,
     });
   }
-  const stalkers = units.filter((e) => canBurrow(e.type) && !e.wreck);
-  if (stalkers.length > 0) {
-    const down = stalkers.some((e) => e.burrow === "down" || e.burrow === "digging");
+  const diggers = units.filter((e) => canBurrow(e.type) && !e.wreck);
+  if (diggers.length > 0) {
+    const down = diggers.some((e) => e.burrow === "down" || e.burrow === "digging");
+    const half = diggers.every((e) => halfBurrow(e.type));
     out.push({
       slot: "burrow",
       act: down ? "unburrow" : "burrow",
       label: down ? "Rise" : "Burrow",
       title: down
-        ? "Break out of the ground. It comes up with its gun already laid and fires at once."
-        : "Dig in where it stands. Once under, no enemy sees it or can pick it; it neither moves nor fires until it rises.",
+        ? half
+          ? "Haul itself back out of the dirt and walk again. It gives up the extra toughness as it starts to rise."
+          : "Break out of the ground. It comes up with its gun already laid and fires at once."
+        : half
+          ? `Sink half into the ground where it stands. Its back stays above the dirt, seen and shot at, but dug in it takes ${SIPHON_BURROW_HP} times the beating. It cannot walk until it rises; the dome stands all the while.`
+          : "Dig in where it stands. Once under, no enemy sees it or can pick it; it neither moves nor fires until it rises.",
+    });
+  }
+  const cloakers = units.filter((e) => canCloak(e.type) && !e.wreck);
+  if (cloakers.length > 0) {
+    const cloaked = cloakers.some((e) => e.cloaked);
+    const charge = Math.max(...cloakers.map((e) => e.cloakCharge ?? 1));
+    const ready = charge >= 1;
+    out.push({
+      slot: "cloak",
+      act: "cloak",
+      label: "Cloak",
+      title: cloaked
+        ? "Cloaked. No enemy sees it or can pick it. It fires only at what you name, and that shot drops the cloak."
+        : ready
+          ? `Bend the light round it for ${STALKER_CLOAK_SECONDS} seconds: no enemy sees it or can pick it, and it walks unseen. It holds its fire unless you name a target; the first shot drops the cloak.`
+          : `The cloak is recharging (${Math.round(charge * 100)}%).`,
+      on: cloaked,
+      disabled: !ready,
+      badge: ready || cloaked ? undefined : `${Math.round(charge * 100)}%`,
     });
   }
   const dark = units.filter((e) => e.dormant);
@@ -2993,6 +3021,11 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   if (act === "burrow" || act === "unburrow") {
     const ids = units.filter((e) => canBurrow(e.type) && !e.wreck).map((e) => e.id);
     if (ids.length) ctx.net.send({ type: "cmd.burrow", ids, on: act === "burrow" });
+    return;
+  }
+  if (act === "cloak") {
+    const ids = units.filter((e) => canCloak(e.type) && !e.wreck && !e.cloaked && (e.cloakCharge ?? 1) >= 1).map((e) => e.id);
+    if (ids.length) ctx.net.send({ type: "cmd.cloak", ids });
     return;
   }
   if (act === "blink") {
