@@ -641,9 +641,10 @@ export function paintBattleHud(ctx: Ctx): void {
   if (power) {
     const spd = productionSpeed(m.you.provided, m.you.used);
     const slow = m.you.lowPower ? ` · SLOW ×${spd.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}` : "";
-    // No powered Cyborg Central and no Commander: your Cyborgs are about to go dark.
+    // No powered Cyborg Central (Conversion Chamber) and no Commander: your Cyborgs (hive soldiers) are about to go dark.
     const link = m.you.cyborgShutdownIn;
-    const cyborgs = link != null ? ` · <b class="cyborg-link">CYBORGS OFF IN ${Math.ceil(link)}s</b>` : "";
+    const linked = viewerFaction(m) === "xeno" ? "HIVE LINK LOST" : "CYBORGS OFF";
+    const cyborgs = link != null ? ` · <b class="cyborg-link">${linked} IN ${Math.ceil(link)}s</b>` : "";
     const next = `POWER <b>${m.you.used} / ${m.you.provided}</b>${slow}${cyborgs}`;
     if (power.innerHTML !== next) power.innerHTML = next;
     power.classList.toggle("low-power", m.you.lowPower || link != null);
@@ -1314,6 +1315,7 @@ const TYPE_ORDER: EntityType[] = [
   "research",
   "radar",
   "cyborgcentral",
+  "conversion",
   "bunker",
   "tobruk",
   "casemate",

@@ -496,10 +496,11 @@ describe("research gate", () => {
     assert.equal(techMissing(state, "A", "warden"), null);
     assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "warden" }).ok, true);
     assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "droneop" }).ok, true);
-    // Every cyborg wants only a Cyborg Central; the lab does not unlock them.
-    for (const unit of cyborgs) assert.equal(techMissing(state, "A", unit), "cyborgcentral", unit);
+    // Every cyborg wants only its own side's barracks (a Cyborg Central, a Conversion Chamber); the lab does not unlock them.
+    for (const unit of cyborgs) assert.equal(techMissing(state, "A", unit), factionOf(unit) === "xeno" ? "conversion" : "cyborgcentral", unit);
 
     makeEntity(state, "cyborgcentral", "A", tileCenter(30, ts), tileCenter(14, ts), { tileX: 30, tileY: 14 });
+    makeEntity(state, "conversion", "A", tileCenter(36, ts), tileCenter(14, ts), { tileX: 36, tileY: 14 });
     // The Shade also wants a Neural Nexus.
     assert.equal(techMissing(state, "A", "shade"), "nexus");
     for (const unit of cyborgs) assert.equal(techMissing(state, "A", unit), null, unit);
@@ -507,7 +508,7 @@ describe("research gate", () => {
     lab.hp = 0;
     assert.equal(techMissing(state, "A", "titan"), "research");
     assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "titan" }).ok, false);
-    // The Central alone keeps every cyborg unlocked.
+    // The Central and the Chamber alone keep every cyborg unlocked.
     for (const unit of cyborgs) assert.equal(techMissing(state, "A", unit), null, unit);
   });
 

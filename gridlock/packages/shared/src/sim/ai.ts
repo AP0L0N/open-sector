@@ -339,14 +339,14 @@ function thinkCpu(state: MatchState, p: SimPlayer): void {
 }
 
 /**
- * Xenomorph base: Fusion Node, Assimilator, Cyborg Central, then a second Assimilator and more power,
+ * Xenomorph base: Fusion Node, Assimilator, Conversion Chamber, then a second Assimilator and more power,
  * the Nanite Forge, a pair of Spine Turrets, and later the Neural Nexus and its Pulse Spires.
  * With all of that standing, more Assimilators up to the type's wantSmelters.
  */
 const XENO_BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
   { type: "fusionnode", n: 1 },
   { type: "assimilator", n: 1 },
-  { type: "cyborgcentral", n: 1 },
+  { type: "conversion", n: 1 },
   { type: "assimilator", n: CPU_FORTIFY_SMELTERS },
   { type: "fusionnode", n: 2 },
   { type: "forge", n: 1 },
@@ -355,7 +355,7 @@ const XENO_BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
   { type: "nexus", n: 1 },
   { type: "pulsespire", n: 2 },
 ];
-/** The Xenomorph cyborgs, from the Cyborg Central. */
+/** The Xenomorph foot soldiers, from the Conversion Chamber. */
 export const XENO_ARMY: readonly { unit: TrainType; want: number }[] = [
   { unit: "xenodrone", want: 10 },
   { unit: "thrall", want: 4 },
@@ -377,7 +377,7 @@ export const XENO_HEAVY: readonly { unit: TrainType; want: number }[] = [
 ];
 /** Each Xenomorph factory and the ranks it fills. */
 const XENO_FACTORIES: readonly { factory: BuildingType; army: readonly { unit: TrainType; want: number }[] }[] = [
-  { factory: "cyborgcentral", army: XENO_ARMY },
+  { factory: "conversion", army: XENO_ARMY },
   { factory: "forge", army: XENO_HEAVY },
 ];
 
@@ -427,7 +427,7 @@ interface HiveDoctrine {
   factories: readonly { factory: BuildingType; army: readonly { unit: TrainType; want: number }[] }[];
 }
 const HIVE_DOCTRINE: Partial<Record<Faction, HiveDoctrine>> = {
-  xeno: { power: "fusionnode", smelter: "assimilator", surge: "cyborgcentral", order: XENO_BUILD_ORDER, factories: XENO_FACTORIES },
+  xeno: { power: "fusionnode", smelter: "assimilator", surge: "conversion", order: XENO_BUILD_ORDER, factories: XENO_FACTORIES },
   bloom: {
     power: "lumenbulb",
     smelter: "gorger",
@@ -1247,7 +1247,7 @@ function crewBunkers(state: MatchState, p: SimPlayer, plan: AiPlan): void {
 function rallyFactories(state: MatchState, p: SimPlayer, hq: Entity): void {
   let at: Vec | undefined;
   for (const b of state.entities.values()) {
-    if (b.ownerId !== p.playerId || b.hp <= 0 || (b.type !== "muster" && b.type !== "armory" && b.type !== "cyborgcentral" && b.type !== "forge")) continue;
+    if (b.ownerId !== p.playerId || b.hp <= 0 || (b.type !== "muster" && b.type !== "armory" && b.type !== "cyborgcentral" && b.type !== "conversion" && b.type !== "forge")) continue;
     at ??= homeMuster(state, p, hq);
     if (b.rally && Math.hypot(b.rally.x - at.x, b.rally.y - at.y) < 2 * state.tileSize) continue;
     applyCommand(state, p.playerId, { type: "cmd.rally", ids: [b.id], x: at.x, y: at.y });

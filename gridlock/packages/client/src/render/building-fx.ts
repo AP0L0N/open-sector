@@ -2,9 +2,9 @@ import type { EntityType, EntityView } from "@gridlock/shared";
 import type { BuildingSpriteDef } from "./sprites.js";
 
 /** Buildings that train units. Full-strength overlay only while a job is running. */
-const PRODUCERS = new Set<EntityType>(["muster", "smelter", "armory", "assimilator", "cyborgcentral", "forge", "spawnpool", "aerie"]);
+const PRODUCERS = new Set<EntityType>(["muster", "smelter", "armory", "assimilator", "cyborgcentral", "conversion", "forge", "spawnpool", "aerie"]);
 /** Keep a quiet always-on overlay: blinks, the Smelter's chimneys, the lab's coil. */
-const IDLE_ALWAYS = new Set<EntityType>(["core", "dynamo", "smelter", "research", "radar", "cyborgcentral", "hivecore", "fusionnode", "assimilator", "forge", "nexus", "spawnpool", "aerie"]);
+const IDLE_ALWAYS = new Set<EntityType>(["core", "dynamo", "smelter", "research", "radar", "cyborgcentral", "hivecore", "fusionnode", "assimilator", "conversion", "forge", "nexus", "spawnpool", "aerie"]);
 /** Chimney smoke never fades below this, so an idle Smelter still reads as lit. */
 const IDLE_SMOKE_GAIN = 0.75;
 
@@ -221,6 +221,25 @@ const DEFS: Partial<Record<EntityType, BuildingAnimDef>> = {
       { x: 224, y: 35, r: 6, color: "#b6fff0", period: 1100, phase: 0.0, mode: "blink" },
     ],
     smoke: [{ x: 264, y: 129, rise: 30, thin: true }],
+  },
+  // Conversion Chamber (render_xeno_base.py, conversion.json): the pods breathe one after another, the door glows,
+  // the apron strips chase out, the neural bulb pulses, the spire halo and beacon flicker.
+  conversion: {
+    lights: [
+      { x: 293, y: 175, r: 9, color: "#7dffd0", period: 2400, phase: 0.0, mode: "pulse" },
+      { x: 249, y: 196, r: 9, color: "#7dffd0", period: 2400, phase: 0.167, mode: "pulse" },
+      { x: 132, y: 153, r: 9, color: "#7dffd0", period: 2400, phase: 0.333, mode: "pulse" },
+      { x: 162, y: 124, r: 9, color: "#7dffd0", period: 2400, phase: 0.5, mode: "pulse" },
+      { x: 231, y: 115, r: 9, color: "#7dffd0", period: 2400, phase: 0.667, mode: "pulse" },
+      { x: 290, y: 136, r: 9, color: "#7dffd0", period: 2400, phase: 0.833, mode: "pulse" },
+      { x: 142, y: 205, r: 12, color: "#6dffc8", period: 2600, phase: 0.0, mode: "pulse" },
+      { x: 132, y: 229, r: 4, color: "#6dffc8", period: 1200, phase: 0.0, mode: "pulse" },
+      { x: 120, y: 235, r: 4, color: "#6dffc8", period: 1200, phase: 0.33, mode: "pulse" },
+      { x: 108, y: 241, r: 4, color: "#6dffc8", period: 1200, phase: 0.66, mode: "pulse" },
+      { x: 216, y: 80, r: 12, color: "#6dffc8", period: 2000, phase: 0.0, mode: "pulse" },
+      { x: 216, y: 44, r: 6, color: "#7fe3ff", period: 1500, phase: 0.0, mode: "pulse" },
+      { x: 216, y: 18, r: 5, color: "#b6fff0", period: 1300, phase: 0.0, mode: "blink" },
+    ],
   },
   // Neural Nexus (nexus.json): the brain pulses, the rib collars chase, the crown tips sweep round, the mast beacon flickers.
   nexus: {
