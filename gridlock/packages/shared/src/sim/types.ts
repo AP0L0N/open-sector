@@ -592,6 +592,8 @@ export interface Entity {
   blinkReady?: number;
   /** Plasma cannon: shots of energy left in its cell (sim/hive-ammo.ts), fractional while it regrows. Assembler: Thralls it has left to build (sim/assembler.ts). Unset means full. */
   energy?: number;
+  /** Its cell ran dry: it holds fire until the cell regrows PLASMA_RESUME_SHARE (sim/hive-ammo.ts). */
+  energyDrained?: true;
   /** Behemoth, Drone, Lancer, Weaver: the tick it may raise its next energy wall (sim/energy-shield.ts, sim/weaver.ts). Unset means ready. */
   shieldReady?: number;
   /** Behemoth in the air on a lunge (sim/lunge.ts): from, to, and the ticks it left and lands. */
