@@ -2,11 +2,13 @@ import {
   LASER_FENCE_BEAM_HALF_WIDTH,
   LASER_FENCE_BURN_MIN,
   LASER_FENCE_BURN_SHARE,
+  LASER_FENCE_ENERGY_PER_CELL,
   LASER_FENCE_REACH_TILES,
   LASER,
   factionOf,
   isInfantryType,
   secondsToTicks,
+  TILE_SUBDIV,
 } from "../catalog.js";
 import { isAirborne } from "./air.js";
 import { takeDamage } from "./crits.js";
@@ -62,6 +64,24 @@ export function laserFenceLinks(posts: readonly FencePost[], reach: number): Fen
     if (far) add(p.id, far.o.id);
   }
   return links;
+}
+
+/** Hive energy one link of `lengthPx` world px holds (sim/hive-energy.ts): LASER_FENCE_ENERGY_PER_CELL a cell. */
+export function fenceLinkEnergy(lengthPx: number, tileSize: number): number {
+  return Math.round((lengthPx / (tileSize * TILE_SUBDIV)) * LASER_FENCE_ENERGY_PER_CELL);
+}
+
+/** Hive energy every link between `posts` holds together. */
+export function totalFenceLinkEnergy(posts: readonly FencePost[], reach: number, tileSize: number): number {
+  if (posts.length < 2) return 0;
+  const byId = new Map(posts.map((p) => [p.id, p]));
+  let n = 0;
+  for (const link of laserFenceLinks(posts, reach)) {
+    const a = byId.get(link.a)!;
+    const b = byId.get(link.b)!;
+    n += fenceLinkEnergy(Math.hypot(b.x - a.x, b.y - a.y), tileSize);
+  }
+  return n;
 }
 
 /** World px a post reaches to its neighbour. */

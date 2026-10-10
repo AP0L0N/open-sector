@@ -7,10 +7,12 @@ import {
   WEAVER_REACH_TILES,
   LASER_FENCE_REACH_TILES,
   costFor,
+  energyOf,
   factionOf,
   fencePostTile,
   isFenceLine,
   laserFenceLinks,
+  totalFenceLinkEnergy,
   AIRFIELD_BACK_DEPTH,
   BUILDING_TURN_STEP,
   buildingRect,
@@ -11327,6 +11329,11 @@ export class MapView {
     const each = costFor("laserfence", faction);
     const count = this.fencePosts.length + (next && nextOk ? 1 : 0);
     const bill = each * count;
+    // The hive pays in energy: each post's own, and the links the line adds, more the longer they reach.
+    const hive = this.curr.you.energy;
+    const reach = LASER_FENCE_REACH_TILES * ts;
+    const links = hive ? totalFenceLinkEnergy(all, reach, ts) - totalFenceLinkEnergy(standing, reach, ts) : 0;
+    const energy = count * energyOf("laserfence") + Math.max(0, links);
     const s = this.toScreen(centre(tip).x, centre(tip).y);
     ctx.save();
     ctx.font = "11px 'Share Tech Mono', monospace";
@@ -11334,8 +11341,8 @@ export class MapView {
     ctx.textBaseline = "middle";
     ctx.lineWidth = 3;
     ctx.strokeStyle = "#140e0a";
-    ctx.fillStyle = this.curr.you.scrap >= bill ? "#e8b84a" : "#ff5a4a";
-    const label = `${count} × ${each} = ${bill}`;
+    ctx.fillStyle = (hive ? hive.cap - hive.used >= energy : this.curr.you.scrap >= bill) ? "#e8b84a" : "#ff5a4a";
+    const label = hive ? `${count} posts + links = ${energy} EN` : `${count} × ${each} = ${bill}`;
     ctx.strokeText(label, s.x + 14, s.y - 14);
     ctx.fillText(label, s.x + 14, s.y - 14);
     ctx.font = "10px 'Share Tech Mono', monospace";

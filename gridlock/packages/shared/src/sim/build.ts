@@ -22,6 +22,7 @@ import {
   isHqBuilding,
   isSmelterType,
   HQ_OF,
+  usesHiveEnergy,
 } from "../catalog.js";
 import { NOT_YOUR_FACTION } from "./train.js";
 import {
@@ -58,7 +59,8 @@ import {
 } from "./field.js";
 import { repathIfBlocked } from "./orders.js";
 import { powerOf, productionSpeed } from "./power.js";
-import { advancePaidJob, jobFullyPaid, refundPaid } from "./production.js";
+import { advancePaidJob, jobFullyPaid } from "./production.js";
+import { fenceLineEnergy, hiveEnergyWallet, jobBill, refundJob } from "./hive-energy.js";
 import { smelterCrowded, smelterSiteOk } from "./smelter.js";
 import type { Entity, MatchState, SimPlayer, StructureJob } from "./types.js";
 
@@ -158,7 +160,7 @@ export function cancelStructure(
   const p = state.players.get(playerId);
   const job = p ? resolveJob(p, building) : null;
   if (!p || !job) return "Nothing to cancel.";
-  refundPaid(p, job);
+  refundJob(p, job);
   dropJob(p, job);
   return null;
 }
@@ -183,9 +185,9 @@ function advanceStructure(state: MatchState, p: SimPlayer, job: StructureJob | n
     finishFenceLine(state, p, job);
     return;
   }
-  const cost = costFor(job.type, p.faction ?? "alliance");
+  const { wallet, cost } = jobBill(state, p, job.type, costFor(job.type, p.faction ?? "alliance"));
   const pow = powerOf(state, p.playerId);
-  advancePaidJob(p, job, cost, productionSpeed(pow.provided, pow.used));
+  advancePaidJob(wallet, job, cost, productionSpeed(pow.provided, pow.used));
   if (jobFullyPaid(job, cost)) {
     job.ready = true;
     job.progressTicks = job.totalTicks;
@@ -237,7 +239,10 @@ function finishYardField(state: MatchState, p: SimPlayer, job: StructureJob): vo
   dropJob(p, job);
 }
 
-/** A sited Laser Fence. Time and scrap scale with the number of posts; every post goes up together. */
+/**
+ * A sited Laser Fence. Time and scrap scale with the number of posts; every post goes up together.
+ * The hive pays in energy instead: each post's own, and more the longer the links the line adds.
+ */
 function finishFenceLine(state: MatchState, p: SimPlayer, job: StructureJob): void {
   const sites = job.sites ?? [];
   if (sites.length === 0) {
@@ -245,9 +250,12 @@ function finishFenceLine(state: MatchState, p: SimPlayer, job: StructureJob): vo
     return;
   }
   const each = costFor("laserfence", p.faction ?? "alliance");
+  const hive = usesHiveEnergy(p.faction);
+  const wallet = hive ? hiveEnergyWallet(state, p) : p;
+  const cost = hive ? fenceLineEnergy(state, p.playerId, sites) : each * sites.length;
   const pow = powerOf(state, p.playerId);
-  advancePaidJob(p, job, each * sites.length, productionSpeed(pow.provided, pow.used));
-  if (!jobFullyPaid(job, each * sites.length)) return;
+  advancePaidJob(wallet, job, cost, productionSpeed(pow.provided, pow.used));
+  if (!jobFullyPaid(job, cost)) return;
   for (const site of sites) {
     const { tx, ty } = fencePostTile(state.tileSize, site.x, site.y);
     // Something walked or was built onto the post's ground while it built: that post's scrap comes back.

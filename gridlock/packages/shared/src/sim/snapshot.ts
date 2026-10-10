@@ -54,6 +54,7 @@ import { artilleryCanLay, gunCrewOf } from "./artillery.js";
 import { crateViews, mineViews, payloadOf, planeRiders } from "./airdrop.js";
 import { cyborgShielded } from "./crits.js";
 import { plasmaCharge } from "./hive-ammo.js";
+import { hiveEnergyOf } from "./hive-energy.js";
 import { laserProgress } from "./laser.js";
 import { garrisonBars, garrisonOwner } from "./garrison.js";
 import { deckLoad } from "./lst.js";
@@ -70,7 +71,7 @@ import { blinkCharge, purgeProgress } from "./simunit.js";
 import { lungeAlt, lungeCharge } from "./lunge.js";
 import { hiddenBurrowed } from "./burrow.js";
 import { hiddenCloaked } from "./shade.js";
-import { isSimUnit, onUplink, vaultsWalls } from "../catalog.js";
+import { isSimUnit, onUplink, usesHiveEnergy, vaultsWalls } from "../catalog.js";
 import { onFortTop } from "./thrall.js";
 import { aswDeckView, sonarContacts } from "./destroyer.js";
 import { scrapCap } from "./smelter.js";
@@ -655,6 +656,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       provided: power.provided,
       used: power.used,
       lowPower: power.lowPower,
+      ...(you && usesHiveEnergy(you.faction) ? { energy: hiveEnergyOf(state, youPlayerId) } : {}),
       structureQueue: structureQueueView(you?.structure),
       defenceQueue: structureQueueView(you?.defence),
       lineQueue: structureQueueView(you?.line),
