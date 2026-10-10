@@ -63,6 +63,13 @@ function fence(state: MatchState): [Entity, Entity] {
   return [at(state, "laserfence", "B", 20, 30), at(state, "laserfence", "B", 24, 30)];
 }
 
+/** B's Hive Core with its top-left tile at (tx, ty). */
+function hiveCore(state: MatchState, tx: number, ty: number): Entity {
+  const def = catalog("hivecore");
+  const ts = state.tileSize;
+  return makeEntity(state, "hivecore", "B", (tx + def.tileW / 2) * ts, (ty + def.tileH / 2) * ts, { tileX: tx, tileY: ty, tileW: def.tileW, tileH: def.tileH });
+}
+
 describe("Laser Fence", () => {
   it("is a Xenomorph defence on the build list", () => {
     assert.ok(BUILDING_TYPES.includes("laserfence"));
@@ -119,7 +126,7 @@ describe("Laser Fence", () => {
   it("is sited like a wall: no bare build order, every clicked post goes up together once the yard pays for them", () => {
     const state = field();
     const S = TILE_SUBDIV;
-    raiseBuilding(state, "B", "hivecore", 40 * S, 40 * S);
+    hiveCore(state, 40 * S, 40 * S);
     raiseBuilding(state, "B", "fusionnode", 46 * S, 40 * S);
     const b = state.players.get("B")!;
     b.scrap = 10_000;
@@ -149,7 +156,7 @@ describe("Laser Fence", () => {
   it("stops the fence at a post set on top of another, and is the hive's alone", () => {
     const state = field();
     const S = TILE_SUBDIV;
-    raiseBuilding(state, "B", "hivecore", 40 * S, 40 * S);
+    hiveCore(state, 40 * S, 40 * S);
     state.players.get("B")!.scrap = 10_000;
     const posts = [
       { tx: 36 * S, ty: 38 * S },
