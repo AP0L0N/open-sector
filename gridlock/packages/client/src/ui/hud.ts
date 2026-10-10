@@ -81,6 +81,7 @@ import {
   launcherOnlyOf,
   isStance,
   isYardField,
+  isFenceLine,
   onLineLane,
   producerType,
   productionSpeed,
@@ -296,7 +297,7 @@ export function mountBattlefield(
       const m = ctx.match;
       const q = laneQueue(m, type);
       const mine = q?.type === type ? q : null;
-      if (isYardField(type)) {
+      if (isYardField(type) || isFenceLine(type)) {
         if (mine && !mine.ready) {
           if ((e.target as HTMLElement | null)?.closest(".cameo-hold, .cameo-paused") || mine.paused) {
             ctx.net.send({ type: "cmd.pause", what: "structure", paused: !mine.paused, building: type });
@@ -304,7 +305,9 @@ export function mountBattlefield(
           return;
         }
         if (q) return;
-        view.armYardField(type);
+        if (m && buildTechNeed(m, type).length > 0) return;
+        if (isFenceLine(type)) view.armFence();
+        else if (isYardField(type)) view.armYardField(type);
         paintBattleHud(ctx);
         return;
       }
@@ -326,10 +329,12 @@ export function mountBattlefield(
     btn?.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       const q = laneQueue(ctx.match, type);
-      if (isYardField(type)) {
+      if (isYardField(type) || isFenceLine(type)) {
         if (q?.type === type) ctx.net.send({ type: "cmd.cancel", what: "structure", building: type });
         else {
           view.yardArm = null;
+          view.fenceArm = false;
+          view.fencePosts = [];
           view.placeMode = false;
           paintBattleHud(ctx);
         }
@@ -686,7 +691,7 @@ export function paintBattleHud(ctx: Ctx): void {
     const ready = job?.ready === true;
     const paused = !!job && job.paused && !job.ready;
     const stalled = !!job && !job.ready && !job.paused && m.you.scrap <= 0;
-    const siting = isYardField(type) && viewRef?.yardArm === type && !!viewRef.placeMode;
+    const siting = ((isYardField(type) && viewRef?.yardArm === type) || (isFenceLine(type) && !!viewRef?.fenceArm)) && !!viewRef?.placeMode;
     btn.classList.toggle("is-ready", ready);
     btn.classList.toggle("is-building", !!job && !ready);
     btn.classList.toggle("is-placing", (ready && !!viewRef?.placeMode && viewRef.placePick === type) || siting);
@@ -978,7 +983,7 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
         : e.type === "aswheli"
           ? "  ·  on the hunt"
           : e.air
-            ? airLine(e.air, e.type)
+            ? airLine(e.air, e.type, e.energy)
             : "";
   const pads = e.pads ? `  ·  planes ${e.pads.used}/${e.pads.cap}` : "";
   const depth = e.dive
@@ -1001,9 +1006,12 @@ const AIR_PHASE_LABEL: Record<NonNullable<EntityView["air"]>["phase"], string> =
 };
 
 /** Phase, and for your own planes fuel, bomb, and belts. A fighter carries no bomb; it counts barrages. */
-function airLine(air: NonNullable<EntityView["air"]>, type: EntityType): string {
-  // A Xenomorph flier runs on the hive: no tank, no rack, no field to go home to.
-  if (staysAloft(type)) return `  ·  ${air.phase === "crash" ? "going down" : air.phase === "takeoff" ? "lifting off" : "hovering"}`;
+function airLine(air: NonNullable<EntityView["air"]>, type: EntityType, energy?: number): string {
+  // A Xenomorph flier runs on the hive: no tank, no rack, no field to go home to. Its weapon's energy cell is all that runs low.
+  if (staysAloft(type)) {
+    const cell = energy != null ? `  ·  energy ${Math.round(energy * 100)}%` : "";
+    return `  ·  ${air.phase === "crash" ? "going down" : air.phase === "takeoff" ? "lifting off" : "hovering"}${cell}`;
+  }
   let s = `  ·  ${AIR_PHASE_LABEL[air.phase]}`;
   if (air.fuel != null && air.fuelMax) s += `  ·  fuel ${Math.round((air.fuel / air.fuelMax) * 100)}%`;
   const load = airLoadoutOf(type);

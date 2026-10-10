@@ -61,7 +61,7 @@ import { forceAimHolds, garrisonCanShoot, garrisonShotReaches, relayGarrisonForc
 import { approachTile, canGarrison, exitGarrison, garrisonOwner, livingGarrison, setGarrisonHide } from "./garrison.js";
 import { rampAshore } from "./lst.js";
 import { setScoutOut } from "./scout.js";
-import { cancelStructure, deleteOwn, pauseStructure, placeBaseField, placeBuilding, sellBuilding, startBuild } from "./build.js";
+import { cancelStructure, deleteOwn, pauseStructure, placeBaseField, placeBuilding, placeFenceLine, sellBuilding, startBuild } from "./build.js";
 import { orderFieldBuild, orderRepair, setGatesLocked } from "./field.js";
 import { orderConstruct } from "./construct.js";
 import { orderBridge } from "./bridge.js";
@@ -182,6 +182,9 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
     case "cmd.purge":
       if (!Array.isArray(msg.ids) || typeof msg.targetId !== "number") return fail("bad_payload", "Bad purge order.");
       return cmdPurge(state, playerId, msg.ids, msg.targetId);
+    case "cmd.fence":
+      if (!Array.isArray(msg.posts) || msg.posts.length === 0) return fail("bad_payload", "Bad fence order.");
+      return wrap(placeFenceLine(state, playerId, msg.posts), "invalid_place");
     case "cmd.build":
       if (isYardField(msg.building)) return fail("bad_payload", "Place that on the map.");
       if (!isBuildingType(msg.building)) return fail("bad_payload", "Unknown structure.");
