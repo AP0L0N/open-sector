@@ -48,6 +48,7 @@ import {
   supplyDepotOf,
   torpedoesOf,
   type BuildingType,
+  type Faction,
   type TrainType,
   isHqRig,
   isSmelterType,
@@ -248,9 +249,9 @@ const CREWED: readonly BuildingType[] = [...GARRISONS, "mgnest", "pak36", "pak43
 /** Turned toward the enemy when placed. A narrow arc is useless facing the yard. */
 const FACES_ENEMY: ReadonlySet<string> = new Set(["mgnest", "pak36", "pak43", "flak", "tobruk", "casemate", "hochstand", "leitturm"]);
 /** Long guns: they walk two ranks back and fire over the line. */
-const BACK_RANK: ReadonlySet<string> = new Set(["sniper", "mortarman", "nebelwerfer", "jagdtiger", "artillery", "shade", "mawcaster", "broodmother"]);
+const BACK_RANK: ReadonlySet<string> = new Set(["sniper", "mortarman", "nebelwerfer", "jagdtiger", "artillery", "shade", "mawcaster", "broodmother", "longspine", "sporemaw"]);
 /** Short reach and thick skin: the front rank beside the hulls. */
-const FRONT_INFANTRY: ReadonlySet<string> = new Set(["cyborg", "cyborgcommander", "simunit2", "borgdrone", "thrall", "lancer", "spitter", "pyro"]);
+const FRONT_INFANTRY: ReadonlySet<string> = new Set(["cyborg", "cyborgcommander", "simunit2", "borgdrone", "thrall", "lancer", "spitter", "pyro", "spawnling", "quillback", "bloater"]);
 
 type Rank = "front" | "mid" | "back";
 interface Site {
@@ -293,8 +294,9 @@ function thinkCpu(state: MatchState, p: SimPlayer): void {
     return;
   }
   const plan = aiPlanOf(p);
-  if (p.faction === "borg") {
-    thinkBorg(state, p, hq, plan);
+  const hive = p.faction ? HIVE_DOCTRINE[p.faction] : undefined;
+  if (hive) {
+    thinkHive(state, p, hq, plan, hive);
     return;
   }
 
@@ -376,12 +378,71 @@ const BORG_FACTORIES: readonly { factory: BuildingType; army: readonly { unit: T
 ];
 
 /**
- * The Borg CPU. No towers, walls, or fleet yet: it raises its hive, fills the ranks from the
- * Cyborg Central, and campaigns once the army stands or the fortify time runs out.
+ * Bloom base: Lumen Bulb, Gorger, Brood Nest, a second Gorger and more light, the Gestator, a
+ * pair of Thorn Spitters and a Puffcap, then the Brain Coral and its Bile Lances.
  */
-function thinkBorg(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): void {
+const BLOOM_BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
+  { type: "lumenbulb", n: 1 },
+  { type: "gorger", n: 1 },
+  { type: "broodnest", n: 1 },
+  { type: "gorger", n: CPU_FORTIFY_SMELTERS },
+  { type: "lumenbulb", n: 2 },
+  { type: "gestator", n: 1 },
+  { type: "thornspitter", n: 2 },
+  { type: "puffcap", n: 1 },
+  { type: "lumenbulb", n: 3 },
+  { type: "braincoral", n: 1 },
+  { type: "bilelance", n: 2 },
+];
+/** The Bloom brood, from the Brood Nest. */
+export const BLOOM_BROOD: readonly { unit: TrainType; want: number }[] = [
+  { unit: "gobber", want: 6 },
+  { unit: "spawnling", want: 6 },
+  { unit: "quillback", want: 3 },
+  { unit: "bloater", want: 3 },
+  { unit: "mender", want: 2 },
+  { unit: "longspine", want: 2 },
+];
+/** The Bloom beasts, from the Gestator. */
+export const BLOOM_BEASTS: readonly { unit: TrainType; want: number }[] = [
+  { unit: "mantis", want: 3 },
+  { unit: "skitter", want: 2 },
+  { unit: "goretusk", want: 2 },
+  { unit: "bileworm", want: 1 },
+  { unit: "sporemaw", want: 1 },
+  { unit: "matriarch", want: 1 },
+];
+
+/** How a hive-minded CPU (the Borg, the Bloom) raises its base and fills its ranks. */
+interface HiveDoctrine {
+  power: BuildingType;
+  smelter: BuildingType;
+  /** Built again while campaigning, so the waves come faster. */
+  surge: BuildingType;
+  order: readonly { type: BuildingType; n: number }[];
+  factories: readonly { factory: BuildingType; army: readonly { unit: TrainType; want: number }[] }[];
+}
+const HIVE_DOCTRINE: Partial<Record<Faction, HiveDoctrine>> = {
+  borg: { power: "fusionnode", smelter: "assimilator", surge: "cyborgcentral", order: BORG_BUILD_ORDER, factories: BORG_FACTORIES },
+  bloom: {
+    power: "lumenbulb",
+    smelter: "gorger",
+    surge: "broodnest",
+    order: BLOOM_BUILD_ORDER,
+    factories: [
+      { factory: "broodnest", army: BLOOM_BROOD },
+      { factory: "gestator", army: BLOOM_BEASTS },
+    ],
+  },
+};
+
+/**
+ * The hive CPU (the Borg, the Bloom). No towers, walls, or fleet yet: it raises its base, fills
+ * the ranks from its factories, and campaigns once the army stands or the fortify time runs out.
+ */
+function thinkHive(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan, hive: HiveDoctrine): void {
   if (!placeReadyBuilding(state, p, p.structure)) {
-    const next = nextBorgBuilding(state, p);
+    const next = nextHiveBuilding(state, p, hive);
     if (next && !p.structure && p.scrap >= catalog(next).cost) {
       if (findBuildTile(state, p.playerId, next)) {
         applyCommand(state, p.playerId, { type: "cmd.build", building: next });
@@ -390,10 +451,10 @@ function thinkBorg(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): v
       }
     }
   }
-  for (const { factory, army } of BORG_FACTORIES) {
+  for (const { factory, army } of hive.factories) {
     if (!ownsLive(state, p.playerId, factory)) continue;
     // Pay for the next building first while the base is short of one.
-    const next = nextBorgBuilding(state, p);
+    const next = nextHiveBuilding(state, p, hive);
     const reserve = next && countType(state, p.playerId, factory) === 0 ? catalog(next).cost : 0;
     if (queuedOn(state, p.playerId, factory) < TRAIN_QUEUE_SOFT * countType(state, p.playerId, factory)) {
       const pick = neediest(state, p, army);
@@ -418,24 +479,24 @@ function thinkBorg(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): v
   }
 }
 
-function nextBorgBuilding(state: MatchState, p: SimPlayer): BuildingType | null {
+function nextHiveBuilding(state: MatchState, p: SimPlayer, hive: HiveDoctrine): BuildingType | null {
   const pow = powerOf(state, p.playerId);
   const roomy = (t: BuildingType): boolean => (p.aiNoRoomUntil?.[t] ?? 0) <= state.tick;
-  const power = (): BuildingType | null => (roomy("fusionnode") ? "fusionnode" : null);
-  for (const { type: t, n } of BORG_BUILD_ORDER) {
+  const power = (): BuildingType | null => (roomy(hive.power) ? hive.power : null);
+  for (const { type: t, n } of hive.order) {
     if (countType(state, p.playerId, t) >= n || !roomy(t)) continue;
     const draw = Math.max(0, -catalog(t).power);
-    if (t !== "fusionnode" && pow.used + draw > pow.provided) return power();
+    if (t !== hive.power && pow.used + draw > pow.provided) return power();
     return t;
   }
   if (pow.used >= pow.provided) return power();
-  if (countType(state, p.playerId, "assimilator") < aiProfile(p.ai).wantSmelters && roomy("assimilator")) {
-    if (pow.used + Math.max(0, -catalog("assimilator").power) > pow.provided) return power();
-    return "assimilator";
+  if (countType(state, p.playerId, hive.smelter) < aiProfile(p.ai).wantSmelters && roomy(hive.smelter)) {
+    if (pow.used + Math.max(0, -catalog(hive.smelter).power) > pow.provided) return power();
+    return hive.smelter;
   }
-  if (aiPlanOf(p).posture === "campaign" && countType(state, p.playerId, "cyborgcentral") < aiProfile(p.ai).campaignFactories && roomy("cyborgcentral")) {
-    if (pow.used + Math.max(0, -catalog("cyborgcentral").power) > pow.provided) return power();
-    return "cyborgcentral";
+  if (aiPlanOf(p).posture === "campaign" && countType(state, p.playerId, hive.surge) < aiProfile(p.ai).campaignFactories && roomy(hive.surge)) {
+    if (pow.used + Math.max(0, -catalog(hive.surge).power) > pow.provided) return power();
+    return hive.surge;
   }
   return null;
 }

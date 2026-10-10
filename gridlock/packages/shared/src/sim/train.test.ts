@@ -476,7 +476,7 @@ describe("research gate", () => {
     const ts = state.tileSize;
     makeEntity(state, "armory", "A", tileCenter(20, ts), tileCenter(4, ts), { tileX: 20, tileY: 4 });
     seedMuster(state, 20, 10);
-    const gated = Object.keys(TECH_REQUIRES) as TrainType[];
+    const gated = (Object.keys(TECH_REQUIRES) as TrainType[]).filter((u) => factionOf(u) !== "bloom");
     assert.deepEqual([...gated].sort(), ["apocalypse", "battleship", "behemoth", "borgdrone", "broodmother", "bv222", "cyborg", "cyborgcommander", "destroyer", "droneop", "he111", "horten", "jagdtiger", "juggernaut", "jumpjet", "lancer", "lurker", "mammoth", "nebelwerfer", "overseer", "scourge", "shade", "simunit2", "spitter", "stuka", "submarine", "thrall", "titan", "warden", "weaver"]);
     const cyborgs = new Set<TrainType>(["cyborg", "cyborgcommander", "simunit2", "borgdrone", "thrall", "lancer", "spitter", "weaver"]);
     // Ships ask for the Marine Base first, bombers for the Airfield; their gates are checked on their own.
@@ -528,7 +528,7 @@ describe("defence tech gate", () => {
     seedCore(state);
     const ts = state.tileSize;
     state.players.get("A")!.scrap = 100_000;
-    assert.deepEqual(Object.keys(BUILD_REQUIRES).sort(), ["casemate", "ciws", "flak", "leitturm", "pak43", "pulsespire", "ram"]);
+    assert.deepEqual(Object.keys(BUILD_REQUIRES).filter((b) => factionOf(b) !== "bloom").sort(), ["casemate", "ciws", "flak", "leitturm", "pak43", "pulsespire", "ram"]);
     const tryBuild = (building: "leitturm" | "flak" | "pak43" | "casemate" | "ciws" | "ram") => {
       const r = applyCommand(state, "A", { type: "cmd.build", building });
       if (r.ok) applyCommand(state, "A", { type: "cmd.cancel", what: "structure", building });

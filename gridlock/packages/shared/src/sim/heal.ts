@@ -1,6 +1,7 @@
 import {
   catalog,
   isCyborg,
+  isHealer,
   isInfantryType,
   MEDIC_HEAL_PER_SEC,
   MEDIC_MEND_SECONDS,
@@ -62,7 +63,7 @@ function inReach(state: MatchState, medic: Entity, other: Entity): boolean {
 
 function medicActive(e: Entity): boolean {
   return (
-    e.type === "medic" &&
+    isHealer(e.type) &&
     e.kind === "unit" &&
     e.hp > 0 &&
     !e.wreck &&
@@ -172,7 +173,7 @@ function approach(state: MatchState, medic: Entity, patient: Entity): void {
  * Anyone who can see him can see the kneel.
  */
 export function medicTendView(state: MatchState, medic: Entity): number | undefined {
-  if (medic.type !== "medic" || medic.tendId == null) return undefined;
+  if (!isHealer(medic.type) || medic.tendId == null) return undefined;
   const patient = state.entities.get(medic.tendId);
   if (!patient || patient.hp <= 0 || patient.wreck) return undefined;
   if (!isInfantryType(patient.type) || patient.id === medic.id) return undefined;

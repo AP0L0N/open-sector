@@ -23,6 +23,7 @@ import {
   hasForceField,
   infantryGunFor,
   isCyborg,
+  isBrood,
   isInfantryType,
   isMotorVehicle,
   trackCritAllowed,
@@ -177,6 +178,8 @@ export function rollCrits(
   if (kind === "ricochet" || kind === "miss" || kind === "puff" || kind === "crush") return;
   // The cyborg's limbs are not dice rolls: the legs follow his HP (syncCyborgLegs).
   if (isCyborg(e.type)) return;
+  // Brood limbs regrow: a hit tears flesh, never a lasting crit.
+  if (isBrood(e.type)) return;
   if (isInfantryType(e.type)) {
     if (damage <= 0) return;
     if (rand() < CRIT_ARM_CHANCE) addCrit(e, "arm");

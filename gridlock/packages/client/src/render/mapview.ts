@@ -490,6 +490,7 @@ import {
   LANCER_CRAWL_SPRITE,
   LANCER_DIE_SPRITE,
   LANCER_FIRE_SPRITE,
+  broodSheetsFor,
   LANCER_SPRITE,
   SHADE_CRAWL_FIRE_SPRITE,
   SHADE_CRAWL_SPRITE,
@@ -587,12 +588,13 @@ import {
   workLightCount,
   wreckNightAlpha,
   XENO_GLOW_RGB,
+  BLOOM_GLOW_RGB,
   xenoGlowPulse,
   xenoGlowRadius,
   xenoGlowUnderShade,
 } from "./night.js";
 
-type NightPool = { x: number; y: number; rx: number; a: number; kind: "tower" | "head" | "work" | "missile" | "xeno" | LampType };
+type NightPool = { x: number; y: number; rx: number; a: number; kind: "tower" | "head" | "work" | "missile" | "xeno" | "bloom" | LampType };
 /** How much of the night tint each kind of pool lifts, per pool (they overlap), and how much it warms. */
 const streetLampPools = <K extends "cut" | "warm" | "rgb">(key: K) =>
   Object.fromEntries(LAMP_TYPES.map((t) => [t, STREET_LAMPS[t][key]])) as Record<LampType, StreetLampSpec[K]>;
@@ -602,6 +604,7 @@ const POOL_CUT: Record<NightPool["kind"], number> = {
   work: 0.75,
   missile: 0.4,
   xeno: 0.45,
+  bloom: 0.4,
   ...streetLampPools("cut"),
 };
 const POOL_WARM: Record<NightPool["kind"], number> = {
@@ -610,6 +613,7 @@ const POOL_WARM: Record<NightPool["kind"], number> = {
   work: 0.2,
   missile: 0.14,
   xeno: 0.7,
+  bloom: 0.8,
   ...streetLampPools("warm"),
 };
 const POOL_RGB: Record<NightPool["kind"], string> = {
@@ -618,6 +622,7 @@ const POOL_RGB: Record<NightPool["kind"], string> = {
   work: "255, 212, 140",
   missile: "255, 214, 150",
   xeno: XENO_GLOW_RGB,
+  bloom: BLOOM_GLOW_RGB,
   ...streetLampPools("rgb"),
 };
 
@@ -638,9 +643,9 @@ function fillPool(c: CanvasRenderingContext2D, p: NightPool, rgb: string, a: num
   c.restore();
 }
 
-/** A live Borg unit or structure out in the open: it glows. Not a wreck, a ruin, a passenger, or a burrowed or submerged body. */
+/** A live Borg or Bloom unit or structure out in the open: it glows. Not a wreck, a ruin, a passenger, or a burrowed or submerged body. */
 function xenoGlows(e: EntityView): boolean {
-  if (factionOf(e.type) !== "borg" || e.hp <= 0 || e.wreck || e.ruined) return false;
+  if (factionOf(e.type) === "eu" || e.hp <= 0 || e.wreck || e.ruined) return false;
   if (e.garrisonedIn != null || e.burrow === "down" || e.submerged) return false;
   return e.kind === "unit" || e.kind === "building";
 }
@@ -650,8 +655,8 @@ function workLit(e: EntityView): boolean {
   if (e.kind !== "building" || e.hp <= 0 || e.wreck || e.ruined) return false;
   if (!e.ownerId || e.ownerId === NEUTRAL_OWNER || e.unpowered) return false;
   if (isGarrisonable(e.type)) return false;
-  // The Borg light nothing.
-  if (factionOf(e.type) === "borg") return false;
+  // The Borg and the Bloom light nothing.
+  if (factionOf(e.type) !== "eu") return false;
   return isHqBuilding(e.type) || (BUILDING_TYPES as readonly string[]).includes(e.type);
 }
 import {
@@ -783,6 +788,42 @@ const EXTRUDE: Record<EntityType, number> = {
   mawcaster: 26,
   behemoth: 46,
   juggernaut: 44,
+  sporepod: 22,
+  broodheart: 62,
+  lumenbulb: 34,
+  gorger: 50,
+  broodnest: 40,
+  gestator: 52,
+  braincoral: 54,
+  tidewomb: 12,
+  roost: 14,
+  thornspitter: 14,
+  bilelance: 30,
+  puffcap: 16,
+  eyestalk: 60,
+  husk: 18,
+  spawnling: 18,
+  gobber: 26,
+  quillback: 24,
+  bloater: 24,
+  longspine: 30,
+  mender: 26,
+  skitter: 14,
+  goretusk: 26,
+  mantis: 30,
+  bileworm: 16,
+  sporemaw: 26,
+  matriarch: 46,
+  driftjelly: 10,
+  spineback: 12,
+  abyssray: 8,
+  leviathan: 30,
+  broodbarge: 14,
+  moth: 8,
+  razorwing: 12,
+  gasbag: 18,
+  drifter: 14,
+  harpy: 16,
   sandbags: 12,
   barbwire: 9,
   wall: 18,
@@ -4965,19 +5006,21 @@ export class MapView {
     const k = (Math.SQRT2 * ISO_TILE_W) / 2 / ts;
     const nowSec = performance.now() / 1000;
     const out: NightPool[] = [];
-    const lay = (wx: number, wy: number, r: number, a: number): void => {
+    const lay = (wx: number, wy: number, r: number, a: number, kind: "xeno" | "bloom"): void => {
       const s = this.toScreen(wx, wy);
       const rx = r * k;
-      if (s.x > -rx && s.y > -rx && s.x < w + rx && s.y < h + rx) out.push({ x: s.x, y: s.y, rx, a, kind: "xeno" });
+      if (s.x > -rx && s.y > -rx && s.x < w + rx && s.y < h + rx) out.push({ x: s.x, y: s.y, rx, a, kind });
     };
     for (const e of this.curr.entities) {
       if (!xenoGlows(e)) continue;
+      // Blue off the hive, amber off the Bloom's sacs.
+      const kind = factionOf(e.type) === "bloom" ? "bloom" : "xeno";
       const at = e.kind === "unit" ? this.lerpEnt(e) : e;
       const r = xenoGlowRadius(e, catalog(e.type).radius, ts);
       const a = xenoGlowPulse(e.id, nowSec);
       // A soft wide halo with a brighter core, so the light reads as coming off the body.
-      lay(at.x, at.y, r, 0.75 * a);
-      lay(at.x, at.y, r * 0.5, 0.5 * a);
+      lay(at.x, at.y, r, 0.75 * a, kind);
+      lay(at.x, at.y, r * 0.5, 0.5 * a, kind);
     }
     return out;
   }
@@ -5170,7 +5213,7 @@ export class MapView {
     }
     ctx.save();
     // The Borg glow lifts the dark above, but its blue was laid on the ground under the units (drawXenoGlow).
-    const lit = pools.filter((p) => p.kind !== "xeno");
+    const lit = pools.filter((p) => p.kind !== "xeno" && p.kind !== "bloom");
     if (lit.length) this.drawLampLight(lit, glow);
     if (pools.length) {
       this.drawLampBulbs(glow);
@@ -7490,6 +7533,20 @@ export class MapView {
       if (sheet === "crawl") return CYBORGCOMMANDER_CRAWL_SPRITE;
       if (sheet === "swim") return spriteFor("cyborgcommander", "stand", true);
       return CYBORGCOMMANDER_SPRITE;
+    }
+    const brood = broodSheetsFor(e.type);
+    if (brood) {
+      // The Bloom brood: walk, fire, collapse, swim. A Mender holds the reaching pose while it knits.
+      const sheet = cyborgSheet({
+        swimming: e.swimming,
+        wreck: e.wreck,
+        stance: e.stance,
+        shotAgeMs: e.tend != null ? 0 : this.infantryShotAge(e.id),
+      });
+      if (sheet === "die") return brood.die;
+      if (sheet === "swim") return spriteFor(e.type, "stand", true);
+      if (sheet === "fire" || sheet === "crawl-fire") return brood.fire;
+      return brood.walk;
     }
     if (e.type === "engineer") {
       if (e.swimming) return spriteFor(e.type, e.stance, true);

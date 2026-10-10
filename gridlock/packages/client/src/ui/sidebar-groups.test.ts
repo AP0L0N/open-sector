@@ -9,11 +9,13 @@ describe("sidebarGroupOf", () => {
   it("files every buildable and trainable type into exactly one group of one faction", () => {
     const g = groupEntries();
     const borg = Object.values(groupEntries("borg")).flat();
+    const bloom = Object.values(groupEntries("bloom")).flat();
     const all = Object.values(g).flat();
     const shownYard = YARD_FIELD_TYPES.filter((t) => !isHiddenField(t));
-    assert.equal(all.length + borg.length, BUILDING_TYPES.length + TRAIN_TYPES.length + shownYard.length);
+    assert.equal(all.length + borg.length + bloom.length, BUILDING_TYPES.length + TRAIN_TYPES.length + shownYard.length);
     for (const e of all) assert.equal(factionOf(e.type), "eu", e.type);
     for (const e of borg) assert.equal(factionOf(e.type), "borg", e.type);
+    for (const e of bloom) assert.equal(factionOf(e.type), "bloom", e.type);
     assert.equal(new Set(all.map((e) => e.id)).size, all.length);
     const defenceTypes = g.defences.map((e) => e.type);
     assert.ok(defenceTypes.includes("sandbags"));
@@ -34,6 +36,16 @@ describe("sidebarGroupOf", () => {
     const eu = Object.values(groupEntries("eu")).flat().map((e) => e.type);
     assert.equal(eu.includes("cyborg"), false);
     assert.equal(eu.includes("cyborgcentral"), false);
+  });
+
+  it("gives the Bloom at least five of everything, and nothing of anyone else's", () => {
+    const g = groupEntries("bloom");
+    assert.deepEqual(g.structures.map((e) => e.type).sort(), ["braincoral", "broodnest", "gestator", "gorger", "lumenbulb", "roost", "tidewomb"]);
+    assert.deepEqual(g.defences.map((e) => e.type).sort(), ["bilelance", "eyestalk", "husk", "puffcap", "thornspitter"]);
+    assert.deepEqual(g.infantry.map((e) => e.type).sort(), ["bloater", "gobber", "longspine", "mender", "quillback", "spawnling"]);
+    assert.deepEqual(g.tanks.map((e) => e.type).sort(), ["bileworm", "goretusk", "mantis", "matriarch", "skitter", "sporemaw"]);
+    assert.deepEqual(g.naval.map((e) => e.type).sort(), ["abyssray", "broodbarge", "driftjelly", "leviathan", "spineback"]);
+    assert.deepEqual(g.aircraft.map((e) => e.type).sort(), ["drifter", "gasbag", "harpy", "moth", "razorwing"]);
   });
 
   it("puts the gun building under defences and the rest under structures", () => {

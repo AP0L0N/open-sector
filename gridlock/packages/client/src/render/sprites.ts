@@ -2243,7 +2243,7 @@ const buildingUrls = import.meta.glob("../assets/buildings/*.png", { eager: true
  * The WW2 forts and crewed guns (tools/sprites/render_ww2_*.py): each <type>.png with its pad
  * metrics in <type>.json beside it, picked up by name.
  */
-const FORT_TYPES: readonly EntityType[] = ["tobruk", "casemate", "hochstand", "leitturm", "spotlight", "mgnest", "pak36", "pak43", "flak", "spineturret", "pulsespire"];
+const FORT_TYPES: readonly EntityType[] = ["tobruk", "casemate", "hochstand", "leitturm", "spotlight", "mgnest", "pak36", "pak43", "flak", "spineturret", "pulsespire", "thornspitter", "bilelance", "puffcap", "eyestalk", "husk"];
 for (const type of FORT_TYPES) {
   const info = padManifests[`../assets/buildings/${type}.json`];
   const url = buildingUrls[`../assets/buildings/${type}.png`];
@@ -3256,3 +3256,114 @@ export function drawScoutHead(
   ctx.restore();
   return true;
 }
+
+// ── The Bloom ─────────────────────────────────────────────────────────────────────────────
+
+const bloomUnitUrls = import.meta.glob(
+  "../assets/units/{spawnling,gobber,quillback,bloater,longspine,mender,skitter,goretusk,mantis,bileworm,sporemaw,matriarch,sporepod}-*.png",
+  { eager: true, import: "default" },
+) as Record<string, string>;
+
+function bloomUrl(file: string): string {
+  const url = bloomUnitUrls[`../assets/units/${file}`];
+  if (!url) throw new Error(`missing Bloom sheet ${file}`);
+  return url;
+}
+
+/** A brood soldier's sheets (tools/sprites/render_bloom_brood.py): the Cyborg's cells and contact points. */
+export interface BroodSheets {
+  walk: UnitSpriteDef;
+  fire: UnitSpriteDef;
+  die: UnitSpriteDef;
+}
+
+function broodSheets(id: string, scale = 1): BroodSheets {
+  const size = (def: UnitSpriteDef): number => Math.round(def.drawSize * scale);
+  const walk: UnitSpriteDef = { ...CYBORG_SPRITE, image: loadSheet(bloomUrl(`${id}-walk.png`)), drawSize: size(CYBORG_SPRITE) };
+  const fire: UnitSpriteDef = { ...CYBORG_FIRE_SPRITE, image: loadSheet(bloomUrl(`${id}-fire.png`)), drawSize: size(CYBORG_FIRE_SPRITE) };
+  const die: UnitSpriteDef = { ...CYBORG_DIE_SPRITE, image: loadSheet(bloomUrl(`${id}-die.png`)), drawSize: size(CYBORG_DIE_SPRITE) };
+  return { walk, fire, die };
+}
+
+const BROOD: Partial<Record<EntityType, BroodSheets>> = {
+  spawnling: broodSheets("spawnling"),
+  gobber: broodSheets("gobber"),
+  quillback: broodSheets("quillback"),
+  bloater: broodSheets("bloater"),
+  longspine: broodSheets("longspine"),
+  mender: broodSheets("mender"),
+};
+
+/** Walk, fire, and collapse sheets of a Bloom brood soldier. Undefined for anything else. */
+export function broodSheetsFor(type: EntityType): BroodSheets | undefined {
+  return BROOD[type];
+}
+
+/**
+ * A Bloom beast (tools/sprites/render_bloom_beasts.py): the Borg walkers' cell and contact, an
+ * 8-frame leg (or undulation) cycle on the body, and a turret and gun only where it has one.
+ */
+function bloomBeast(id: string, size: number, fps: number, turret = false): UnitSpriteDef {
+  const overlay = (file: string): TurretSpriteDef => ({ image: loadSheet(bloomUrl(file)), dirs: TANK_FACE_DIRS, frames: 1, frameSize: 128 });
+  return {
+    image: loadSheet(bloomUrl(`${id}-legs.png`)),
+    dirs: TANK_FACE_DIRS,
+    frames: 8,
+    frameSize: 128,
+    fps,
+    drawSize: Math.round(size * UNIT_VISUAL_SCALE),
+    contactY: 0.92,
+    ...(turret ? { turret: overlay(`${id}-turret.png`), gun: overlay(`${id}-gun.png`) } : {}),
+    facingSpace: "world",
+  };
+}
+
+/** Bloom HQ on the move. The Seed's lock: tools/sprites/render_sporepod.py. */
+export const SPOREPOD_SPRITE: UnitSpriteDef = { ...SEED_SPRITE, image: loadSheet(bloomUrl("sporepod-move.png")) };
+
+/** One hull sheet on the Leech's (boats) or the Wasp's (flyers) fit (render_bloom_naval.py, render_bloom_air.py). */
+function bloomHull(contactY: number, size: number): UnitSpriteDef {
+  return { image: new Image(), dirs: TANK_FACE_DIRS, frames: 1, frameSize: 128, fps: 8, drawSize: Math.round(size * UNIT_VISUAL_SCALE), contactY, facingSpace: "world" };
+}
+const BLOOM_BOATS = { driftjelly: 48, spineback: 48, abyssray: 98, leviathan: 92, broodbarge: 77 } as const;
+const BLOOM_FLYERS = { moth: 41, razorwing: 58, gasbag: 48, drifter: 48, harpy: 56 } as const;
+
+Object.assign(UNIT_SPRITES, {
+  sporepod: SPOREPOD_SPRITE,
+  skitter: bloomBeast("skitter", 25, 13),
+  goretusk: bloomBeast("goretusk", 44, 9),
+  mantis: bloomBeast("mantis", 44, 10, true),
+  bileworm: bloomBeast("bileworm", 41, 9),
+  sporemaw: bloomBeast("sporemaw", 38, 9),
+  matriarch: bloomBeast("matriarch", 71, 7, true),
+  ...Object.fromEntries(Object.entries(BROOD).map(([t, s]) => [t, s.walk])),
+});
+for (const [t, s] of Object.entries(BROOD)) INFANTRY_DIE[t as EntityType] = s.die;
+for (const t of Object.keys(BROOD)) SWIM_SPRITES[t as EntityType] = swimSprite(bloomUrl(`${t}-swim.png`));
+for (const [kind, size] of Object.entries(BLOOM_BOATS)) {
+  const def = bloomHull(0.74, size);
+  UNIT_SPRITES[kind as EntityType] = def;
+  bindNavalSheets(kind as keyof typeof BLOOM_BOATS, def.image);
+}
+for (const [kind, size] of Object.entries(BLOOM_FLYERS)) {
+  const def = bloomHull(0.8, size);
+  UNIT_SPRITES[kind as EntityType] = def;
+  bindPlaneSheets(kind as keyof typeof BLOOM_FLYERS, def.image);
+}
+
+/**
+ * Bloom structures and defences (render_bloom_base.py, render_bloom_defences.py): each <type>.png
+ * with its pad metrics in <type>.json, picked up by name. The guns' traverse sheets ride on
+ * FORT_TYPES; the shipyard and the roost keep a hard edge, as the Spawning Pool and Aerie do.
+ */
+const BLOOM_BUILDINGS: readonly EntityType[] = ["broodheart", "lumenbulb", "gorger", "broodnest", "gestator", "braincoral", "tidewomb", "roost"];
+const HARD_EDGED: ReadonlySet<EntityType> = new Set<EntityType>(["tidewomb", "roost"]);
+for (const type of BLOOM_BUILDINGS) {
+  const info = padManifests[`../assets/buildings/${type}.json`];
+  const url = buildingUrls[`../assets/buildings/${type}.png`];
+  if (info && url) BUILDING_SPRITES[type] = building(url, info.padWidth, info.padSouthX, info.padSouthY, info.stackX, info.stackY, !HARD_EDGED.has(type));
+}
+// The Roost's pads and sinew mats lie under every unit, like the Aerie's.
+const roostGround = buildingUrls["../assets/buildings/roost-ground.png"];
+const roostInfo = padManifests["../assets/buildings/roost.json"];
+if (roostGround && roostInfo) BUILDING_GROUNDS.roost = building(roostGround, roostInfo.padWidth, roostInfo.padSouthX, roostInfo.padSouthY, roostInfo.stackX, roostInfo.stackY, false);

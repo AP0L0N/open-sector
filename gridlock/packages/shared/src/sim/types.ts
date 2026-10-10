@@ -558,6 +558,14 @@ export interface Entity {
   selfQuiet?: number;
   /** Medic only: HP at the end of the last tick, to notice new hits. */
   selfHpSeen?: number;
+  /** Bloom only (sim/regrowth.ts): seconds since it last lost HP. */
+  regrowQuiet?: number;
+  /** Bloom only: HP at the end of the last regrowth pass, to notice new hits. */
+  regrowSeen?: number;
+  /** Matriarch only (sim/brood.ts): seconds toward her next Spawnling. */
+  matriarchLay?: number;
+  /** A Spawnling a Matriarch laid: her id, so she counts her own brood. */
+  matriarchOf?: number;
   /** Cyborg only: sim tick until which nothing takes his HP. Set when the legs are torn off. */
   shieldUntilTick?: number;
   /**

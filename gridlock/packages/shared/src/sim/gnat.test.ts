@@ -62,7 +62,7 @@ function flyerOver(state: MatchState, type: "gnat" | "horten", tx: number, ty: n
   return plane;
 }
 
-const OTHER_PLANES = TRAIN_TYPES.filter((t) => isAircraftType(t) && t !== "gnat");
+const OTHER_PLANES = TRAIN_TYPES.filter((t) => isAircraftType(t) && t !== "gnat" && factionOf(t) !== "bloom");
 
 function flyingSight(type: (typeof TRAIN_TYPES)[number]): number {
   return catalog(type).sightTiles + liveSightExtra({ type, air: { alt: AIR_CRUISE_ALT } });

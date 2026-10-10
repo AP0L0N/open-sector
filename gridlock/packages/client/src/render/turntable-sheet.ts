@@ -176,6 +176,12 @@ const navalHullGlobs = {
   supplyboat: supplyboatHullGlob,
   destroyer: destroyerHullGlob,
   lst: lstHullGlob,
+  // The Bloom boats (tools/sprites/render_bloom_naval.py).
+  driftjelly: import.meta.glob("../assets/units/driftjelly/hull/*.png", { eager: true, import: "default" }) as Record<string, string>,
+  spineback: import.meta.glob("../assets/units/spineback/hull/*.png", { eager: true, import: "default" }) as Record<string, string>,
+  abyssray: import.meta.glob("../assets/units/abyssray/hull/*.png", { eager: true, import: "default" }) as Record<string, string>,
+  leviathan: import.meta.glob("../assets/units/leviathan/hull/*.png", { eager: true, import: "default" }) as Record<string, string>,
+  broodbarge: import.meta.glob("../assets/units/broodbarge/hull/*.png", { eager: true, import: "default" }) as Record<string, string>,
 } as const;
 
 const aswheliHullGlob = import.meta.glob("../assets/units/aswheli/hull/*.png", {
@@ -907,6 +913,12 @@ const planeHullGlobs = {
   scourge: import.meta.glob("../assets/units/scourge/hull/*.png", { eager: true, import: "default" }) as Record<string, string>,
   overseer: import.meta.glob("../assets/units/overseer/hull/*.png", { eager: true, import: "default" }) as Record<string, string>,
   gnat: import.meta.glob("../assets/units/gnat/hull/*.png", { eager: true, import: "default" }) as Record<string, string>,
+  // The Bloom flyers (tools/sprites/render_bloom_air.py).
+  moth: import.meta.glob("../assets/units/moth/hull/*.png", { eager: true, import: "default" }) as Record<string, string>,
+  razorwing: import.meta.glob("../assets/units/razorwing/hull/*.png", { eager: true, import: "default" }) as Record<string, string>,
+  gasbag: import.meta.glob("../assets/units/gasbag/hull/*.png", { eager: true, import: "default" }) as Record<string, string>,
+  drifter: import.meta.glob("../assets/units/drifter/hull/*.png", { eager: true, import: "default" }) as Record<string, string>,
+  harpy: import.meta.glob("../assets/units/harpy/hull/*.png", { eager: true, import: "default" }) as Record<string, string>,
 } as const;
 
 const planePrevious = new Map<keyof typeof planeHullGlobs, ComposedTurntable>();

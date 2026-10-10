@@ -268,6 +268,8 @@ export function xenoGlowUnderShade(shade: number, cut: number): number {
   const left = Math.min(0.95, Math.max(0, shade * (1 - cut)));
   return XENO_GLOW_BOOST / (1 - left);
 }
+/** The Bloom's glow: amber off its sacs, eyes, and seams. */
+export const BLOOM_GLOW_RGB = "255, 170, 60";
 /** Glow radius against a unit's body radius, and against half a structure's footprint. */
 export const XENO_GLOW_UNIT_SCALE = 3.5;
 export const XENO_GLOW_BUILDING_SCALE = 2;

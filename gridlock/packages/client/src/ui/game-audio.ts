@@ -12,7 +12,7 @@ import { AMBIENT_KINDS, ambientMix, type AmbientKind, type Mover } from "../rend
 import { buildBank, LineDeck } from "./sound-bank.js";
 import type { LinkVoice, SensorVoice, ShieldCue, SoundEvent, Weapon } from "../render/sound-events.js";
 import { leadType, orderCue, type UnitCue } from "./order-cues.js";
-import type { ClientMessage, MatchSnapshot } from "@gridlock/shared";
+import type { ClientMessage, Faction, MatchSnapshot } from "@gridlock/shared";
 
 const files = import.meta.glob("../assets/audio/**/*.mp3", { eager: true, import: "default" }) as Record<
   string,
@@ -96,7 +96,7 @@ let announcing = false;
 /** Borg commanders hear the Hive Mind (announcer-borg/); a line it lacks falls back to Battle Control. */
 let announcerFolders: readonly string[] = ["announcer"];
 
-export function setAnnouncerFaction(faction: "eu" | "borg"): void {
+export function setAnnouncerFaction(faction: Faction): void {
   announcerFolders = faction === "borg" ? ["announcer-borg", "announcer"] : ["announcer"];
 }
 

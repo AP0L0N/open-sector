@@ -11,6 +11,7 @@ import {
   TRAIN_TYPES,
   airLoadoutOf,
   catalog,
+  factionOf,
   isAircraftType,
   isReconType,
   techNeeds,
@@ -63,7 +64,7 @@ function planeOver(state: MatchState, type: "horten" | "stuka", owner: string, t
   return plane;
 }
 
-const PLANES = TRAIN_TYPES.filter((t) => isAircraftType(t) && t !== "horten");
+const PLANES = TRAIN_TYPES.filter((t) => isAircraftType(t) && t !== "horten" && factionOf(t) !== "bloom");
 
 function flyingSight(type: (typeof TRAIN_TYPES)[number]): number {
   return catalog(type).sightTiles + liveSightExtra({ type, air: { alt: AIR_CRUISE_ALT } });
