@@ -35,7 +35,6 @@ import { detonateNuke } from "./nuke.js";
 import { tickThralls } from "./thrall.js";
 import { tickWeaverShields, tickWeavers } from "./weaver.js";
 import { tickBrood } from "./brood.js";
-import { tickAcid } from "./acid.js";
 import { tickShades } from "./shade.js";
 import { tickCapture } from "./capture.js";
 import { detachGarrisoned, enterGarrison, killGarrison, manGun, spillGarrison, tickGarrison, tickGarrisonCare } from "./garrison.js";
@@ -387,7 +386,6 @@ function stepHeld(state: MatchState, dt: number): void {
   tickThralls(state);
   tickWeavers(state);
   tickBrood(state);
-  tickAcid(state);
   tickLunges(state);
   tickBurrows(state);
   tickMatriarchs(state, dt);

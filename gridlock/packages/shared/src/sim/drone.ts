@@ -25,7 +25,7 @@ import {
   radarLaidOf,
   antiAirGunOf,
   rocketsOf,
-  rocketRackOf,
+  rocketRackFor,
   type DroneMode,
   isBattleship,
   isLowFieldWork,
@@ -70,7 +70,7 @@ export function reachesDrone(shooter: Entity, drone: Entity): boolean {
   if (droneIsHigh(drone)) return reachesHighFlyer(shooter);
   if (shooter.type === "walker" || radarLaidOf(shooter.type) || hasMg(shooter.type) || antiAirGunOf(shooter.type)) return true;
   // Titan pods reach a low drone. An artillery rack's lobbed rockets never do.
-  if (rocketsOf(shooter.type)) return rocketRackOf(shooter.type).antiAir;
+  if (rocketsOf(shooter.type)) return rocketRackFor(shooter).antiAir;
   return !!gun && gun.id !== "mortar";
 }
 
