@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { AIR_CRUISE_ALT, isoLift, type EntityView } from "@gridlock/shared";
-import { AIR_DRAW_LAYER, HOVER_BOB_PX, SAUCER_SPIN_PER_SEC, aircraftShadowScale, airLiftPx, hoverBobPx, inAir, lerpAirAlt, saucerSpin, wingBeatFrame } from "./aircraft.js";
+import { AIR_DRAW_LAYER, HOVER_BOB_PX, SAUCER_SPIN_PER_SEC, SAUCER_SPIN_ROWS, aircraftShadowScale, airLiftPx, hoverBobPx, inAir, lerpAirAlt, saucerSpin, saucerSpinRow, wingBeatFrame } from "./aircraft.js";
 import { STANDING_DRAW_LAYER } from "./corpse-depth.js";
 
 function plane(alt: number): EntityView {
@@ -95,5 +95,17 @@ describe("Xenomorph flier animation", () => {
   it("spins the Overseer's hull all the way round", () => {
     const turn = saucerSpin(5, 1000 / SAUCER_SPIN_PER_SEC) - saucerSpin(5, 0);
     assert.ok(Math.abs(turn - Math.PI * 2) < 1e-9, "one turn in 1 / SAUCER_SPIN_PER_SEC seconds");
+  });
+
+  it("turns the Overseer's base slowly, through every row of its quarter-turn sheet", () => {
+    assert.ok(1 / SAUCER_SPIN_PER_SEC >= 20, "a full turn takes 20 s or more: a subtle drift");
+    const quarterMs = 1000 / SAUCER_SPIN_PER_SEC / 4;
+    const seen: number[] = [];
+    for (let t = 0; t < quarterMs; t += quarterMs / 64) {
+      const row = saucerSpinRow(0, t);
+      if (seen[seen.length - 1] !== row) seen.push(row);
+    }
+    assert.deepEqual(seen, Array.from({ length: SAUCER_SPIN_ROWS }, (_, i) => i), "one row at a time, in order");
+    assert.equal(saucerSpinRow(0, quarterMs * 4 + 1), saucerSpinRow(0, 1), "four quarters make a turn");
   });
 });
