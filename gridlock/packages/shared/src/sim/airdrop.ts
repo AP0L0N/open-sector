@@ -66,6 +66,7 @@ import { nextRand } from "./rng.js";
 import { needsSupply, transferOnce } from "./supply.js";
 import { canSeeWorld } from "./vision.js";
 import { afloat } from "./naval.js";
+import { catchLanding, domeOver } from "./energy-shield.js";
 import type { Entity, MatchState, Mine, Projectile } from "./types.js";
 
 const BOARD_SLACK = 14;
@@ -438,6 +439,8 @@ export function stepCluster(state: MatchState, p: Projectile, dt: number): boole
     p.y = p.landY;
   }
   p.z = 0;
+  // An enemy dome under the canister takes it on its skin.
+  if (catchLanding(state, p)) return false;
   scatterMines(state, p.ownerId, p.x, p.y);
   return false;
 }
@@ -456,6 +459,8 @@ export function scatterMines(state: MatchState, ownerId: string, x: number, y: n
     const tx = worldToTile(mx, ts);
     const ty = worldToTile(my, ts);
     if (!inBounds(state, tx, ty) || isWater(state, tx, ty)) continue;
+    // A bomblet that spins down onto an enemy dome bounces off it.
+    if (domeOver(state, ownerId, mx, my)) continue;
     state.mines.push({ id: state.nextId++, ownerId, x: mx, y: my, arm: MINE_ARM_SECONDS, life: MINE_LIFE_SECONDS });
   }
   if (state.mines.length > MINE_CAP) state.mines.splice(0, state.mines.length - MINE_CAP);

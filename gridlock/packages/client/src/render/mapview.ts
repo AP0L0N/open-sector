@@ -166,7 +166,7 @@ import {
   SIMUNIT_BLINK_RANGE_TILES,
   isSimUnit,
 } from "@gridlock/shared";
-import { WEAVE_THREAD_MS, drawShieldPanel, drawWeaveThread, shieldCurve, shieldGlow, shieldHeightElev } from "./energy-shield.js";
+import { WEAVE_THREAD_MS, domeHeightElev, drawDome, drawShieldPanel, drawWeaveThread, shieldCurve, shieldGlow, shieldHeightElev } from "./energy-shield.js";
 import { drawNuke, drawNukeFlash, drawNukeScorch, NUKE_FX_MS, NUKE_SCORCH_MS } from "./nuke-fx.js";
 import { drawTitanThrust } from "./titan-jet-fx.js";
 import {
@@ -9393,7 +9393,7 @@ export class MapView {
     }
   }
 
-  /** Hive energy walls: one panel per stretch of the curve, sorted with the units around it. */
+  /** Hive energy walls: one panel per stretch of the curve, sorted with the units around it. A Siphon's dome: one bubble over it. */
   private collectShields(items: DrawItem[], w: number, h: number): void {
     const walls = this.curr.shields;
     if (!walls || walls.length === 0) {
@@ -9402,6 +9402,10 @@ export class MapView {
     }
     const now = performance.now();
     for (const s of walls) {
+      if (s.dome) {
+        this.collectDome(items, w, h, s, now);
+        continue;
+      }
       const mid = this.toScreen(s.x, s.y);
       if (mid.x < -120 || mid.y < -120 || mid.x > w + 120 || mid.y > h + 120) continue;
       const glow = shieldGlow(s, now, s.id);
@@ -9449,6 +9453,34 @@ export class MapView {
       layer: STANDING_DRAW_LAYER + 0.5,
       z: isoDepth(s.x, s.y),
       run: () => drawWeaveThread(this.ctx, from, to, age, s.id),
+    });
+  }
+
+  /** The dome rides on its Siphon's drawn pose, so it never slides off the body between snapshots. */
+  private collectDome(items: DrawItem[], w: number, h: number, s: EnergyShieldView, now: number): void {
+    const host = s.fromId != null ? this.currById.get(s.fromId) : undefined;
+    const at = host ? this.lerpEnt(host) : { x: s.x, y: s.y };
+    const elev = this.elevAt(at.x, at.y);
+    const c = this.toScreen(at.x, at.y, elev);
+    const span = this.groundSpan(at.x, at.y, s.r) * 2;
+    if (c.x < -span || c.y < -span || c.x > w + span || c.y > h + span) return;
+    let rx = 0;
+    let ry = 0;
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      const p = this.toScreen(at.x + Math.cos(a) * s.r, at.y + Math.sin(a) * s.r, elev);
+      rx = Math.max(rx, Math.abs(p.x - c.x));
+      ry = Math.max(ry, Math.abs(p.y - c.y));
+    }
+    const lift = c.y - this.toScreen(at.x, at.y, elev + domeHeightElev(s.r)).y;
+    const glow = shieldGlow(s, now, s.id);
+    // Sorted at its front rim: what stands under it draws first and shows through.
+    const front = { x: at.x + s.r * Math.SQRT1_2, y: at.y + s.r * Math.SQRT1_2 };
+    items.push({
+      layer: STANDING_DRAW_LAYER,
+      z: isoDepth(front.x, front.y),
+      at: front,
+      run: () => drawDome(this.ctx, c, rx, ry, lift, glow),
     });
   }
 

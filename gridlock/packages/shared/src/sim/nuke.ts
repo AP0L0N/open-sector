@@ -8,6 +8,7 @@ import { burnTreeAt, worldToTile } from "./geo.js";
 import { killGarrison, livingGarrison, woundGarrison } from "./garrison.js";
 import { nextRand } from "./rng.js";
 import { hideScout } from "./scout.js";
+import { domeShelters } from "./energy-shield.js";
 import type { Entity, MatchState } from "./types.js";
 
 /** Caliber the blast counts as, for garrison wounds and the impact the clients draw. */
@@ -70,6 +71,7 @@ export function detonateNuke(state: MatchState, src: Entity): void {
   const ts = state.tileSize;
   const radius = TITAN_NUKE.radiusTiles * ts;
   const core = TITAN_NUKE.coreTiles * ts;
+  const soaked = new Set<number>();
   for (const o of [...state.entities.values()]) {
     if (o.id === src.id || o.hp <= 0 || o.garrisonedIn != null) continue;
     if (o.air && o.air.alt > 0.5) continue;
@@ -77,6 +79,7 @@ export function detonateNuke(state: MatchState, src: Entity): void {
     const d = Math.hypot(o.x - src.x, o.y - src.y);
     const fall = nukeFalloff(d, core, reach);
     if (fall <= 0) continue;
+    if (domeShelters(state, src.ownerId, src.x, src.y, o, TITAN_NUKE.damage * fall, soaked)) continue;
     if (nukeFlattens(o)) {
       // Nothing small is left standing: the men inside go with the walls.
       killGarrison(state, o);

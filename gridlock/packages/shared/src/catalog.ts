@@ -2114,6 +2114,34 @@ export const WEAVER_SHIELD: EnergyShieldDef = { hp: 60, arcPx: 12, halfDeg: 60, 
 export function energyShieldOf(type: EntityType): EnergyShieldDef | undefined {
   return ENERGY_SHIELDS[type];
 }
+
+/**
+ * Hive energy dome (sim/energy-shield.ts). The unit holds a full dome of energy round itself
+ * whenever it is up and running, fighting or not, and the dome walks with it. Whatever comes in
+ * from outside stops on it: every round and beam, shells and bombs dropping from above, the
+ * blast of a burst outside, a blow at arm's reach. Its own side inside walks and shoots out
+ * freely; no enemy ground unit walks in. Each hit drains the unit's energy by the hit's damage.
+ * Drained to nothing the dome is gone, and the energy must fill all the way back before it
+ * is cast again.
+ */
+export interface EnergyDomeDef {
+  /** Energy the unit holds: the dome's points. */
+  energy: number;
+  /** Radius of the dome, tiles. */
+  radiusTiles: number;
+  /** Seconds for drained energy to fill back up and the dome to be cast again. */
+  rechargeSeconds: number;
+  /** Energy regained each second while the dome stands. */
+  regenPerSecond: number;
+}
+export const SIPHON_DOME: EnergyDomeDef = { energy: 800, radiusTiles: t(3), rechargeSeconds: 20, regenPerSecond: 12 };
+const ENERGY_DOMES: Partial<Record<EntityType, EnergyDomeDef>> = {
+  siphon: SIPHON_DOME,
+};
+/** The energy dome this type casts, or undefined. */
+export function energyDomeOf(type: EntityType): EnergyDomeDef | undefined {
+  return ENERGY_DOMES[type];
+}
 /** Digs in under the ground and waits (sim/burrow.ts): the Stalker, and the Bloom Bile Worm. */
 export function canBurrow(type: EntityType): boolean {
   return type === "stalker" || type === "bileworm";
@@ -3828,12 +3856,6 @@ export const WEAVER_MEND_HEAVY = 4;
  */
 export const SHADE_REVEAL_SECONDS = 3;
 export const SHADE_SPOT_TILES = t(2);
-
-/**
- * The Siphon's drain: SIPHON_DRAIN of the HP its bolt takes off an enemy unit (not a building
- * or a wreck) flows back into its own body.
- */
-export const SIPHON_DRAIN = 0.6;
 
 /**
  * The Broodmother's brood (sim/brood.ts). A Thrall leaves the sac every BROOD_SECONDS while
@@ -6419,7 +6441,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     fightsWading: true,
     blurb: `A giant of the hive on two legs, swinging a two-handed hammer. It fights only at arm's reach, and runs at what it goes for at ${JUGGERNAUT_SPRINT_MUL} times its walk. It strides straight through woods, felling every tree it brushes, and wades through water thigh-deep, slower, still swinging: from there it hammers a boat on the surface, but not a submarine running below. Every blow lands in an area: it kills a soldier outright, staves in a tank's plate whatever its armor, and knocks whole walls out of a building. Only its own side is spared. Plated like a light tank and slow to fall. Brought down to ${Math.round(JUGGERNAUT_RAGE_HP * 100)}% it hurls the hammer at the strongest enemy within ${JUGGERNAUT_THROW_RANGE_TILES / TILE_SUBDIV} cells, a heavy blast where it lands, then fights on with its fists: lighter blows, three for every swing of the hammer, and it moves faster. Needs a Neural Nexus.`,
   },
-  /** Xenomorph heavy assimilator: four legs and a draining disruptor that feeds its own body. */
+  /** Xenomorph heavy assimilator: four legs and a dome of energy over everything round it. Unarmed. */
   siphon: {
     type: "siphon",
     kind: "unit",
@@ -6435,25 +6457,22 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     radius: 12,
     moveTilesPerSec: paced(1.6),
     turnDegPerSec: 110,
-    rangeTiles: t(11),
+    rangeTiles: 0,
     sightTiles: t(8),
-    cooldown: 3.4,
-    plasmaCell: { shots: 6, rechargeSeconds: 7 },
-    damage: 34,
-    projectileSpeed: TANK_SHELL_SPEED,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
     turnInPlace: true,
     turretTurnDegPerSec: 220,
     armorFront: 55,
     armorSide: 28,
     armorRear: 16,
-    penetration: 75,
-    caliber: 75,
-    spreadDeg: 3,
-    ammo: { ap: 12, he: 6 },
-    defaultShell: "ap",
+    penetration: 0,
+    caliber: 0,
+    spreadDeg: 0,
     leavesWreck: true,
     wreckHp: 32,
-    blurb: `Heavy assimilator on four legs with a forked drain emitter on a quick turret. Its bolt is lighter than a Stalker's and bites only medium plate from the front, but it fires twice as often, from a little less reach. What the bolt takes off an enemy unit flows back: ${Math.round(SIPHON_DRAIN * 100)}% of every hit mends its own body. A building or a wreck gives nothing back. Thinner in front than a Stalker. Each bolt draws on an energy cell that holds 6 and regrows one every 7 seconds.`,
+    blurb: `Heavy assimilator on four legs with a forked emitter on its back. It carries no weapon. Instead it holds a dome of energy ${SIPHON_DOME.radiusTiles / TILE_SUBDIV} cells wide round itself, and the dome walks with it. Everything that comes in from outside stops on the dome: rounds, rockets, beams and flame, shells and bombs falling from above, the blast of a burst outside it, a blow at arm's reach. Your own units under it shoot and walk out freely; no enemy walks in. Every hit drains the Siphon's energy (${SIPHON_DOME.energy}) by its damage, and a standing dome slowly regains it. Drained to nothing, the dome is gone until the energy fills all the way back, ${SIPHON_DOME.rechargeSeconds} seconds, and then it is cast again.`,
   },
   /** Xenomorph heavy assimilator: a brood sac on six legs that births Thralls. Unarmed. */
   broodmother: {
