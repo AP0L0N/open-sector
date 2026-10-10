@@ -1,0 +1,53 @@
+{
+  "unit": "gnat-wingup",
+  "fit_scale": 1,
+  "empty_dirs": [],
+  "clipped_dirs": [],
+  "size_pop_dirs": [
+    "NW",
+    "NNW",
+    "N",
+    "NNE",
+    "NE"
+  ],
+  "heights": [
+    48,
+    49,
+    50,
+    51,
+    46,
+    43,
+    40,
+    38,
+    36,
+    38,
+    40,
+    43,
+    46,
+    51,
+    50,
+    49
+  ],
+  "bottoms": [
+    104,
+    104,
+    104,
+    104,
+    101,
+    102,
+    102,
+    101,
+    101,
+    101,
+    102,
+    102,
+    101,
+    104,
+    104,
+    104
+  ],
+  "ref": "fw190",
+  "ref_fit_scale": 0.7294,
+  "drawSize_base": 40.8,
+  "ref_note": "STUKA_OPTS"
+}

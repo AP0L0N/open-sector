@@ -1,0 +1,50 @@
+{
+  "unit": "wasp-wingdown",
+  "fit_scale": 0.7949,
+  "empty_dirs": [],
+  "clipped_dirs": [],
+  "size_pop_dirs": [
+    "NNW",
+    "NNE"
+  ],
+  "heights": [
+    70,
+    69,
+    72,
+    71,
+    69,
+    69,
+    63,
+    60,
+    62,
+    60,
+    63,
+    69,
+    69,
+    71,
+    72,
+    69
+  ],
+  "bottoms": [
+    98,
+    98,
+    103,
+    110,
+    114,
+    105,
+    95,
+    91,
+    92,
+    91,
+    95,
+    105,
+    114,
+    110,
+    103,
+    98
+  ],
+  "ref": "fw190",
+  "ref_fit_scale": 0.7294,
+  "drawSize_base": 51.4,
+  "ref_note": "STUKA_OPTS"
+}

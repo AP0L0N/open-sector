@@ -37,9 +37,25 @@ membrane, translucent, with chitin spars and glowing veins.
   python3 tools/sprites/render_xeno_air.py gnat
   python3 tools/sprites/render_xeno_air.py all
 
+  python3 tools/sprites/render_xeno_air.py wasp --stroke wingup   # one stroke only
+  python3 tools/sprites/render_xeno_air.py all --check-only        # re-check what is on disk
+
 Writes gridlock/packages/client/src/assets/units/<id>/hull/0001..0016.png,
 <id>/<id>-hull.json, <id>-cameo.png (72 px), and previews in
 tools/sprites/preview/<id>-*.png.
+
+Wing strokes. The Wasp, Scourge and Gnat hover and beat their wings all the
+time, so each also gets <id>/wingup/ (upstroke: wings swung up about the root,
+tips well over the body) and <id>/wingdown/ (downstroke: swept down under the
+body), 0001..0016 each, plus <id>-wingup.json / <id>-wingdown.json; `hull/` is
+the mid stroke. One command renders all three strokes (`--stroke` picks one).
+The angles are FLAPPERS (dihedral about the body's long axis at the wing root,
+fore/hind): Wasp and Scourge +55/+48 up, -40/-34 down; Gnat +62/+55, -55/-48.
+Only the wings move (the Scourge's elytra stay raised), on the same camera,
+light, outline, ss, scale and 256 canvas, so the body sits on the same pixels in
+every stroke and the client can compose the three as layers of one union box.
+tools/sprites/preview_xeno_strokes.py draws the side-by-side boards and checks
+that (body-only renders identical across strokes, shipped hull = fresh render).
 """
 
 from __future__ import annotations
@@ -72,8 +88,25 @@ SCALE_FRAC = 0.062  # the Stuka's and the Fw 190's meters -> px
 
 
 def wing(m: Mesh, side: int, root_lead: float, root_trail: float, root_y: float, tip_y: float,
-         tip_lead: float, tip_trail: float, z0: float, z1: float, veins: int = 3, n: int = 10) -> None:
-    """A flat membrane wing: rounded tip, a chitin spar on the leading edge, glowing veins root to tip."""
+         tip_lead: float, tip_trail: float, z0: float, z1: float, veins: int = 3, n: int = 10,
+         dihedral: float = 0.0) -> None:
+    """A flat membrane wing: rounded tip, a chitin spar on the leading edge, glowing veins root to tip.
+
+    `dihedral` (degrees, + up) swings the whole wing, spar and veins with it, about
+    the body's long axis through the wing root (y = side * root_y, z = z0): one
+    flap stroke. 0 builds the mid stroke exactly as before (the hull art).
+    """
+    if dihedral:
+        ca, sa = math.cos(math.radians(dihedral)), math.sin(math.radians(dihedral))
+
+        def rot(p) -> np.ndarray:
+            p = np.asarray(p, dtype=float)
+            sp, h = side * p[1] - root_y, p[2] - z0  # outward span, height above the root
+            return np.array([p[0], side * (root_y + sp * ca - h * sa), z0 + sp * sa + h * ca])
+    else:
+        def rot(p) -> np.ndarray:
+            return p
+
     pts_lead = []
     pts_trail = []
     for i in range(n + 1):
@@ -89,23 +122,23 @@ def wing(m: Mesh, side: int, root_lead: float, root_trail: float, root_y: float,
         pts_lead.append(np.array([mid + half, side * y, z]))
         pts_trail.append(np.array([mid - half, side * y, z]))
     for i in range(n):
-        a, b = m.v(pts_lead[i]), m.v(pts_lead[i + 1])
-        c, d = m.v(pts_trail[i + 1]), m.v(pts_trail[i])
+        a, b = m.v(rot(pts_lead[i])), m.v(rot(pts_lead[i + 1]))
+        c, d = m.v(rot(pts_trail[i + 1])), m.v(rot(pts_trail[i]))
         m.quad(a, b, c, d, "membrane")
     # Leading-edge spar.
     for i in range(n - 1):
         r = 0.09 * (1 - i / n) + 0.03
-        tube(m, pts_lead[i] + np.array([0, 0, 0.02]), pts_lead[i + 1] + np.array([0, 0, 0.02]), r, r * 0.9, "chitin", n=5)
+        tube(m, rot(pts_lead[i] + np.array([0, 0, 0.02])), rot(pts_lead[i + 1] + np.array([0, 0, 0.02])), r, r * 0.9, "chitin", n=5)
     # Veins fan from the root to the trailing edge, lying on the membrane.
     for k in range(veins):
         f = (k + 1) / (veins + 1)
         root = pts_lead[0] * (1 - f) + pts_trail[0] * f + np.array([0, 0, 0.03])
         j = min(n, int(round(n * (0.55 + 0.4 * (1 - f)))))
         tip = pts_lead[j] * (1 - f * 0.9) + pts_trail[j] * (f * 0.9) + np.array([0, 0, 0.03])
-        tube(m, root, tip, 0.05, 0.03, "vein", n=4)
+        tube(m, rot(root), rot(tip), 0.05, 0.03, "vein", n=4)
 
 
-def build_wasp() -> Mesh:
+def build_wasp(fore: float = 0.0, hind: float = 0.0) -> Mesh:
     """Insect fighter in meters. +x nose, +y left wing, +z up. Folded legs at z = 0."""
     m = Mesh()
     zc = 1.55
@@ -124,8 +157,8 @@ def build_wasp() -> Mesh:
     # Forewings and hindwings, a little dihedral.
     wz = zc + 0.45
     for s in (-1, 1):
-        wing(m, s, 2.45, 1.0, 0.6, 5.2, 1.25, 0.15, wz, wz + 0.4, veins=3)
-        wing(m, s, 0.85, -0.45, 0.55, 3.7, -0.3, -1.0, wz - 0.1, wz + 0.15, veins=2, n=8)
+        wing(m, s, 2.45, 1.0, 0.6, 5.2, 1.25, 0.15, wz, wz + 0.4, veins=3, dihedral=fore)
+        wing(m, s, 0.85, -0.45, 0.55, 3.7, -0.3, -1.0, wz - 0.1, wz + 0.15, veins=2, n=8, dihedral=hind)
     # Twin pulse cannons, one slung under each forewing.
     for s in (-1, 1):
         y, z = s * 1.75, wz - 0.42
@@ -144,7 +177,7 @@ def build_wasp() -> Mesh:
     return m
 
 
-def build_scourge() -> Mesh:
+def build_scourge(fore: float = 0.0, hind: float = 0.0) -> Mesh:
     """Beetle dive bomber in meters. +x nose, +y left wing, +z up. Folded legs at z = 0."""
     m = Mesh()
     zc = 2.05
@@ -165,8 +198,8 @@ def build_scourge() -> Mesh:
     # Long wings out from under the elytra.
     wz = zc + 0.2
     for s in (-1, 1):
-        wing(m, s, 1.6, 0.0, 1.1, 7.0, 0.5, -0.9, wz, wz + 0.55, veins=3, n=12)
-        wing(m, s, -0.4, -2.0, 1.0, 4.6, -1.2, -2.4, wz - 0.15, wz + 0.15, veins=2, n=8)
+        wing(m, s, 1.6, 0.0, 1.1, 7.0, 0.5, -0.9, wz, wz + 0.55, veins=3, n=12, dihedral=fore)
+        wing(m, s, -0.4, -2.0, 1.0, 4.6, -1.2, -2.4, wz - 0.15, wz + 0.15, veins=2, n=8, dihedral=hind)
     # Plasma bomb pod slung under the belly in four chitin claws, nose and tail caps, fins.
     pz = 0.68
     ellipsoid(m, (-0.3, 0.0, pz), (1.75, 0.62, 0.62), "core", rings=10, seg=12)
@@ -240,7 +273,10 @@ def build_overseer() -> Mesh:
         tube(m, (rx, ry, zb - 0.3), mid, 0.11, 0.08, "limb", n=5)
         tube(m, mid, (rx * 0.85 - 0.75, ry * 0.85, 0.05), 0.08, 0.03, "limb", n=5)
         knob(m, (rx * 0.85 - 0.75, ry * 0.85, 0.08), 0.07, "vein")
-def build_gnat() -> Mesh:
+    return m
+
+
+def build_gnat(fore: float = 0.0, hind: float = 0.0) -> Mesh:
     """Tiny spy fly in meters. +x nose, +y left wing, +z up. Dangling legs at z = 0.
 
     Kept a little larger than a real fly would be beside the Wasp so it still reads
@@ -264,8 +300,8 @@ def build_gnat() -> Mesh:
     # Two pairs of short, broad wings, swept back a little.
     wz = zc + 0.4
     for s in (-1, 1):
-        wing(m, s, 0.6, -0.3, 0.3, 1.75, -0.2, -1.05, wz, wz + 0.16, veins=2, n=8)
-        wing(m, s, -0.1, -0.75, 0.28, 1.2, -0.75, -1.3, wz - 0.06, wz + 0.04, veins=1, n=6)
+        wing(m, s, 0.6, -0.3, 0.3, 1.75, -0.2, -1.05, wz, wz + 0.16, veins=2, n=8, dihedral=fore)
+        wing(m, s, -0.1, -0.75, 0.28, 1.2, -0.75, -1.3, wz - 0.06, wz + 0.04, veins=1, n=6, dihedral=hind)
     # Three pairs of thin legs hanging under the thorax: the lowest point.
     for s in (-1, 1):
         for hx, fx in ((0.5, 0.72), (0.22, 0.16), (-0.06, -0.4)):
@@ -284,13 +320,40 @@ UNITS_SPEC = {
 }
 
 
-def render(unit: str, ss: int = 4, check_only: bool = False) -> None:
+# Wing strokes of the fliers: folder -> (forewing, hindwing) dihedral in degrees about the
+# wing root. `hull` is the mid stroke (the plain hull art); the hindwings lag the forewings
+# a little. Same mesh body, camera, scale and canvas in every stroke: only the wings move.
+# The Gnat's short wings beat deeper so the stroke still reads at its 41 px.
+STROKES = {
+    "hull": (0.0, 0.0),
+    "wingup": (55.0, 48.0),
+    "wingdown": (-40.0, -34.0),
+}
+FLAPPERS = {
+    "wasp": STROKES,
+    "scourge": STROKES,
+    "gnat": {"hull": (0.0, 0.0), "wingup": (62.0, 55.0), "wingdown": (-55.0, -48.0)},
+}
+
+
+def strokes_of(unit: str) -> list[str]:
+    return list(FLAPPERS[unit]) if unit in FLAPPERS else ["hull"]
+
+
+def render(unit: str, ss: int = 4, check_only: bool = False, only: str | None = None) -> None:
     build, z_mid, ref, ref_draw = UNITS_SPEC[unit]
-    out = UNITS / unit / "hull"
-    if not check_only:
-        render_turntable(build(), out, f"{unit}_hull", f"{unit}-hull.json", SCALE_FRAC, z_mid, cell=256, ss=ss)
-    cameo72(out, UNITS / f"{unit}-cameo.png")
-    check(unit, out, 0.8, 2, ref, ref_draw, "STUKA_OPTS")
+    for stroke in strokes_of(unit):
+        if only and stroke != only:
+            continue
+        out = UNITS / unit / stroke
+        if not check_only:
+            mesh = build(*FLAPPERS[unit][stroke]) if unit in FLAPPERS else build()
+            render_turntable(mesh, out, f"{unit}_{stroke}", f"{unit}-{stroke}.json", SCALE_FRAC, z_mid, cell=256, ss=ss)
+        if stroke == "hull":
+            cameo72(out, UNITS / f"{unit}-cameo.png")
+            check(unit, out, 0.8, 2, ref, ref_draw, "STUKA_OPTS")
+        else:
+            check(f"{unit}-{stroke}", out, 0.8, 2, ref, ref_draw, "STUKA_OPTS")
 
 
 def main() -> None:
@@ -298,9 +361,10 @@ def main() -> None:
     ap.add_argument("what", choices=["wasp", "scourge", "gnat", "overseer", "all"])
     ap.add_argument("--ss", type=int, default=4)
     ap.add_argument("--check-only", action="store_true")
+    ap.add_argument("--stroke", choices=list(STROKES), help="render only this wing stroke (default: all)")
     args = ap.parse_args()
     for u in (UNITS_SPEC if args.what == "all" else [args.what]):
-        render(u, args.ss, args.check_only)
+        render(u, args.ss, args.check_only, args.stroke)
 
 
 if __name__ == "__main__":

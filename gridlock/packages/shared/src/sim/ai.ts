@@ -37,6 +37,7 @@ import {
   fieldSpan,
   fires,
   isAircraftType,
+  staysAloft,
   isArmoredType,
   isDroneType,
   isBuildingType,
@@ -1260,7 +1261,7 @@ function watchSky(state: MatchState, p: SimPlayer, plan: AiPlan): void {
   if (plan.airSeenTick != null) return;
   for (const e of state.entities.values()) {
     if (e.hp <= 0 || !e.ownerId || allies(state, p.playerId, e.ownerId)) continue;
-    if (!isAircraftType(e.type) && !isDroneType(e.type) && !isAirfieldType(e.type)) continue;
+    if (!isAircraftType(e.type) && !isDroneType(e.type) && !isAirfieldType(e.type) && e.type !== "aerie") continue;
     if (!canSeeEntity(state, p.playerId, e)) continue;
     plan.airSeenTick = state.tick;
     return;
@@ -1289,12 +1290,13 @@ function scramble(state: MatchState, p: SimPlayer, hq: Entity): void {
   if (ids.length > 0) applyCommand(state, p.playerId, { type: "cmd.attackmove", ids, x: target.x, y: target.y });
 }
 
-/** Every armed dive bomber on its pad takes off and attack-moves at the point. */
+/** Every armed dive bomber on its pad, and every idle Xenomorph flier, attack-moves at the point. */
 function sortie(state: MatchState, p: SimPlayer, x: number, y: number): void {
   const ids: number[] = [];
   for (const e of state.entities.values()) {
     if (e.ownerId !== p.playerId || e.hp <= 0 || !isAircraftType(e.type) || !e.air) continue;
-    if (e.air.phase !== "parked" || e.air.bombs < STUKA_BOMBS) continue;
+    const idleAloft = staysAloft(e.type) && !e.order && e.air.phase !== "crash";
+    if (!idleAloft && (e.air.phase !== "parked" || e.air.bombs < STUKA_BOMBS)) continue;
     ids.push(e.id);
   }
   if (ids.length === 0) return;

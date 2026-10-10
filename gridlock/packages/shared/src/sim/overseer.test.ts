@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
   OVERSEER_CRUISE_ALT,
+  OVERSEER_FUEL_SECONDS,
   OVERSEER_HOVER_ALT,
   OVERSEER_HULL_MUL,
   OVERSEER_PULSE_DAMAGE,
@@ -15,7 +16,7 @@ import {
   isHq,
   secondsToTicks,
 } from "../catalog.js";
-import { airfieldPadWorld, isAirborne } from "./air.js";
+import { isAirborne } from "./air.js";
 import { applyCommand } from "./commands.js";
 import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
@@ -122,17 +123,19 @@ describe("Overseer", () => {
     assert.ok(tank.hpMax - tank.hp <= Math.ceil(per * 1.15), `first pulse ${tank.hpMax - tank.hp}`);
   });
 
-  it("sets straight back down on its nest when told to land", () => {
+  it("never lands: Land stops it in the air, and it never runs dry", () => {
     const state = twoPlayerMatch();
-    const { aerie, craft } = nest(state);
+    const { craft } = nest(state);
     const ts = state.tileSize;
-    const pad = airfieldPadWorld(aerie, craft.air!.pad, ts);
     applyCommand(state, "A", { type: "cmd.move", ids: [craft.id], x: craft.x + 30 * ts, y: craft.y + 30 * ts });
     ticks(state, 300);
     assert.ok(isAirborne(craft));
     assert.equal(applyCommand(state, "A", { type: "cmd.land", ids: [craft.id] }).ok, true);
-    assert.ok(until(state, 2000, () => craft.air?.phase === "parked") >= 0, "it lands");
-    assert.equal(craft.x, pad.x);
-    assert.equal(craft.y, pad.y);
+    const x = craft.x;
+    const y = craft.y;
+    ticks(state, secondsToTicks(OVERSEER_FUEL_SECONDS * 2));
+    assert.ok(craft.hp > 0 && isAirborne(craft), "still up, long past a tank's worth");
+    assert.notEqual(craft.air?.phase, "parked");
+    assert.ok(Math.hypot(craft.x - x, craft.y - y) < 1, "it hangs where it stopped");
   });
 });

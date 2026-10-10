@@ -6,6 +6,7 @@ import {
   factionOf,
   isCyborg,
   secondsToTicks,
+  staysAloft,
 } from "../catalog.js";
 import { isAirborne } from "./air.js";
 import { allies } from "./geo.js";
@@ -27,10 +28,10 @@ function mending(e: Entity): boolean {
   return isWeaver(e.type) && e.hp > 0 && !e.wreck && !e.shutdown && !e.dormant && e.garrisonedIn == null;
 }
 
-/** May `w` mend `o`: a live Xenomorph unit of its side, not in the air, not inside, not itself, hurt. */
+/** May `w` mend `o`: a live Xenomorph unit of its side, not inside, not itself, hurt; in the air only a Xenomorph flier, which has no nest to mend on. */
 export function weaverMends(state: MatchState, w: Entity, o: Entity): boolean {
   if (o === w || o.kind !== "unit" || o.hp <= 0 || o.wreck || o.hp >= o.hpMax) return false;
-  if (factionOf(o.type) !== "xeno" || o.garrisonedIn != null || isAirborne(o)) return false;
+  if (factionOf(o.type) !== "xeno" || o.garrisonedIn != null || (isAirborne(o) && !staysAloft(o.type))) return false;
   if (!allies(state, w.ownerId, o.ownerId)) return false;
   const reach = WEAVER_REACH_TILES * state.tileSize;
   return Math.hypot(o.x - w.x, o.y - w.y) <= reach + o.radius;
