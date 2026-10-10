@@ -4392,13 +4392,27 @@ export const OVERSEER_LIFT_PER_SEC = 5;
 /**
  * The hovering Xenomorph fliers (staysAloft) on station. A Wasp hangs HIVE_WASP_STANDOFF_TILES
  * off its target, still in the air, and looses a burst of energy bolts whenever its cell has a
- * burst in it (see WASP_BURST_BOLTS); a Scourge hangs HIVE_SCOURGE_STANDOFF_TILES off and lobs a
- * bomb every HIVE_BOMB_SECONDS, its pulse guns firing a burst of one tick every
- * HIVE_GUN_BURST_SECONDS at soft targets. They lift and sink at OVERSEER_LIFT_PER_SEC.
+ * burst in it (see WASP_BURST_BOLTS); a Scourge hangs HIVE_SCOURGE_STANDOFF_TILES off at cruise
+ * height and throws a big plasma bolt (SCOURGE_BOLT_RACK) every HIVE_BOMB_SECONDS, its pulse guns
+ * firing a burst of one tick every HIVE_GUN_BURST_SECONDS at soft targets. They lift and sink at
+ * OVERSEER_LIFT_PER_SEC.
  */
 export const HIVE_WASP_STANDOFF_TILES = t(7);
-export const HIVE_SCOURGE_STANDOFF_TILES = t(2);
+export const HIVE_SCOURGE_STANDOFF_TILES = t(4);
 export const HIVE_BOMB_SECONDS = 5;
+/**
+ * How a hovering Xenomorph flier (staysAloft) gets about: like a dragonfly, along its nose. Sent at
+ * a point behind it, it carries on a little while it brakes, whips round sharper the slower it goes,
+ * then darts off once the point is near the nose. Its turn rate runs from the catalog turnDegPerSec
+ * at full speed up to HIVE_FLIT_SLOW_TURN_MUL times that when nearly still. Its speed (a share of
+ * cruise) climbs HIVE_FLIT_ACCEL and bleeds HIVE_FLIT_BRAKE a second; it keeps HIVE_FLIT_MIN_SPEED
+ * while it turns, and holds full speed with the point within HIVE_FLIT_FULL_DEG of the nose.
+ */
+export const HIVE_FLIT_SLOW_TURN_MUL = 3;
+export const HIVE_FLIT_ACCEL = 1.4;
+export const HIVE_FLIT_BRAKE = 2.2;
+export const HIVE_FLIT_MIN_SPEED = 0.2;
+export const HIVE_FLIT_FULL_DEG = 30;
 export const HIVE_GUN_BURST_SECONDS = 0.5;
 /**
  * Wasp energy burst: WASP_BURST_BOLTS laser bolts at once from both wing emitters, each coming down
@@ -4413,8 +4427,32 @@ export const WASP_BURST_SCATTER_TILES = t(1.6);
 export const WASP_BURST_ARC_DEG = 15;
 export const WASP_BURST_COOLDOWN = 1.2;
 export const WASP_BOLT = { damage: 26, penetration: 35, caliber: 20 } as const;
-/** A Scourge's bomb draws this much from its energy cell; a gun burst draws one. */
+/** A Scourge's plasma bolt draws this much from its energy cell; a gun burst draws one. */
 export const HIVE_BOMB_ENERGY = 4;
+/**
+ * The Scourge's plasma bolt: one big glowing orb thrown from the pod at cruise height, straight
+ * down the line onto the point laid on, bursting wide where it lands or on the first hull it meets.
+ * It flies as a rocket (sim/combat.ts stepRocket, launcher "scourge") and is drawn as a plasma orb.
+ * Fired within SCOURGE_BOLT_TILES and SCOURGE_BOLT_ARC_DEG of the nose, every HIVE_BOMB_SECONDS.
+ */
+export const SCOURGE_BOLT_TILES = t(6);
+export const SCOURGE_BOLT_ARC_DEG = 25;
+export const SCOURGE_BOLT_RACK: RocketRackDef = {
+  salvo: 1,
+  interval: 0,
+  reload: HIVE_BOMB_SECONDS,
+  scatterNearTiles: t(0.15),
+  scatterFarTiles: t(0.6),
+  splashTiles: t(1.7),
+  speed: t(9) * TILE_SIZE,
+  podLift: 0,
+  damage: 70,
+  armorDamage: 40,
+  airMul: 0,
+  penetration: 60,
+  caliber: 120,
+  antiAir: false,
+};
 /** Seconds of flight in a full tank: it hangs in the air longer than a plane flies. */
 export const OVERSEER_FUEL_SECONDS = 140;
 
@@ -6862,7 +6900,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     plasmaCell: { shots: 4, rechargeSeconds: 8 },
     blurb: `Insect gunship on buzzing green-veined wings, a laser emitter under each. It never lands. Sent at something it flies straight at it, stops ${HIVE_WASP_STANDOFF_TILES / TILE_SUBDIV} tiles short, hangs still in the air, and looses a storm of ${WASP_BURST_BOLTS} energy bolts at the spot: long reach, poor aim, a burst blankets a patch of ground ${(2 * WASP_BURST_SCATTER_TILES) / TILE_SUBDIV} tiles across and comes down through a tank's thin roof. Its cell holds four bursts and grows one back every eight seconds; drained, it hangs there waiting for the charge. It fires on enemy planes the same way. A hit that tears a wing brings it down at once.`,
   },
-  /** Xenomorph dive bomber: beetle carapace and a plasma bomb pod. Lives in an Aerie nest. */
+  /** Xenomorph gunship: beetle carapace and a plasma bolt pod. Lives in an Aerie nest. */
   scourge: {
     type: "scourge",
     kind: "unit",
@@ -6890,7 +6928,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     aircraft: true,
     wreckHp: 23,
     plasmaCell: { shots: 16, rechargeSeconds: 1 },
-    blurb: `Hovering bomber with a beetle's carapace and buzzing wings. A plasma bomb in a glowing pod that grows the next one ${HIVE_BOMB_SECONDS} seconds after the last falls, and two pulse guns for soft targets. It never lands: sent at something it hangs just off it, lobbing bomb after bomb and raking it in bursts. Bombs and guns draw on one energy cell that regrows by itself; a bomb takes ${HIVE_BOMB_ENERGY} times a gun burst, and a drained cell holds both back until it charges. Flies over everything; only rifles, machine guns, the Walker, and the Titan's rockets can reach it in the air. A hit that tears a wing brings it down at once. Needs a Neural Nexus.`,
+    rocketRack: SCOURGE_BOLT_RACK,
+    blurb: `Hovering gunship with a beetle's carapace and buzzing wings. A glowing pod that throws a big plasma bolt every ${HIVE_BOMB_SECONDS} seconds, bursting wide where it comes down, and two pulse guns for soft targets. It never lands and never sinks to fire: sent at something it hangs at its cruise height ${HIVE_SCOURGE_STANDOFF_TILES / TILE_SUBDIV} tiles off, throwing bolt after bolt down on it and raking it in bursts. Bolts and guns draw on one energy cell that regrows by itself; a bolt takes ${HIVE_BOMB_ENERGY} times a gun burst, and a drained cell holds both back until it charges. Flies over everything; only rifles, machine guns, the Walker, and the Titan's rockets can reach it in the air. A hit that tears a wing brings it down at once. Needs a Neural Nexus.`,
   },
   /** Xenomorph hover craft: hangs over its target and burns straight down. Lives in an Aerie nest. */
   overseer: {
