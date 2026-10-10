@@ -50,6 +50,7 @@ import hiveCoreUrl from "../assets/buildings/hivecore.png";
 import fusionNodeUrl from "../assets/buildings/fusionnode.png";
 import forgeUrl from "../assets/buildings/forge.png";
 import nexusUrl from "../assets/buildings/nexus.png";
+import conversionUrl from "../assets/buildings/conversion.png";
 import assimilatorUrl from "../assets/buildings/assimilator.png";
 import radarUrl from "../assets/buildings/radar.png";
 import dockUrl from "../assets/buildings/dock.png";
@@ -64,6 +65,11 @@ import juggernautSwingUrl from "../assets/units/juggernaut-swing.png";
 import juggernautFistsUrl from "../assets/units/juggernaut-fists.png";
 import juggernautPunchUrl from "../assets/units/juggernaut-punch.png";
 import juggernautThrowUrl from "../assets/units/juggernaut-throw.png";
+import juggernautWalkWadeUrl from "../assets/units/juggernaut-walk-wade.png";
+import juggernautSwingWadeUrl from "../assets/units/juggernaut-swing-wade.png";
+import juggernautFistsWadeUrl from "../assets/units/juggernaut-fists-wade.png";
+import juggernautPunchWadeUrl from "../assets/units/juggernaut-punch-wade.png";
+import juggernautThrowWadeUrl from "../assets/units/juggernaut-throw-wade.png";
 import ravagerLegsUrl from "../assets/units/ravager-legs.png";
 import ravagerTurretUrl from "../assets/units/ravager-turret.png";
 import ravagerGunUrl from "../assets/units/ravager-gun.png";
@@ -75,7 +81,6 @@ import scourgeWreckUrl from "../assets/units/wrecks/scourge.png";
 import overseerWreckUrl from "../assets/units/wrecks/overseer.png";
 import spawnPoolUrl from "../assets/buildings/spawnpool.png";
 import aerieUrl from "../assets/buildings/aerie.png";
-import aerieGroundUrl from "../assets/buildings/aerie-ground.png";
 import ramUrl from "../assets/buildings/ram.png";
 import ramTurretUrl from "../assets/buildings/ram-turret.png";
 import cottageUrl from "../assets/buildings/cottage.png";
@@ -406,6 +411,8 @@ import {
   bindBattleshipSheets,
   bindApocalypseSheets,
   bindPlaneSheets,
+  bindFlutterSheets,
+  FLUTTER_FRAMES,
   bindNebelwerferSheets,
   bindArtillerySheets,
   bindTurntableSheets,
@@ -1392,6 +1399,12 @@ export const JUGGERNAUT_SWING_SPRITE = juggernautSheet(juggernautSwingUrl, 8);
 export const JUGGERNAUT_FISTS_SPRITE = juggernautSheet(juggernautFistsUrl, 8);
 export const JUGGERNAUT_PUNCH_SPRITE = juggernautSheet(juggernautPunchUrl, 8);
 export const JUGGERNAUT_THROW_SPRITE = juggernautSheet(juggernautThrowUrl, 4);
+/** In water: the same five, sunk to mid-thigh in the pool. Same cell, scale, and contact. */
+export const JUGGERNAUT_WALK_WADE_SPRITE = juggernautSheet(juggernautWalkWadeUrl, 8);
+export const JUGGERNAUT_SWING_WADE_SPRITE = juggernautSheet(juggernautSwingWadeUrl, 8);
+export const JUGGERNAUT_FISTS_WADE_SPRITE = juggernautSheet(juggernautFistsWadeUrl, 8);
+export const JUGGERNAUT_PUNCH_WADE_SPRITE = juggernautSheet(juggernautPunchWadeUrl, 8);
+export const JUGGERNAUT_THROW_WADE_SPRITE = juggernautSheet(juggernautThrowWadeUrl, 4);
 
 const ss3Gun: TurretSpriteDef = {
   image: new Image(),
@@ -1671,44 +1684,47 @@ export const LURKER_SPRITE: UnitSpriteDef = {
 };
 bindNavalSheets("lurker", LURKER_SPRITE.image);
 
-/** Wasp: the Xenomorph fighter, the Fw 190's camera and scale. */
+/** Wing-stroke frames a second on the Xenomorph insects: a blur of a beat at play size. */
+export const WING_BEAT_FPS = 24;
+
+/** Wasp: the Xenomorph fighter, the Fw 190's camera and scale. Its wings beat all the time (FLUTTER_FRAMES, see wingBeatFrame). */
 export const WASP_SPRITE: UnitSpriteDef = {
   image: new Image(),
   dirs: TANK_FACE_DIRS,
-  frames: 1,
+  frames: FLUTTER_FRAMES,
   frameSize: 128,
-  fps: 8,
+  fps: WING_BEAT_FPS,
   drawSize: Math.round(56 * UNIT_VISUAL_SCALE),
   contactY: 0.8,
   facingSpace: "world",
 };
-bindPlaneSheets("wasp", WASP_SPRITE.image);
+bindFlutterSheets("wasp", WASP_SPRITE.image);
 
-/** Scourge: the Xenomorph dive bomber, the Stuka's camera and scale. */
+/** Scourge: the Xenomorph dive bomber, the Stuka's camera and scale. Its wings beat all the time (FLUTTER_FRAMES, see wingBeatFrame). */
 export const SCOURGE_SPRITE: UnitSpriteDef = {
   image: new Image(),
   dirs: TANK_FACE_DIRS,
-  frames: 1,
+  frames: FLUTTER_FRAMES,
   frameSize: 128,
-  fps: 8,
+  fps: WING_BEAT_FPS,
   drawSize: Math.round(63 * UNIT_VISUAL_SCALE),
   contactY: 0.8,
   facingSpace: "world",
 };
-bindPlaneSheets("scourge", SCOURGE_SPRITE.image);
+bindFlutterSheets("scourge", SCOURGE_SPRITE.image);
 
-/** Gnat: the Xenomorph spy fly, the Fw 190's camera at true scale beside the Wasp: tiny on the map. */
+/** Gnat: the Xenomorph spy fly, the Fw 190's camera at true scale beside the Wasp: tiny on the map. Its wings beat all the time (FLUTTER_FRAMES, see wingBeatFrame). */
 export const GNAT_SPRITE: UnitSpriteDef = {
   image: new Image(),
   dirs: TANK_FACE_DIRS,
-  frames: 1,
+  frames: FLUTTER_FRAMES,
   frameSize: 128,
-  fps: 8,
+  fps: WING_BEAT_FPS,
   drawSize: Math.round(41 * UNIT_VISUAL_SCALE),
   contactY: 0.8,
   facingSpace: "world",
 };
-bindPlaneSheets("gnat", GNAT_SPRITE.image);
+bindFlutterSheets("gnat", GNAT_SPRITE.image);
 
 /**
  * Overseer: the Xenomorph hover craft, the Stuka's camera and fit. At the Fw 190's px per meter
@@ -2201,14 +2217,16 @@ const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   forge: building(forgeUrl, 384, 204, 232.2, 188, 22.2),
   // Neural core in a rib cage under a sensor crown: Xenomorph tech and radar, t(2).
   nexus: building(nexusUrl, 384, 210, 322.9, 210, 19.9),
+  // Chitin dome, a ring of conversion pods, synapse spire: the Xenomorph barracks, t(2) like the Barracks.
+  conversion: building(conversionUrl, 384, 210, 299.2, 216, 8.2),
   // Ops hut, lattice mast, dish. Metrics from tools/sprites/render_radar.py (radar.json); the stack hangs over the dish.
   radar: building(radarUrl, 384, 210, 354, 216, 58),
   // The pier stands in its pond: a hard edge, no blend onto ground that is not there.
   dock: building(dockUrl, 384, 210, 354, 214, 92, false),
   // Chitin ring round a birthing pool, floating on open water like the Marine Base (render_xeno_harbour.py).
   spawnpool: building(spawnPoolUrl, 384, 210, 240.1, 163.3, 28.1, false),
-  // Launch spine and four nests on the Airfield's canvas and pads.
-  aerie: building(aerieUrl, 960, 652, 552, 588, 100, false),
+  // Brood spire, wing fins, launch maw, cradles: the Xenomorph flier hive, t(3) like the Forge. Metrics from tools/sprites/render_xeno_base.py (aerie.json).
+  aerie: building(aerieUrl, 384, 204, 294.4, 204, 35.2),
   // Concrete pillbox. Metrics from tools/sprites/render_bunker.py (bunker.json). Turned faces in TURNED_FACES.
   bunker: building(bunkerUrl, 384, 222, 264, 222, 99),
   // Concrete shaft and slitted cab. Metrics from tools/sprites/render_tower.py (tower.json). Turned faces in TURNED_FACES.
@@ -2376,7 +2394,6 @@ export const RAM_TURRET_SHEET: HTMLImageElement = loadSheet(ramTurretUrl);
  */
 const BUILDING_GROUNDS: Partial<Record<EntityType, BuildingSpriteDef>> = {
   airfield: building(airfieldGroundUrl, 960, 652, 552, 604, 112, false),
-  aerie: building(aerieGroundUrl, 960, 652, 552, 588, 100, false),
 };
 
 export function buildingGroundFor(type: EntityType, facing = 0): BuildingSpriteDef | undefined {

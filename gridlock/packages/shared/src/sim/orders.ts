@@ -10,7 +10,7 @@ import {
   TILE_SIZE,
   TRACK_ARRIVE_SLOP,
 } from "../catalog.js";
-import { adjacentToBuilding, hqOf, rallyPoint, unitInWater, worldToTile } from "./geo.js";
+import { adjacentToBuilding, hqOf, rallyPoint, unitInWater, waterSilenced, worldToTile } from "./geo.js";
 import { wantsCapture, pathToCapture } from "./capture.js";
 import { moveWithCollision, pathAroundParked, stepGiveWay, tickMakeWay, tickShuffle } from "./collision.js";
 import { activateSpatial, clearSpatial } from "./spatial.js";
@@ -216,7 +216,7 @@ function tickMovementBodies(state: MatchState, dt: number): void {
           }
           if (e.waypoints.length === 0 || (state.tick + e.id) % 5 === 0) pathToCapture(state, e, t);
         } else {
-          if ((inWeaponReach(state, e, t) && !unitInWater(state, e)) || e.holdPosition) {
+          if ((inWeaponReach(state, e, t) && !waterSilenced(state, e)) || e.holdPosition) {
             e.waypoints = [];
             continue;
           }
@@ -235,9 +235,9 @@ function tickMovementBodies(state: MatchState, dt: number): void {
     ) {
       const range = weaponRangeWorld(state, e);
       const dist = Math.hypot(e.order.x - e.x, e.order.y - e.y);
-      if ((dist <= range && !unitInWater(state, e)) || e.holdPosition) {
+      if ((dist <= range && !waterSilenced(state, e)) || e.holdPosition) {
         e.waypoints = [];
-        if (dist <= range && !unitInWater(state, e)) e.state = "attack";
+        if (dist <= range && !waterSilenced(state, e)) e.state = "attack";
         e.tileX = worldToTile(e.x, state.tileSize);
         e.tileY = worldToTile(e.y, state.tileSize);
         continue;
@@ -257,7 +257,7 @@ function tickMovementBodies(state: MatchState, dt: number): void {
             continue;
           }
         } else {
-          if (inWeaponReach(state, e, t) && !unitInWater(state, e)) {
+          if (inWeaponReach(state, e, t) && !waterSilenced(state, e)) {
             e.state = "attack";
             e.tileX = worldToTile(e.x, state.tileSize);
             e.tileY = worldToTile(e.y, state.tileSize);
@@ -375,14 +375,14 @@ function steerPatrol(state: MatchState, e: Entity): boolean {
     if (t && t.hp > 0) {
       const range = weaponRangeWorld(state, e);
       const dist = Math.hypot(t.x - e.x, t.y - e.y);
-      if (inWeaponReach(state, e, t) && !unitInWater(state, e)) {
+      if (inWeaponReach(state, e, t) && !waterSilenced(state, e)) {
         e.waypoints = [];
         e.state = "attack";
         return true;
       }
       // In the water the gun is silent. Stay on the route instead of wading closer.
       // A unit told to hold its ground keeps walking the route and lets the target come to it.
-      if (!e.holdPosition && !(unitInWater(state, e) && dist <= range)) {
+      if (!e.holdPosition && !(waterSilenced(state, e) && dist <= range)) {
         const goal = e.waypoints[e.waypoints.length - 1];
         if (!goal || Math.hypot(goal.x - t.x, goal.y - t.y) > state.tileSize || (state.tick + e.id) % 5 === 0) {
           setPath(state, e, t.x, t.y);

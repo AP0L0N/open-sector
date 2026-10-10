@@ -87,6 +87,8 @@ import {
   TICK_DT,
   burnVariant,
   DRONE_LEASH_TILES,
+  DEPLOYMENT_LEASH_TILES,
+  HIVE_DROP_SECONDS,
   HEIGHT_BASE,
   PATROL_POINTS_MAX,
   connectPatrolPoints,
@@ -265,6 +267,9 @@ import {
   JUMPJET_DIE_SPRITE,
   JUMPJET_FIRE_SPRITE,
   JUMPJET_FLY_SPRITE,
+  WASP_SPRITE,
+  SCOURGE_SPRITE,
+  GNAT_SPRITE,
   JUMPJET_SPRITE,
   MEDIC_SPRITE,
   CYBORG_CRAWL_FIRE_SPRITE,
@@ -303,6 +308,7 @@ import {
   TROOPER_DIE_SPRITE,
   TROOPER_HANDGUN_SPRITE,
   TROOPER_RIFLE_FIRE_SPRITE,
+  buildingSpriteDestRect,
   unitHitsBuildingSprite,
   type BuildingSpriteDef,
   type UnitSpriteDef,
@@ -313,6 +319,7 @@ import { drawTorpedoBody } from "./torpedo-draw.js";
 import { drawRadarContact, drawRadarOffline, radarContactLit } from "./radar-panel.js";
 import { drawSonarContact, drawWaterMine } from "./sonar-fx.js";
 import { drawHeatContact, drawScanContact } from "./thermal-fx.js";
+import { drawDeploymentGrid, drawHiveComet, drawHiveImpact, HIVE_IMPACT_MS } from "./hive-drop-fx.js";
 import {
   drawTrackKick,
   spawnTrackKickPuffs,
@@ -448,7 +455,7 @@ import {
   tonguePose,
   type FlameParticle,
 } from "./flame-fx.js";
-import { AIR_DRAW_LAYER, aircraftShadowScale, airLiftPx, drawFallingBomb, inAir, lerpAirAlt } from "./aircraft.js";
+import { AIR_DRAW_LAYER, aircraftShadowScale, airLiftPx, drawFallingBomb, hoverBobPx, inAir, lerpAirAlt, saucerSpin, wingBeatFrame } from "./aircraft.js";
 import { layCrashTrail, layChargeTrail, CRASH_PUFF_CAP, CHARGE_PUFF_CAP } from "./crash-smoke.js";
 import { canopySway, drawCanopy, drawCrate, drawMine, troopCanopySpan } from "./airdrop-fx.js";
 import { barrageTracers, tracerLandsAt, tracerSpan, type BarrageTracer } from "./barrage-tracer.js";
@@ -475,7 +482,18 @@ import { drawShutdownMark, drawUplink, SHUTDOWN_UNIT_FILTER } from "./cyborg-lin
 import { BLINK_FX_MS, drawBlinkFx, drawPurgeMark } from "./blink-fx.js";
 import { BITE_FX_MS, DOWN_BEAM_MS, drawBite, drawDownBeam } from "./hive-fx.js";
 import { SIMUNIT2_CRAWL_FIRE_SPRITE, SIMUNIT2_CRAWL_SPRITE, SIMUNIT2_DIE_SPRITE, SIMUNIT2_FIRE_SPRITE, SIMUNIT2_SPRITE, UNIT_SPRITE_DRAW_SIZE } from "./sprites.js";
-import { JUGGERNAUT_FISTS_SPRITE, JUGGERNAUT_PUNCH_SPRITE, JUGGERNAUT_SPRITE, JUGGERNAUT_SWING_SPRITE, JUGGERNAUT_THROW_SPRITE } from "./sprites.js";
+import {
+  JUGGERNAUT_FISTS_SPRITE,
+  JUGGERNAUT_FISTS_WADE_SPRITE,
+  JUGGERNAUT_PUNCH_SPRITE,
+  JUGGERNAUT_PUNCH_WADE_SPRITE,
+  JUGGERNAUT_SPRITE,
+  JUGGERNAUT_SWING_SPRITE,
+  JUGGERNAUT_SWING_WADE_SPRITE,
+  JUGGERNAUT_THROW_SPRITE,
+  JUGGERNAUT_THROW_WADE_SPRITE,
+  JUGGERNAUT_WALK_WADE_SPRITE,
+} from "./sprites.js";
 import { drawThrownHammer, pickJuggernautPose, JUGGERNAUT_STRIDE_WORLD, type JuggernautSheet } from "./juggernaut-fx.js";
 import {
   THRALL_CRAWL_FIRE_SPRITE,
@@ -559,6 +577,7 @@ import {
   HOLE_DRAW_LAYER,
   STANDING_DRAW_LAYER,
 } from "./corpse-depth.js";
+import { FRIENDLY_XRAY_ALPHA, XrayLayer, xrayPairs, type XrayItem } from "./friendly-xray.js";
 import { CLUTTER_BREAK_MS, drawClutterSplinters } from "./clutter-fx.js";
 import { drawTreeFall, TREE_FALL_MS } from "./tree-fall.js";
 import { drawBurnedCorpse, drawBurningTree } from "./burn-draw.js";
@@ -724,6 +743,7 @@ const EXTRUDE: Record<EntityType, number> = {
   seed: 22,
   forge: 52,
   nexus: 58,
+  conversion: 52,
   spineturret: 14,
   pulsespire: 30,
   laserfence: 20,
@@ -733,7 +753,7 @@ const EXTRUDE: Record<EntityType, number> = {
   airfield: 14,
   dock: 12,
   spawnpool: 12,
-  aerie: 14,
+  aerie: 64,
   ciws: 26,
   research: 40,
   radar: 44,
@@ -918,7 +938,7 @@ const TORPEDO_WAKE_MUL = 6;
 
 function isProducerView(e: EntityView): boolean {
   // The Airfield trains too, but its planes park on the strip; it has no rally point.
-  return e.kind === "building" && (e.type === "muster" || isSmelterType(e.type) || e.type === "armory" || isDockType(e.type) || e.type === "cyborgcentral" || e.type === "forge");
+  return e.kind === "building" && (e.type === "muster" || isSmelterType(e.type) || e.type === "armory" || isDockType(e.type) || e.type === "cyborgcentral" || e.type === "conversion" || e.type === "forge");
 }
 
 function hpBarFill(ratio: number, hostile: boolean, vivid = false): string {
@@ -1018,6 +1038,7 @@ export class MapView {
   /** Swapped for a scratch layer while a fogged building draws; see `drawVeiled`. */
   private ctx: CanvasRenderingContext2D;
   private readonly buildingVeil = new BuildingVeil();
+  private readonly xrayLayer = new XrayLayer();
   /** Wall-clock ms a foreign unit first appeared in a snapshot. */
   private unitSeenAt = new Map<number, number>();
   private readonly mctx: CanvasRenderingContext2D;
@@ -1033,6 +1054,10 @@ export class MapView {
   private prevProjById = new Map<number, ProjectileView>();
   private prevSonarById = new Map<number, NonNullable<MatchSnapshot["sonar"]>[number]>();
   private prevThermalById = new Map<number, NonNullable<MatchSnapshot["thermal"]>[number]>();
+  /** Hive Cores on their way down: when the fall began here, and the landing spot (world). */
+  private hiveDrops = new Map<number, { startMs: number; x: number; y: number }>();
+  /** Hive Cores that just landed: when, and where (world). */
+  private hiveImpacts: { atMs: number; x: number; y: number }[] = [];
   private prevCrateById = new Map<number, MatchSnapshot["crates"][number]>();
   /** Walker legs: ground walked so far and where the hull was last frame. */
   private walkerOdo = new Map<number, { x: number; y: number; d: number }>();
@@ -4037,7 +4062,8 @@ export class MapView {
     }
     if (!e.air && !e.jet && e.chute == null) return 0;
     const t = Math.min(1, (performance.now() - this.snapAt) / 100);
-    return airLiftPx(lerpAirAlt(this.prevById.get(e.id), e, t));
+    // A Xenomorph flier hanging in the air bobs gently on its wings.
+    return airLiftPx(lerpAirAlt(this.prevById.get(e.id), e, t)) + hoverBobPx(e, performance.now());
   }
 
   private lerpEnt(e: EntityView): { x: number; y: number; facing: number; turretFacing: number } {
@@ -4766,6 +4792,7 @@ export class MapView {
     }
     items.sort(compareDrawOrder);
     for (const it of items) it.run();
+    this.drawFriendlyXray(drawList, liveIds, w, h, now);
     this.flushWorkBars();
     // Over the ground and everything on it; shots and blasts after stay bright in the dark.
     this.drawNight();
@@ -4848,6 +4875,7 @@ export class MapView {
     this.drawRallyOverlay();
     this.drawPlanOverlay();
     this.drawDroneLeash();
+    this.drawDeploymentLeash();
     this.drawRadarReach();
     this.drawMineLayReach();
     this.drawBlinkReach();
@@ -4856,6 +4884,73 @@ export class MapView {
     this.drawHiveFx();
     this.drawSonarContacts();
     this.drawThermalContacts();
+    this.drawHiveDrops();
+  }
+
+  /** Real ms the Hive Core takes to fall at the current game speed. */
+  private hiveDropMs(): number {
+    return (HIVE_DROP_SECONDS * 1000) / Math.max(1, this.curr.gameSpeed || 1);
+  }
+
+  /** The Deployment: a radial landing grid the size of the Hive Core's footprint, brightening as the core comes down. */
+  private drawDeployment(e: EntityView): void {
+    const p = this.lerpEnt(e);
+    const ts = this.ts();
+    const now = performance.now();
+    const drop = this.hiveDrops.get(e.id);
+    const charge = e.state === "deploy" ? (drop ? Math.min(1, (now - drop.startMs) / this.hiveDropMs()) : (e.deployProgress ?? 0)) : 0;
+    const radius = (catalog("hivecore").tileW * ts) / 2;
+    drawDeploymentGrid(this.ctx, (x, y) => this.toScreen(x, y), p.x, p.y, { nowMs: now, radius, charge });
+    const s = this.toScreen(p.x, p.y);
+    const top = this.toScreen(p.x - radius, p.y - radius).y - 6;
+    if (e.ownerId === this.curr.youPlayerId) {
+      const ctx = this.ctx;
+      const name = this.curr.players.find((pl) => pl.playerId === e.ownerId)?.name ?? "";
+      ctx.font = "12px 'Share Tech Mono', monospace";
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#e8dcc4";
+      ctx.fillText(name, s.x, top - 12);
+    }
+    this.maybeHp(e, s.x - 20, top - 8, 40);
+  }
+
+  /**
+   * The Hive Core falling onto a deploying Deployment, then its landing. The sim
+   * swaps the Deployment for the whole Hive Core when the fall ends; the flash
+   * and shockwave cover the swap.
+   */
+  private drawHiveDrops(): void {
+    const now = performance.now();
+    const dur = this.hiveDropMs();
+    const live = new Set<number>();
+    for (const e of this.curr.entities) {
+      if (e.type !== "seed" || e.state !== "deploy" || e.hp <= 0) continue;
+      live.add(e.id);
+      const p = this.lerpEnt(e);
+      const was = this.hiveDrops.get(e.id);
+      if (was) {
+        was.x = p.x;
+        was.y = p.y;
+      } else {
+        this.hiveDrops.set(e.id, { startMs: now - (e.deployProgress ?? 0) * dur, x: p.x, y: p.y });
+      }
+    }
+    for (const [id, d] of this.hiveDrops) {
+      if (live.has(id)) continue;
+      this.hiveDrops.delete(id);
+      // Landed: the same id now stands as a Hive Core. Anything else (killed, cancelled) just ends.
+      if (this.currById.get(id)?.type === "hivecore") this.hiveImpacts.push({ atMs: now, x: d.x, y: d.y });
+    }
+    const unit = this.ts() * 2;
+    for (const d of this.hiveDrops.values()) {
+      const s = this.toScreen(d.x, d.y);
+      drawHiveComet(this.ctx, s.x, s.y, { u: (now - d.startMs) / dur, unit, nowMs: now });
+    }
+    this.hiveImpacts = this.hiveImpacts.filter((h) => now - h.atMs < HIVE_IMPACT_MS);
+    for (const h of this.hiveImpacts) {
+      const s = this.toScreen(h.x, h.y);
+      drawHiveImpact(this.ctx, s.x, s.y, { age: (now - h.atMs) / HIVE_IMPACT_MS, unit });
+    }
   }
 
   /** What your Cyborgs read through the fog: a soldier's heat, or a hull under the APS scan grid. */
@@ -5323,6 +5418,30 @@ export class MapView {
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(layer, 0, 0, lw * S, lh * S);
     ctx.restore();
+  }
+
+  /** Dashed ring round the drop zone while your Deployment is selected: how far it may creep. */
+  private drawDeploymentLeash(): void {
+    const you = this.curr.youPlayerId;
+    const r = DEPLOYMENT_LEASH_TILES * this.ts();
+    const ctx = this.ctx;
+    for (const e of this.curr.entities) {
+      if (e.type !== "seed" || !e.anchor || e.ownerId !== you || !this.selected.has(e.id)) continue;
+      const a0 = e.anchor;
+      ctx.save();
+      ctx.setLineDash([6, 5]);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "rgba(120, 225, 255, 0.55)";
+      ctx.beginPath();
+      for (let i = 0; i <= 64; i++) {
+        const a = (i / 64) * Math.PI * 2;
+        const s = this.toScreen(a0.x + Math.cos(a) * r, a0.y + Math.sin(a) * r);
+        if (i === 0) ctx.moveTo(s.x, s.y);
+        else ctx.lineTo(s.x, s.y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   /** Dashed ring of the operator's reach while he or his drone is selected. */
@@ -7329,6 +7448,68 @@ export class MapView {
     this.occBuildings = out;
   }
 
+  /**
+   * Your own and allied units a structure paints over show through it: the
+   * covered part is drawn again over the structure, half transparent.
+   */
+  private drawFriendlyXray(drawList: readonly EntityView[], liveIds: ReadonlySet<number>, w: number, h: number, now: number): void {
+    const units: (XrayItem & { e: EntityView; fade: number })[] = [];
+    for (const e of drawList) {
+      if (e.kind !== "unit" || !liveIds.has(e.id) || e.wreck || e.hp <= 0 || e.garrisonedIn) continue;
+      if (!ownerAllied(this.curr, e.ownerId) || !this.unitNearView(e, w, h)) continue;
+      const fade = this.sightFade(e, now) * this.wreckFade(e, now);
+      if (fade <= 0) continue;
+      const def = this.spriteOf(e);
+      const size = def?.drawSize ?? 64;
+      const p = this.lerpEnt(e);
+      const s = this.toScreen(p.x, p.y);
+      const top = size * (def?.contactY ?? 0.8);
+      units.push({ key: this.drawKey(e), rect: { x: s.x - size / 2, y: s.y - top, w: size, h: size }, e, fade });
+    }
+    if (units.length === 0) return;
+    const ts = this.ts();
+    const covers: (XrayItem & { spr: BuildingSpriteDef; southX: number; southY: number; footprintW: number })[] = [];
+    for (const e of drawList) {
+      if (e.kind !== "building" || isBridge(e.type) || isFieldStructure(e.type) || isRubble(e)) continue;
+      if (!this.knownRect(e)) continue;
+      const spr = buildingSpriteFor(e.type, e.facing);
+      if (!spr || !spriteReady(spr)) continue;
+      const x = e.tileX * ts;
+      const y = e.tileY * ts;
+      const bw = e.tileW * ts;
+      const bh = e.tileH * ts;
+      const elev = this.buildingElev(e);
+      const south = this.toScreen(x + bw, y + bh, elev);
+      const footprintW = this.toScreen(x + bw, y, elev).x - this.toScreen(x, y + bh, elev).x;
+      const rect = buildingSpriteDestRect(spr, south.x, south.y, footprintW);
+      if (!rect || rect.x > w || rect.y > h || rect.x + rect.w < 0 || rect.y + rect.h < 0) continue;
+      covers.push({ key: this.drawKey(e), rect, spr, southX: south.x, southY: south.y, footprintW });
+    }
+    const pairs = xrayPairs(units, covers);
+    if (pairs.size === 0) return;
+    const main = this.ctx;
+    // Drawing a unit again queues its work bar again; the first one is kept.
+    const bars = this.workBars.length;
+    for (const [ci, hidden] of pairs) {
+      const c = covers[ci]!;
+      const scratch = this.xrayLayer.begin(main, c.rect);
+      if (!scratch) return;
+      this.ctx = scratch;
+      try {
+        for (const ui of hidden) {
+          const u = units[ui]!;
+          scratch.globalAlpha = u.fade;
+          this.drawUnit(u.e);
+          if (u.e.chute != null) this.drawTroopCanopy(u.e);
+        }
+      } finally {
+        this.ctx = main;
+      }
+      this.xrayLayer.end(main, c.rect, FRIENDLY_XRAY_ALPHA, (m) => drawBuildingSprite(m, c.spr, c.southX, c.southY, c.footprintW));
+    }
+    this.workBars.length = bars;
+  }
+
   private takeMoveClicks(): { x: number; y: number; t: number }[] {
     const now = performance.now();
     const keep: MapView["moveClicks"] = [];
@@ -7344,15 +7525,26 @@ export class MapView {
   }
 
   /** Stance sheet, or the pistol / rifle-recoil / corpse sheet when that pose is showing. */
-  /** The Juggernaut's sheet now, and its frame when a blow or the throw sets it (else it strides). */
+  /**
+   * The Juggernaut's sheet now, and its frame when a blow or the throw sets it (else it strides).
+   * In water every pose has its wading twin: same cell and contact, sunk to mid-thigh.
+   */
   private juggernautPose(e: EntityView): { def: UnitSpriteDef; frame?: number } {
-    const sheets: Record<JuggernautSheet, UnitSpriteDef> = {
-      walk: JUGGERNAUT_SPRITE,
-      swing: JUGGERNAUT_SWING_SPRITE,
-      fists: JUGGERNAUT_FISTS_SPRITE,
-      punch: JUGGERNAUT_PUNCH_SPRITE,
-      throw: JUGGERNAUT_THROW_SPRITE,
-    };
+    const sheets: Record<JuggernautSheet, UnitSpriteDef> = e.wading
+      ? {
+          walk: JUGGERNAUT_WALK_WADE_SPRITE,
+          swing: JUGGERNAUT_SWING_WADE_SPRITE,
+          fists: JUGGERNAUT_FISTS_WADE_SPRITE,
+          punch: JUGGERNAUT_PUNCH_WADE_SPRITE,
+          throw: JUGGERNAUT_THROW_WADE_SPRITE,
+        }
+      : {
+          walk: JUGGERNAUT_SPRITE,
+          swing: JUGGERNAUT_SWING_SPRITE,
+          fists: JUGGERNAUT_FISTS_SPRITE,
+          punch: JUGGERNAUT_PUNCH_SPRITE,
+          throw: JUGGERNAUT_THROW_SPRITE,
+        };
     if (e.wreck) return { def: JUGGERNAUT_SPRITE };
     const blow = this.juggBlows.get(e.id);
     const pose = pickJuggernautPose({
@@ -7724,6 +7916,10 @@ export class MapView {
   }
 
   private drawUnitAt(e: EntityView): void {
+    if (e.type === "seed") {
+      this.drawDeployment(e);
+      return;
+    }
     if (isTorpedoBody(e.type)) {
       this.drawTorpedo(e);
       return;
@@ -7899,6 +8095,11 @@ export class MapView {
       drawTitanThrust(this.ctx, s, { x: s.x, y: s.y + lift }, size, 1, performance.now(), e.id);
     }
     const hex = this.ownerColor(e);
+    // The Overseer is a saucer: its whole hull spins all the time, whichever way it flies.
+    if (e.type === "overseer" && !e.wreck) {
+      p.facing += saucerSpin(e.id, performance.now());
+      p.turretFacing = p.facing;
+    }
     const dir = facingToIso(p.facing, this.ts());
     const turretDir = facingToIso(p.turretFacing ?? p.facing, this.ts());
     const mountDir = e.ciws ? facingToIso(e.ciws.facing, this.ts()) : undefined;
@@ -7946,6 +8147,9 @@ export class MapView {
     } else if (def === JUMPJET_FLY_SPRITE) {
       // The plumes flicker whether he hovers or flies.
       frameIndex = Math.floor((performance.now() / 1000) * def.fps + e.id) % def.frames;
+    } else if ((def === WASP_SPRITE || def === SCOURGE_SPRITE || def === GNAT_SPRITE) && !e.wreck) {
+      // A Xenomorph insect is always in the air: its wings never stop beating.
+      frameIndex = wingBeatFrame(e.id, def.fps, def.frames, performance.now());
     }
     ctx.save();
     ctx.save();

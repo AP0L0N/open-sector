@@ -37,6 +37,7 @@ import {
   fieldSpan,
   fires,
   isAircraftType,
+  staysAloft,
   isArmoredType,
   isDroneType,
   isBuildingType,
@@ -338,14 +339,14 @@ function thinkCpu(state: MatchState, p: SimPlayer): void {
 }
 
 /**
- * Xenomorph base: Fusion Node, Assimilator, Cyborg Central, then a second Assimilator and more power,
+ * Xenomorph base: Fusion Node, Assimilator, Conversion Chamber, then a second Assimilator and more power,
  * the Nanite Forge, a pair of Spine Turrets, and later the Neural Nexus and its Pulse Spires.
  * With all of that standing, more Assimilators up to the type's wantSmelters.
  */
 const XENO_BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
   { type: "fusionnode", n: 1 },
   { type: "assimilator", n: 1 },
-  { type: "cyborgcentral", n: 1 },
+  { type: "conversion", n: 1 },
   { type: "assimilator", n: CPU_FORTIFY_SMELTERS },
   { type: "fusionnode", n: 2 },
   { type: "forge", n: 1 },
@@ -354,7 +355,7 @@ const XENO_BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
   { type: "nexus", n: 1 },
   { type: "pulsespire", n: 2 },
 ];
-/** The Xenomorph cyborgs, from the Cyborg Central. */
+/** The Xenomorph foot soldiers, from the Conversion Chamber. */
 export const XENO_ARMY: readonly { unit: TrainType; want: number }[] = [
   { unit: "xenodrone", want: 10 },
   { unit: "thrall", want: 4 },
@@ -376,7 +377,7 @@ export const XENO_HEAVY: readonly { unit: TrainType; want: number }[] = [
 ];
 /** Each Xenomorph factory and the ranks it fills. */
 const XENO_FACTORIES: readonly { factory: BuildingType; army: readonly { unit: TrainType; want: number }[] }[] = [
-  { factory: "cyborgcentral", army: XENO_ARMY },
+  { factory: "conversion", army: XENO_ARMY },
   { factory: "forge", army: XENO_HEAVY },
 ];
 
@@ -426,7 +427,7 @@ interface HiveDoctrine {
   factories: readonly { factory: BuildingType; army: readonly { unit: TrainType; want: number }[] }[];
 }
 const HIVE_DOCTRINE: Partial<Record<Faction, HiveDoctrine>> = {
-  xeno: { power: "fusionnode", smelter: "assimilator", surge: "cyborgcentral", order: XENO_BUILD_ORDER, factories: XENO_FACTORIES },
+  xeno: { power: "fusionnode", smelter: "assimilator", surge: "conversion", order: XENO_BUILD_ORDER, factories: XENO_FACTORIES },
   bloom: {
     power: "lumenbulb",
     smelter: "gorger",
@@ -1246,7 +1247,7 @@ function crewBunkers(state: MatchState, p: SimPlayer, plan: AiPlan): void {
 function rallyFactories(state: MatchState, p: SimPlayer, hq: Entity): void {
   let at: Vec | undefined;
   for (const b of state.entities.values()) {
-    if (b.ownerId !== p.playerId || b.hp <= 0 || (b.type !== "muster" && b.type !== "armory" && b.type !== "cyborgcentral" && b.type !== "forge")) continue;
+    if (b.ownerId !== p.playerId || b.hp <= 0 || (b.type !== "muster" && b.type !== "armory" && b.type !== "cyborgcentral" && b.type !== "conversion" && b.type !== "forge")) continue;
     at ??= homeMuster(state, p, hq);
     if (b.rally && Math.hypot(b.rally.x - at.x, b.rally.y - at.y) < 2 * state.tileSize) continue;
     applyCommand(state, p.playerId, { type: "cmd.rally", ids: [b.id], x: at.x, y: at.y });
@@ -1260,7 +1261,7 @@ function watchSky(state: MatchState, p: SimPlayer, plan: AiPlan): void {
   if (plan.airSeenTick != null) return;
   for (const e of state.entities.values()) {
     if (e.hp <= 0 || !e.ownerId || allies(state, p.playerId, e.ownerId)) continue;
-    if (!isAircraftType(e.type) && !isDroneType(e.type) && !isAirfieldType(e.type)) continue;
+    if (!isAircraftType(e.type) && !isDroneType(e.type) && !isAirfieldType(e.type) && e.type !== "aerie") continue;
     if (!canSeeEntity(state, p.playerId, e)) continue;
     plan.airSeenTick = state.tick;
     return;
@@ -1289,12 +1290,13 @@ function scramble(state: MatchState, p: SimPlayer, hq: Entity): void {
   if (ids.length > 0) applyCommand(state, p.playerId, { type: "cmd.attackmove", ids, x: target.x, y: target.y });
 }
 
-/** Every armed dive bomber on its pad takes off and attack-moves at the point. */
+/** Every armed dive bomber on its pad, and every idle Xenomorph flier, attack-moves at the point. */
 function sortie(state: MatchState, p: SimPlayer, x: number, y: number): void {
   const ids: number[] = [];
   for (const e of state.entities.values()) {
     if (e.ownerId !== p.playerId || e.hp <= 0 || !isAircraftType(e.type) || !e.air) continue;
-    if (e.air.phase !== "parked" || e.air.bombs < STUKA_BOMBS) continue;
+    const idleAloft = staysAloft(e.type) && !e.order && e.air.phase !== "crash";
+    if (!idleAloft && (e.air.phase !== "parked" || e.air.bombs < STUKA_BOMBS)) continue;
     ids.push(e.id);
   }
   if (ids.length === 0) return;

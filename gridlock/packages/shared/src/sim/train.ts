@@ -1,4 +1,4 @@
-import { AIRFIELD_PADS, BLOOM_GESTATOR, BLOOM_NEST, XENO_FACTORY, airfieldOf, canContinuousTrain, catalog, dockOf, isDockType, factionOf, inFaction, isAirfieldType, isAircraftType, isCyborg, isInfantryType, isNavalType, isOneAtATime, secondsToTicks, techNeeds, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, type BuildingType, type TrainType } from "../catalog.js";
+import { AIRFIELD_PADS, BLOOM_GESTATOR, BLOOM_NEST, XENO_BARRACKS, XENO_FACTORY, airfieldOf, canContinuousTrain, catalog, dockOf, isDockType, factionOf, inFaction, isAirfieldType, isAircraftType, isCyborg, isInfantryType, isNavalType, isOneAtATime, secondsToTicks, staysAloft, techNeeds, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, type BuildingType, type TrainType } from "../catalog.js";
 import { airfieldPadWorld, freePad, padsSpoken, parkHeading } from "./air.js";
 import { makeEntity, newAirState, ownedUnits, rallyPoint, worldToTile } from "./geo.js";
 import { openSpotNear, packRadius, packSlots } from "./formation.js";
@@ -11,11 +11,12 @@ import type { Entity, MatchState, TrainJob } from "./types.js";
 export const NOT_YOUR_FACTION = "Not available to your faction.";
 
 /** Every building that trains units. */
-export type ProducerType = "muster" | "armory" | "airfield" | "aerie" | "roost" | "dock" | "spawnpool" | "tidewomb" | "cyborgcentral" | "forge" | "broodnest" | "gestator";
+export type ProducerType = "muster" | "armory" | "airfield" | "aerie" | "roost" | "dock" | "spawnpool" | "tidewomb" | "cyborgcentral" | "conversion" | "forge" | "broodnest" | "gestator";
 
 export function producerType(unit: TrainType): ProducerType {
-  if (isCyborg(unit)) return "cyborgcentral";
   const faction = factionOf(unit);
+  // Xenomorph foot soldiers come out of the Conversion Chamber; the Alliance's cyborgs out of the Cyborg Central.
+  if (isCyborg(unit)) return faction === "xeno" ? XENO_BARRACKS : "cyborgcentral";
   if (isAircraftType(unit)) return airfieldOf(faction);
   if (isNavalType(unit)) return dockOf(faction);
   // Every other Xenomorph unit is a heavy assimilator, grown at the Nanite Forge.
@@ -338,6 +339,20 @@ export function spawnUnit(
   ignoreCap: boolean,
 ): Entity | null {
   if (!ignoreCap && ownedUnits(state, playerId) >= UNIT_CAP) return null;
+  if (staysAloft(type)) {
+    // A Xenomorph flier lifts straight up out of the Aerie and hovers off to the rally point, or just outside the door.
+    const ts = state.tileSize;
+    const cx = (from.tileX + from.tileW / 2) * ts;
+    const cy = (from.tileY + from.tileH / 2) * ts;
+    const door = rallyPoint(state, from, type);
+    const flier = makeEntity(state, type, playerId, cx, cy, { facing: Math.atan2(door.y - cy, door.x - cx) });
+    flier.air = newAirState(null, 0, type);
+    flier.air.phase = "takeoff";
+    const to = from.rally ?? door;
+    flier.order = { kind: "move", x: to.x, y: to.y };
+    flier.state = "move";
+    return flier;
+  }
   if (isAircraftType(type)) {
     // A plane rolls out onto a free hardstand and waits there for orders.
     const pad = isAirfieldType(from.type) ? freePad(state, from) : null;
@@ -435,7 +450,7 @@ function packAtDoor(state: MatchState, from: Entity, fresh: Entity, door: { x: n
 }
 
 export function isProducer(e: Entity): boolean {
-  return e.kind === "building" && (e.type === "muster" || e.type === "armory" || isDockType(e.type) || e.type === "cyborgcentral" || e.type === "forge" || e.type === BLOOM_NEST || e.type === BLOOM_GESTATOR);
+  return e.kind === "building" && (e.type === "muster" || e.type === "armory" || isDockType(e.type) || e.type === "cyborgcentral" || e.type === XENO_BARRACKS || e.type === "forge" || e.type === BLOOM_NEST || e.type === BLOOM_GESTATOR);
 }
 
 /** Sets the rally point on every owned producer in `ids`. A point on the building's own footprint clears it. */

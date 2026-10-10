@@ -35,7 +35,7 @@ export const SIDEBAR_GROUPS: readonly { id: SidebarGroup; label: string; short: 
     label: "Infantry",
     short: "Inf",
     icon: "M8 1a2.1 2.1 0 110 4.2A2.1 2.1 0 018 1zM4.5 6.4h7L10.3 11H9.4V15H6.6V11H5.7z",
-    byFaction: { xeno: { label: "Cyborgs", short: "Cyb" }, bloom: { label: "Brood", short: "Brood" } },
+    byFaction: { xeno: { label: "Taken", short: "Taken" }, bloom: { label: "Brood", short: "Brood" } },
   },
   {
     id: "tanks",
@@ -75,9 +75,9 @@ const PRICE_SORTED_GROUPS: readonly SidebarGroup[] = ["defences", "infantry", "t
 
 /**
  * The Xenomorph base laid out as the Alliance's reads: power, scrap, foot soldiers, hulls, air, sea,
- * then tech. The Cyborg Central is their barracks, so it comes third, not last as for the Alliance.
+ * then tech. The Conversion Chamber is their barracks, so it comes third.
  */
-const XENO_STRUCTURE_ORDER: readonly BuildingType[] = ["fusionnode", "assimilator", "cyborgcentral", "forge", "aerie", "spawnpool", "nexus"];
+const XENO_STRUCTURE_ORDER: readonly BuildingType[] = ["fusionnode", "assimilator", "conversion", "forge", "aerie", "spawnpool", "nexus"];
 
 /** The faction's cameos in each group, in catalog order (price order for `PRICE_SORTED_GROUPS`). */
 export function groupEntries(faction: Faction = "alliance"): Record<SidebarGroup, GroupEntry[]> {

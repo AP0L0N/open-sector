@@ -1,6 +1,7 @@
 import {
   canLunge,
   canBurrow,
+  neverSurfacesOf,
   costFor,
   isAirfieldType,
   BUILDING_TYPES,
@@ -41,6 +42,7 @@ import {
   beltOf,
   carriesShell,
   airLoadoutOf,
+  staysAloft,
   AIR_DROPS,
   AIR_DROP_INFO,
   BV222_TROOPS,
@@ -640,9 +642,10 @@ export function paintBattleHud(ctx: Ctx): void {
   if (power) {
     const spd = productionSpeed(m.you.provided, m.you.used);
     const slow = m.you.lowPower ? ` · SLOW ×${spd.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}` : "";
-    // No powered Cyborg Central and no Commander: your Cyborgs are about to go dark.
+    // No powered Cyborg Central (Conversion Chamber) and no Commander: your Cyborgs (hive soldiers) are about to go dark.
     const link = m.you.cyborgShutdownIn;
-    const cyborgs = link != null ? ` · <b class="cyborg-link">CYBORGS OFF IN ${Math.ceil(link)}s</b>` : "";
+    const linked = viewerFaction(m) === "xeno" ? "HIVE LINK LOST" : "CYBORGS OFF";
+    const cyborgs = link != null ? ` · <b class="cyborg-link">${linked} IN ${Math.ceil(link)}s</b>` : "";
     const next = `POWER <b>${m.you.used} / ${m.you.provided}</b>${slow}${cyborgs}`;
     if (power.innerHTML !== next) power.innerHTML = next;
     power.classList.toggle("low-power", m.you.lowPower || link != null);
@@ -978,7 +981,13 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
             ? airLine(e.air, e.type)
             : "";
   const pads = e.pads ? `  ·  planes ${e.pads.used}/${e.pads.cap}` : "";
-  const depth = e.dive ? diveLine(e.dive, !!e.submerged) : e.asw ? aswLine(e.asw) : "";
+  const depth = e.dive
+    ? diveLine(e.dive, !!e.submerged)
+    : e.asw
+      ? aswLine(e.asw)
+      : neverSurfacesOf(e.type) && !e.wreck && e.ownerId === ctx.match.youPlayerId
+        ? `  ·  ${e.submerged ? "submerged" : "surfaced to bite"}`
+        : "";
   box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${field}${plates}${injuries}${posture}${mag}${rack}${rockets}${mg}${flight}${depth}  ·  ${who}${q}${cart}${smoke}${dep}${special}${garrison}${scout}${bed}${pads}${capturing}${holding}${selfDestroy}${tending}`;
   box.style.borderColor = occ ? colorHex(occ.colorId) : "#b08968";
 }
@@ -993,6 +1002,8 @@ const AIR_PHASE_LABEL: Record<NonNullable<EntityView["air"]>["phase"], string> =
 
 /** Phase, and for your own planes fuel, bomb, and belts. A fighter carries no bomb; it counts barrages. */
 function airLine(air: NonNullable<EntityView["air"]>, type: EntityType): string {
+  // A Xenomorph flier runs on the hive: no tank, no rack, no field to go home to.
+  if (staysAloft(type)) return `  ·  ${air.phase === "crash" ? "going down" : air.phase === "takeoff" ? "lifting off" : "hovering"}`;
   let s = `  ·  ${AIR_PHASE_LABEL[air.phase]}`;
   if (air.fuel != null && air.fuelMax) s += `  ·  fuel ${Math.round((air.fuel / air.fuelMax) * 100)}%`;
   const load = airLoadoutOf(type);
@@ -1311,6 +1322,7 @@ const TYPE_ORDER: EntityType[] = [
   "research",
   "radar",
   "cyborgcentral",
+  "conversion",
   "bunker",
   "tobruk",
   "casemate",
@@ -2487,7 +2499,8 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       disabled: mines <= 0 || clearing,
     });
   }
-  if (units.some((e) => e.air && !e.drone && e.type !== "aswheli" && e.air.phase !== "parked")) {
+  // A Xenomorph flier never lands: it has no field to return to.
+  if (units.some((e) => e.air && !e.drone && e.type !== "aswheli" && !staysAloft(e.type) && e.air.phase !== "parked")) {
     out.push({
       slot: "land",
       act: "land",

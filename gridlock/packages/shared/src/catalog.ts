@@ -640,6 +640,7 @@ export type EntityType =
   | "research"
   | "radar"
   | "cyborgcentral"
+  | "conversion"
   | "forge"
   | "nexus"
   | "spineturret"
@@ -717,6 +718,7 @@ export type BuildingType =
   | "research"
   | "radar"
   | "cyborgcentral"
+  | "conversion"
   | "fusionnode"
   | "assimilator"
   | "forge"
@@ -906,6 +908,7 @@ export const BUILDING_TYPES: readonly BuildingType[] = [
   "research",
   "radar",
   "cyborgcentral",
+  "conversion",
   "fusionnode",
   "assimilator",
   "forge",
@@ -1011,13 +1014,13 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly Bu
   jagdtiger: "research",
   cyborg: "cyborgcentral",
   cyborgcommander: "cyborgcentral",
-  simunit2: "cyborgcentral",
-  xenodrone: "cyborgcentral",
-  thrall: "cyborgcentral",
-  lancer: "cyborgcentral",
-  spitter: "cyborgcentral",
-  weaver: "cyborgcentral",
-  shade: ["cyborgcentral", "nexus"],
+  simunit2: "conversion",
+  xenodrone: "conversion",
+  thrall: "conversion",
+  lancer: "conversion",
+  spitter: "conversion",
+  weaver: "conversion",
+  shade: ["conversion", "nexus"],
   behemoth: "nexus",
   juggernaut: "nexus",
   assembler: "nexus",
@@ -1064,12 +1067,13 @@ export function isFaction(v: unknown): v is Faction {
 export function migrateFaction(v: unknown): unknown {
   return v === "eu" ? "alliance" : v === "borg" ? "xeno" : v;
 }
-/** Everything the Xenomorphs build, train, or start with. The Cyborg Central is in SHARED_TYPES. */
+/** Everything the Xenomorphs build, train, or start with. */
 export const XENO_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([
   "seed",
   "hivecore",
   "fusionnode",
   "assimilator",
+  "conversion",
   "simunit2",
   "xenodrone",
   "thrall",
@@ -1141,10 +1145,10 @@ export const BLOOM_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([
   "harpy",
 ]);
 /**
- * Built by the Alliance and the Xenomorphs (not the Bloom). The Cyborg Central trains the Alliance's Cyborg and Cyborg Commander,
- * and the Xenomorphs' Drone, Lancer, and Sim Unit II; each side sees only its own units there.
+ * Built by the Alliance and the Xenomorphs (not the Bloom). None today: the Cyborg Central is the
+ * Alliance's, and the Xenomorphs raise their infantry in the Conversion Chamber.
  */
-export const SHARED_TYPES: ReadonlySet<EntityType> = new Set<EntityType>(["cyborgcentral"]);
+export const SHARED_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([]);
 /**
  * The faction that fields `type`. Neutral structures, civilian buildings, and shared buildings
  * read as Alliance.
@@ -1153,13 +1157,8 @@ export function factionOf(type: string): Faction {
   if (XENO_TYPES.has(type as EntityType)) return "xeno";
   return BLOOM_TYPES.has(type as EntityType) ? "bloom" : "alliance";
 }
-/**
- * A shared building's price for one faction, where it plays a different part: the Cyborg Central is
- * the Alliance's late cyborg works but the Xenomorphs' only barracks, so the hive pays a Barracks' price.
- */
-const FACTION_COST: Partial<Record<EntityType, Partial<Record<Faction, number>>>> = {
-  cyborgcentral: { xeno: 500 },
-};
+/** A shared building's price for one faction, where it plays a different part there. */
+const FACTION_COST: Partial<Record<EntityType, Partial<Record<Faction, number>>>> = {};
 /** Scrap `type` costs a player of `faction`. */
 export function costFor(type: EntityType, faction: Faction): number {
   return FACTION_COST[type]?.[faction] ?? catalog(type).cost;
@@ -1169,7 +1168,7 @@ export function inFaction(type: string, faction: Faction): boolean {
   if (SHARED_TYPES.has(type as EntityType)) return faction !== "bloom";
   return factionOf(type) === faction;
 }
-/** The headquarters packed up and on the move: the Rig, the Xenomorph Seed, the Bloom Spore Pod. */
+/** The headquarters packed up and on the move: the Rig, the Xenomorph Deployment (`seed`), the Bloom Spore Pod. */
 export type HqRigType = "rig" | "seed" | "sporepod";
 /** The headquarters building: the Core, the Xenomorph Hive Core, the Bloom Brood Heart. */
 export type HqBuildingType = "core" | "hivecore" | "broodheart";
@@ -1223,18 +1222,23 @@ export type DockType = "dock" | "spawnpool" | "tidewomb";
 export function isDockType(type: string): type is DockType {
   return type === "dock" || type === "spawnpool" || type === "tidewomb";
 }
-/** A field planes live on: the Airfield, the Xenomorph Aerie, the Bloom Roost. Same footprint, same four pads. */
-export type AirfieldType = "airfield" | "aerie" | "roost";
+/**
+ * A field planes live on: the Airfield and the Bloom Roost. Same footprint, same four pads.
+ * The Xenomorph Aerie is not one: its fliers never land (staysAloft), so it is a plain producer.
+ */
+export type AirfieldType = "airfield" | "roost";
 export function isAirfieldType(type: string): type is AirfieldType {
-  return type === "airfield" || type === "aerie" || type === "roost";
+  return type === "airfield" || type === "roost";
 }
+/** Where each faction's aircraft are trained: an Airfield or Roost with pads, or the Aerie. */
+export type AirProducerType = AirfieldType | "aerie";
 const DOCK_OF: Record<Faction, DockType> = { alliance: "dock", xeno: "spawnpool", bloom: "tidewomb" };
-const AIRFIELD_OF: Record<Faction, AirfieldType> = { alliance: "airfield", xeno: "aerie", bloom: "roost" };
+const AIRFIELD_OF: Record<Faction, AirProducerType> = { alliance: "airfield", xeno: "aerie", bloom: "roost" };
 /** The faction's own shipyard and airfield. */
 export function dockOf(faction: Faction): DockType {
   return DOCK_OF[faction];
 }
-export function airfieldOf(faction: Faction): AirfieldType {
+export function airfieldOf(faction: Faction): AirProducerType {
   return AIRFIELD_OF[faction];
 }
 
@@ -1250,8 +1254,10 @@ export const BUILD_REQUIRES: Partial<Record<BuildingType, readonly BuildingType[
   bilelance: ["braincoral"],
 };
 
-/** The Xenomorph vehicle factory: trains every Xenomorph unit that is not a cyborg. */
+/** The Xenomorph vehicle factory: trains every Xenomorph unit that is not infantry. */
 export const XENO_FACTORY = "forge";
+/** The Xenomorph barracks: the Conversion Chamber turns out the hive's foot soldiers, and carries their link. */
+export const XENO_BARRACKS = "conversion";
 /** The Bloom brood nest (infantry) and gestator (beasts). */
 export const BLOOM_NEST = "broodnest";
 export const BLOOM_GESTATOR = "gestator";
@@ -1329,7 +1335,8 @@ export const MATRIARCH_BROOD = 4;
 export const BROOD_GARRISON: readonly EntityType[] = ["spawnling", "gobber", "quillback", "bloater", "longspine", "mender"];
 
 /**
- * Cyborg link. A Cyborg runs on the uplink from a standing, powered Cyborg Central,
+ * Cyborg link. A Cyborg runs on the uplink from a standing, powered Cyborg Central (a
+ * Xenomorph's on the synapse link from a Conversion Chamber),
  * or on a living Cyborg Commander of his own side. With neither, CYBORG_SHUTDOWN_SECONDS
  * after the link drops every Cyborg of that player on the field shuts down: still his,
  * but he stops where he stands, answers no orders, and fires at nothing. When that
@@ -1458,10 +1465,12 @@ export interface CatalogEntry {
   coverHeight?: number;
   /** Hatch scout: pop the cupola for infantry sight. Tanks only. */
   hasScout?: boolean;
-  /** Walks through water tiles like a swimmer, and like a swimmer cannot fire from one. */
+  /** Walks through water tiles like a swimmer, and like a swimmer cannot fire from one (unless fightsWading). */
   wades?: boolean;
   /** Move-speed share while wading. Omit and the hull uses TITAN_WADE_SPEED. */
   wadeSpeed?: number;
+  /** A wader that keeps fighting from the water, and goes into it after what it hunts. The Juggernaut. */
+  fightsWading?: boolean;
   /** Deploy braces the unit in place: stationary, hull locked, max HP × this. */
   bracedHpMul?: number;
   /**
@@ -1573,6 +1582,11 @@ export interface CatalogEntry {
    * Down, it only torpedoes another boat that is down too. It must surface to strike a hull.
    */
   submerges?: boolean;
+  /**
+   * Lives below and never takes air (the Lurker): always submerged, no Dive or Surface. It comes
+   * up only for SUB_REVEAL_SECONDS after it strikes. Its catalog sight is its sight under water.
+   */
+  neverSurfaces?: boolean;
   /** A torpedo running in the water. Nobody commands it; any gun can shoot it before it arrives. */
   torpedoBody?: boolean;
   /**
@@ -3009,6 +3023,8 @@ export const MAMMOTH_MG_ARC = 25;
 export const MAMMOTH_MG_RANGE_TILES = t(8);
 /** Move-speed share while the Mammoth is wading. Thirty percent slower than dry ground. */
 export const MAMMOTH_WADE_SPEED = 0.7;
+/** Move-speed share while the Juggernaut wades, thigh-deep. */
+export const JUGGERNAUT_WADE_SPEED = 0.7;
 /**
  * Mine launcher on the rear deck. Each pack is one canister lobbed onto the
  * ground, where it bursts into the same field a BV 222 drops (CLUSTER_MINES).
@@ -3507,6 +3523,15 @@ export const DRONE_MODE_LABEL: Record<DroneMode, string> = {
 };
 /** Radius around the Drone Op the drone may fly, gameplay tiles. */
 export const DRONE_LEASH_TILES = t(14);
+
+/**
+ * The Xenomorph Deployment (type id `seed`): a landing grid, not a body. It
+ * creeps only inside DEPLOYMENT_LEASH_TILES of where the match set it down.
+ * Deployed, the Hive Core falls out of the sky onto it over
+ * HIVE_DROP_SECONDS and is whole the moment it lands. A Hive Core never packs.
+ */
+export const DEPLOYMENT_LEASH_TILES = DRONE_LEASH_TILES;
+export const HIVE_DROP_SECONDS = 2.4;
 /** Seconds aloft on a full battery. */
 export const DRONE_BATTERY_SECONDS = 70;
 /** Turn back once the charge holds only this many seconds past the flight home. */
@@ -4160,6 +4185,8 @@ export const LURKER_BITE_DAMAGE = 55;
 export const LURKER_BITE_SOLDIER_DAMAGE = 80;
 export const LURKER_HEAVY_MUL = 0.45;
 export const LURKER_BUILDING_MUL = 0.3;
+/** The Lurker's sight: it never surfaces, so this is what it sees through the water. */
+export const LURKER_SIGHT_TILES = t(8);
 
 /**
  * Overseer. A Xenomorph hover craft: it lifts straight off its Aerie nest, flies slowly at
@@ -4178,6 +4205,17 @@ export const OVERSEER_HULL_MUL = 0.6;
 export const OVERSEER_BUILDING_MUL = 0.4;
 /** Climb and descent rate on and off its nest, elevation units a second. */
 export const OVERSEER_LIFT_PER_SEC = 5;
+/**
+ * The hovering Xenomorph fliers (staysAloft) on station. A Wasp hangs HIVE_WASP_STANDOFF_TILES
+ * off its target and lays a barrage whenever its cannon are clear; a Scourge hangs
+ * HIVE_SCOURGE_STANDOFF_TILES off and lobs a bomb every HIVE_BOMB_SECONDS, its pulse guns firing
+ * a burst of one tick every HIVE_GUN_BURST_SECONDS at soft targets. They lift and sink at
+ * OVERSEER_LIFT_PER_SEC.
+ */
+export const HIVE_WASP_STANDOFF_TILES = t(3);
+export const HIVE_SCOURGE_STANDOFF_TILES = t(2);
+export const HIVE_BOMB_SECONDS = 5;
+export const HIVE_GUN_BURST_SECONDS = 0.5;
 /** Seconds of flight in a full tank: it hangs in the air longer than a plane flies. */
 export const OVERSEER_FUEL_SECONDS = 140;
 
@@ -4353,7 +4391,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
   seed: {
     type: "seed",
     kind: "unit",
-    name: "Seed",
+    name: "Deployment",
     letter: "E",
     cost: 0,
     buildSeconds: 0,
@@ -4362,7 +4400,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 14,
-    moveTilesPerSec: paced(1.3),
+    moveTilesPerSec: paced(0.8),
     turnDegPerSec: 120,
     turnInPlace: true,
     rangeTiles: 0,
@@ -4372,7 +4410,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     special: "deploy",
-    blurb: "A Xenomorph hive pod on six legs. Root it where the ground is level and it grows into a Hive Core.",
+    blurb: "The hive's landing grid. Creep it to level ground near the drop zone and deploy: the Hive Core strikes down from orbit like a comet. It never packs again.",
   },
   hivecore: {
     type: "hivecore",
@@ -4394,8 +4432,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    special: "deploy",
-    blurb: "The Xenomorph hive that grew from the Seed. It raises every Xenomorph structure. Lose it and the collective falls.",
+    blurb: "The Xenomorph hive, dropped from orbit onto the Deployment. It raises every Xenomorph structure and never packs up. Lose it and the collective falls.",
   },
   core: {
     type: "core",
@@ -4635,7 +4672,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `Assembly hall and uplink mast that run your cyborgs. Both sides raise one: the Alliance trains the Cyborg and the Cyborg Commander here, the Xenomorphs the Drone, the Lancer, and the Sim Unit II. Your cyborgs live on its uplink: if it falls or your power runs short while no Cyborg Commander of yours lives, ${CYBORG_SHUTDOWN_SECONDS} seconds later every Cyborg of yours on the field shuts down: still yours, but dead still and silent. Get the link back (a new Central, or the power) and they wake up, unless an enemy Cyborg Commander took them first. A living Cyborg Commander keeps yours running without it, and takes over any enemy's shut-down Cyborg near him.`,
+    blurb: `Assembly hall and uplink mast that run your cyborgs. Trains the Cyborg and the Cyborg Commander. Your cyborgs live on its uplink: if it falls or your power runs short while no Cyborg Commander of yours lives, ${CYBORG_SHUTDOWN_SECONDS} seconds later every Cyborg of yours on the field shuts down: still yours, but dead still and silent. Get the link back (a new Central, or the power) and they wake up, unless an enemy Cyborg Commander took them first. A living Cyborg Commander keeps yours running without it, and takes over any enemy's shut-down Cyborg near him.`,
   },
   radar: {
     type: "radar",
@@ -5897,7 +5934,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: DAGGERS.penetration,
     caliber: DAGGERS.caliber,
     spreadDeg: DAGGERS.spreadDeg,
-    blurb: `A light, fast cyborg built for the knife. An energy dagger in each hand: one slash kills a soldier, but only at arm's reach. He opens a Walker or a truck slowly and barely scratches a tank or a wall. A blink drive throws him up to ${SIMUNIT_BLINK_RANGE_TILES / TILE_SUBDIV} cells in an instant on one charge, back by itself in ${SIMUNIT_BLINK_RECHARGE_SECONDS} seconds: an enemy he goes for inside that reach, he blinks straight onto while the charge is up. Right-click an enemy structure or hull with soldiers inside and he blinks in among them, kills every soldier aboard in ${SIMUNIT_PURGE_SECONDS} seconds, and blinks back out; only a hostile garrison offers it. Like the Cyborg he can shut down where he stands: dark and still, he reads as no one's machine and enemy guns pass him by until he powers up. Near death his legs are torn off and he crawls on, still cutting. Medics heal him, engineers repair him. He runs on your Cyborg Central's uplink or a living Cyborg Commander, like the Cyborg.`,
+    blurb: `A light, fast cyborg built for the knife. An energy dagger in each hand: one slash kills a soldier, but only at arm's reach. He opens a Walker or a truck slowly and barely scratches a tank or a wall. A blink drive throws him up to ${SIMUNIT_BLINK_RANGE_TILES / TILE_SUBDIV} cells in an instant on one charge, back by itself in ${SIMUNIT_BLINK_RECHARGE_SECONDS} seconds: an enemy he goes for inside that reach, he blinks straight onto while the charge is up. Right-click an enemy structure or hull with soldiers inside and he blinks in among them, kills every soldier aboard in ${SIMUNIT_PURGE_SECONDS} seconds, and blinks back out; only a hostile garrison offers it. Like the Cyborg he can shut down where he stands: dark and still, he reads as no one's machine and enemy guns pass him by until he powers up. Near death his legs are torn off and he crawls on, still cutting. Medics heal him, engineers repair him. He hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
   },
   xenodrone: {
     type: "xenodrone",
@@ -5922,7 +5959,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: RIFLE.penetration,
     caliber: RIFLE.caliber,
     spreadDeg: RIFLE.spreadDeg,
-    blurb: `The hive's line soldier: a body taken and fitted with a pulse carbine in place of a forearm. It shoots like a rifle, a clip and then a short recharge. Several times a soldier's hit points for a few riflemen's price, but slower on its feet. No stance orders; it fights standing. In a fight it raises a small energy wall in front of it, like the Behemoth's but far weaker (${INFANTRY_SHIELD.hp} points): enemy rounds stop on it and enemies cannot walk through, while it and its side shoot and walk through. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It runs on your Cyborg Central's uplink or a living Cyborg Commander, like the Cyborg, and shuts down without them.`,
+    blurb: `The hive's line soldier: a body taken and fitted with a pulse carbine in place of a forearm. It shoots like a rifle, a clip and then a short recharge. Several times a soldier's hit points for a few riflemen's price, but slower on its feet. No stance orders; it fights standing. In a fight it raises a small energy wall in front of it, like the Behemoth's but far weaker (${INFANTRY_SHIELD.hp} points): enemy rounds stop on it and enemies cannot walk through, while it and its side shoot and walk through. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
   },
   thrall: {
     type: "thrall",
@@ -5947,7 +5984,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: FISTS.penetration,
     caliber: FISTS.caliber,
     spreadDeg: FISTS.spreadDeg,
-    blurb: "The hive's cheap brawler, quick off the line: a taken body on a heavy frame. It always runs, and it fights with two armoured fists: a soldier it reaches is pummelled down in a few fast blows. An armored hull it reaches, it does not punch: it detonates against the plate and is gone. Sandbags and walls do not stop it; it vaults them. Bullets do little to its plating, but now and then one catches a shoulder and staggers it for a moment. No stance orders. Near death its legs are torn off and it crawls on, still swinging. Medics heal it, engineers repair it. It runs on your Cyborg Central's uplink or a living Cyborg Commander, and shuts down without them.",
+    blurb: "The hive's cheap brawler, quick off the line: a taken body on a heavy frame. It always runs, and it fights with two armoured fists: a soldier it reaches is pummelled down in a few fast blows. An armored hull it reaches, it does not punch: it detonates against the plate and is gone. Sandbags and walls do not stop it; it vaults them. Bullets do little to its plating, but now and then one catches a shoulder and staggers it for a moment. No stance orders. Near death its legs are torn off and it crawls on, still swinging. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.",
   },
   lancer: {
     type: "lancer",
@@ -5972,7 +6009,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: LAUNCHER.penetration,
     caliber: LAUNCHER.caliber,
     spreadDeg: LAUNCHER.spreadDeg,
-    blurb: `Anti-armor cyborg. A plasma lance rides its shoulder and throws a burning bolt like a rocket: loose at full reach, tighter up close, a burst among soldiers that dents a tank. The capacitor on its back recharges the lance between shots. Heavy plating keeps it standing where a Rocketer would fall. In a fight it raises the Drone's small energy wall in front of it (${INFANTRY_SHIELD.hp} points). No stance orders. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It runs on your Cyborg Central's uplink or a living Cyborg Commander, and shuts down without them.`,
+    blurb: `Anti-armor cyborg. A plasma lance rides its shoulder and throws a burning bolt like a rocket: loose at full reach, tighter up close, a burst among soldiers that dents a tank. The capacitor on its back recharges the lance between shots. Heavy plating keeps it standing where a Rocketer would fall. In a fight it raises the Drone's small energy wall in front of it (${INFANTRY_SHIELD.hp} points). No stance orders. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
   },
   /** Xenomorph cyborg: acid spitter whose globs eat tank plate. */
   spitter: {
@@ -5998,7 +6035,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: ACID.penetration,
     caliber: ACID.caliber,
     spreadDeg: ACID.spreadDeg,
-    blurb: `A taken body with a swollen throat sac. It rears back and spits globs of corrosive bile, four and then a short refill from the bladder on its back: about a rifle round on a soldier, from a little less reach. On a tank the glob does not have to get through. It eats the plate: every glob that lands takes ${ACID_CORRODE_MM} mm off every face, up to half the plate, and the coat dries ${ACID_CORRODE_SECONDS} seconds after the last one. Spit a Tiger down and let the Stalkers and Lancers finish it. No stance orders. Near death its legs are torn off and it crawls on, still spitting. It runs on your Cyborg Central's uplink or a living Cyborg Commander, and shuts down without them.`,
+    blurb: `A taken body with a swollen throat sac. It rears back and spits globs of corrosive bile, four and then a short refill from the bladder on its back: about a rifle round on a soldier, from a little less reach. On a tank the glob does not have to get through. It eats the plate: every glob that lands takes ${ACID_CORRODE_MM} mm off every face, up to half the plate, and the coat dries ${ACID_CORRODE_SECONDS} seconds after the last one. Spit a Tiger down and let the Stalkers and Lancers finish it. No stance orders. Near death its legs are torn off and it crawls on, still spitting. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
   },
   /** Xenomorph cyborg: unarmed nanite mender. */
   weaver: {
@@ -6021,7 +6058,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `No weapon. Four needle arms and a spindle of nanites on its back. Every second it sends a mend into each hive unit of yours within ${WEAVER_REACH_TILES / TILE_SUBDIV} cells: ${WEAVER_MEND_CYBORG} HP to a cyborg, ${WEAVER_MEND_HEAVY} to a heavy assimilator or anything else the hive fields. Two Weavers on one unit mend it once. It cannot mend itself; another Weaver can. Torn legs grow back once the body is whole enough. No stance orders. It runs on your Cyborg Central's uplink or a living Cyborg Commander, and mends nothing while shut down.`,
+    blurb: `No weapon. Four needle arms and a spindle of nanites on its back. Every second it sends a mend into each hive unit of yours within ${WEAVER_REACH_TILES / TILE_SUBDIV} cells: ${WEAVER_MEND_CYBORG} HP to a cyborg, ${WEAVER_MEND_HEAVY} to a heavy assimilator or anything else the hive fields. Two Weavers on one unit mend it once. It cannot mend itself; another Weaver can. Torn legs grow back once the body is whole enough. No stance orders. It hears the hive through your Conversion Chamber's spire, and mends nothing while dark.`,
   },
   /** Xenomorph cyborg: cloaked spine sniper. */
   shade: {
@@ -6048,7 +6085,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: SCOPED.penetration,
     caliber: SCOPED.caliber,
     spreadDeg: SCOPED.spreadDeg,
-    blurb: `A lean hunter with a spine rifle grown along its forearm and a skin that drinks the light. The spine reaches as far as a sniper's scope; a hit takes most of a soldier's health, and the hive's spine never needs a truck. While its skin is settled no enemy sees it or can pick it, even on the move. Each shot, and any hit that hurts it, shows it for ${SHADE_REVEAL_SECONDS} seconds, and an enemy within ${SHADE_SPOT_TILES / TILE_SUBDIV} cells always sees it. Thin plating for a cyborg. No stance orders. Near death its legs are torn off and it crawls on, still firing. It runs on your Cyborg Central's uplink or a living Cyborg Commander, and shuts down without them. Needs a Neural Nexus.`,
+    blurb: `A lean hunter with a spine rifle grown along its forearm and a skin that drinks the light. The spine reaches as far as a sniper's scope; a hit takes most of a soldier's health, and the hive's spine never needs a truck. While its skin is settled no enemy sees it or can pick it, even on the move. Each shot, and any hit that hurts it, shows it for ${SHADE_REVEAL_SECONDS} seconds, and an enemy within ${SHADE_SPOT_TILES / TILE_SUBDIV} cells always sees it. Thin plating for a cyborg. No stance orders. Near death its legs are torn off and it crawls on, still firing. It hears the hive through your Conversion Chamber's spire, and goes dark without it. Needs a Neural Nexus.`,
   },
   /** Xenomorph heavy assimilator: four legs and a turreted disruptor, the hive's answer to the Tiger. */
   stalker: {
@@ -6103,6 +6140,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rangeTiles: t(10),
     sightTiles: t(9),
     cooldown: TICK_DT,
+    plasmaCell: { shots: 60, rechargeSeconds: 0.2 },
     damage: 8,
     projectileSpeed: SMALL_ARMS_SPEED,
     turnInPlace: true,
@@ -6118,7 +6156,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     mgAmmo: HULL_FLAMER_FUEL,
     leavesWreck: true,
     wreckHp: 28,
-    blurb: `Fast heavy assimilator built to hunt soldiers. A pulse repeater on a quick turret draws on its own core and never runs dry; tank plate turns the bolts, and they do not bring a building down. A plasma jet in the jaw fires on its own at soldiers and soft vehicles inside a short reach, but only where the nose points, and burns every soldier in its path, friends too. The jet never runs dry either. Lighter plate than a Stalker.`,
+    blurb: `Fast heavy assimilator built to hunt soldiers. A pulse repeater on a quick turret; tank plate turns the bolts, and they do not bring a building down. Each bolt draws on an energy cell that holds 60 and regrows five a second: three seconds of full fire, then a quarter of that while the cell refills. A plasma jet in the jaw fires on its own at soldiers and soft vehicles inside a short reach, but only where the nose points, and burns every soldier in its path, friends too. The jet never runs dry. Lighter plate than a Stalker.`,
   },
   /** Xenomorph heavy assimilator: six legs, twin disruptors, a carapace that sheds shells. */
   behemoth: {
@@ -6156,7 +6194,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     shellResist: BEHEMOTH_SHELL_RESIST,
     leavesWreck: true,
     wreckHp: 60,
-    blurb: `The largest of the heavy assimilators: a carapace on six legs with twin plasma disruptors on one turret. They fire one after the other, a short gap and then a long reload, through a Tiger's front plate, from farther than any tank but the Jagdtiger. The layered carapace sheds part of every shell that hits it (it takes ${Math.round(BEHEMOTH_SHELL_RESIST * 100)}% of the damage). Slow on its legs and slow on the turret, but Lunge throws it up and forward up to ${BEHEMOTH_LUNGE_RANGE_TILES / TILE_SUBDIV} cells; where it lands, ${BEHEMOTH_RING_SWEEPS} green laser sweeps lash out round it, burning enemy soldiers and setting the ground alight. The legs need ${BEHEMOTH_LUNGE_RECHARGE_SECONDS} seconds before the next. In a fight it throws a curved energy wall across its front, ${BEHEMOTH_SHIELD.hp} points strong: the wall stays where it went up, stops every enemy round and beam that meets it, and no enemy walks through it, while the Behemoth walks and fires through as if it were not there. It stands ${BEHEMOTH_SHIELD.seconds} seconds unless shot down; ${BEHEMOTH_SHIELD.rechargeSeconds} seconds after it falls, the next. Each barrel's bolt draws on an energy cell that holds 6 and regrows one every 9 seconds. Needs a Neural Nexus.`,
+    blurb: `The largest of the heavy assimilators: a carapace on six legs with twin plasma disruptors on one turret. They fire one after the other, a short gap and then a long reload, through a Tiger's front plate, from farther than any tank but the Jagdtiger. The layered carapace sheds part of every shell that hits it (it takes ${Math.round(BEHEMOTH_SHELL_RESIST * 100)}% of the damage). Slow on its legs and slow on the turret, it walks straight through woods, felling every tree it brushes. Lunge throws it up and forward up to ${BEHEMOTH_LUNGE_RANGE_TILES / TILE_SUBDIV} cells; where it lands, ${BEHEMOTH_RING_SWEEPS} green laser sweeps lash out round it, burning enemy soldiers and setting the ground alight. The legs need ${BEHEMOTH_LUNGE_RECHARGE_SECONDS} seconds before the next. In a fight it throws a curved energy wall across its front, ${BEHEMOTH_SHIELD.hp} points strong: the wall stays where it went up, stops every enemy round and beam that meets it, and no enemy walks through it, while the Behemoth walks and fires through as if it were not there. It stands ${BEHEMOTH_SHIELD.seconds} seconds unless shot down; ${BEHEMOTH_SHIELD.rechargeSeconds} seconds after it falls, the next. Each barrel's bolt draws on an energy cell that holds 6 and regrows one every 9 seconds. Needs a Neural Nexus.`,
   },
   /** Xenomorph heavy assimilator: a giant on two legs with a two-handed hammer. Melee only. */
   juggernaut: {
@@ -6188,7 +6226,10 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: 0,
     leavesWreck: true,
     wreckHp: 50,
-    blurb: `A giant of the hive on two legs, swinging a two-handed hammer. It fights only at arm's reach, and runs at what it goes for at ${JUGGERNAUT_SPRINT_MUL} times its walk. Every blow lands in an area: it kills a soldier outright, staves in a tank's plate whatever its armor, and knocks whole walls out of a building. Only its own side is spared. Plated like a light tank and slow to fall. Brought down to ${Math.round(JUGGERNAUT_RAGE_HP * 100)}% it hurls the hammer at the strongest enemy within ${JUGGERNAUT_THROW_RANGE_TILES / TILE_SUBDIV} cells, a heavy blast where it lands, then fights on with its fists: lighter blows, three for every swing of the hammer, and it moves faster. Needs a Neural Nexus.`,
+    wades: true,
+    wadeSpeed: JUGGERNAUT_WADE_SPEED,
+    fightsWading: true,
+    blurb: `A giant of the hive on two legs, swinging a two-handed hammer. It fights only at arm's reach, and runs at what it goes for at ${JUGGERNAUT_SPRINT_MUL} times its walk. It strides straight through woods, felling every tree it brushes, and wades through water thigh-deep, slower, still swinging: from there it hammers a boat on the surface, but not a submarine running below. Every blow lands in an area: it kills a soldier outright, staves in a tank's plate whatever its armor, and knocks whole walls out of a building. Only its own side is spared. Plated like a light tank and slow to fall. Brought down to ${Math.round(JUGGERNAUT_RAGE_HP * 100)}% it hurls the hammer at the strongest enemy within ${JUGGERNAUT_THROW_RANGE_TILES / TILE_SUBDIV} cells, a heavy blast where it lands, then fights on with its fists: lighter blows, three for every swing of the hammer, and it moves faster. Needs a Neural Nexus.`,
   },
   /** Xenomorph heavy assimilator: four legs and a draining disruptor that feeds its own body. */
   siphon: {
@@ -6291,6 +6332,29 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rocketAmmo: MAWCASTER_SALVO * 5,
     rocketRack: MAWCASTER_POD,
     blurb: `Spore artillery on four legs. A maw of ${MAWCASTER_SALVO} launch tubes throws its pods on a high arc over your own troops, from nearly the Nebelwerfer's reach: half its salvo, but it draws its pods from the hive and never needs a truck. Force attack sends them anywhere in that reach, seen or not. It will not fire inside ${MAWCASTER_MIN_RANGE_TILES / TILE_SUBDIV} cells, and must stop and swing the maw onto the target first. Pods scatter wide at full reach: a salvo blankets an area and shreds soldiers in the open; armor only dents. Now and then a pod leaves burning bile on the ground. Thin hide and short eyes — keep it behind the line.`,
+  },
+  /** Xenomorph infantry: the hive's barracks, and the synapse link its foot soldiers run on. */
+  conversion: {
+    type: "conversion",
+    kind: "building",
+    name: "Conversion Chamber",
+    letter: "C",
+    cost: 500,
+    buildSeconds: 16,
+    hp: 900,
+    power: -30,
+    tileW: t(2),
+    tileH: t(2),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: `A low chitin dome ringed with glowing conversion pods, under a synapse spire. Taken bodies go into the pods and walk out as the hive's foot soldiers: the Drone, the Thrall, the Lancer, the Spitter, the Weaver, the Sim Unit II, and, with a Neural Nexus standing, the Shade. They hear the hive through its spire: if it falls or your power runs short, ${CYBORG_SHUTDOWN_SECONDS} seconds later every one of them on the field goes dark: still yours, but dead still and silent. Raise the link again (a new Chamber, or the power) and they wake up, unless an enemy Cyborg Commander took them first.`,
   },
   /** Xenomorph vehicle factory. */
   forge: {
@@ -6454,7 +6518,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     onWater: true,
     blurb: "A ring of ribbed chitin around a glowing birthing pool. It can only grow on water: every tile under it must be open water. Grows the Leech and, with a Neural Nexus standing, the Lurker, which slip into the water beside it and never come ashore.",
   },
-  /** Xenomorph airfield: a launch spine and four nests. Same footprint and pads as the Airfield. */
+  /** Xenomorph flier hive: grows the fliers, which lift straight out of it. No strip, no pads; the Nanite Forge's footprint. */
   aerie: {
     type: "aerie",
     kind: "building",
@@ -6464,8 +6528,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     buildSeconds: 26,
     hp: 1100,
     power: -45,
-    tileW: t(7.5),
-    tileH: t(3.75),
+    tileW: t(3),
+    tileH: t(3),
     radius: 0,
     moveTilesPerSec: 0,
     turnDegPerSec: 0,
@@ -6475,7 +6539,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `A long spine of fused chitin with four landing nests beside it. Grows the Wasp, the Gnat, and, with a Neural Nexus standing, the Scourge and the Overseer, and keeps up to ${AIRFIELD_PADS} of them. They never run out of anything to fire; they come back to their nests to refuel and mend.`,
+    blurb: "A ribbed chitin hive where the fliers are grown. Grows the Wasp, the Gnat, and, with a Neural Nexus standing, the Scourge and the Overseer. They lift straight up out of it and never come down: no runway, no fuel, nothing to rearm. A Weaver mends them in the air.",
   },
   /** Xenomorph fast attack boat: a skimming chitin hull with a plasma cannon. */
   leech: {
@@ -6530,7 +6594,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     noReverse: true,
     turnInPlace: true,
     rangeTiles: LURKER_REACH_TILES,
-    sightTiles: t(16),
+    sightTiles: LURKER_SIGHT_TILES,
     cooldown: LURKER_BITE_SECONDS,
     damage: LURKER_BITE_DAMAGE,
     projectileSpeed: 0,
@@ -6542,10 +6606,11 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: 0,
     naval: true,
     submerges: true,
+    neverSurfaces: true,
     bite: true,
     leavesWreck: true,
     wreckHp: 40,
-    blurb: `A sea beast the hive grew in its pool: a long plated body that swims like an eel, a crest of spines, glowing eyes, and a split jaw of hooked fangs. No gun: it hunts with its jaws. It leaves the pool surfaced; Dive and Surface set its depth, and it holds ${SUB_DIVE_SECONDS} seconds of breath below. Submerged, the enemy sees it only while one of their Destroyers hears it on sonar, or for ${SUB_REVEAL_SECONDS} seconds after it bites. Up or down, it bites whatever it reaches, ${LURKER_REACH_TILES / TILE_SUBDIV} cells from its body: one bite kills a soldier, swimming or standing at the water's edge, and tears into a boat's hull; a tank's plate gives slowly, a wall slower. It never comes ashore. Dead, its carcass sinks and blocks the water until it is shot apart. Needs a Neural Nexus.`,
+    blurb: `A sea beast the hive grew in its pool: a long plated body that swims like an eel, a crest of spines, glowing eyes, and a split jaw of hooked fangs. No gun: it hunts with its jaws. It lives under the water and never needs air: it cannot be ordered up, and down there it sees only ${LURKER_SIGHT_TILES / TILE_SUBDIV} cells. The enemy sees it only while one of their Destroyers hears it on sonar. It surfaces by itself when it bites and stays in sight for ${SUB_REVEAL_SECONDS} seconds before it sinks again. It bites whatever it reaches, ${LURKER_REACH_TILES / TILE_SUBDIV} cells from its body: one bite kills a soldier, swimming or standing at the water's edge, and tears into a boat's hull; a tank's plate gives slowly, a wall slower. It never comes ashore. Dead, its carcass sinks and blocks the water until it is shot apart. Needs a Neural Nexus.`,
   },
   /** Xenomorph fighter: insect wings, twin pulse cannons. Lives in an Aerie nest. */
   wasp: {
@@ -6574,7 +6639,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     aircraft: true,
     fighter: true,
     wreckHp: 20,
-    blurb: `Insect fighter on green-veined wings, a pulse cannon under each. They never run dry: on every pass it lines up on the target and lays two straight lines of pulses through it, coming down through a tank's thin roof. It chases enemy planes out of the sky the same way. A shade faster and tighter than the Fw 190, a little lighter. Lands in an Aerie nest to refuel and mend. A hit that tears a wing brings it down at once.`,
+    blurb: `Insect fighter on buzzing green-veined wings, a pulse cannon under each. It never lands and never runs dry. It hovers: sent at something it flies straight there, hangs a few cells off it, turns on it, and lays two straight lines of pulses through it, coming down through a tank's thin roof. It chases enemy planes out of the sky the same way. A hit that tears a wing brings it down at once.`,
   },
   /** Xenomorph dive bomber: beetle carapace and a plasma bomb pod. Lives in an Aerie nest. */
   scourge: {
@@ -6602,7 +6667,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: STUKA_MG.spreadDeg,
     aircraft: true,
     wreckHp: 23,
-    blurb: "Dive bomber with a beetle's carapace. A plasma bomb in a glowing pod that grows the next one as soon as the last falls, so it bombs on every pass and never goes home to rearm, and two pulse guns for soft targets. Flies over everything; only rifles, machine guns, the Walker, and the Titan's rockets can reach it in the air. Lands in an Aerie nest to refuel and mend. A hit that tears a wing brings it down at once. Needs a Neural Nexus.",
+    blurb: `Hovering bomber with a beetle's carapace and buzzing wings. A plasma bomb in a glowing pod that grows the next one ${HIVE_BOMB_SECONDS} seconds after the last falls, and two pulse guns for soft targets. It never lands and never runs dry: sent at something it hangs just off it, lobbing bomb after bomb and raking it in bursts. Flies over everything; only rifles, machine guns, the Walker, and the Titan's rockets can reach it in the air. A hit that tears a wing brings it down at once. Needs a Neural Nexus.`,
   },
   /** Xenomorph hover craft: hangs over its target and burns straight down. Lives in an Aerie nest. */
   overseer: {
@@ -6629,7 +6694,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     aircraft: true,
     hovers: true,
     wreckHp: 20,
-    blurb: `A floating hive eye: a bell of chitin on a ring of humming vanes, glowing membrane round its rim and a cluster of emitters under its belly. It lifts straight off its Aerie nest and flies slowly. Sent at something on the ground it stops right over it and hangs there, burning straight down with a green laser pulse every ${OVERSEER_PULSE_SECONDS} seconds, and follows it as it moves. Every enemy soldier in the beam's spot burns; a tank's thin roof gives under it slowly, a building slower still. It never runs dry. It cannot touch a plane, and it hovers low: rifles, machine guns, and anti-air reach it. It sets down on its nest to refuel and mend. Needs a Neural Nexus.`,
+    blurb: `A floating hive eye: a spinning bell of chitin on a ring of humming vanes, glowing membrane round its rim and a cluster of emitters under its belly. It lifts straight out of the Aerie, never lands, and flies slowly. Sent at something on the ground it stops right over it and hangs there, burning straight down with a green laser pulse every ${OVERSEER_PULSE_SECONDS} seconds, and follows it as it moves. Every enemy soldier in the beam's spot burns; a tank's thin roof gives under it slowly, a building slower still. It never runs dry. It cannot touch a plane, and it hovers low: rifles, machine guns, and anti-air reach it. Needs a Neural Nexus.`,
   },
   /** Xenomorph spy drone: a tiny fly with one big sensor eye. Lives in an Aerie nest. */
   gnat: {
@@ -6655,7 +6720,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     aircraft: true,
     recon: true,
     wreckHp: 6,
-    blurb: `A spy fly the size of a man, grown in an Aerie nest in a few seconds and for a handful of scrap. No weapon: one great sensor eye. It flies as high as the Horten VII and sees almost as far from up there, ${(t(11) + HORTEN_FLYING_SIGHT_BONUS) / TILE_SUBDIV} tiles around it. Only anti-air guns and a fighter that climbs after it can reach it, but its shell is paper: one burst brings it down. Its charge holds ${HORTEN_FUEL_SECONDS} seconds of flight. Send it at a point or a unit and it flies over and circles there; on guard or patrol it keeps watching the area. It comes home to its nest to recharge when it runs low.`,
+    blurb: `A spy fly the size of a man on buzzing wings, grown in the Aerie in a few seconds and for a handful of scrap. No weapon: one great sensor eye. It flies as high as the Horten VII and sees almost as far from up there, ${(t(11) + HORTEN_FLYING_SIGHT_BONUS) / TILE_SUBDIV} tiles around it. Only anti-air guns and a fighter that climbs after it can reach it, but its shell is paper: one burst brings it down. It never lands and never tires. Send it at a point or a unit and it flies straight over and hangs there, following a unit it can see; on guard or patrol it keeps watching the area.`,
   },
   // ── The Bloom ───────────────────────────────────────────────────────────────────────────
   /** Bloom HQ on the move: a fat seed-pod on root legs. */
@@ -8672,6 +8737,11 @@ export function submergesOf(type: EntityType): boolean {
   return catalog(type).submerges === true;
 }
 
+/** Always below: no Dive or Surface, no air. It comes up only to strike. */
+export function neverSurfacesOf(type: EntityType): boolean {
+  return catalog(type).neverSurfaces === true;
+}
+
 /** Hull sonar, an ASW helicopter on the fantail, and a mine rail: the Destroyer. */
 export function hasSonar(type: EntityType): boolean {
   return catalog(type).sonar === true;
@@ -8765,9 +8835,18 @@ export function isFighterType(type: EntityType): boolean {
   return type === "fw190" || catalog(type).fighter === true;
 }
 
-/** Hovers like a helicopter: the Xenomorph Overseer. */
+/** Hovers like a helicopter: the Xenomorph Overseer, the Bloom Drifter. */
 export function isHoverType(type: EntityType): boolean {
   return catalog(type).hovers === true;
+}
+
+/**
+ * A Xenomorph flier: the Wasp, the Scourge, the Gnat, the Overseer. It lifts straight out of
+ * the Aerie and never comes down: no runway, no nest, no fuel. It flies straight at where it
+ * is sent and hangs there (sim/air.ts tickHover); it never circles like a plane.
+ */
+export function staysAloft(type: EntityType): boolean {
+  return isAircraftType(type) && XENO_TYPES.has(type);
 }
 
 /** Fights with its jaws: the Xenomorph Lurker. */
@@ -8793,8 +8872,9 @@ export function isCyborg(type: EntityType): boolean {
 }
 
 /**
- * Runs on the uplink from a Cyborg Central or a living Cyborg Commander, and shuts down
- * without either: every cyborg but the Commander himself.
+ * Runs on a link and shuts down without it: every cyborg but the Commander himself. The
+ * Alliance's run on a Cyborg Central or a living Cyborg Commander, the Xenomorphs' on a
+ * Conversion Chamber.
  */
 export function onUplink(type: EntityType): boolean {
   return isCyborg(type) && type !== "cyborgcommander";
@@ -8833,9 +8913,12 @@ export function crushes(mover: EntityType, victim: EntityType): boolean {
   return mover === "apocalypse" && APOCALYPSE_CRUSHES.includes(victim);
 }
 
-/** A hull heavy enough to go straight through woods, not only over a lone tree: the Apocalypse, and the Titan on its legs. */
+/**
+ * A hull heavy enough to go straight through woods, not only over a lone tree: the Apocalypse,
+ * the Titan on its legs, and the hive's Behemoth and Juggernaut.
+ */
 export function rollsThroughWoods(type: EntityType): boolean {
-  return type === "apocalypse" || type === "titan";
+  return type === "apocalypse" || type === "titan" || type === "behemoth" || type === "juggernaut";
 }
 
 /**
@@ -9351,6 +9434,11 @@ export function wadesOf(type: EntityType): boolean {
   return catalog(type).wades === true;
 }
 
+/** A wader that fights from the water. See CatalogEntry.fightsWading. */
+export function fightsWadingOf(type: EntityType): boolean {
+  return catalog(type).fightsWading === true;
+}
+
 /** Share of dry-ground speed while wading. A wader that omits wadeSpeed keeps the Titan's pace. */
 export function wadeSpeedOf(type: EntityType): number {
   return catalog(type).wadeSpeed ?? TITAN_WADE_SPEED;
@@ -9471,6 +9559,7 @@ export function bracesOf(type: EntityType): boolean {
 
 /** Seconds a deploy or undeploy takes for this type. */
 export function deploySecondsOf(type: EntityType): number {
+  if (type === "seed") return HIVE_DROP_SECONDS;
   return bracesOf(type) ? TITAN_BRACE_SECONDS : DEPLOY_SECONDS;
 }
 

@@ -2,6 +2,7 @@ import {
   biteOf,
   hasSonar,
   isTorpedoBody,
+  neverSurfacesOf,
   secondsToTicks,
   SONAR_RANGE_TILES,
   SUB_AIR_RECOVER_MUL,
@@ -55,13 +56,13 @@ function namedStrike(e: Entity, t: Entity): boolean {
 
 /** In range of a named hull on the surface, a submarine below comes up to fire. A Lurker bites from below. */
 export function surfaceToStrike(e: Entity, t: Entity): void {
-  if (biteOf(e.type)) return;
+  if (biteOf(e.type) || neverSurfacesOf(e.type)) return;
   if (diving(e) && !diving(t) && namedStrike(e, t)) setDive(e, false);
 }
 
-/** A submarine running below, seen by the enemy or not. */
+/** A submarine running below, seen by the enemy or not. A Lurker is always below. */
 export function diving(e: Entity): boolean {
-  return submergesOf(e.type) && e.hp > 0 && !e.wreck && !!e.dive?.down;
+  return submergesOf(e.type) && e.hp > 0 && !e.wreck && (neverSurfacesOf(e.type) || !!e.dive?.down);
 }
 
 /** A submarine running below that has not fired lately: out of the enemy's sight from afar. */
@@ -71,7 +72,10 @@ export function submerged(state: MatchState, e: Entity): boolean {
   return state.tick - e.surfacedTick > secondsToTicks(SUB_REVEAL_SECONDS);
 }
 
-/** The submarine just fired: everyone who has eyes on its water sees it for a while. */
+/**
+ * The submarine just fired: everyone who has eyes on its water sees it for a while.
+ * A Lurker comes up to bite, and that while is all it spends on the surface.
+ */
 export function surface(state: MatchState, e: Entity): void {
   if (submergesOf(e.type)) e.surfacedTick = state.tick;
 }
@@ -83,6 +87,7 @@ function diveOf(e: Entity): DiveState {
 /** Take the boat down or bring it up. A boat that ran out of air stays up until the air is back. */
 export function setDive(e: Entity, down: boolean): string | null {
   if (!submergesOf(e.type)) return null;
+  if (neverSurfacesOf(e.type)) return down ? null : "It never surfaces: it comes up only to bite.";
   const d = diveOf(e);
   if (down && d.winded) return "Out of air: it stays surfaced until its air is back.";
   d.down = down;
@@ -93,7 +98,7 @@ export function setDive(e: Entity, down: boolean): string | null {
 export function tickSubmarines(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
     const d = e.dive;
-    if (!d || e.hp <= 0 || e.wreck || !submergesOf(e.type)) continue;
+    if (!d || e.hp <= 0 || e.wreck || !submergesOf(e.type) || neverSurfacesOf(e.type)) continue;
     if (d.down) {
       d.air = Math.max(0, d.air - dt);
       if (d.air <= 0) {

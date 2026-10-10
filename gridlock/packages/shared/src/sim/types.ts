@@ -380,6 +380,8 @@ export interface Entity {
   queue: TrainJob[];
   /** Producer rally point. New units walk here on spawn. Unset means stay at the door. */
   rally?: Vec;
+  /** Xenomorph Deployment: the drop zone it was set down on. It keeps within DEPLOYMENT_LEASH_TILES of it. */
+  anchor?: Vec;
   /**
    * Still loitering with the units that came out this door. A player order
    * clears it. The next spawn packs the cluster into a block. Not on the wire.

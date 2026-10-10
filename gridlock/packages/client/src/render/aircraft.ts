@@ -1,4 +1,4 @@
-import { AIR_CRUISE_ALT, isoLift, type EntityView } from "@gridlock/shared";
+import { AIR_CRUISE_ALT, isoLift, staysAloft, type EntityView } from "@gridlock/shared";
 
 /**
  * Planes in the air draw above every standing thing, at their height over
@@ -18,6 +18,34 @@ export function lerpAirAlt(prev: EntityView | undefined, curr: EntityView, t: nu
   const b = heightOf(prev);
   const u = Math.max(0, Math.min(1, t));
   return b + (a - b) * u;
+}
+
+/** Seconds of one slow rise and fall of a hovering Xenomorph flier, and its height in screen pixels. */
+export const HOVER_BOB_SECONDS = 1.8;
+export const HOVER_BOB_PX = 1.6;
+
+/**
+ * Screen pixels a Xenomorph flier (staysAloft) bobs above its height while it hangs in the air:
+ * a slow rise and fall, out of step between fliers. 0 for anything else, on the ground, or going down.
+ */
+export function hoverBobPx(e: Pick<EntityView, "type" | "id" | "air" | "wreck">, nowMs: number): number {
+  if (!staysAloft(e.type) || e.wreck || !e.air || e.air.phase === "crash" || e.air.alt <= 0.5) return 0;
+  // Fades in over the first cells of the climb, so it lifts off clean.
+  const fade = Math.min(1, e.air.alt / 4);
+  return Math.sin((nowMs / 1000 / HOVER_BOB_SECONDS) * Math.PI * 2 + e.id * 1.3) * HOVER_BOB_PX * fade;
+}
+
+/** Which wing stroke a Xenomorph insect shows now: its wings beat all the time, out of step between fliers. */
+export function wingBeatFrame(id: number, fps: number, frames: number, nowMs: number): number {
+  return Math.floor((nowMs / 1000) * fps + id * 1.37) % frames;
+}
+
+/** Turns a second of the Overseer's spinning hull. */
+export const SAUCER_SPIN_PER_SEC = 0.5;
+
+/** Radians the Overseer's hull has spun at this moment: it turns all the time, the way it flies or not. */
+export function saucerSpin(id: number, nowMs: number): number {
+  return ((nowMs / 1000) * SAUCER_SPIN_PER_SEC + id * 0.19) * Math.PI * 2;
 }
 
 /** Screen pixels a plane lifts off its ground point. */

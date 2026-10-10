@@ -89,12 +89,12 @@ const CYBORGS = ["spitter", "weaver", "shade"] as const;
 const HEAVIES = ["siphon", "assembler", "mawcaster"] as const;
 
 describe("new Xenomorph roster", () => {
-  it("trains the three cyborgs at the Central and the three heavies at the Forge", () => {
+  it("trains the three cyborgs at the Conversion Chamber and the three heavies at the Forge", () => {
     for (const t of CYBORGS) {
       assert.ok(TRAIN_TYPES.includes(t), t);
       assert.equal(factionOf(t), "xeno");
       assert.ok(isInfantryType(t) && isCyborg(t) && onUplink(t), t);
-      assert.equal(producerType(t), "cyborgcentral");
+      assert.equal(producerType(t), "conversion");
     }
     for (const t of HEAVIES) {
       assert.ok(TRAIN_TYPES.includes(t), t);

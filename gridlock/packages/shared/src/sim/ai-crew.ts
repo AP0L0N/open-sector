@@ -6,7 +6,7 @@
  * from, act on them directly (tickNeutralCrews).
  */
 
-import { DRONE_BATTERY_SECONDS, DRONE_LEASH_TILES, NEUTRAL_OWNER, TICK_HZ, catalog, submergesOf, type DroneMode } from "../catalog.js";
+import { DRONE_BATTERY_SECONDS, DRONE_LEASH_TILES, NEUTRAL_OWNER, TICK_HZ, catalog, neverSurfacesOf, submergesOf, type DroneMode } from "../catalog.js";
 import { droneOf, guardDrone, launchBlocked, launchDrone, orderDrone, setDroneMode } from "./drone.js";
 import { airAlt } from "./elevation.js";
 import { allies, ownerless } from "./geo.js";
@@ -44,7 +44,7 @@ function subContact(state: MatchState, e: Entity): boolean {
  * strike sets its own depth: the boat closes in below and surfaces to fire.
  */
 export function subDepthCall(state: MatchState, e: Entity): boolean | null {
-  if (!submergesOf(e.type) || e.hp <= 0 || e.wreck) return null;
+  if (!submergesOf(e.type) || neverSurfacesOf(e.type) || e.hp <= 0 || e.wreck) return null;
   const o = e.order;
   if ((o?.kind === "attack" || o?.kind === "forceattack") && !o.auto) return null;
   const down = !!e.dive?.down;

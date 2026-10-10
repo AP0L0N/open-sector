@@ -18,6 +18,8 @@ Sheets (frames, what the client does with them):
   fists       8  the hammer gone: a stride with the fists swinging
   punch       8  two blows: the right fist lands on frame 0, the left on frame 4
   throw       4  wound back, the release, empty hands forward, back on guard
+  *-wade      the same five, sunk to mid-thigh in the shared swim pool (derive_swim.py's
+              water, foam, and ripple rings); the swing's hit throws up a splash
 Plus the wreck (1 frame, the live cell, contact and scale) at
 assets/units/wrecks/juggernaut.png: face down, the hammer beside it.
 
@@ -34,12 +36,14 @@ import sys
 from pathlib import Path
 
 import numpy as np
+from PIL import Image, ImageDraw
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.dont_write_bytecode = True
 import render_cyborg as R  # noqa: E402
 from compose_unit_sheet import ENGINE_ORDER, compose_sheet, diagnostics, preview_strip, preview_turntable  # noqa: E402
+from derive_swim import DEEP, FOAM, RIPPLE, WATER  # noqa: E402
 
 UNITS = R.UNITS
 SRC = R.SRC
@@ -75,6 +79,14 @@ for _name in ("optic", "conduit"):
     R.EMISSIVE.add(_name)
 R.MATERIALS["flash"] = (130, 255, 96)
 R.MATERIALS["flash_core"] = (232, 255, 214)
+# Wading: a foam collar where the body meets the water, and the hammer's splash.
+for _name, _spec in {
+    "foam": ((96, 140, 136), (128, 172, 166), (168, 204, 198)),
+    "splash": ((120, 168, 162), (170, 210, 204), (214, 238, 232)),
+}.items():
+    R.MATERIALS[_name] = _spec
+    if _name not in R.MAT_IDS:
+        R.MAT_IDS[_name] = len(R.MAT_IDS)
 
 Cloud = R.Cloud
 ellipsoid, capsule, cylinder, box = R.ellipsoid, R.capsule, R.cylinder, R.box
@@ -362,7 +374,7 @@ def swing_angle(u: float) -> tuple[float, float]:
     return math.radians(phi), lean
 
 
-def pose_swing(u: float) -> Cloud:
+def pose_swing(u: float, wet: bool = False) -> Cloud:
     c = Cloud()
     phi, lean = swing_angle(u)
     drop = 3.0 * max(0.0, lean)
@@ -374,7 +386,14 @@ def pose_swing(u: float) -> Cloud:
     hammer(c, grip, a)
     arm(c, sh_r, grip + np.array([0, -1.6, 0]), -1, pole=(-0.5, 0, -1))
     arm(c, sh_l, grip - a * 5.5 + np.array([0, 1.6, 0]), 1, pole=(-0.5, 0, -1))
-    if u == 0.0:
+    if u == 0.0 and wet:
+        # The hit in water: the head is under, and spray goes up where it went in.
+        top = grip + a * HAFT
+        at = np.array([top[0], top[1], WADE_Z])
+        ellipsoid(c, at + np.array([0, 0, 0.8]), (9.0, 10.0, 1.6), "splash")
+        for dx, dy, h, r in ((1.0, 0.0, 9.0, 2.6), (-2.6, 4.4, 6.4, 1.9), (-1.6, -4.8, 7.2, 2.0), (4.4, 2.6, 5.0, 1.6), (3.6, -3.4, 4.6, 1.5)):
+            capsule(c, at + np.array([dx * 0.5, dy * 0.5, 1.0]), at + np.array([dx, dy, h]), r, r * 0.6, "splash")
+    elif u == 0.0:
         # The hit: a green flash off the head where it meets the ground.
         top = grip + a * HAFT
         for k, r in enumerate((6.0, 4.0)):
@@ -476,6 +495,83 @@ def pose_wreck() -> Cloud:
     return c
 
 
+# ---------------------------------------------------------------- wading
+
+# Water plane, body units above the soles: mid-thigh, just under the belly lames.
+# The whole model sinks by it, so the contact (the soles) stays put and nothing pops.
+WADE_Z = 22.0
+# Pool half-axis around the contact, body units (the Titan's pool, a little wider for the stride).
+POOL_RX = 27.0
+COLLAR = 0.7  # foam band just above the cut, body units
+SS = 4
+OUTLINE_RGB = np.array(R.OUTLINE, dtype=np.uint8)
+
+
+def sunk(c: Cloud) -> Cloud:
+    """The pose dropped by WADE_Z and cut at the water plane; a foam collar where it goes in."""
+    out = Cloud()
+    foam = R.MAT_IDS["foam"]
+    splash = R.MAT_IDS["splash"]
+    for p, n, m, k in zip(c.pts, c.nrm, c.mat, c.part):
+        p = p - np.array([0.0, 0.0, WADE_Z])
+        keep = p[:, 2] >= 0.0
+        if not keep.any():
+            continue
+        m = m[keep].copy()
+        m[(p[keep][:, 2] < COLLAR) & (m != splash)] = foam
+        out.pts.append(p[keep])
+        out.nrm.append(n[keep])
+        out.mat.append(m)
+        out.part.append(k[keep])
+    return out
+
+
+def pool_layer(frame: int, frames: int) -> Image.Image:
+    """derive_swim's pool at this cell and scale: flat teal, two ripple rings growing
+    out from the legs over the loop, a few still dark streaks."""
+    big = Image.new("RGBA", (CELL * SS, CELL * SS), (0, 0, 0, 0))
+    d = ImageDraw.Draw(big)
+    cx, cy = CELL / 2 * SS, CELL * CONTACT_Y * SS
+    rx = POOL_RX * SCALE * SS
+    ry = rx * R.SIN_P
+    d.ellipse((cx - rx, cy - ry, cx + rx, cy + ry), fill=WATER + (255,))
+    a0, a1 = 12.0 * SCALE * SS, rx - 4 * SS
+    for k in range(2):
+        t = ((frame / frames) + k * 0.5) % 1.0
+        a = a0 + (a1 - a0) * t
+        b = a * R.SIN_P
+        fade = 0.85 * (1.0 - t)
+        col = tuple(round(w + (r - w) * fade) for w, r in zip(WATER, RIPPLE)) + (255,)
+        # Front arc only; the back half sits behind the legs.
+        d.arc((cx - a, cy - b, cx + a, cy + b), 10, 170, fill=col, width=2 * SS)
+    for x0, x1, y in ((-0.66, -0.44, 0.62), (0.4, 0.62, 0.66), (-0.14, 0.12, 0.84)):
+        d.line((cx + x0 * rx, cy + y * ry, cx + x1 * rx, cy + y * ry), fill=DEEP + (255,), width=2 * SS)
+    return big.resize((CELL, CELL), Image.Resampling.LANCZOS)
+
+
+def wade_post(frames: int):
+    def post(im: Image.Image, frame: int) -> Image.Image:
+        """The pool under the cut body; foam on the water just under its outline."""
+        a = np.array(im)
+        pool = np.array(pool_layer(frame, frames))
+        collar = np.zeros(a.shape[:2], bool)
+        for tone in R.MATERIALS["foam"]:
+            collar |= (a[..., :3] == np.array(tone, dtype=np.uint8)).all(-1)
+        # The outline under the collar is the waterline; anything else overhangs the pool.
+        edge = (a[..., 3] > 40) & (a[..., :3] == OUTLINE_RGB).all(-1) & np.roll(collar, 1, 0)
+        below = np.roll(edge, 1, 0) & (a[..., 3] <= 40) & (pool[..., 3] > 128)
+        pool[below, :3] = FOAM
+        out = Image.fromarray(pool)
+        out.alpha_composite(Image.fromarray(a))
+        return out
+
+    return post
+
+
+def wade(fn):
+    return lambda i: sunk(fn(i))
+
+
 # ---------------------------------------------------------------- sheets
 
 SHEETS = [
@@ -486,13 +582,27 @@ SHEETS = [
     R.SheetSpec("throw", 4, CONTACT_Y, SCALE, lambda i: pose_throw(i)),
     R.SheetSpec("wreck", 1, WRECK_CONTACT_Y, SCALE, lambda i: pose_wreck()),
 ]
+# In water: the same poses sunk into the pool, one fit with the dry sheets.
+SHEETS += [
+    R.SheetSpec(f"{spec.name}-wade", spec.frames, CONTACT_Y, SCALE, wade(fn), wade_post(spec.frames))
+    for spec, fn in (
+        (SHEETS[0], SHEETS[0].pose),
+        (SHEETS[1], lambda i: pose_swing(i / 8, wet=True)),
+        (SHEETS[2], SHEETS[2].pose),
+        (SHEETS[3], SHEETS[3].pose),
+        (SHEETS[4], SHEETS[4].pose),
+    )
+]
 
 
 def render_sheet(spec):
     clouds = [spec.pose(i) for i in range(spec.frames)]
     rows = []
     for r in range(16):
-        rows.append([R.render(cl, r, spec.scale, spec.contact_y, CELL) for cl in clouds])
+        cells = [R.render(cl, r, spec.scale, spec.contact_y, CELL) for cl in clouds]
+        if spec.post:
+            cells = [spec.post(im, i) for i, im in enumerate(cells)]
+        rows.append(cells)
     sheet = compose_sheet(rows, CELL)
     placed = {ENGINE_ORDER[r]: rows[r][0] for r in range(16)}
     return sheet, placed

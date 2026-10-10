@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Xenomorph base buildings: Hive Core, Fusion Node, Assimilator.
+"""Xenomorph base buildings: Hive Core, Fusion Node, Assimilator, Conversion Chamber,
+Nanite Forge, Neural Nexus, Aerie.
 
 Each writes <id>.png, <id>-cameo.png (96 px), and <id>.json (pad metrics plus
 glow spots, source px in the image frame) into the buildings asset folder.
@@ -10,6 +11,18 @@ glow spots, source px in the image frame) into the buildings asset folder.
                             core held between their tips over a glowing well
   assimilator  t(3) x t(3)  scrap: a crawling claw-rig on four legs straddling
                             a glowing intake pit, a feed silo beside it
+  conversion   t(2) x t(2)  infantry: a low chitin dome ringed with glass pods,
+                            a taken body standing dark in each, under a
+                            synapse spire with a neural bulb
+  forge        t(3) x t(3)  ground units: a telescoping chitin vault, a lit maw,
+                            nanite vats, a crane arm lowering a walker pod
+  nexus        t(2) x t(2)  a brain in a rib cage under a sensor crown
+  aerie        t(3) x t(3)  air: a segmented brood spire in an exoskeleton of
+                            ribs, bat-wing membrane fins either side, a flared
+                            launch maw on top with a glowing birth membrane and
+                            hooked claws round its rim (the hovering fliers lift
+                            straight up out of it), three brood cradles with
+                            glowing sacs on the pad in front
 
 Look: forked from render_cyborgcentral.py, so the inked structure style of
 render_airfield.py (mesh, raster, ink, silhouette, key light, cast shadow),
@@ -20,6 +33,7 @@ pad, like core.png, smelter.png, and dynamo.png.
 
   python tools/sprites/render_xeno_base.py --out gridlock/packages/client/src/assets/buildings
   python tools/sprites/render_xeno_base.py --out ... --only hivecore
+  python tools/sprites/render_xeno_base.py --out ... --only aerie
 """
 
 from __future__ import annotations
@@ -581,6 +595,7 @@ def assimilator_spots() -> dict:
 # The Forge's maw and the Nexus brain: frames set by their builders, read by the texture.
 MAW: dict[str, float] = {}
 BRAIN: dict[str, float] = {}
+WOMB: dict[str, float] = {}
 
 _tex_v1 = tex
 
@@ -619,6 +634,29 @@ def tex_v2(mat: str, P: np.ndarray, n: np.ndarray) -> np.ndarray:
         w = np.sin(ra.fbm(X / 3.0 + Z * 0.15, Y / 3.0 - Z * 0.35, 73, 3) * 22.0 + Z * 0.6)
         c = ra.mix(base("#bfffe8"), base("#2cc995"), ra.smooth(-0.2, 0.7, w))
         c[np.abs(w) < 0.22] = rgb("#0f4a3a")
+        return c / s
+    if mat == "membrane":
+        # Wing membrane stretched between ribs: dusky, a faint glow through it, dark veins.
+        v = np.abs(np.sin(ra.fbm(X / 4.0 + Z * 0.2, Y / 4.0 - Z * 0.2, 77, 3) * 14.0))
+        c = ra.mix(base("#3f6a5c"), base("#5f9a84"), ra.smooth(0.2, 0.9, nm))
+        c[v < 0.12] = rgb("#1d2f2a")
+        return c * (0.95 + 0.08 * nf[:, None]) / np.sqrt(s)
+    if mat == "womb":
+        # The launch maw's membrane, seen from above: a hot heart, a swirl, dark veins out to the rim.
+        dx, dy = X - WOMB["x"], Y - WOMB["y"]
+        r = np.clip(np.hypot(dx, dy) / WOMB["r"], 0, 1)
+        a = np.arctan2(dy, dx)
+        swirl = 0.5 + 0.5 * np.sin(a * 5 + r * 8)
+        c = ra.mix(base("#e6fff4"), base("#1f9c72"), np.clip(r ** 0.9 - swirl * 0.12, 0, 1))
+        vein = (np.mod(a * 9 / (2 * np.pi) + r * 0.6, 1.0) < 0.07) & (r > 0.35)
+        c[vein] = rgb("#14463a")
+        return c / s
+    if mat == "egg":
+        # A brood sac in its cradle: glowing, with a dark curled flier in it.
+        cl = ra.smooth(0.5, 0.7, ra.fbm(X / 1.6 + Z * 0.4, Y / 1.6 - Z * 0.4, 79, 3))
+        c = ra.mix(base("#a8ffe0"), base("#2a9e78"), cl * 0.8)
+        dark = ra.smooth(0.6, 0.68, ra.fbm(X / 1.3 + Z * 0.5, Y / 1.3 + Z * 0.5, 83, 3))
+        c = ra.mix(c, base("#16352b"), dark * 0.85)
         return c / s
     return _tex_v1(mat, P, n)
 
@@ -884,12 +922,320 @@ def nexus_spots() -> dict:
     }
 
 
+# ---------------------------------------------------------------- Aerie, t(3) x t(3)
+
+AE = 96.0
+AE_C = (44.0, 44.0)
+# Spire body: (z0, z1, r0, r1) per ribbed shell band, bottom up; a glow seam rides each joint.
+AE_BANDS = [(7.0, 15.0, 20.5, 19.0), (15.0, 27.0, 18.5, 15.0), (27.0, 38.0, 14.6, 12.0), (38.0, 48.0, 11.6, 9.6)]
+# The launch maw: a flaring cup on a neck, open to the sky.
+AE_NECK = (48.0, 53.0, 9.2, 8.2)
+AE_CUP = [(53.0, 57.0, 8.4, 10.8), (57.0, 61.0, 10.8, 14.6), (61.0, 64.5, 14.6, 17.0)]
+AE_RIM_Z = 65.6
+AE_RIM_R = 17.4
+AE_WOMB_Z = 61.5
+AE_WOMB_R = 14.0
+AE_CLAWS = [math.radians(a) for a in (10.0, 82.0, 154.0, 226.0, 298.0)]
+AE_FINS = [math.radians(135.0), math.radians(315.0)]
+AE_CRADLES = [math.radians(a) for a in (14.0, 45.0, 76.0)]
+AE_CRADLE_D = 35.0
+AE_CRADLE_R = 7.5
+AE_EGG_Z = 8.6
+
+
+def ae_polar(r: float, a: float, z: float) -> np.ndarray:
+    return np.array([AE_C[0] + r * math.cos(a), AE_C[1] + r * math.sin(a), z])
+
+
+def ae_claw(a: float) -> list[np.ndarray]:
+    """Root on the rim, knee out and up, hooked tip back over the maw."""
+    return [ae_polar(AE_RIM_R - 0.6, a, AE_RIM_Z - 1.0), ae_polar(AE_RIM_R + 3.6, a, AE_RIM_Z + 5.0),
+            ae_polar(AE_RIM_R + 2.2, a, AE_RIM_Z + 10.5), ae_polar(AE_RIM_R - 3.2, a, AE_RIM_Z + 12.0)]
+
+
+def ae_fin(a: float) -> tuple[np.ndarray, list[np.ndarray]]:
+    """A wing fin off the spire: the root on the shaft and the finger tips, top to bottom."""
+    root = ae_polar(12.5, a, 42.0)
+    tips = [ae_polar(30.0, a, 54.0), ae_polar(37.0, a, 38.0), ae_polar(35.0, a, 22.0), ae_polar(26.0, a, 9.0)]
+    return root, tips
+
+
+def ae_band_waist(i: int) -> tuple[float, float]:
+    z0, z1, r0, r1 = AE_BANDS[i]
+    return z0 + (z1 - z0) * 0.45, max(r0, r1) + 1.1
+
+
+def ae_cradle(a: float) -> tuple[float, float]:
+    p = ae_polar(AE_CRADLE_D, a, 0.0)
+    return float(p[0]), float(p[1])
+
+
+def build_aerie(with_pad: bool) -> ra.Mesh:
+    global RIB_C
+    RIB_C = AE_C
+    m = ra.Mesh()
+    if with_pad:
+        pad(m, AE, AE)
+    cx, cy = AE_C
+    WOMB.update({"x": cx, "y": cy, "r": AE_WOMB_R})
+    # Octagonal plinth, a glow seam, a deck.
+    m.cyl((cx, cy, 1.0), (cx, cy, 3.6), 30.0, 29.0, "steel_dark", n=8)
+    m.cyl((cx, cy, 3.6), (cx, cy, 4.2), 28.6, 28.6, "glow", n=8, caps=False)
+    m.cyl((cx, cy, 4.2), (cx, cy, 7.0), 28.0, 25.0, "steel", n=8, cap_mat="roof")
+    # The spire: ribbed shell bands, each with a proud lip, glow seams at the joints.
+    for i, (z0, z1, r0, r1) in enumerate(AE_BANDS):
+        # Each band bulges a little at its waist, like a segment of an insect's abdomen.
+        zm, rm = ae_band_waist(i)
+        m.cyl((cx, cy, z0), (cx, cy, zm), r0, rm, "ribbed", n=24, caps=(i == 0))
+        m.cyl((cx, cy, zm), (cx, cy, z1), rm, r1, "ribbed", n=24, caps=False)
+        m.cyl((cx, cy, z1 - 0.3), (cx, cy, z1 + 0.9), r1 + 0.9, r1 + 0.7, "glow", n=24, caps=False)
+    # Exoskeleton ribs up the shaft, hugging each band's bulge, from the plinth to the neck.
+    for k in range(8):
+        a = 2 * math.pi * (k + 0.5) / 8
+        prof = [(7.0, AE_BANDS[0][2])]
+        for i, (z0, z1, r0, r1) in enumerate(AE_BANDS):
+            prof += [ae_band_waist(i), (z1, r1 + 0.6)]
+        pts = [ae_polar(r + 0.7, a, z) for z, r in prof]
+        for p, q in zip(pts, pts[1:]):
+            m.cyl(p, q, 1.25, 1.15, "spine", n=6)
+    z0, z1, r0, r1 = AE_NECK
+    m.cyl((cx, cy, z0), (cx, cy, z1), r0, r1, "steel_dark", n=18)
+    for z in (49.5, 51.5):
+        m.cyl((cx, cy, z), (cx, cy, z + 0.6), r0 + 0.3, r0 + 0.3, "glow", n=18, caps=False)
+    # The cup flares out of the neck: chitin outside, ribs up its flank, a thick lip.
+    for z0, z1, r0, r1 in AE_CUP:
+        m.cyl((cx, cy, z0), (cx, cy, z1), r0, r1, "chitin_dark", n=28, caps=False)
+    for k in range(10):
+        a = 2 * math.pi * k / 10 + 0.15
+        for z0, z1, r0, r1 in AE_CUP:
+            m.cyl(ae_polar(r0 + 0.4, a, z0), ae_polar(r1 + 0.4, a, z1), 0.9, 0.9, "spine", n=5)
+    m.cyl((cx, cy, AE_CUP[-1][1]), (cx, cy, AE_RIM_Z), AE_RIM_R, AE_RIM_R, "chitin_dark", n=28, caps=False)
+    # Rim top (an annulus) and the inner wall down to the membrane.
+    m.new_part()
+    n = 28
+    for i in range(n):
+        a0 = 2 * math.pi * i / n
+        a1 = 2 * math.pi * (i + 1) / n
+        o0, o1 = m.v(ae_polar(AE_RIM_R, a0, AE_RIM_Z)), m.v(ae_polar(AE_RIM_R, a1, AE_RIM_Z))
+        i0, i1 = m.v(ae_polar(AE_RIM_R - 1.8, a0, AE_RIM_Z)), m.v(ae_polar(AE_RIM_R - 1.8, a1, AE_RIM_Z))
+        m.quad(o0, o1, i1, i0, "chitin")
+    m.cyl((cx, cy, AE_WOMB_Z), (cx, cy, AE_RIM_Z), AE_WOMB_R, AE_RIM_R - 1.8, "steel_dark", n=28, caps=False)
+    m.cyl((cx, cy, AE_RIM_Z - 1.4), (cx, cy, AE_RIM_Z - 0.8), AE_RIM_R - 1.75, AE_RIM_R - 1.7, "glow", n=28, caps=False)
+    # The membrane the fliers are born through.
+    m.new_part()
+    rim = [m.v(ae_polar(AE_WOMB_R + 0.1, 2 * math.pi * i / n, AE_WOMB_Z)) for i in range(n)]
+    mid = m.v((cx, cy, AE_WOMB_Z - 0.5))
+    for i in range(n):
+        m.tri(mid, rim[i], rim[(i + 1) % n], "womb")
+    # Hooked claws round the rim, a glow collar on each.
+    for a in AE_CLAWS:
+        pts = ae_claw(a)
+        rr = [1.9, 1.5, 1.1, 0.25]
+        for k in range(len(pts) - 1):
+            m.cyl(pts[k], pts[k + 1], rr[k], rr[k + 1], "spine", n=7)
+        collar(m, pts[0], pts[1], 0.5, 1.9, 0.4, "glow")
+    # Wing fins either side: finger ribs fanned from a root on the shaft, membrane between them.
+    for a in AE_FINS:
+        root, tips = ae_fin(a)
+        base_pt = ae_polar(17.0, a, 9.0)
+        chain = tips + [base_pt]
+        m.new_part()
+        for k in range(len(chain) - 1):
+            p, q = chain[k], chain[k + 1]
+            # Scalloped trailing edge: the membrane sags in between two fingers.
+            sag = root + (0.5 * (p + q) - root) * 0.82
+            m.poly([tuple(root), tuple(p), tuple(sag)], "membrane")
+            m.poly([tuple(root), tuple(sag), tuple(q)], "membrane")
+        for k, tp in enumerate(tips):
+            knee = root + (tp - root) * 0.55 + np.array([0.0, 0.0, 2.5])
+            m.cyl(root, knee, 1.5, 1.2, "spine", n=6)
+            m.cyl(knee, tp, 1.2, 0.3, "spine", n=6)
+            collar(m, root, knee, 0.7, 1.4, 0.35, "glow")
+        m.cyl(root, base_pt, 1.6, 1.8, "spine", n=6)
+        ball(m, tuple(root), 2.4, "steel_dark", rings=4, n=10)
+    # Brood cradles on the pad in front: an open chitin cup, a glowing sac, hooked ribs curled over it.
+    for a in AE_CRADLES:
+        px, py = ae_cradle(a)
+        m.cyl((px, py, 1.0), (px, py, 3.0), AE_CRADLE_R + 1.5, AE_CRADLE_R + 1.0, "steel_dark", n=16)
+        m.cyl((px, py, 3.0), (px, py, 6.5), AE_CRADLE_R - 1.0, AE_CRADLE_R + 0.6, "chitin_dark", n=16, caps=False)
+        m.cyl((px, py, 6.2), (px, py, 6.8), AE_CRADLE_R + 0.7, AE_CRADLE_R + 0.7, "glow", n=16, caps=False)
+        ball(m, (px, py, AE_EGG_Z), 4.6, "egg", rings=6, n=14, squash=1.15)
+        for k in range(4):
+            b = 2 * math.pi * k / 4 + a + math.pi / 4
+            r0 = AE_CRADLE_R + 0.2
+            p0 = np.array([px + r0 * math.cos(b), py + r0 * math.sin(b), 5.5])
+            p1 = np.array([px + (r0 + 1.0) * math.cos(b), py + (r0 + 1.0) * math.sin(b), 11.0])
+            p2 = np.array([px + 2.0 * math.cos(b), py + 2.0 * math.sin(b), 16.0])
+            m.cyl(p0, p1, 1.1, 0.9, "spine", n=6)
+            m.cyl(p1, p2, 0.9, 0.2, "spine", n=6)
+        # Feed vein back into the spire.
+        q = ae_polar(21.0, a, 4.8)
+        m.cyl((px - (px - cx) * 0.2, py - (py - cy) * 0.2, 3.2), tuple(q), 1.2, 1.2, "pipe", n=8)
+        collar(m, (px - (px - cx) * 0.2, py - (py - cy) * 0.2, 3.2), tuple(q), 0.5, 1.7, 0.4, "glow")
+    return m
+
+
+def aerie_spots() -> dict:
+    cx, cy = AE_C
+    front = math.radians(45.0)
+    return {
+        "womb": (cx, cy, AE_WOMB_Z),
+        "cradles": [(*ae_cradle(a), AE_EGG_Z) for a in AE_CRADLES],
+        "seams": [tuple(ae_polar(r1 + 0.9, front, z1 + 0.3)) for _, z1, _, r1 in AE_BANDS[:3]],
+        "claws": [tuple(axis_point(ae_claw(a)[0], ae_claw(a)[1], 0.5)) for a in AE_CLAWS],
+        "smoke": (cx, cy, AE_WOMB_Z + 2.0),
+        "stack": (cx, cy, AE_RIM_Z + 12.0),
+    }
+
+
+# ---------------------------------------------------------------- Conversion Chamber, t(2) x t(2)
+
+CC = 64.0
+CC_C = (30.0, 28.0)
+CC_DOME_Z = 6.0
+CC_DOME_R = 15.5
+CC_DOME_H = 17.0
+CC_POD_RING = 20.0
+# Pod bearings (deg from +x; +y is the door side). None at 90: the door is there.
+CC_PODS = (-20.0, 22.0, 140.0, 185.0, 235.0, 285.0)
+CC_POD_R = 3.6
+CC_POD_Z0, CC_POD_Z1 = 8.0, 22.0
+CC_SPIRE_TOP = 58.0
+CC_BULB_Z = 38.0
+CC_DOOR_Y0 = CC_C[1] + 10.0
+CC_DOOR_Y1 = CC_C[1] + 24.5
+CC_DOOR_HW, CC_DOOR_HT = 7.5, 11.0
+# Pod centres, read by the texture to draw the body inside each one.
+PODS: list[tuple[float, float]] = []
+
+
+def cc_pod(a_deg: float) -> tuple[float, float]:
+    a = math.radians(a_deg)
+    return CC_C[0] + CC_POD_RING * math.cos(a), CC_C[1] + CC_POD_RING * math.sin(a)
+
+
+def tex_v3(mat: str, P: np.ndarray, n: np.ndarray) -> np.ndarray:
+    if mat != "pod":
+        return tex_v2(mat, P, n)
+    # A conversion pod: the Spawning slurry behind glass, a taken body standing dark inside it.
+    X, Y, Z = P[:, 0], P[:, 1], P[:, 2]
+    s = _flat(n)
+    cl = ra.smooth(0.45, 0.75, ra.fbm(X / 2.0 + Z * 0.3, Y / 2.0 - Z * 0.4, 75, 3))
+    c = ra.mix(np.broadcast_to(rgb("#8affd6"), (len(X), 3)).copy(), np.broadcast_to(rgb("#1d7a5c"), (len(X), 3)).copy(), cl * 0.7)
+    pts = np.array(PODS)
+    k = np.argmin((X[:, None] - pts[None, :, 0]) ** 2 + (Y[:, None] - pts[None, :, 1]) ** 2, axis=1)
+    # Across the pod as the camera sees it (the camera looks down the +x+y diagonal).
+    u = ((X - pts[k, 0]) - (Y - pts[k, 1])) / math.sqrt(2)
+    h = (Z - CC_POD_Z0) / (CC_POD_Z1 - CC_POD_Z0)
+    head = np.hypot(u, (h - 0.8) * 9.0) < 1.15
+    shoulders = (h > 0.5) & (h < 0.72) & (np.abs(u) < 1.9 - (0.72 - h) * 2.2)
+    waist = (h > 0.3) & (h <= 0.5) & (np.abs(u) < 1.15)
+    legs = (h > 0.05) & (h <= 0.3) & (np.abs(np.abs(u) - 0.55) < 0.42)
+    body = head | shoulders | waist | legs
+    c[body] = c[body] * 0.18 + rgb("#0c3529") * 0.82
+    # The lit rim at the top and bottom of the glass.
+    c[(h > 0.94) | (h < 0.04)] = rgb("#d8fff2")
+    return c / s
+
+
+def build_conversion(with_pad: bool) -> ra.Mesh:
+    global RIB_C
+    RIB_C = CC_C
+    ra.tex = tex_v3
+    m = ra.Mesh()
+    if with_pad:
+        pad(m, CC, CC)
+    cx, cy = CC_C
+    PODS.clear()
+    # Octagonal plinth with a glowing seam, like the Neural Nexus.
+    m.cyl((cx, cy, 1.0), (cx, cy, 3.5), 27.5, 26.5, "steel_dark", n=8)
+    m.cyl((cx, cy, 3.5), (cx, cy, 4.1), 26.2, 26.2, "glow", n=8, caps=False)
+    m.cyl((cx, cy, 4.1), (cx, cy, CC_DOME_Z), 25.8, 24.0, "steel", n=8)
+    # The chamber: a low ribbed carapace dome on a dark drum.
+    m.cyl((cx, cy, CC_DOME_Z - 0.5), (cx, cy, CC_DOME_Z + 2.0), CC_DOME_R + 1.5, CC_DOME_R + 0.8, "chitin_dark", n=24)
+    tops = dome(m, cx, cy, CC_DOME_Z + 2.0, CC_DOME_R, CC_DOME_H, 3, "chitin", "glow")
+    dome_top = tops[-1]
+    # Ribs over the dome, from the drum up to the spire collar.
+    for i in range(8):
+        a = 2 * math.pi * (i + 0.5) / 8
+        prev = None
+        for t in np.linspace(0.0, 0.92, 6):
+            r = CC_DOME_R * math.sqrt(max(0.0, 1 - t * t)) + 0.9
+            p = np.array([cx + r * math.cos(a), cy + r * math.sin(a), CC_DOME_Z + 2.0 + CC_DOME_H * t])
+            if prev is not None:
+                m.cyl(prev, p, 1.1, 1.0, "spine", n=6)
+            prev = p
+    # The door: a short ribbed vestibule out of the dome toward +y, its glowing maw at the front.
+    vault_shell(m, cx, CC_DOOR_Y0, CC_DOOR_Y1, CC_DOOR_HW, CC_DOOR_HT, CC_DOOR_HW + 1.0, CC_DOOR_HT + 1.0, CC_DOME_Z, "chitin")
+    vault_shell(m, cx, CC_DOOR_Y1 - 1.6, CC_DOOR_Y1, CC_DOOR_HW + 1.6, CC_DOOR_HT + 1.6, CC_DOOR_HW + 2.2, CC_DOOR_HT + 2.2, CC_DOME_Z, "chitin_dark")
+    arch_face(m, cx, CC_DOOR_Y1, CC_DOOR_HW * 0.62, CC_DOOR_HT * 0.72, CC_DOOR_HW + 2.2, CC_DOOR_HT + 2.2, CC_DOME_Z, "chitin_dark")
+    MAW.update({"x": cx, "z0": CC_DOME_Z, "hw": CC_DOOR_HW * 0.62, "h": CC_DOOR_HT * 0.72})
+    m.new_part()
+    m.poly([(x, CC_DOOR_Y1 + 0.1, z) for x, z in vault_prof(cx, CC_DOOR_HW * 0.62, CC_DOOR_HT * 0.72, CC_DOME_Z, n=14)], "maw")
+    arch_face(m, cx, CC_DOOR_Y1 + 0.3, CC_DOOR_HW * 0.62 + 0.3, CC_DOOR_HT * 0.72 + 0.3, CC_DOOR_HW * 0.62 + 0.9, CC_DOOR_HT * 0.72 + 0.9, CC_DOME_Z, "glow")
+    # Apron down to the pad edge, with guide strips.
+    m.box((cx - 6.0, CC_DOOR_Y1, 1.0), (cx + 6.0, CC - 2.0, 2.0), "steel", top="roof")
+    for y in (CC_DOOR_Y1 + 3.0, CC_DOOR_Y1 + 7.0, CC_DOOR_Y1 + 11.0):
+        m.box((cx - 2.5, y, 2.0), (cx + 2.5, y + 1.0, 2.25), "glow")
+    # Conversion pods round the dome, each fed into it by a pipe.
+    for a_deg in CC_PODS:
+        px, py = cc_pod(a_deg)
+        PODS.append((px, py))
+        m.cyl((px, py, CC_DOME_Z), (px, py, CC_POD_Z0), CC_POD_R + 1.6, CC_POD_R + 1.1, "steel_dark", n=12)
+        m.cyl((px, py, CC_POD_Z0), (px, py, CC_POD_Z1), CC_POD_R, CC_POD_R, "pod", n=16, caps=False)
+        for k in range(4):
+            b = 2 * math.pi * k / 4 + math.radians(a_deg) + math.pi / 4
+            qx, qy = px + (CC_POD_R + 0.25) * math.cos(b), py + (CC_POD_R + 0.25) * math.sin(b)
+            m.cyl((qx, qy, CC_POD_Z0), (qx, qy, CC_POD_Z1), 0.5, 0.5, "spine", n=5)
+        m.cyl((px, py, CC_POD_Z1), (px, py, CC_POD_Z1 + 2.2), CC_POD_R + 0.6, CC_POD_R * 0.45, "steel_dark", n=12)
+        m.cyl((px, py, CC_POD_Z1 + 2.2), (px, py, CC_POD_Z1 + 3.4), 1.0, 0.6, "core", n=8)
+        a = math.radians(a_deg)
+        inner = (cx + (CC_DOME_R - 1.0) * math.cos(a), cy + (CC_DOME_R - 1.0) * math.sin(a), CC_POD_Z1 - 1.0)
+        outer = (px - CC_POD_R * math.cos(a), py - CC_POD_R * math.sin(a), CC_POD_Z1 - 3.0)
+        m.cyl(outer, inner, 1.0, 1.0, "pipe", n=8)
+        collar(m, outer, inner, 0.45, 1.5, 0.35, "glow")
+    # The synapse spire: a collar on the crown, a ribbed shaft, a neural bulb, fins, and the beacon.
+    m.cyl((cx, cy, dome_top - 2.0), (cx, cy, dome_top + 2.5), 5.5, 4.2, "steel_dark", n=14)
+    m.cyl((cx, cy, dome_top + 2.5), (cx, cy, CC_BULB_Z - 3.0), 2.8, 2.2, "ribbed", n=10)
+    for z in (dome_top + 5.0, dome_top + 9.0):
+        m.cyl((cx, cy, z), (cx, cy, z + 0.7), 3.1, 3.1, "glow", n=10, caps=False)
+    ball(m, (cx, cy, CC_BULB_Z), 4.2, "neural", rings=8, n=18, squash=1.2)
+    m.cyl((cx, cy, CC_BULB_Z + 4.0), (cx, cy, CC_SPIRE_TOP), 2.0, 0.5, "ribbed", n=10)
+    for i in range(3):
+        a = 2 * math.pi * i / 3 + math.pi / 4
+        root = (cx + 1.5 * math.cos(a), cy + 1.5 * math.sin(a), CC_BULB_Z + 6.0)
+        knee = (cx + 6.0 * math.cos(a), cy + 6.0 * math.sin(a), CC_BULB_Z + 10.0)
+        tip = (cx + 4.0 * math.cos(a), cy + 4.0 * math.sin(a), CC_BULB_Z + 17.0)
+        m.cyl(root, knee, 0.9, 0.7, "spine", n=6)
+        m.cyl(knee, tip, 0.7, 0.2, "spine", n=6)
+        ball(m, knee, 0.9, "core", rings=4, n=8)
+    m.cyl((cx, cy, CC_BULB_Z + 12.0), (cx, cy, CC_BULB_Z + 12.5), 5.5, 5.5, "glow", n=20, caps=False)
+    ball(m, (cx, cy, CC_SPIRE_TOP + 0.8), 1.6, "core", rings=4, n=10)
+    return m
+
+
+def conversion_spots() -> dict:
+    cx, cy = CC_C
+    pods = [cc_pod(a) for a in CC_PODS]
+    return {
+        "maw": (cx, CC_DOOR_Y1 + 0.1, CC_DOME_Z + CC_DOOR_HT * 0.72 * 0.35),
+        "pods": [(px + CC_POD_R * 0.7, py + CC_POD_R * 0.7, (CC_POD_Z0 + CC_POD_Z1) / 2) for px, py in pods],
+        "bulb": (cx, cy, CC_BULB_Z),
+        "halo": (cx, cy, CC_BULB_Z + 12.2),
+        "beacon": (cx, cy, CC_SPIRE_TOP + 0.8),
+        "apron": [(cx, CC_DOOR_Y1 + y + 0.5, 2.25) for y in (3.0, 7.0, 11.0)],
+        "stack": (cx, cy, CC_SPIRE_TOP + 4.0),
+    }
+
+
 BUILDINGS = {
     "hivecore": (HC, HC, 2.0, build_hivecore, hivecore_spots),
+    "conversion": (CC, CC, 3.0, build_conversion, conversion_spots),
     "fusionnode": (FN, FN, 3.0, build_fusionnode, fusionnode_spots),
     "assimilator": (AS, AS, 2.0, build_assimilator, assimilator_spots),
     "forge": (NF, NF, 2.0, build_forge, forge_spots),
     "nexus": (NX, NX, 3.0, build_nexus, nexus_spots),
+    "aerie": (AE, AE, 2.0, build_aerie, aerie_spots),
 }
 
 
