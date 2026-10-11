@@ -1014,6 +1014,7 @@ input[type="range"] { padding: 0; }
 #build-nexus,
 #build-spineturret,
 #build-pulsespire,
+#build-energywall,
 #build-laserfence,
 #build-bunker,
 #build-tower,
@@ -1412,6 +1413,11 @@ input[type="range"] { padding: 0; }
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/buildings/pulsespire-cameo.png");
 }
+#build-energywall {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/energywall-cameo.png");
+}
 #build-laserfence {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
@@ -1809,6 +1815,7 @@ input[type="range"] { padding: 0; }
 .config-type[data-type="conversion"] { background-image: url("../assets/buildings/conversion-cameo.png"); }
 .config-type[data-type="spineturret"] { background-image: url("../assets/buildings/spineturret-cameo.png"); }
 .config-type[data-type="pulsespire"] { background-image: url("../assets/buildings/pulsespire-cameo.png"); }
+.config-type[data-type="energywall"] { background-image: url("../assets/buildings/energywall-cameo.png"); }
 .config-type[data-type="laserfence"] { background-image: url("../assets/buildings/laserfence-cameo.png"); }
 .config-type[data-type="dynamo"] { background-image: url("../assets/buildings/dynamo-cameo.png"); }
 .config-type[data-type="smelter"] { background-image: url("../assets/buildings/smelter-cameo.png"); }

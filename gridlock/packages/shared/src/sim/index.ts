@@ -139,6 +139,8 @@ export {
   spotlightManned,
   spotlightLit,
   spotFacingOf,
+  headingTurns,
+  wallHeadingHeld,
 } from "./night.js";
 export type { DayPhase, HullLamp, MatchClock } from "./night.js";
 export {

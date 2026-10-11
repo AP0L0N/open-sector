@@ -533,7 +533,7 @@ describe("defence tech gate", () => {
     seedCore(state);
     const ts = state.tileSize;
     state.players.get("A")!.scrap = 100_000;
-    assert.deepEqual(Object.keys(BUILD_REQUIRES).filter((b) => factionOf(b) !== "bloom").sort(), ["casemate", "ciws", "flak", "leitturm", "pak43", "pulsespire", "ram"]);
+    assert.deepEqual(Object.keys(BUILD_REQUIRES).filter((b) => factionOf(b) !== "bloom").sort(), ["casemate", "ciws", "energywall", "flak", "leitturm", "pak43", "pulsespire", "ram"]);
     const tryBuild = (building: "leitturm" | "flak" | "pak43" | "casemate" | "ciws" | "ram") => {
       const r = applyCommand(state, "A", { type: "cmd.build", building });
       if (r.ok) applyCommand(state, "A", { type: "cmd.cancel", what: "structure", building });

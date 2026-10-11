@@ -659,6 +659,7 @@ export type EntityType =
   | "spineturret"
   | "pulsespire"
   | "laserfence"
+  | "energywall"
   | "spawnpool"
   | "aerie"
   | "broodheart"
@@ -739,6 +740,7 @@ export type BuildingType =
   | "spineturret"
   | "pulsespire"
   | "laserfence"
+  | "energywall"
   | "spawnpool"
   | "aerie"
   | "lumenbulb"
@@ -929,6 +931,7 @@ export const BUILDING_TYPES: readonly BuildingType[] = [
   "spineturret",
   "pulsespire",
   "laserfence",
+  "energywall",
   "spawnpool",
   "aerie",
   "lumenbulb",
@@ -992,6 +995,7 @@ export const ROTATABLE_BUILDINGS: readonly BuildingType[] = [
   "flak",
   "spineturret",
   "pulsespire",
+  "energywall",
 ];
 /** One turn step for a rotatable building, the wall's 15°. */
 export const BUILDING_TURN_STEP = Math.PI / 12;
@@ -1108,6 +1112,7 @@ export const XENO_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([
   "spineturret",
   "pulsespire",
   "laserfence",
+  "energywall",
   "spawnpool",
   "aerie",
   "leech",
@@ -1297,6 +1302,7 @@ export const BUILD_REQUIRES: Partial<Record<BuildingType, readonly BuildingType[
   ciws: ["research", "radar"],
   ram: ["research", "radar"],
   pulsespire: ["nexus"],
+  energywall: ["nexus"],
   bilelance: ["braincoral"],
 };
 
@@ -2184,6 +2190,33 @@ const ENERGY_DOMES: Partial<Record<EntityType, EnergyDomeDef>> = {
   siphon: SIPHON_DOME,
   hiveark: ARK_DOME,
 };
+/**
+ * The Xenite Energy Wall (sim/energy-shield.ts): a low emitter core that holds a tall curtain of
+ * energy across its front, the Behemoth's wall but far wider. The curtain stands while the core is
+ * online and turns with the core's heading (Rotate, or a Patrol sweep, as a Watch Tower's lamp).
+ * It stops every enemy round and beam that meets it and every enemy ground unit; lobbed rounds
+ * fall over it. Hits drain its points; it slowly regains them while it stands, and drained to
+ * nothing it is down until the core has recharged.
+ */
+export interface EnergyWallDef {
+  /** Points the curtain holds. */
+  hp: number;
+  /** Distance of the curve from the core, tiles. */
+  radiusTiles: number;
+  /** Half of the curve's span either side of the heading, degrees. */
+  halfDeg: number;
+  /** Points regained each second while it stands. */
+  regenPerSecond: number;
+  /** Seconds from the curtain going down until the core raises it again, at full points. */
+  rechargeSeconds: number;
+}
+export const ENERGY_WALL: EnergyWallDef = { hp: 1500, radiusTiles: t(3), halfDeg: 55, regenPerSecond: 10, rechargeSeconds: 25 };
+/** The core's solid height, elevation units: under a hull's gun (HULL_EYE_HEIGHT), so its own side fires over it. */
+export const ENERGY_WALL_COVER_HEIGHT = 0.5;
+/** The curtain this building holds, or undefined. */
+export function energyWallOf(type: EntityType): EnergyWallDef | undefined {
+  return type === "energywall" ? ENERGY_WALL : undefined;
+}
 /** The energy dome this type casts, or undefined. */
 export function energyDomeOf(type: EntityType): EnergyDomeDef | undefined {
   return ENERGY_DOMES[type];
@@ -6786,7 +6819,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "A neural core in a cage of ribs under a crown of sensor spines: the hive thinks here. It unlocks the Behemoth and the Pulse Spire, and it lights the radar panel like a Radar Station: an enemy plane or drone nobody can see shows as a blinking contact on the panel. Takes a large share of the hive's energy.",
+    blurb: "A neural core in a cage of ribs under a crown of sensor spines: the hive thinks here. It unlocks the Behemoth, the Pulse Spire, and the Energy Wall, and it lights the radar panel like a Radar Station: an enemy plane or drone nobody can see shows as a blinking contact on the panel. Takes a large share of the hive's energy.",
   },
   /** Xenite anti-infantry gun: crewless, runs on base power. */
   spineturret: {
@@ -6883,6 +6916,33 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     poweredGun: true,
     capturable: false,
     blurb: `A tall spire with a long emitter and a ring of green fire. Nobody works it: it turns all the way round, slowly, and throws a piercing energy pulse through a Tiger's front plate from farther than a Pak 36 reaches. Tanks first. Each pulse draws on an energy cell that holds 8 and regrows one every 6 seconds. Takes hive energy while it stands; offline, it falls silent. Needs a Neural Nexus. Cannot move.`,
+  },
+  /** Xenite curtain emitter: a low core holding a wide energy wall across its front (sim/energy-shield.ts). */
+  energywall: {
+    type: "energywall",
+    kind: "building",
+    name: "Energy Wall",
+    letter: "e",
+    cost: 0,
+    energy: 200,
+    buildSeconds: 14,
+    hp: 600,
+    power: 0,
+    tileW: t(1),
+    tileH: t(1),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    // Squat: your own side's soldiers and hulls shoot over the core.
+    coverHeight: ENERGY_WALL_COVER_HEIGHT,
+    capturable: false,
+    blurb: `A squat emitter core with a fan of field vanes. It holds a curtain of green energy ${ENERGY_WALL.radiusTiles / TILE_SUBDIV} cells out across its front, far wider than a Behemoth's wall and as tall as a Pulse Spire. Enemy rounds and beams stop on it and enemy soldiers and hulls cannot walk through; shells and bombs lobbed from above fall over it. Your own side walks and shoots through, and over the low core. Each hit drains the curtain (${ENERGY_WALL.hp} points); it slowly mends while it stands, and once drained it is down for ${ENERGY_WALL.rechargeSeconds} seconds. Turn it before placing, Rotate it after, or give it a Patrol to sweep it between points, as a Watch Tower's lamp. Takes hive energy while it stands; offline, the curtain falls. Needs a Neural Nexus. Cannot move.`,
   },
   /** Xenite shipyard: grows the Leech and the Lurker. Stands on open water like a Marine Base. */
   spawnpool: {
@@ -9089,6 +9149,8 @@ export function isDefenceStructure(type: string): boolean {
   if (isYardField(type)) return true;
   // The Laser Fence has no gun: its beams are its weapon.
   if (type === "laserfence") return true;
+  // Nor has the Energy Wall: its curtain is.
+  if (type === "energywall") return true;
   return isBuildingType(type) && (catalog(type).rangeTiles > 0 || isGarrisonable(type));
 }
 

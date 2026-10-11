@@ -1,6 +1,7 @@
-import { energyDomeOf, energyShieldOf, secondsToTicks, type EnergyDomeDef } from "../catalog.js";
+import { energyDomeOf, energyShieldOf, energyWallOf, secondsToTicks, type EnergyDomeDef, type EnergyWallDef } from "../catalog.js";
 import { weaponRangeWorld } from "./elevation.js";
 import { allies, worldToTile } from "./geo.js";
+import { spotFacingOf, wallHeadingHeld } from "./night.js";
 import { energyRound } from "./remains.js";
 import type { Entity, EnergyShield, MatchState, Projectile } from "./types.js";
 
@@ -15,6 +16,10 @@ import type { Entity, EnergyShield, MatchState, Projectile } from "./types.js";
  * walks, up whenever the Siphon can hold it. The dome stops what comes in from
  * outside, rounds dropping from above and blasts and blows too, and its points
  * are the Siphon's energy. Drained, it is gone until the energy fills back up.
+ *
+ * An Energy Wall building holds a far wider curtain the same way a wall stands, but for as long
+ * as the core is online, turned with the core's heading (Rotate, Patrol; sim/night.ts). Hits drain
+ * it, it mends slowly, and drained it is down until the core recharges.
  *
  * Pulses and lasers (another hive's bolts, a Cyborg's beam) glance off: a bolt fired flat
  * turns back off the face, live, and a beam stops there. Either still costs the shield, but
@@ -276,7 +281,56 @@ function castDome(state: MatchState, e: Entity, def: EnergyDomeDef): void {
   e.energy = undefined;
 }
 
-/** Walls burn down and break; a fighting Behemoth, Drone, or Lancer without one raises the next. Siphons cast and carry their domes. */
+/** An Energy Wall core holds its curtain while it stands, held and online. */
+function canHoldCurtain(e: Entity): boolean {
+  return wallHeadingHeld(e) && !e.unpowered;
+}
+
+/**
+ * An Energy Wall's curtain: it turns with the core's heading and slowly mends. Drained, it is
+ * gone and the core waits out the recharge; lowered because the core went offline, the core
+ * keeps what was left. True while it still stands.
+ */
+function tickCurtain(state: MatchState, s: EnergyShield, dt: number): boolean {
+  const from = state.entities.get(s.fromId);
+  const def = from ? energyWallOf(from.type) : undefined;
+  if (!from || !def) return false;
+  if (s.hp <= 0) {
+    from.energy = undefined;
+    from.shieldReady = state.tick + secondsToTicks(def.rechargeSeconds);
+    return false;
+  }
+  if (!canHoldCurtain(from)) {
+    if (from.hp > 0) from.energy = s.hp;
+    return false;
+  }
+  s.angle = spotFacingOf(from);
+  s.hp = Math.min(s.hpMax, s.hp + def.regenPerSecond * dt);
+  return true;
+}
+
+function raiseCurtain(state: MatchState, e: Entity, def: EnergyWallDef): void {
+  state.energyShields!.push({
+    id: state.nextId++,
+    ownerId: e.ownerId,
+    fromId: e.id,
+    x: e.x,
+    y: e.y,
+    angle: spotFacingOf(e),
+    half: (def.halfDeg * Math.PI) / 180,
+    r: def.radiusTiles * state.tileSize,
+    hp: Math.min(def.hp, e.energy ?? def.hp),
+    hpMax: def.hp,
+    life: 0,
+    post: true,
+  });
+  e.energy = undefined;
+}
+
+/**
+ * Walls burn down and break; a fighting Behemoth, Drone, or Lancer without one raises the next. Siphons cast and carry their domes.
+ * An Energy Wall raises its curtain whenever it is online and ready.
+ */
 export function tickEnergyShields(state: MatchState, dt: number): void {
   const shields = (state.energyShields ??= []);
   if (shields.length > 0) {
@@ -285,6 +339,10 @@ export function tickEnergyShields(state: MatchState, dt: number): void {
       if (s.dome) {
         // A Weaver's dome runs on its cell: sim/weaver.ts keeps it.
         if (s.weave || tickDome(state, s, dt)) keep.push(s);
+        continue;
+      }
+      if (s.post) {
+        if (tickCurtain(state, s, dt)) keep.push(s);
         continue;
       }
       s.life -= dt;
@@ -306,6 +364,11 @@ export function tickEnergyShields(state: MatchState, dt: number): void {
       if (canHoldDome(e) && (e.shieldReady == null || state.tick >= e.shieldReady)) castDome(state, e, dome);
       continue;
     }
+    const curtain = energyWallOf(e.type);
+    if (curtain) {
+      if (canHoldCurtain(e) && (e.shieldReady == null || state.tick >= e.shieldReady)) raiseCurtain(state, e, curtain);
+      continue;
+    }
     const def = energyShieldOf(e.type);
     if (!def || !canRaise(state, e)) continue;
     const target = state.entities.get(e.attackTarget!)!;
@@ -325,16 +388,18 @@ export function tickEnergyShields(state: MatchState, dt: number): void {
   }
 }
 
-/** A Siphon's energy, 0–1: its dome's points while it stands, else how far the recharge has come. Undefined for other types. */
+/** A Siphon's energy, or an Energy Wall's curtain, 0–1: its points while it stands, else how far the recharge has come. Undefined for other types. */
 export function domeCharge(state: MatchState, e: Entity): number | undefined {
-  const def = energyDomeOf(e.type);
+  const dome = energyDomeOf(e.type);
+  const wall = energyWallOf(e.type);
+  const def = dome ? { full: dome.energy, recharge: dome.rechargeSeconds } : wall ? { full: wall.hp, recharge: wall.rechargeSeconds } : null;
   if (!def || e.hp <= 0 || e.wreck) return undefined;
-  const dome = state.energyShields?.find((s) => s.dome && s.fromId === e.id);
+  const up = state.energyShields?.find((s) => (s.dome || s.post) && s.fromId === e.id);
   let share: number;
-  if (dome) share = dome.hp / dome.hpMax;
+  if (up) share = up.hp / up.hpMax;
   else if (e.shieldReady != null && state.tick < e.shieldReady) {
-    share = 1 - (e.shieldReady - state.tick) / Math.max(1, secondsToTicks(def.rechargeSeconds));
-  } else share = (e.energy ?? def.energy) / def.energy;
+    share = 1 - (e.shieldReady - state.tick) / Math.max(1, secondsToTicks(def.recharge));
+  } else share = (e.energy ?? def.full) / def.full;
   return Math.round(Math.max(0, Math.min(1, share)) * 100) / 100;
 }
 

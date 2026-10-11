@@ -84,7 +84,7 @@ import { aswDeckView, sonarContacts } from "./destroyer.js";
 import { scrapCap } from "./smelter.js";
 import { thermalContacts } from "./thermal.js";
 import { canSeeWorld, encodeVisionRuns, entityOnMask, maskRevOf, visionMask } from "./vision.js";
-import { spotFacingOf, spotlightManned } from "./night.js";
+import { headingTurns, spotFacingOf } from "./night.js";
 import type { Entity, LaserBeam, MatchState, Order, QueueableCommand, StructureJob } from "./types.js";
 import type {
   CorpseView,
@@ -517,7 +517,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       rocketsOff: friendly && e.rocketsOff ? true : undefined,
       airMode: friendly && e.airMode ? true : undefined,
       longRange: friendly && e.longRange ? true : undefined,
-      spotFacing: spotlightManned(e) ? spotFacingOf(e) : undefined,
+      spotFacing: headingTurns(e) ? spotFacingOf(e) : undefined,
       unpowered: e.kind === "building" && e.unpowered ? true : undefined,
       hiveDark: e.kind === "building" && e.hiveDark ? true : undefined,
       holdPosition: friendly && e.holdPosition ? true : undefined,
@@ -885,6 +885,7 @@ function shieldViews(state: MatchState, youPlayerId: string, vis: Uint8Array): E
       by: w.forId != null && !w.dome ? w.fromId : undefined,
       // A dome rides on its holder: a Weaver's may sit on the friend it was put on.
       ...(w.dome ? { dome: true as const, fromId: w.forId ?? w.fromId } : {}),
+      ...(w.post ? { post: true as const, fromId: w.fromId } : {}),
     });
   }
   return out.length > 0 ? out : undefined;

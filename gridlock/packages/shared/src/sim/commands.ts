@@ -85,7 +85,7 @@ import { landJet, takeOff } from "./jet.js";
 import { setDive } from "./naval.js";
 import { layMine } from "./destroyer.js";
 import { orderMineLay } from "./minelauncher.js";
-import { aimSpotlightPatrol, hasSpotlight, lampUnderway, spotFacingOf, spotlightManned } from "./night.js";
+import { aimSpotlightPatrol, hasSpotlight, headingTurns, lampUnderway, spotFacingOf, wallHeadingHeld } from "./night.js";
 import type { Entity, MatchState, QueueableCommand, Vec } from "./types.js";
 
 /** The corners of a `cmd.field` line, or undefined when the message has none worth reading. */
@@ -771,12 +771,12 @@ function owned(state: MatchState, playerId: string, ids: number[]) {
   return out;
 }
 
-/** Own watch towers in the selection, whose Rotate swings the spotlight. `hulls`: a Battle Ship's lamp too (Rotate light). */
+/** Own watch towers and Energy Walls in the selection, whose Rotate swings the spotlight or curtain. `hulls`: a Battle Ship's lamp too (Rotate light). */
 function ownedLamps(state: MatchState, playerId: string, ids: number[], hulls = false) {
   const out = [];
   for (const id of ids) {
     const e = state.entities.get(id);
-    if (e && e.ownerId === playerId && (e.kind === "building" || hulls) && spotlightManned(e)) out.push(e);
+    if (e && e.ownerId === playerId && (e.kind === "building" || hulls) && headingTurns(e)) out.push(e);
   }
   return out;
 }
@@ -1442,7 +1442,7 @@ function cmdStop(state: MatchState, playerId: string, ids: number[]): CmdResult 
     // A Weaver's own shield comes back to it.
     e.weaveFor = undefined;
     // Freeze a sweeping spotlight where it is. A unit's stop already dropped its order.
-    if (hasSpotlight(e.type)) e.spotAim = undefined;
+    if (hasSpotlight(e.type) || wallHeadingHeld(e)) e.spotAim = undefined;
     for (const u of livingGarrison(state, e)) {
       if (u.ownerId === playerId && u.order?.relay) clearOrder(u);
     }
