@@ -2280,6 +2280,8 @@ const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   forge: building(forgeUrl, 384, 204, 232.2, 188, 22.2),
   // Neural core in a rib cage under a sensor crown: Xenite tech and radar, t(2).
   nexus: building(nexusUrl, 384, 210, 322.9, 210, 19.9),
+  // Fusion reactor on a caged plasma well: the Xenite power core, t(3). PLACEHOLDER: the Assimilator's art until its own sheet is rendered.
+  fusioncore: building(assimilatorUrl, 384, 204, 256.2, 204, 54.2),
   // Chitin dome, a ring of conversion pods, synapse spire: the Xenite barracks, t(2) like the Barracks.
   conversion: building(conversionUrl, 384, 210, 299.2, 216, 8.2),
   // Ops hut, lattice mast, dish. Metrics from tools/sprites/render_radar.py (radar.json); the stack hangs over the dish.

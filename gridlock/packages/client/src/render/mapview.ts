@@ -803,6 +803,7 @@ const EXTRUDE: Record<EntityType, number> = {
   seed: 22,
   forge: 52,
   nexus: 58,
+  fusioncore: 50,
   conversion: 52,
   spineturret: 14,
   pulsespire: 30,

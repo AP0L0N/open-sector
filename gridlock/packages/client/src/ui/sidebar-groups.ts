@@ -79,7 +79,7 @@ const PRICE_SORTED_GROUPS: readonly SidebarGroup[] = ["defences", "infantry", "t
  * The Xenite base laid out as the Alliance's reads: energy, foot soldiers, hulls, air, sea,
  * then tech. The Conversion Chamber is their barracks, so it comes second.
  */
-const XENO_STRUCTURE_ORDER: readonly BuildingType[] = ["fusionnode", "conversion", "forge", "aerie", "spawnpool", "nexus"];
+const XENO_STRUCTURE_ORDER: readonly BuildingType[] = ["fusionnode", "conversion", "forge", "aerie", "spawnpool", "nexus", "fusioncore"];
 
 /** The faction's cameos in each group, in catalog order (price order for `PRICE_SORTED_GROUPS`). */
 export function groupEntries(faction: Faction = "alliance"): Record<SidebarGroup, GroupEntry[]> {

@@ -658,6 +658,7 @@ export type EntityType =
   | "conversion"
   | "forge"
   | "nexus"
+  | "fusioncore"
   | "spineturret"
   | "pulsespire"
   | "laserfence"
@@ -739,6 +740,7 @@ export type BuildingType =
   | "assimilator"
   | "forge"
   | "nexus"
+  | "fusioncore"
   | "spineturret"
   | "pulsespire"
   | "laserfence"
@@ -930,6 +932,7 @@ export const BUILDING_TYPES: readonly BuildingType[] = [
   "assimilator",
   "forge",
   "nexus",
+  "fusioncore",
   "spineturret",
   "pulsespire",
   "laserfence",
@@ -1111,6 +1114,7 @@ export const XENO_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([
   "mawcaster",
   "forge",
   "nexus",
+  "fusioncore",
   "spineturret",
   "pulsespire",
   "laserfence",
@@ -1195,6 +1199,8 @@ const SHELVED_TYPES: ReadonlySet<EntityType> = new Set<EntityType>(["assimilator
  */
 export const HIVE_CORE_ENERGY = 200;
 export const FUSION_NODE_ENERGY = 500;
+/** Hive energy one standing Fusion Core adds to the store: four Fusion Nodes' worth. */
+export const FUSION_CORE_ENERGY = 2000;
 /** Below zero, one more unit or defence goes offline this often; with room again, one wakes this often. */
 export const HIVE_SWITCH_SECONDS = 0.5;
 /** Below zero the hive's yard and factories build at this pace, however short it is: 70% slower. */
@@ -1213,7 +1219,7 @@ export function energyOf(type: string): number {
 }
 /** Hive energy `type` adds to the hive's store while it stands. */
 export function energySupplyOf(type: string): number {
-  return type === "hivecore" ? HIVE_CORE_ENERGY : type === "fusionnode" ? FUSION_NODE_ENERGY : 0;
+  return type === "hivecore" ? HIVE_CORE_ENERGY : type === "fusionnode" ? FUSION_NODE_ENERGY : type === "fusioncore" ? FUSION_CORE_ENERGY : 0;
 }
 /** Scrap `type` costs a player of `faction`. */
 export function costFor(type: EntityType, faction: Faction): number {
@@ -1315,6 +1321,7 @@ export const BUILD_REQUIRES: Partial<Record<BuildingType, readonly BuildingType[
   ciws: ["research", "radar"],
   ram: ["research", "radar"],
   pulsespire: ["nexus"],
+  fusioncore: ["nexus"],
   energywall: ["nexus"],
   bilelance: ["braincoral"],
 };
@@ -6843,6 +6850,29 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     ...UNARMED,
     blurb: "A neural core in a cage of ribs under a crown of sensor spines: the hive thinks here. It unlocks the Behemoth, the Pulse Spire, and the Energy Wall, and it lights the radar panel like a Radar Station: an enemy plane or drone nobody can see shows as a blinking contact on the panel. Takes a large share of the hive's energy.",
   },
+  /** Xenite power core: a fusion reactor on a caged plasma well, fed by the Fusion Nodes. Unarmed. */
+  fusioncore: {
+    type: "fusioncore",
+    kind: "building",
+    name: "Fusion Core",
+    letter: "C",
+    cost: 0,
+    buildSeconds: 8 * 12,
+    hp: 1200,
+    power: 0,
+    tileW: t(3),
+    tileH: t(3),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: `A fusion reactor on a caged plasma well, bigger than a Neural Nexus. It takes as long to raise as eight Fusion Nodes and stores ${FUSION_CORE_ENERGY} energy for the hive, four Fusion Nodes' worth, while it stands. Destroyed, it goes up in the same nuclear blast as a Titan: everything round it is hurt, friend or foe, and small things are levelled. Needs a Neural Nexus to build.`,
+  },
   /** Xenite anti-infantry gun: crewless, runs on base power. */
   spineturret: {
     type: "spineturret",
@@ -9309,7 +9339,7 @@ export function jetFlightOf(type: EntityType): JetFlightDef | null {
 
 /** Goes up in a small nuclear blast when destroyed: the Titan. */
 export function nukesOnDeath(type: EntityType): boolean {
-  return type === "titan";
+  return type === "titan" || type === "fusioncore";
 }
 
 /** Flies: the Stuka, the Fw 190, the BV 222, the He 111, and the Horten VII. */
