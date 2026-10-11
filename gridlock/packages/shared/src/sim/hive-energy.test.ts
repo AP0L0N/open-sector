@@ -4,8 +4,8 @@ import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
   FUSION_NODE_ENERGY,
   HIVE_CORE_ENERGY,
+  HIVE_SHORT_SPEED,
   HIVE_SWITCH_SECONDS,
-  LOW_POWER_MIN_SPEED,
   LASER_FENCE_ENERGY_PER_CELL,
   TICK_DT,
   TILE_SUBDIV,
@@ -110,11 +110,11 @@ describe("hive energy", () => {
     assert.equal(applyCommand(state, "B", { type: "cmd.build", building: "spineturret" }).ok, true);
   });
 
-  it("builds slower below zero, in proportion", () => {
+  it("builds 70% slower below zero, however short", () => {
     assert.equal(hiveSpeed(200, 150), 1);
     assert.equal(hiveSpeed(200, 200), 1);
-    assert.equal(hiveSpeed(200, 400), 0.5);
-    assert.equal(hiveSpeed(200, 100_000), LOW_POWER_MIN_SPEED);
+    assert.equal(hiveSpeed(200, 201), HIVE_SHORT_SPEED);
+    assert.equal(hiveSpeed(200, 100_000), HIVE_SHORT_SPEED);
     const state = field();
     // Base structures never go offline: an Aerie keeps the hive at -500.
     at(state, "aerie", 40, 30);
@@ -122,7 +122,7 @@ describe("hive energy", () => {
     const { cap, used, offline } = hiveEnergyOf(state, "B");
     assert.equal(offline, 0);
     assert.ok(used > cap);
-    assert.equal(jobSpeed(state, "B"), cap / used);
+    assert.equal(jobSpeed(state, "B"), HIVE_SHORT_SPEED);
     const time = (slow: boolean): number => {
       const s = field();
       if (slow) at(s, "aerie", 40, 30);
@@ -186,8 +186,8 @@ describe("hive energy", () => {
     const ts = state.tileSize;
     const near = fenceEnergyToAdd(state, "B", [{ x: tileCenter(Math.round(22 * TILE_SUBDIV), ts), y: tileCenter(Math.round(30 * TILE_SUBDIV), ts) }]);
     const far = fenceEnergyToAdd(state, "B", [{ x: tileCenter(Math.round(25 * TILE_SUBDIV), ts), y: tileCenter(Math.round(30 * TILE_SUBDIV), ts) }]);
-    assert.equal(near, 2 * LASER_FENCE_ENERGY_PER_CELL);
-    assert.equal(far, 5 * LASER_FENCE_ENERGY_PER_CELL);
+    assert.equal(near, Math.round(2 * LASER_FENCE_ENERGY_PER_CELL));
+    assert.equal(far, Math.round(5 * LASER_FENCE_ENERGY_PER_CELL));
     at(state, "laserfence", 25, 30);
     ticks(state, 1);
     assert.equal(hiveEnergyOf(state, "B").used, 2 * energyOf("laserfence") + far);
@@ -212,7 +212,7 @@ describe("hive energy", () => {
     assert.equal(state.players.get("B")!.scrap, scrap, "no scrap spent");
     assert.ok(behemoth.hiveOffline, "the Behemoth, the hungriest, goes dark");
     assert.ok(fence.every((f) => !f.hiveOffline));
-    assert.equal(hiveEnergyOf(state, "B").used, 2 * energyOf("laserfence") + 5 * LASER_FENCE_ENERGY_PER_CELL);
+    assert.equal(hiveEnergyOf(state, "B").used, 2 * energyOf("laserfence") + Math.round(5 * LASER_FENCE_ENERGY_PER_CELL));
   });
 });
 
