@@ -66,6 +66,14 @@ describe("mapZoomAfterWheel", () => {
     assert.ok(MAP_ZOOM_START < MAP_ZOOM_MAX);
   });
 
+  it("allows exactly three notches of zoom-out from the start", () => {
+    let z = MAP_ZOOM_START;
+    for (let i = 0; i < 3; i++) z = mapZoomAfterWheel(z, 100);
+    near(z, MAP_ZOOM_MIN);
+    assert.equal(mapZoomAfterWheel(z, 100), MAP_ZOOM_MIN);
+    assert.ok(MAP_ZOOM_MIN < MAP_ZOOM_START * 0.9);
+  });
+
   it("treats a line-mode notch like a pixel wheel tick", () => {
     const pixel = mapZoomAfterWheel(1, 100, 0);
     const lines = mapZoomAfterWheel(1, 2.5, 1);
