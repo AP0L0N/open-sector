@@ -9,12 +9,14 @@ import {
   type ErrorCode,
   type RoomMode,
   type RoomState,
+  type SkirmishSeat,
+  type SkirmishSetup,
   type Slot,
   type SlotStatus,
 } from "./protocol.js";
 import { COLORS } from "./colors.js";
 import { isFaction, type Faction } from "./catalog.js";
-import { getMap } from "./maps.js";
+import { getMap, isPlaytestMapId } from "./maps.js";
 import { AI_PROFILES } from "./sim/ai-profile.js";
 
 export type LobbyResult<T = void> =
@@ -458,4 +460,73 @@ export function waitingReason(room: RoomState): string | null {
   const pre = startPreconditions(room);
   if (pre.ok) return null;
   return pre.message;
+}
+
+/** The host's skirmish lobby as a setup to rebuild next time. */
+export function skirmishSetupOf(room: RoomState): SkirmishSetup {
+  const seat = (s: Slot): SkirmishSeat => ({
+    faction: s.faction ?? "alliance",
+    colorId: s.colorId,
+    team: s.team,
+    spawnId: s.spawnId,
+  });
+  const host = findPlayerSlot(room, room.hostId);
+  return {
+    mapId: room.mapId,
+    ...(host ? { host: seat(host) } : {}),
+    cpus: room.slots
+      .filter((s) => s.status === "ai")
+      .map((s) => ({ index: s.index, ai: s.ai ?? "defensive", ...seat(s) })),
+  };
+}
+
+/**
+ * Rebuild a remembered skirmish lobby on a fresh skirmish room. `setup` comes
+ * off the wire: every field is checked, and anything that no longer fits (a
+ * map gone, a start the map lacks, a taken color, more CPUs than seats) is skipped.
+ */
+export function applySkirmishSetup(room: RoomState, setup: unknown): void {
+  if (room.mode !== "skirmish" || room.phase !== "lobby") return;
+  if (!setup || typeof setup !== "object") return;
+  const raw = setup as { mapId?: unknown; host?: unknown; cpus?: unknown };
+  if (typeof raw.mapId === "string" && !isPlaytestMapId(raw.mapId) && getMap(raw.mapId)) {
+    setMap(room, room.hostId, raw.mapId);
+  }
+  const map = getMap(room.mapId);
+  const seats: { slot: Slot; seat: Record<string, unknown> }[] = [];
+  const host = findPlayerSlot(room, room.hostId);
+  if (host && raw.host && typeof raw.host === "object") {
+    seats.push({ slot: host, seat: raw.host as Record<string, unknown> });
+  }
+  for (const cpu of Array.isArray(raw.cpus) ? raw.cpus : []) {
+    if (!cpu || typeof cpu !== "object") continue;
+    const { index, ai } = cpu as { index?: unknown; ai?: unknown };
+    if (!Number.isInteger(index) || typeof ai !== "string" || !isAiDifficulty(ai)) continue;
+    const slot = room.slots[index as number];
+    if (!slot || slot.status === "human" || slot.status === "ai") continue;
+    if (!hostSlot(room, room.hostId, slot.index, { status: "ai", ai }).ok) continue;
+    seats.push({ slot, seat: cpu as Record<string, unknown> });
+  }
+  // Written straight onto the slots: a CPU just seated holds an auto-picked
+  // color that would block a saved swap. Leftover clashes are settled below.
+  const colors = new Set<number>();
+  const spawns = new Set<number>();
+  for (const { slot, seat } of seats) {
+    const { faction, team, colorId, spawnId } = seat;
+    if (typeof faction === "string" && isFaction(faction)) slot.faction = faction;
+    if (typeof team === "number" && Number.isInteger(team) && team >= 0 && team <= 4) slot.team = team;
+    if (typeof colorId === "number" && COLORS.some((c) => c.id === colorId) && !colors.has(colorId)) {
+      slot.colorId = colorId;
+      colors.add(colorId);
+    }
+    if (typeof spawnId === "number" && !spawns.has(spawnId) && map?.spawns.some((s) => s.id === spawnId)) {
+      slot.spawnId = spawnId;
+      spawns.add(spawnId);
+    }
+  }
+  const seen = new Set<number>();
+  for (const s of commanders(room)) {
+    if (seen.has(s.colorId)) s.colorId = firstFreeColor(room, s.playerId);
+    seen.add(s.colorId);
+  }
 }

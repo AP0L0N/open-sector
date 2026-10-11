@@ -157,4 +157,39 @@ describe("hub map builder", () => {
       unregisterMap("c-hubmap003");
     }
   });
+
+  it("opens a skirmish on the remembered map, CPU and starts", () => {
+    const hub = new Hub(new MapStore(null));
+    try {
+      client(hub, "A");
+      const b = client(hub, "B");
+      hub.handle("A", { type: "map.save", map: sheet("c-hubmap004"), key: KEY_A });
+      hub.handle("B", {
+        type: "room.create",
+        mapId: "yard-64",
+        maxSlots: 8,
+        mode: "skirmish",
+        setup: {
+          mapId: "c-hubmap004",
+          host: { faction: "xeno", colorId: 4, team: 1, spawnId: 2 },
+          cpus: [
+            { index: 3, ai: "aggressive", faction: "bloom", colorId: 0, team: 2, spawnId: 1 },
+            { index: 5, ai: "defensive" },
+          ],
+        },
+      });
+      const room = b.of("room.state").at(-1)!.room;
+      assert.equal(room.mapId, "c-hubmap004");
+      assert.deepEqual(
+        [room.slots[0]!.faction, room.slots[0]!.colorId, room.slots[0]!.team, room.slots[0]!.spawnId],
+        ["xeno", 4, 1, 2],
+      );
+      const cpu = room.slots[3]!;
+      assert.deepEqual([cpu.status, cpu.ai, cpu.faction, cpu.colorId, cpu.team, cpu.spawnId], ["ai", "aggressive", "bloom", 0, 2, 1]);
+      // The map seats two: the second CPU has no chair.
+      assert.notEqual(room.slots[5]!.status, "ai");
+    } finally {
+      unregisterMap("c-hubmap004");
+    }
+  });
 });

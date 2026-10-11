@@ -65,6 +65,21 @@ export interface Slot {
   faction?: Faction;
 }
 
+/** One commander's lobby picks, as a skirmish setup remembers them. */
+export interface SkirmishSeat {
+  faction?: Faction;
+  colorId?: number;
+  team?: number;
+  spawnId?: number;
+}
+
+/** A skirmish lobby the client keeps and hands back on its next `room.create`. */
+export interface SkirmishSetup {
+  mapId?: string;
+  host?: SkirmishSeat;
+  cpus?: (SkirmishSeat & { index: number; ai: AiDifficulty })[];
+}
+
 export interface RoomState {
   id: string;
   hostId: string;
@@ -878,7 +893,8 @@ export type MatchView = MatchSnapshot;
 
 export type ClientMessage =
   | { type: "hello"; name: string }
-  | { type: "room.create"; mapId: string; maxSlots: number; mode?: RoomMode }
+  /** `setup`: the last skirmish lobby to rebuild (skirmish only; best effort, bad fields skipped). */
+  | { type: "room.create"; mapId: string; maxSlots: number; mode?: RoomMode; setup?: SkirmishSetup }
   | { type: "room.join"; code: string }
   | { type: "room.leave" }
   | { type: "slot.update"; colorId?: number; team?: number; spawnId?: number; ready?: boolean; faction?: Faction }
