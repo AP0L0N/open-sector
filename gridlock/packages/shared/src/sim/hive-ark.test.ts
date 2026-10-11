@@ -28,6 +28,7 @@ import { TILE_EMPTY, TILE_WATER } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { makeEntity, ownedUnits, tileCenter } from "./geo.js";
 import { arkDome, podWasp } from "./hive-ark.js";
+import { armTorpedo } from "./naval.js";
 import { createMatch, step } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
 import { producerType } from "./train.js";
@@ -240,6 +241,41 @@ describe("Hive Ark dome", () => {
     assert.equal(ark.hp, hp, "the hull took nothing");
     assert.ok(dome.hp < ARK_DOME.energy, "the dome took the shell");
   });
+
+  for (const deep of [false, true]) {
+    it(`stops an enemy torpedo${deep ? " run deep" : ""} below the water`, () => {
+      const { state, x0, y0 } = bay();
+      const ark = spawn(state, "hiveark", "A", x0 + 20, y0 + 10);
+      ticks(state, 1);
+      const hp = ark.hp;
+      const dome = arkDome(state, ark)!;
+      const speed = 120;
+      const p: Projectile = {
+        id: state.nextId++,
+        ownerId: "B",
+        team: 1,
+        x: ark.x + state.tileSize * 20,
+        y: ark.y,
+        vx: -speed,
+        vy: 0,
+        damage: 400,
+        penetration: 200,
+        caliber: 533,
+        big: true,
+        life: 10,
+        ignoreId: -1,
+        fromId: -1,
+        bounced: false,
+        shell: null,
+      };
+      armTorpedo(state, p, deep);
+      state.projectiles.push(p);
+      for (let i = 0; i < secondsToTicks(10) && state.projectiles.includes(p); i++) ticks(state, 1);
+      assert.equal(state.projectiles.includes(p), false, "the torpedo is spent");
+      assert.equal(ark.hp, hp, "the hull took nothing");
+      assert.ok(dome.hp <= ARK_DOME.energy - 350, "the dome took the torpedo");
+    });
+  }
 
   it("broken, it rises again full after its recharge", () => {
     const { state, x0, y0 } = bay();

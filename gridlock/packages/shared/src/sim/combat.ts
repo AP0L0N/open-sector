@@ -3678,12 +3678,15 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     const struck = nearestSweepHit(state, x0, y0, p, z0, z1);
     const blocker = concrete && (!bagHit || concrete.t < bagHit.t) ? concrete : bagHit;
     // An enemy energy wall stops the round where it meets it. A barrage from overhead falls past a
-    // wall but not onto a dome.
-    const guard =
-      p.torpedo || p.aloft ? null : p.fromAbove ? overheadSweep(state, p.ownerId, x0, y0, p.x, p.y) : shieldSweep(state, p.ownerId, x0, y0, p.x, p.y);
+    // wall but not onto a dome. A torpedo runs under a wall but a dome goes all the way round, below the water too.
+    const guard = p.aloft
+      ? null
+      : p.fromAbove
+        ? overheadSweep(state, p.ownerId, x0, y0, p.x, p.y)
+        : shieldSweep(state, p.ownerId, x0, y0, p.x, p.y, !!p.torpedo);
     if (guard && (!struck || guard.t <= struck.t) && (!blocker || guard.t <= blocker.t)) {
       // A pulse bolt fired flat turns back off the face. Anything else, or from overhead, stops there.
-      if (!p.fromAbove && !p.plunging && !p.flight && energyRound(state, p.ownerId)) {
+      if (!p.fromAbove && !p.plunging && !p.flight && !p.torpedo && energyRound(state, p.ownerId)) {
         reflectRound(state, p, guard);
         keep.push(p);
       } else absorbRound(state, p, guard);
