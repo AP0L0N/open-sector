@@ -55,6 +55,7 @@ import {
   type TrainType,
   isHqRig,
   isSmelterType,
+  scrapIsGround,
   smelterOf,
   energyWallOf,
 } from "../catalog.js";
@@ -66,7 +67,7 @@ import { turnedBox } from "../building-rect.js";
 import { buildingSiteError, buildTechMissing } from "./build.js";
 import { applyCommand } from "./commands.js";
 import { canRepairTarget, canScrapWreck, gateSiteAt } from "./field.js";
-import { allies, footprintGap, hasCore, hqOf, inBuildRadius, isWater, nearestWalkable, scrapAt, tilesBlockedOrScrap, walkable } from "./geo.js";
+import { allies, footprintGap, hasCore, hqOf, inBuildRadius, isWater, nearestWalkable, scrapAt, tilesBlocked, tilesBlockedOrScrap, walkable } from "./geo.js";
 import { smelterRateOn, smelterSiteOk } from "./smelter.js";
 import { powerOf } from "./power.js";
 import { hiveEnergyOf } from "./hive-energy.js";
@@ -2538,6 +2539,8 @@ export function findBuildTile(
   const radius = buildRadiusOf(type);
   const maxR = radius + Math.max(def.tileW, def.tileH);
   const halfW = Math.floor(def.tileW / 2);
+  // Scrap is bare ground to the Xenite.
+  const scrapGround = scrapIsGround(type);
   const halfH = Math.floor(def.tileH / 2);
   // Keep the next Smelter's ground: a building packed against the scrap shuts its lane, and the
   // yard may have no other footprint on the field in range.
@@ -2558,7 +2561,7 @@ export function findBuildTile(
     }
     ring.sort((a, b) => b.inward - a.inward);
     for (const spot of ring) {
-      if (tilesBlockedOrScrap(state, spot.tx, spot.ty, def.tileW, def.tileH)) continue;
+      if (scrapGround ? tilesBlocked(state, spot.tx, spot.ty, def.tileW, def.tileH) : tilesBlockedOrScrap(state, spot.tx, spot.ty, def.tileW, def.tileH)) continue;
       if (!inBuildRadius(state, playerId, spot.tx, spot.ty, def.tileW, def.tileH, radius)) continue;
       if (!keepsLanes(state, spot.tx, spot.ty, def.tileW, def.tileH)) continue;
       if (keep && footprintGap(spot.tx, spot.ty, def.tileW, def.tileH, keep.tx, keep.ty, smelter.tileW, smelter.tileH) < CPU_BUILD_LANE_TILES) continue;

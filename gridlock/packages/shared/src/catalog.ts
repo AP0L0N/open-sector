@@ -1201,6 +1201,10 @@ export const HIVE_SHORT_SPEED = 0.3;
 export function usesHiveEnergy(faction: Faction | undefined): boolean {
   return faction === "xeno";
 }
+/** Can `type` stand on Scrap and Diamond Scrap as on bare ground? The Xenite pay no scrap and build over it. */
+export function scrapIsGround(type: string): boolean {
+  return factionOf(type) === "xeno";
+}
 /** Hive energy `type` takes while it stands: 0 for everything but the Xenite's units, defences, and base. */
 export function energyOf(type: string): number {
   return catalog(type as EntityType).energy ?? 0;
