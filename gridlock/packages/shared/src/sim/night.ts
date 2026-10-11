@@ -11,7 +11,6 @@ import {
   isArmoredType,
   isCyborg,
   isDroneType,
-  energyWallOf,
   lampCrewOf,
   type Crit,
   DUSK_SECONDS,
@@ -250,16 +249,6 @@ export function spotlightManned(e: {
   return hasSpotlight(e.type) && (e.ownerId !== NEUTRAL_OWNER || e.kind === "unit") && e.hp > 0 && !e.ruined && !e.wreck;
 }
 
-/** An Energy Wall core someone holds: its curtain's heading turns as a tower's lamp does (sim/energy-shield.ts). */
-export function wallHeadingHeld(e: { type: EntityType; kind?: string; ownerId: string; hp: number; ruined?: boolean; wreck?: boolean }): boolean {
-  return e.kind === "building" && energyWallOf(e.type) != null && e.ownerId !== NEUTRAL_OWNER && e.hp > 0 && !e.ruined && !e.wreck;
-}
-
-/** What Rotate and Patrol swing on a structure or hull: a held lamp, or an Energy Wall's curtain. */
-export function headingTurns(e: Parameters<typeof spotlightManned>[0]): boolean {
-  return spotlightManned(e) || wallHeadingHeld(e);
-}
-
 function crewAt(g: readonly unknown[] | { count: number } | undefined): number {
   if (!g) return 0;
   return Array.isArray(g) ? g.length : (g as { count: number }).count;
@@ -321,8 +310,7 @@ export function tickSpotlights(state: MatchState, dt: number): void {
   const max = ((SPOTLIGHT_TURN_DEG_PER_SEC * Math.PI) / 180) * dt;
   for (const e of state.entities.values()) {
     // A dark tower lamp holds where it stood. A Rotate waits for the power to come back.
-    // An Energy Wall offline does the same.
-    if (!spotlightLit(e) && !(wallHeadingHeld(e) && !e.unpowered)) continue;
+    if (!spotlightLit(e)) continue;
     if (e.kind === "unit") {
       if (e.spotFacing != null) e.spotFacing = wrap(e.spotFacing + wrap(e.facing - (e.spotHull ?? e.facing)));
       e.spotHull = e.facing;

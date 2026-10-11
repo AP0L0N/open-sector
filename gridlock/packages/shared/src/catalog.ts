@@ -2197,7 +2197,7 @@ const ENERGY_DOMES: Partial<Record<EntityType, EnergyDomeDef>> = {
 /**
  * The Xenite Energy Wall (sim/energy-shield.ts): a low emitter core that holds a tall curtain of
  * energy across its front, the Behemoth's wall but far wider. The curtain stands while the core is
- * online and turns with the core's heading (Rotate, or a Patrol sweep, as a Watch Tower's lamp).
+ * online, across the way the core was turned when it was placed.
  * It stops every enemy round and beam that meets it and every enemy ground unit; lobbed rounds
  * fall over it. Hits drain its points; it slowly regains them while it stands, and drained to
  * nothing it is down until the core has recharged.
@@ -6946,7 +6946,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     // Squat: your own side's soldiers and hulls shoot over the core.
     coverHeight: ENERGY_WALL_COVER_HEIGHT,
     capturable: false,
-    blurb: `A squat emitter core with a fan of field vanes. It holds a curtain of green energy ${ENERGY_WALL.radiusTiles / TILE_SUBDIV} cells out across its front, far wider than a Behemoth's wall and as tall as a Pulse Spire. Enemy rounds and beams stop on it and enemy soldiers and hulls cannot walk through; shells and bombs lobbed from above fall over it. Your own side walks and shoots through, and over the low core. Each hit drains the curtain (${ENERGY_WALL.hp} points); it slowly mends while it stands, and once drained it is down for ${ENERGY_WALL.rechargeSeconds} seconds. Turn it before placing, Rotate it after, or give it a Patrol to sweep it between points, as a Watch Tower's lamp. Takes hive energy while it stands; offline, the curtain falls. Needs a Neural Nexus. Cannot move.`,
+    blurb: `A squat emitter core with a fan of field vanes. It holds a curtain of green energy ${ENERGY_WALL.radiusTiles / TILE_SUBDIV} cells out across its front, far wider than a Behemoth's wall and as tall as a Pulse Spire. Enemy rounds and beams stop on it and enemy soldiers and hulls cannot walk through; shells and bombs lobbed from above fall over it. Your own side walks and shoots through, and over the low core. Each hit drains the curtain (${ENERGY_WALL.hp} points); it slowly mends while it stands, and once drained it is down for ${ENERGY_WALL.rechargeSeconds} seconds. Turn it before placing: it holds that way for good. Takes hive energy while it stands; offline, the curtain falls. Needs a Neural Nexus. Cannot move.`,
   },
   /** Xenite shipyard: grows the Leech and the Lurker. Stands on open water like a Marine Base. */
   spawnpool: {

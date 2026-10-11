@@ -467,36 +467,30 @@ describe("Energy Wall", () => {
     assert.equal(state.energyShields![0]!.hp, 700);
   });
 
-  it("Rotate turns the curtain; Patrol sweeps it between points", () => {
-    const { state, post } = wallPost();
+  it("holds the way it was placed: it takes no Rotate or Patrol", () => {
+    const state = field();
+    const ts = state.tileSize;
+    const post = makeEntity(state, "energywall", "B", tileCenter(100, ts), tileCenter(120, ts), { facing: Math.PI / 2 });
     tickEnergyShields(state, TICK_DT);
     const w = state.energyShields![0]!;
-    assert.equal(applyCommand(state, "B", { type: "cmd.rotate", ids: [post.id], x: post.x, y: post.y + 100 }).ok, true);
+    assert.equal(w.angle, Math.PI / 2, "faces south, as placed");
+    assert.equal(applyCommand(state, "B", { type: "cmd.rotate", ids: [post.id], x: post.x + 100, y: post.y }).ok, false);
+    const north = { x: post.x, y: post.y - 100 };
+    const east = { x: post.x + 100, y: post.y };
+    assert.equal(applyCommand(state, "B", { type: "cmd.patrol", ids: [post.id], points: [north, east] }).ok, false);
     for (let i = 0; i < secondsToTicks(5); i++) {
       tickSpotlights(state, TICK_DT);
       tickEnergyShields(state, TICK_DT);
     }
-    assert.ok(Math.abs(w.angle - Math.PI / 2) < 1e-6, `turned south (${w.angle})`);
-    const north = { x: post.x, y: post.y - 100 };
-    const east = { x: post.x + 100, y: post.y };
-    assert.equal(applyCommand(state, "B", { type: "cmd.patrol", ids: [post.id], points: [north, east] }).ok, true);
-    const seen = new Set<string>();
-    for (let i = 0; i < secondsToTicks(20); i++) {
-      tickSpotlights(state, TICK_DT);
-      tickEnergyShields(state, TICK_DT);
-      if (Math.abs(w.angle + Math.PI / 2) < 0.01) seen.add("north");
-      if (Math.abs(w.angle) < 0.01) seen.add("east");
-    }
-    assert.deepEqual([...seen].sort(), ["east", "north"], "swept both ways");
-    // The enemy cannot turn it.
-    assert.equal(applyCommand(state, "A", { type: "cmd.rotate", ids: [post.id], x: 0, y: 0 }).ok, false);
+    assert.equal(w.angle, Math.PI / 2, "still south");
   });
 
-  it("the snapshot draws it as a curtain and sends the core's heading", () => {
+  it("the snapshot draws it as a curtain; the core sends no lamp heading", () => {
     const { state, post } = wallPost();
     tickEnergyShields(state, TICK_DT);
     const snap = snapshotFor(state, "B");
     assert.equal(snap.shields?.[0]?.post, true);
-    assert.equal(snap.entities.find((e) => e.id === post.id)?.spotFacing, 0);
+    assert.equal(snap.shields?.[0]?.angle, 0);
+    assert.equal(snap.entities.find((e) => e.id === post.id)?.spotFacing, undefined);
   });
 });

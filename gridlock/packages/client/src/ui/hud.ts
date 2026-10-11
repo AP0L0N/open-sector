@@ -78,7 +78,6 @@ import {
   tankDeckOf,
   isHiddenField,
   hasSpotlight,
-  wallHeadingHeld,
   lampUnderway,
   isInfantryType,
   isInfantryWeaponId,
@@ -2224,7 +2223,7 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
   const garrisonForce = garrisonForceHosts(you, houses);
   // A CIWS, a RAM, or a crewed gun aims its own gun: it takes Stop, Force attack, and Rotate like a unit.
   const mounts = buildings.filter((e) => aimsOwnGun(e.type));
-  const lamps = buildings.filter((e) => (hasSpotlight(e.type) || wallHeadingHeld(e)) && e.spotFacing != null);
+  const lamps = buildings.filter((e) => hasSpotlight(e.type) && e.spotFacing != null);
   if (units.length === 0 && buildings.length === 0 && houses.length === 0) return out;
 
   // A gate locks and unlocks. It is built from the Defences tab.
@@ -2242,13 +2241,11 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
     });
   }
 
-  // Energy Walls only: their curtain is what Rotate, Patrol, and Stop swing.
-  const curtains = lamps.length > 0 && lamps.every((e) => wallHeadingHeld(e));
   if (units.length || mounts.length || garrisonForce.length || lamps.length) {
     const stopTitle = units.length
       ? `Halt selected units (${STOP_HOTKEY.toUpperCase()})`
       : lamps.length && mounts.length === 0 && garrisonForce.length === 0
-        ? `Stop the ${curtains ? "curtain" : "spotlight"} (${STOP_HOTKEY.toUpperCase()})`
+        ? `Stop the spotlight (${STOP_HOTKEY.toUpperCase()})`
         : `Drop the forced aim and pick targets again (${STOP_HOTKEY.toUpperCase()})`;
     out.push({
       slot: "stop",
@@ -2269,7 +2266,7 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
   if (units.length || lamps.length) {
     const patrolTitle = units.length
       ? `Place points, right-click to finish. Click a point already placed to close a loop and circle it; otherwise they walk the points and back. They fight enemies along that path (${PATROL_HOTKEY.toUpperCase()})${lamps.length ? " A tower turns its spotlight the same way." : ""}`
-      : `Place points, right-click to finish. Click a point already placed to close a loop; otherwise the ${curtains ? "energy curtain swings" : "spotlight goes"} out and back (${PATROL_HOTKEY.toUpperCase()})`;
+      : `Place points, right-click to finish. Click a point already placed to close a loop; otherwise the spotlight goes out and back (${PATROL_HOTKEY.toUpperCase()})`;
     out.push({
       slot: "patrol",
       act: "patrol",
@@ -2370,9 +2367,7 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       slot: "rotate",
       act: "rotate",
       label: "Rotate",
-      title: curtains
-        ? `Swing the energy curtain to face a direction (${ROTATE_HOTKEY.toUpperCase()}).`
-        : `Swing the spotlight (${ROTATE_HOTKEY.toUpperCase()}). At night its beam lights the ground far out.`,
+      title: `Swing the spotlight (${ROTATE_HOTKEY.toUpperCase()}). At night its beam lights the ground far out.`,
       on: !!view?.rotateMode,
     });
   }
@@ -2988,7 +2983,7 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   const units = ownCommandable(ctx, selected.filter((e) => e.kind === "unit"));
   const buildings = ownCommandable(ctx, selected.filter((e) => e.kind === "building"));
   const aimers = [...units, ...buildings.filter((e) => aimsOwnGun(e.type))];
-  const lamps = buildings.filter((e) => (hasSpotlight(e.type) || wallHeadingHeld(e)) && e.spotFacing != null);
+  const lamps = buildings.filter((e) => hasSpotlight(e.type) && e.spotFacing != null);
   const garrisonForce = garrisonForceHosts(match.youPlayerId, selected);
   if (act === "stop") {
     view.setAttackMoveMode(false);

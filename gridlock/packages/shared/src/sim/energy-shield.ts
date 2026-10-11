@@ -1,7 +1,6 @@
-import { energyDomeOf, energyShieldOf, energyWallOf, secondsToTicks, type EnergyDomeDef, type EnergyWallDef } from "../catalog.js";
+import { NEUTRAL_OWNER, energyDomeOf, energyShieldOf, energyWallOf, secondsToTicks, type EnergyDomeDef, type EnergyWallDef } from "../catalog.js";
 import { weaponRangeWorld } from "./elevation.js";
 import { allies, worldToTile } from "./geo.js";
-import { spotFacingOf, wallHeadingHeld } from "./night.js";
 import { energyRound } from "./remains.js";
 import type { Entity, EnergyShield, MatchState, Projectile } from "./types.js";
 
@@ -18,8 +17,8 @@ import type { Entity, EnergyShield, MatchState, Projectile } from "./types.js";
  * are the Siphon's energy. Drained, it is gone until the energy fills back up.
  *
  * An Energy Wall building holds a far wider curtain the same way a wall stands, but for as long
- * as the core is online, turned with the core's heading (Rotate, Patrol; sim/night.ts). Hits drain
- * it, it mends slowly, and drained it is down until the core recharges.
+ * as the core is online, across the way the core was placed. Hits drain it, it mends slowly, and
+ * drained it is down until the core recharges.
  *
  * Pulses and lasers (another hive's bolts, a Cyborg's beam) glance off: a bolt fired flat
  * turns back off the face, live, and a beam stops there. Either still costs the shield, but
@@ -283,11 +282,11 @@ function castDome(state: MatchState, e: Entity, def: EnergyDomeDef): void {
 
 /** An Energy Wall core holds its curtain while it stands, held and online. */
 function canHoldCurtain(e: Entity): boolean {
-  return wallHeadingHeld(e) && !e.unpowered;
+  return e.kind === "building" && e.ownerId !== NEUTRAL_OWNER && e.hp > 0 && !e.ruined && !e.wreck && !e.unpowered;
 }
 
 /**
- * An Energy Wall's curtain: it turns with the core's heading and slowly mends. Drained, it is
+ * An Energy Wall's curtain: it faces the way the core was placed and slowly mends. Drained, it is
  * gone and the core waits out the recharge; lowered because the core went offline, the core
  * keeps what was left. True while it still stands.
  */
@@ -304,7 +303,6 @@ function tickCurtain(state: MatchState, s: EnergyShield, dt: number): boolean {
     if (from.hp > 0) from.energy = s.hp;
     return false;
   }
-  s.angle = spotFacingOf(from);
   s.hp = Math.min(s.hpMax, s.hp + def.regenPerSecond * dt);
   return true;
 }
@@ -316,7 +314,7 @@ function raiseCurtain(state: MatchState, e: Entity, def: EnergyWallDef): void {
     fromId: e.id,
     x: e.x,
     y: e.y,
-    angle: spotFacingOf(e),
+    angle: e.facing,
     half: (def.halfDeg * Math.PI) / 180,
     r: def.radiusTiles * state.tileSize,
     hp: Math.min(def.hp, e.energy ?? def.hp),

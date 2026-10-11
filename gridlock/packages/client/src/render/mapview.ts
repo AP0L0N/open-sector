@@ -36,7 +36,6 @@ import {
   radarLaidOf,
   aimsOwnGun,
   hasSpotlight,
-  wallHeadingHeld,
   ENERGY_WALL,
   energyWallOf,
   lampPools,
@@ -1189,9 +1188,7 @@ export class MapView {
   /** Last heading each lamp showed, kept while it is dark so it does not snap. */
   private spotRest = new Map<number, number>();
   private spotFrameAt = 0;
-  /** Energy Wall cores: the heading their curtain shows this frame, eased between snapshots like a lamp. */
-  private curtainShown = new Map<number, number>();
-  private curtainFrameAt = 0;
+
   /** Where each tower's searchlight lens landed this frame, for its glow at night. */
   private lensAt = new Map<number, SearchlightPose>();
   /** Every tile counts as known ground on a map without complete fog of war. */
@@ -3694,12 +3691,12 @@ export class MapView {
     });
   }
 
-  /** Own watch towers and Energy Walls. Patrol turns the spotlight or curtain along the points; Stop freezes it. */
+  /** Own watch towers. Patrol turns the spotlight along the points; Stop freezes it. */
   private ownLampIds(): number[] {
     const out: number[] = [];
     for (const id of this.selected) {
       const ent = this.currById.get(id);
-      if (ent && ent.ownerId === this.curr.youPlayerId && ent.hp > 0 && ent.kind === "building" && ent.spotFacing != null && (hasSpotlight(ent.type) || wallHeadingHeld(ent))) {
+      if (ent && ent.ownerId === this.curr.youPlayerId && ent.hp > 0 && ent.kind === "building" && ent.spotFacing != null && hasSpotlight(ent.type)) {
         out.push(id);
       }
     }
@@ -3728,12 +3725,12 @@ export class MapView {
     return ids;
   }
 
-  /** What Rotate turns: the aimers, plus own watch towers, whose spotlight swings, and Energy Walls, whose curtain does. */
+  /** What Rotate turns: the aimers, plus own watch towers, whose spotlight swings. */
   private ownRotateIds(): number[] {
     const out = this.ownAimIds();
     for (const id of this.selected) {
       const ent = this.currById.get(id);
-      if (ent && ent.ownerId === this.curr.youPlayerId && ent.kind === "building" && ent.spotFacing != null && (hasSpotlight(ent.type) || wallHeadingHeld(ent))) {
+      if (ent && ent.ownerId === this.curr.youPlayerId && ent.kind === "building" && ent.spotFacing != null && hasSpotlight(ent.type)) {
         out.push(id);
       }
     }
@@ -7510,13 +7507,8 @@ export class MapView {
           // The gun sheet shares the unturned pad's canvas: a turned pad still lays it out on that.
           const pad = this.unturnedPad(e, elev) ?? { x: south.x, y: south.y, w: footprintW };
           const base = unturnedBuildingSprite(e.type) ?? spr;
-          // A pole lamp's man and training column turn with the lamp, not a gun; an Energy Wall's emitter with its curtain.
-          const aim =
-            gun?.lampZ != null
-              ? this.lampShownFacing(e)
-              : energyWallOf(e.type)
-                ? (this.curtainShown.get(e.id) ?? e.spotFacing ?? e.facing)
-                : (e.turretFacing ?? e.facing);
+          // A pole lamp's man and training column turn with the lamp, not a gun; an Energy Wall's emitter faces its curtain.
+          const aim = gun?.lampZ != null ? this.lampShownFacing(e) : energyWallOf(e.type) ? e.facing : (e.turretFacing ?? e.facing);
           if (e.type === "ciws") this.drawCiwsGun(base, pad.x, pad.y, pad.w, 1, aim, ghost ? undefined : e);
           else if (e.type === "ram") this.drawCiwsGun(base, pad.x, pad.y, pad.w, 1, aim, undefined, RAM_TURRET_SHEET);
           else if (gun) {
@@ -9783,29 +9775,18 @@ export class MapView {
       return;
     }
     const now = performance.now();
-    const curtainDt = this.curtainFrameAt > 0 ? Math.min(0.25, (now - this.curtainFrameAt) / 1000) : 0;
-    this.curtainFrameAt = now;
-    const curtainStep = ((SPOTLIGHT_TURN_DEG_PER_SEC * Math.max(1, this.curr.gameSpeed || 1) * 1.25 * Math.PI) / 180) * curtainDt;
-    const curtains = new Set<number>();
     for (const s of walls) {
       if (s.dome) {
         this.collectDome(items, w, h, s, now);
         continue;
       }
-      // An Energy Wall's curtain swings smoothly between snapshots, and stands as tall as a Pulse Spire.
-      let angle = s.angle;
-      if (s.post && s.fromId != null) {
-        const was = this.curtainShown.get(s.fromId);
-        angle = was == null ? s.angle : easeSpot(was, s.angle, curtainStep);
-        this.curtainShown.set(s.fromId, angle);
-        curtains.add(s.fromId);
-      }
+      // An Energy Wall's curtain stands as tall as a Pulse Spire.
       const margin = s.post ? 120 + s.r * 2.5 : 120;
       const mid = this.toScreen(s.x, s.y);
       if (mid.x < -margin || mid.y < -margin || mid.x > w + margin || mid.y > h + margin) continue;
       const glow = shieldGlow(s, now, s.id);
       const rise = s.post ? curtainHeightElev() : shieldHeightElev(s.r);
-      const pts = shieldCurve({ ...s, angle }, s.post ? CURTAIN_PANELS : undefined).map((g) => {
+      const pts = shieldCurve(s, s.post ? CURTAIN_PANELS : undefined).map((g) => {
         const elev = this.elevAt(g.x, g.y);
         const base = this.toScreen(g.x, g.y, elev);
         return { g, base, lift: base.y - this.toScreen(g.x, g.y, elev + rise).y };
@@ -9823,7 +9804,7 @@ export class MapView {
       }
       this.collectWeaveThread(items, s, pts, now);
     }
-    for (const id of this.curtainShown.keys()) if (!curtains.has(id)) this.curtainShown.delete(id);
+
     if (this.shieldBorn.size > 0) {
       const up = new Set(walls.map((s) => s.id));
       for (const id of this.shieldBorn.keys()) if (!up.has(id)) this.shieldBorn.delete(id);

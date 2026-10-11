@@ -917,7 +917,7 @@ export interface EnergyShield {
   weave?: true;
   /** A Weaver's dome: its points at the last sync, so the hits taken since drain the cell. */
   synced?: number;
-  /** An Energy Wall's curtain: stands while its core is online and turns with the core's heading. */
+  /** An Energy Wall's curtain: stands while its core is online, across the way the core was placed. */
   post?: true;
 }
 
