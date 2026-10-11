@@ -1189,6 +1189,8 @@ export const HIVE_CORE_ENERGY = 200;
 export const FUSION_NODE_ENERGY = 500;
 /** Below zero, one more unit or defence goes offline this often; with room again, one wakes this often. */
 export const HIVE_SWITCH_SECONDS = 0.5;
+/** Below zero the hive's yard and factories build at this pace, however short it is: 70% slower. */
+export const HIVE_SHORT_SPEED = 0.3;
 /** Does `faction` run on hive energy instead of scrap and power? */
 export function usesHiveEnergy(faction: Faction | undefined): boolean {
   return faction === "xeno";
@@ -2318,7 +2320,7 @@ export const LASER_FENCE_BURN_MIN = 60;
  */
 export const SPINE_TURRET_CELL = { shots: 60, rechargeSeconds: 0.1 };
 /** Hive energy a fence link holds per cell of its length, on top of each post's own (sim/hive-energy.ts). */
-export const LASER_FENCE_ENERGY_PER_CELL = 5;
+export const LASER_FENCE_ENERGY_PER_CELL = 5.75;
 /** World px either side of a fence beam that a body still touches. */
 export const LASER_FENCE_BEAM_HALF_WIDTH = 2;
 /**
@@ -4866,7 +4868,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `Twin coils around a caged plasma core. Feeds the hive: each Fusion Node adds ${FUSION_NODE_ENERGY} energy to the store your Hive Core starts with. Every Xenite unit, defence, and base structure takes a share while it stands. Below zero the hive builds and grows slower, and its units and defences go offline one by one, the hungriest first, until it is back above zero; they wake again once there is room. Costs nothing to grow.`,
+    blurb: `Twin coils around a caged plasma core. Feeds the hive: each Fusion Node adds ${FUSION_NODE_ENERGY} energy to the store your Hive Core starts with. Every Xenite unit, defence, and base structure takes a share while it stands. Below zero the hive builds and grows 70% slower, and its units and defences go offline one by one, the hungriest first, until it is back above zero; they wake again once there is room. Costs nothing to grow.`,
   },
   assimilator: {
     type: "assimilator",
@@ -6773,7 +6775,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Spine Turret",
     letter: "s",
     cost: 0,
-    energy: 40,
+    energy: 120,
     buildSeconds: 9,
     hp: 500,
     power: 0,
@@ -6807,7 +6809,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Laser Fence",
     letter: "f",
     cost: 0,
-    energy: 10,
+    energy: 11.5,
     buildSeconds: 6,
     hp: 300,
     power: 0,
@@ -6832,7 +6834,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Pulse Spire",
     letter: "q",
     cost: 0,
-    energy: 100,
+    energy: 300,
     buildSeconds: 14,
     hp: 800,
     power: 0,

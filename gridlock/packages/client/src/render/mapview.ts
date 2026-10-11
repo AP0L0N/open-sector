@@ -11645,7 +11645,7 @@ export class MapView {
     const hive = this.curr.you.energy;
     const reach = LASER_FENCE_REACH_TILES * ts;
     const links = hive ? totalFenceLinkEnergy(all, reach, ts) - totalFenceLinkEnergy(standing, reach, ts) : 0;
-    const energy = count * energyOf("laserfence") + Math.max(0, links);
+    const energy = Math.round(count * energyOf("laserfence") + Math.max(0, links));
     const s = this.toScreen(centre(tip).x, centre(tip).y);
     ctx.save();
     ctx.font = "11px 'Share Tech Mono', monospace";

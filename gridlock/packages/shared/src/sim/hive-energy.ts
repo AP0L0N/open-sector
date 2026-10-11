@@ -1,4 +1,4 @@
-import { energyOf, energySupplyOf, HIVE_SWITCH_SECONDS, isDefenceStructure, LOW_POWER_MIN_SPEED, secondsToTicks, usesHiveEnergy } from "../catalog.js";
+import { energyOf, energySupplyOf, HIVE_SHORT_SPEED, HIVE_SWITCH_SECONDS, isDefenceStructure, secondsToTicks, usesHiveEnergy } from "../catalog.js";
 import { isAirborne } from "./air.js";
 import { clearOrder } from "./geo.js";
 import { fenceLinkEnergy, laserFenceLinks, laserFenceReach, totalFenceLinkEnergy, type FencePost } from "./laser-fence.js";
@@ -12,8 +12,8 @@ import type { Entity, MatchState, SimPlayer } from "./types.js";
  * it holds. The HUD counts down from the full store: 200 / 200 with a bare Hive Core, less for each
  * thing the hive feeds, and below zero when it feeds more than it holds.
  *
- * Nothing is refused for want of energy. Below zero the yard and the factories work slower, in
- * proportion, as a short-powered base does (never under LOW_POWER_MIN_SPEED). And while the hive
+ * Nothing is refused for want of energy. Below zero the yard and the factories work at
+ * HIVE_SHORT_SPEED, every job alike (a Fusion Node too), however far short the hive is. And while the hive
  * is below zero, its units and defences go offline one at a time, every HIVE_SWITCH_SECONDS, the
  * hungriest first, until it is back at zero or above: a unit shuts down where it stands, a defence
  * falls silent. Base structures never go offline, and a plane in the air keeps flying. Once there
@@ -107,10 +107,10 @@ export function hiveEnergyOf(state: MatchState, playerId: string): HiveEnergy {
   return { cap: hiveEnergyCap(state, playerId), used, offline };
 }
 
-/** How fast the hive builds and grows at `cap` held and `used` taken: 1 at zero or above, slower in proportion below. */
+/** How fast the hive builds and grows at `cap` held and `used` taken: 1 at zero or above, HIVE_SHORT_SPEED below. */
 export function hiveSpeed(cap: number, used: number): number {
   if (cap <= 0 || used <= cap) return 1;
-  return Math.max(LOW_POWER_MIN_SPEED, cap / used);
+  return HIVE_SHORT_SPEED;
 }
 
 /** Pace of `playerId`'s yard and factories: the hive's energy for the Xenite, power for everyone else. */
