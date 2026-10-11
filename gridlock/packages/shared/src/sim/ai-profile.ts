@@ -7,6 +7,10 @@
  * Balanced raises the same ring but will not wait past two and a half minutes for it, and marches
  * a little sooner with a little more. Aggressive puts up the front tower and the Bunker, skips the
  * walls, and comes at the enemy inside the first minute and a half with waves that grow two at a time.
+ *
+ * A Xenite CPU plays the same timings with the hive's defences: Defensive roots five Spine Turrets,
+ * three Pulse Spires, and a Laser Fence; Balanced four, two, and the fence; Aggressive the front
+ * Spine Turret and its flank, one Spire, and no fence.
  */
 
 import { TICK_HZ } from "../catalog.js";
@@ -46,6 +50,12 @@ export interface AiProfile {
   wantSmelters: number;
   /** The CPU's head start: its Smelters pour this many times the normal rate. */
   smelterMul: number;
+  /** Xenite: Spine Turrets round the hive, front first, then the flanks and the rear. */
+  hiveSpines: number;
+  /** Xenite: Pulse Spires on the approach, once the Neural Nexus stands. */
+  hiveSpires: number;
+  /** Xenite: a Laser Fence line across the approach, beyond the turrets. */
+  hiveFence: boolean;
 }
 
 export const AI_PROFILES: Readonly<Record<AiDifficulty, AiProfile>> = {
@@ -66,6 +76,9 @@ export const AI_PROFILES: Readonly<Record<AiDifficulty, AiProfile>> = {
     pincerMul: 1.6,
     wantSmelters: 4,
     smelterMul: 2,
+    hiveSpines: 5,
+    hiveSpires: 3,
+    hiveFence: true,
   },
   balanced: {
     label: "Balanced",
@@ -84,6 +97,9 @@ export const AI_PROFILES: Readonly<Record<AiDifficulty, AiProfile>> = {
     pincerMul: 1.5,
     wantSmelters: 4,
     smelterMul: 2,
+    hiveSpines: 4,
+    hiveSpires: 2,
+    hiveFence: true,
   },
   aggressive: {
     label: "Aggressive",
@@ -102,6 +118,9 @@ export const AI_PROFILES: Readonly<Record<AiDifficulty, AiProfile>> = {
     pincerMul: 1.4,
     wantSmelters: 5,
     smelterMul: 2.5,
+    hiveSpines: 2,
+    hiveSpires: 1,
+    hiveFence: false,
   },
 };
 

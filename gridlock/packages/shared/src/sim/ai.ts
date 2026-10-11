@@ -12,6 +12,14 @@
  * pour faster than a player's. Where open water near its base reaches the enemy Core or the middle,
  * it raises a Marine Base, keeps a small fleet, and sends the warships out together to shell
  * what stands near that water.
+ *
+ * The Xenite CPU (thinkXeno) pays in hive energy, not scrap: it raises Fusion Nodes as the hive
+ * fills, roots Spine Turrets, Pulse Spires, and a Laser Fence on the side facing the enemy, then
+ * campaigns with the same forces, waves, and flanks, its Weavers, Siphons, and Assemblers walking
+ * beside the fighters. It works the hive's tricks: Stalkers cloak to close in or slip away,
+ * Siphons dig in under fire, the Behemoth picks Light or High Pulse for its target, the Sim Unit II
+ * purges garrisons, the Mawcaster switches to Air attacks for fliers, the Juggernaut rams buildings,
+ * Gnats scout ahead, and the Aerie and the Spawning Pool put fliers and sea beasts beside the army.
  */
 
 import {
@@ -35,6 +43,14 @@ import {
   catalog,
   energyOf,
   usesHiveEnergy,
+  dockOf,
+  costFor,
+  isDefenceStructure,
+  MAMMOTH_MINE_RANGE_TILES,
+  MAWCASTER_AIR_RANGE_TILES,
+  MAWCASTER_RANGE_TILES,
+  SELL_REFUND,
+  SIMUNIT_BLINK_RANGE_TILES,
   crewGunOf,
   fieldSpan,
   fires,
@@ -70,7 +86,8 @@ import { canRepairTarget, canScrapWreck, gateSiteAt } from "./field.js";
 import { allies, footprintGap, hasCore, hqOf, inBuildRadius, isWater, nearestWalkable, scrapAt, tilesBlocked, tilesBlockedOrScrap, walkable } from "./geo.js";
 import { smelterRateOn, smelterSiteOk } from "./smelter.js";
 import { powerOf } from "./power.js";
-import { hiveEnergyOf } from "./hive-energy.js";
+import { fenceLineEnergy, hiveEnergyOf } from "./hive-energy.js";
+import { purgeDenied } from "./simunit.js";
 import { needsSupply } from "./supply.js";
 import { canSeeEntity } from "./vision.js";
 import type { AiFleet, AiForce, AiPlan, Entity, MatchState, SimPlayer, StructureJob, Vec } from "./types.js";
@@ -237,8 +254,13 @@ const FACTORIES: readonly BuildingType[] = [...CORE_BUILDINGS, "armory"];
 /** Extras that wait for a fortified base. */
 const AFTER_FORTIFY: readonly BuildingType[] = ["dock", "research", "cyborgcentral", "airfield", "radar"];
 
-/** Unarmed units that walk out with a wave beside a fighter. */
-const ESCORTS: ReadonlySet<string> = new Set(["medic", "supply", "droneop"]);
+/**
+ * Unarmed units that walk out with a wave beside a fighter: the Weaver mends and shields the hive's
+ * soldiers, the Siphon's dome covers the heavies, and the Assembler's Thralls fight around it.
+ */
+const ESCORTS: ReadonlySet<string> = new Set(["medic", "supply", "droneop", "weaver", "siphon", "assembler"]);
+/** The hive's escorts: they walk back out to the nearest fighter whenever they stand idle in the field. */
+const HIVE_ESCORTS: ReadonlySet<string> = new Set(["weaver", "siphon", "assembler"]);
 /** Unarmed units that idle at home. Parked against a building they shut a base lane. */
 const YARD_IDLERS: ReadonlySet<string> = new Set([...ESCORTS, "engineer"]);
 /**
@@ -258,7 +280,7 @@ const GARRISONS: readonly BuildingType[] = ["bunker", "tower", "tobruk", "casema
 /** Defences the CPU mans. Guns included, so a dead crew is replaced. */
 const CREWED: readonly BuildingType[] = [...GARRISONS, "mgnest", "pak36", "pak43", "flak"];
 /** Turned toward the enemy when placed. A narrow arc is useless facing the yard. */
-const FACES_ENEMY: ReadonlySet<string> = new Set(["mgnest", "pak36", "pak43", "flak", "tobruk", "casemate", "hochstand", "leitturm"]);
+const FACES_ENEMY: ReadonlySet<string> = new Set(["mgnest", "pak36", "pak43", "flak", "tobruk", "casemate", "hochstand", "leitturm", "energywall"]);
 /** Long guns: they walk two ranks back and fire over the line. */
 const BACK_RANK: ReadonlySet<string> = new Set(["sniper", "mortarman", "nebelwerfer", "jagdtiger", "artillery", "shade", "mawcaster", "assembler", "longspine", "sporemaw", "bombard"]);
 /** Short reach and thick skin: the front rank beside the hulls. */
@@ -305,6 +327,10 @@ function thinkCpu(state: MatchState, p: SimPlayer): void {
     return;
   }
   const plan = aiPlanOf(p);
+  if (p.faction === "xeno") {
+    thinkXeno(state, p, hq, plan);
+    return;
+  }
   const hive = p.faction ? HIVE_DOCTRINE[p.faction] : undefined;
   if (hive) {
     thinkHive(state, p, hq, plan, hive);
@@ -344,22 +370,26 @@ function thinkCpu(state: MatchState, p: SimPlayer): void {
 }
 
 /**
- * Xenite base: Fusion Node, Conversion Chamber, a second Fusion Node, the Nanite Forge, a pair of
- * Spine Turrets, and later the Neural Nexus, its Pulse Spires, and an Energy Wall. The hive pays no scrap: it raises
- * another Fusion Node whenever its energy runs low (HIVE_ENERGY_LOW).
+ * Xenite base, on the yard's base lane: Fusion Node, Conversion Chamber, a second Fusion Node, the
+ * Nanite Forge, a third Node, the Neural Nexus (it opens the Sim Unit II, Lancer, Weaver, Shade, the
+ * big heavies, the Pulse Spire, and the Energy Wall), a fourth Node, then the Aerie. Campaigning, the
+ * Spawning Pool goes up where water by the hive reaches the enemy or the middle, and more Chambers and
+ * Forges after it. Spine Turrets, Pulse Spires, and the Energy Wall take the defence lane
+ * (xenoDefences), the Laser Fence the line lane (xenoFence). The hive pays no scrap: another Fusion
+ * Node goes up whenever the next building or the next unit will not fit in the store, or the store
+ * runs low (HIVE_ENERGY_LOW).
  */
 const XENO_BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
   { type: "fusionnode", n: 1 },
   { type: "conversion", n: 1 },
   { type: "fusionnode", n: 2 },
   { type: "forge", n: 1 },
-  { type: "spineturret", n: 2 },
   { type: "fusionnode", n: 3 },
   { type: "nexus", n: 1 },
-  { type: "pulsespire", n: 2 },
-  { type: "energywall", n: 1 },
+  { type: "fusionnode", n: 4 },
+  { type: "aerie", n: 1 },
 ];
-/** The Xenite foot soldiers, from the Conversion Chamber. */
+/** The Xenite foot soldiers, from the Conversion Chamber. Drones and Lancers rise when enemy planes are about. */
 export const XENO_ARMY: readonly { unit: TrainType; want: number }[] = [
   { unit: "xenodrone", want: 10 },
   { unit: "thrall", want: 4 },
@@ -379,11 +409,294 @@ export const XENO_HEAVY: readonly { unit: TrainType; want: number }[] = [
   { unit: "behemoth", want: 1 },
   { unit: "juggernaut", want: 1 },
 ];
+/** The hive's fliers, from the Aerie: a Gnat to scout, Wasps and Scourges to strike, an Overseer. */
+export const XENO_AIR: readonly { unit: TrainType; want: number }[] = [
+  { unit: "gnat", want: 1 },
+  { unit: "wasp", want: 3 },
+  { unit: "scourge", want: 2 },
+  { unit: "overseer", want: 1 },
+];
+/** The hive's sea beasts, from the Spawning Pool. */
+export const XENO_SEA: readonly { unit: TrainType; want: number }[] = [
+  { unit: "leech", want: 2 },
+  { unit: "lurker", want: 1 },
+  { unit: "hiveark", want: 1 },
+];
 /** Each Xenite factory and the ranks it fills. */
-const XENO_FACTORIES: readonly { factory: BuildingType; army: readonly { unit: TrainType; want: number }[] }[] = [
+export const XENO_FACTORIES: readonly { factory: BuildingType; army: readonly { unit: TrainType; want: number }[] }[] = [
   { factory: "conversion", army: XENO_ARMY },
   { factory: "forge", army: XENO_HEAVY },
+  { factory: "aerie", army: XENO_AIR },
+  { factory: "spawnpool", army: XENO_SEA },
 ];
+/** Raised again while campaigning, up to the type's campaignFactories, so the waves come faster. */
+const XENO_SURGE: readonly BuildingType[] = ["conversion", "forge"];
+
+/**
+ * The Xenite CPU. The base lane raises the hive, the defence lane roots its turrets and spires, the
+ * line lane lays the Laser Fence, and the factories fill the ranks within the hive's energy. It
+ * campaigns once its defences stand and the army is ready, or the type's fortify time runs out,
+ * straight at the enemy: the hive has no use for the diamond scrap.
+ */
+function thinkXeno(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): void {
+  if (!placeReadyBuilding(state, p, p.structure)) {
+    const next = nextXenoBuilding(state, p);
+    if (next && !p.structure) {
+      if (findBuildTile(state, p.playerId, next)) {
+        applyCommand(state, p.playerId, { type: "cmd.build", building: next });
+      } else {
+        noRoom(state, p, next);
+      }
+    }
+  }
+  trainXeno(state, p);
+  if (state.tick >= (p.aiNextMicroTick ?? 0)) {
+    p.aiNextMicroTick = state.tick + CPU_MICRO_EVERY_TICKS;
+    watchSky(state, p, plan);
+    if (plan.posture === "fortify" && xenoFortified(state, p, hq, plan)) {
+      plan.posture = "campaign";
+      p.aiNextAttackTick = Math.max(p.aiNextAttackTick, state.tick + CPU_ATTACK_RETRY_TICKS);
+    }
+    defenceLane(state, p, hq, plan);
+    xenoFence(state, p, hq, plan);
+    defendBase(state, p, hq, plan);
+    rallyFactories(state, p, hq);
+    campaign(state, p, hq, plan);
+    seaWork(state, p, hq, plan);
+    microUnits(state, p, hq, plan);
+    scoutGnats(state, p, hq, plan);
+  }
+}
+
+/** Hive energy free for a new unit or defence; Infinity for a side that pays scrap. */
+function hiveFree(state: MatchState, p: SimPlayer): number {
+  if (!usesHiveEnergy(p.faction)) return Infinity;
+  const { cap, used } = hiveEnergyOf(state, p.playerId);
+  return cap - used;
+}
+
+function hiveHasRoom(state: MatchState, p: SimPlayer, energy: number): boolean {
+  return hiveFree(state, p) >= energy;
+}
+
+/** Below this much free energy the Xenite CPU raises another Fusion Node, up to HIVE_MAX_NODES. */
+const HIVE_ENERGY_LOW = 150;
+const HIVE_MAX_NODES = 30;
+/** Energy the Xenite CPU's neediest unit is waiting on, by side: the base lane raises a Node for it. */
+const hiveWant = new WeakMap<SimPlayer, number>();
+
+/** Free energy, less what the units already queued will take once they walk out. */
+function hiveFreeAfterQueue(state: MatchState, p: SimPlayer): number {
+  let queued = 0;
+  for (const b of state.entities.values()) {
+    if (b.ownerId !== p.playerId || b.kind !== "building" || b.hp <= 0) continue;
+    for (const j of b.queue) queued += energyOf(j.type);
+  }
+  return hiveFree(state, p) - queued;
+}
+
+/** A Fusion Node, unless the hive has its fill of them or no room for another. */
+function hiveNode(state: MatchState, p: SimPlayer): BuildingType | null {
+  if ((p.aiNoRoomUntil?.fusionnode ?? 0) > state.tick) return null;
+  return countType(state, p.playerId, "fusionnode") < HIVE_MAX_NODES ? "fusionnode" : null;
+}
+
+/** The next building of the Xenite build order still to raise, Fusion Nodes left out. */
+function xenoOrderNext(state: MatchState, p: SimPlayer): BuildingType | null {
+  for (const { type: t, n } of XENO_BUILD_ORDER) {
+    if (countType(state, p.playerId, t) >= n || (p.aiNoRoomUntil?.[t] ?? 0) > state.tick) continue;
+    return t === "fusionnode" ? null : t;
+  }
+  return null;
+}
+
+function nextXenoBuilding(state: MatchState, p: SimPlayer): BuildingType | null {
+  const roomy = (t: BuildingType): boolean => (p.aiNoRoomUntil?.[t] ?? 0) <= state.tick;
+  const free = hiveFreeAfterQueue(state, p);
+  const fits = (t: BuildingType): BuildingType | null => (energyOf(t) > free ? hiveNode(state, p) : t);
+  for (const { type: t, n } of XENO_BUILD_ORDER) {
+    if (countType(state, p.playerId, t) >= n || !roomy(t)) continue;
+    return t === "fusionnode" ? t : fits(t);
+  }
+  if (free < Math.max(HIVE_ENERGY_LOW, hiveWant.get(p) ?? 0)) return hiveNode(state, p);
+  if (aiPlanOf(p).posture !== "campaign") return null;
+  if (wantPool(state, p) && roomy("spawnpool")) return fits("spawnpool");
+  for (const t of XENO_SURGE) {
+    if (countType(state, p.playerId, t) >= aiProfile(p.ai).campaignFactories || !roomy(t)) continue;
+    return fits(t);
+  }
+  return null;
+}
+
+/**
+ * One job per factory, neediest rank first, while the hive has the energy. The next building of the
+ * build order is kept room for. A unit that will not fit is waited on, and the base lane raises a
+ * Fusion Node for it, unless the hive already has every Node it can hold: then it is passed over.
+ */
+function trainXeno(state: MatchState, p: SimPlayer): void {
+  const order = xenoOrderNext(state, p);
+  const keep = (order ? energyOf(order) : 0) + xenoDefenceWant(state, p);
+  let free = hiveFreeAfterQueue(state, p) - keep;
+  const grow = hiveNode(state, p) != null;
+  const picks: { unit: TrainType; want: number; share: number }[] = [];
+  for (const { factory, army } of XENO_FACTORIES) {
+    if (!ownsLive(state, p.playerId, factory)) continue;
+    if (queuedOn(state, p.playerId, factory) >= TRAIN_QUEUE_SOFT * countType(state, p.playerId, factory)) continue;
+    const pick = neediest(state, p, army);
+    if (pick) picks.push(pick);
+  }
+  picks.sort((a, b) => a.share - b.share);
+  hiveWant.set(p, 0);
+  for (const pick of picks) {
+    const need = energyOf(pick.unit);
+    if (need > free) {
+      if (!grow) continue;
+      hiveWant.set(p, need + keep);
+      return;
+    }
+    if (applyCommand(state, p.playerId, { type: "cmd.train", unit: pick.unit }).ok) free -= need;
+  }
+}
+
+/** Campaigning, with water by the hive worth a fleet and no Spawning Pool yet. */
+function wantPool(state: MatchState, p: SimPlayer): boolean {
+  if (countType(state, p.playerId, "spawnpool") > 0 || p.structure?.type === "spawnpool") return false;
+  return dockSite(state, p.playerId) != null;
+}
+
+/** Spine Turrets round the hive on the side facing the enemy, front first, then the flanks and the rear. */
+function spineSites(state: MatchState, p: SimPlayer, hq: Entity): Site[] {
+  return aroundHq(state, p, hq, [
+    ["spineturret", "spine-front", 0, XENO_SPINE_TILES],
+    ["spineturret", "spine-right", -40, XENO_SPINE_TILES],
+    ["spineturret", "spine-left", 40, XENO_SPINE_TILES],
+    ["spineturret", "spine-far-right", -85, XENO_SPINE_TILES * 0.9],
+    ["spineturret", "spine-far-left", 85, XENO_SPINE_TILES * 0.9],
+    ["spineturret", "spine-rear", 180, XENO_SPINE_TILES * 0.8],
+  ]).slice(0, aiProfile(p.ai).hiveSpines);
+}
+
+/**
+ * Pulse Spires just inside the turrets, where their long reach covers the approach. Spread wider
+ * than SITE_HOLD_TILES apart, or the first would count as holding the others.
+ */
+function spireSites(state: MatchState, p: SimPlayer, hq: Entity): Site[] {
+  return aroundHq(state, p, hq, [
+    ["pulsespire", "spire-front", 0, XENO_SPIRE_TILES],
+    ["pulsespire", "spire-right", -55, XENO_SPIRE_TILES],
+    ["pulsespire", "spire-left", 55, XENO_SPIRE_TILES],
+  ]).slice(0, aiProfile(p.ai).hiveSpires);
+}
+/** An Energy Wall in front of the hive, between the Spires and the turrets, its curtain across the approach. */
+function wallSites(state: MatchState, p: SimPlayer, hq: Entity): Site[] {
+  return aroundHq(state, p, hq, [["energywall", "wall-front", 0, XENO_SPIRE_TILES + 4]]);
+}
+/** Spine Turrets stand this far from the hive's middle, in tiles; Pulse Spires a little inside them. */
+const XENO_SPINE_TILES = 28;
+const XENO_SPIRE_TILES = 20;
+
+/**
+ * The Xenite defence lane: the Spine Turrets once the Conversion Chamber stands, then the Pulse
+ * Spires and the Energy Wall (they wait on the Neural Nexus). Each waits for the energy it takes.
+ */
+function* xenoDefences(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): Generator<{ type: BuildingType; site?: Site }> {
+  if (!ownsLive(state, p.playerId, "conversion")) return;
+  const free = hiveFreeAfterQueue(state, p);
+  const open = (site: Site): boolean => !siteHeld(state, p.playerId, site) && !siteFailed(state, plan, site);
+  for (const site of [...spineSites(state, p, hq), ...spireSites(state, p, hq), ...wallSites(state, p, hq)]) {
+    if (!open(site) || energyOf(site.type) > free) continue;
+    yield { type: site.type, site };
+  }
+}
+
+/**
+ * Energy the next defence still to root will take, so the factories leave it room: the army
+ * would otherwise fill every Node as it goes up, and the Pulse Spires would never stand.
+ */
+function xenoDefenceWant(state: MatchState, p: SimPlayer): number {
+  if (p.defence || !ownsLive(state, p.playerId, "conversion")) return 0;
+  const hq = hqOf(state, p.playerId);
+  if (!hq) return 0;
+  const plan = aiPlanOf(p);
+  for (const site of [...spineSites(state, p, hq), ...spireSites(state, p, hq), ...wallSites(state, p, hq)]) {
+    if (siteHeld(state, p.playerId, site) || siteFailed(state, plan, site)) continue;
+    if (buildTechMissing(state, p.playerId, site.type).length > 0) continue;
+    return energyOf(site.type);
+  }
+  return 0;
+}
+
+/** The Laser Fence line stands this far from the hive's middle toward the enemy, in tiles, posts this far apart. */
+const XENO_FENCE_TILES = 36;
+const XENO_FENCE_GAP_TILES = 14;
+/** Posts along the line, middle out. A line with fewer than XENO_FENCE_MIN posts standing is laid again. */
+const XENO_FENCE_POSTS = 7;
+const XENO_FENCE_MIN = 3;
+
+/** Post footprints across the approach, beyond the Spine Turrets, that the yard can site now. */
+export function xenoFenceSites(state: MatchState, playerId: string, hq: Entity): { tx: number; ty: number }[] {
+  const def = catalog("laserfence");
+  const ts = state.tileSize;
+  const axis = enemyAxis(state, playerId, hq);
+  const side = { x: -axis.y, y: axis.x };
+  const mid = along(hq, axis, XENO_FENCE_TILES * ts);
+  const out: { tx: number; ty: number }[] = [];
+  const half = (XENO_FENCE_POSTS - 1) / 2;
+  for (let i = -half; i <= half; i++) {
+    const at = along(mid, side, i * XENO_FENCE_GAP_TILES * ts);
+    const tx = Math.round(at.x / ts - def.tileW / 2);
+    const ty = Math.round(at.y / ts - def.tileH / 2);
+    if (buildingSiteError(state, "laserfence", tx, ty, playerId)) continue;
+    if (!inBuildRadius(state, playerId, tx, ty, def.tileW, def.tileH, buildRadiusOf("laserfence"))) continue;
+    out.push({ tx, ty });
+  }
+  return out;
+}
+
+/**
+ * Defensive and Balanced lay a Laser Fence across the approach once the front Spine Turret stands:
+ * its beams burn every foe that walks through, and the hive's own pass unharmed. A line cut down
+ * below XENO_FENCE_MIN posts is laid again, where the energy allows.
+ */
+function xenoFence(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): void {
+  if (!aiProfile(p.ai).hiveFence || p.line) return;
+  if (countType(state, p.playerId, "laserfence") >= XENO_FENCE_MIN) return;
+  if ((plan.siteRetry[FENCE_KEY] ?? 0) > state.tick) return;
+  const front = spineSites(state, p, hq)[0];
+  if (front && !siteHeld(state, p.playerId, front) && !siteFailed(state, plan, front)) return;
+  const posts = xenoFenceSites(state, p.playerId, hq);
+  if (posts.length < XENO_FENCE_MIN) {
+    plan.siteRetry[FENCE_KEY] = state.tick + CPU_NO_ROOM_RETRY_TICKS;
+    return;
+  }
+  const def = catalog("laserfence");
+  const ts = state.tileSize;
+  const at = posts.map((s) => ({ x: (s.tx + def.tileW / 2) * ts, y: (s.ty + def.tileH / 2) * ts }));
+  if (fenceLineEnergy(state, p.playerId, at) > hiveFreeAfterQueue(state, p)) return;
+  if (applyCommand(state, p.playerId, { type: "cmd.fence", posts }).ok) {
+    plan.siteRetry[FENCE_KEY] = state.tick + CPU_NO_ROOM_RETRY_TICKS;
+  }
+}
+const FENCE_KEY = "base:fence";
+
+/**
+ * Fortified: an army of CPU_MIN_FIGHTERS twice over, the front Spine Turret (and both flank ones,
+ * where the type waits on its flanks), and, where the type walls in, the Laser Fence and the
+ * Neural Nexus. A hive that cannot get there in time campaigns anyway.
+ */
+function xenoFortified(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): boolean {
+  const prof = aiProfile(p.ai);
+  if (state.tick >= prof.fortifyMaxTicks) return true;
+  if (fighterCount(state, p.playerId) < CPU_MIN_FIGHTERS * 2) return false;
+  const need = prof.fortifyFlanks ? 3 : 1;
+  for (const site of spineSites(state, p, hq).slice(0, need)) {
+    if (!siteHeld(state, p.playerId, site) && !siteFailed(state, plan, site)) return false;
+  }
+  if (!prof.fortifyWalls) return true;
+  if (!ownsLive(state, p.playerId, "nexus")) return false;
+  // A line laid once counts, standing or not: a fence with no ground to stand on holds no one back.
+  return !prof.hiveFence || countType(state, p.playerId, "laserfence") >= XENO_FENCE_MIN || plan.siteRetry[FENCE_KEY] != null;
+}
 
 /**
  * Bloom base: Lumen Bulb, Gorger, Brood Nest, a second Gorger and more light, the Gestator, a
@@ -421,10 +734,9 @@ export const BLOOM_BEASTS: readonly { unit: TrainType; want: number }[] = [
   { unit: "matriarch", want: 1 },
 ];
 
-/** How a hive-minded CPU (the Xenite, the Bloom) raises its base and fills its ranks. */
+/** How a hive-minded CPU (the Bloom) raises its base and fills its ranks. The Xenite have their own brain (thinkXeno). */
 interface HiveDoctrine {
   power: BuildingType;
-  /** None for the Xenite: they pay no scrap. */
   smelter?: BuildingType;
   /** Built again while campaigning, so the waves come faster. */
   surge: BuildingType;
@@ -432,7 +744,6 @@ interface HiveDoctrine {
   factories: readonly { factory: BuildingType; army: readonly { unit: TrainType; want: number }[] }[];
 }
 const HIVE_DOCTRINE: Partial<Record<Faction, HiveDoctrine>> = {
-  xeno: { power: "fusionnode", surge: "conversion", order: XENO_BUILD_ORDER, factories: XENO_FACTORIES },
   bloom: {
     power: "lumenbulb",
     smelter: "gorger",
@@ -446,7 +757,7 @@ const HIVE_DOCTRINE: Partial<Record<Faction, HiveDoctrine>> = {
 };
 
 /**
- * The hive CPU (the Xenite, the Bloom). No towers, walls, or fleet yet: it raises its base, fills
+ * The hive CPU (the Bloom). No towers, walls, or fleet yet: it raises its base, fills
  * the ranks from its factories, and campaigns once the army stands or the fortify time runs out.
  */
 function thinkHive(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan, hive: HiveDoctrine): void {
@@ -488,41 +799,7 @@ function thinkHive(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan, hi
   }
 }
 
-/** Hive energy free for a new unit or defence; Infinity for a side that pays scrap. */
-function hiveFree(state: MatchState, p: SimPlayer): number {
-  if (!usesHiveEnergy(p.faction)) return Infinity;
-  const { cap, used } = hiveEnergyOf(state, p.playerId);
-  return cap - used;
-}
-
-function hiveHasRoom(state: MatchState, p: SimPlayer, energy: number): boolean {
-  return hiveFree(state, p) >= energy;
-}
-
-/** Below this much free energy the Xenite CPU raises another Fusion Node, up to HIVE_MAX_NODES. */
-const HIVE_ENERGY_LOW = 150;
-const HIVE_MAX_NODES = 10;
-
-/** The hive's next building by energy: a Fusion Node when the store runs low or `t` will not fit. */
-function nextEnergyBuilding(state: MatchState, p: SimPlayer, hive: HiveDoctrine): BuildingType | null {
-  const roomy = (t: BuildingType): boolean => (p.aiNoRoomUntil?.[t] ?? 0) <= state.tick;
-  const free = hiveFree(state, p);
-  const power = (): BuildingType | null =>
-    roomy(hive.power) && countType(state, p.playerId, hive.power) < HIVE_MAX_NODES ? hive.power : null;
-  for (const { type: t, n } of hive.order) {
-    if (countType(state, p.playerId, t) >= n || !roomy(t)) continue;
-    if (t !== hive.power && energyOf(t) > free) return power();
-    return t;
-  }
-  if (free < HIVE_ENERGY_LOW) return power();
-  if (aiPlanOf(p).posture === "campaign" && countType(state, p.playerId, hive.surge) < aiProfile(p.ai).campaignFactories && roomy(hive.surge)) {
-    return hive.surge;
-  }
-  return null;
-}
-
 function nextHiveBuilding(state: MatchState, p: SimPlayer, hive: HiveDoctrine): BuildingType | null {
-  if (usesHiveEnergy(p.faction)) return nextEnergyBuilding(state, p, hive);
   const pow = powerOf(state, p.playerId);
   const roomy = (t: BuildingType): boolean => (p.aiNoRoomUntil?.[t] ?? 0) <= state.tick;
   const power = (): BuildingType | null => (roomy(hive.power) ? hive.power : null);
@@ -664,6 +941,9 @@ function wantOf(state: MatchState, p: SimPlayer, unit: TrainType, base: number):
   const air = aiPlanOf(p).airSeenTick != null;
   if (air && unit === "rocketer") return base + 2;
   if (air && unit === "fw190") return base + 1;
+  // Turrets and heavies of the hive cannot reach a plane; its Drones and Lancers can.
+  if (air && unit === "xenodrone") return base + 3;
+  if (air && unit === "lancer") return base + 2;
   return base;
 }
 
@@ -1093,6 +1373,10 @@ function* nextDefences(
   hq: Entity,
   plan: AiPlan,
 ): Generator<{ type: BuildingType; site?: Site }> {
+  if (p.faction === "xeno") {
+    yield* xenoDefences(state, p, hq, plan);
+    return;
+  }
   const roomy = (t: BuildingType): boolean => (p.aiNoRoomUntil?.[t] ?? 0) <= state.tick;
   const air = plan.airSeenTick != null;
   // Towers need soldiers to crew them: wait for the Barracks and the first riflemen.
@@ -1336,6 +1620,8 @@ function sortie(state: MatchState, p: SimPlayer, x: number, y: number): void {
   const ids: number[] = [];
   for (const e of state.entities.values()) {
     if (e.ownerId !== p.playerId || e.hp <= 0 || !isAircraftType(e.type) || !e.air) continue;
+    // The Gnat has no sting: it scouts (scoutGnats), it does not join the strike.
+    if (e.type === "gnat") continue;
     const idleAloft = staysAloft(e.type) && !e.order && e.air.phase !== "crash";
     if (!idleAloft && (e.air.phase !== "parked" || e.air.bombs < STUKA_BOMBS)) continue;
     ids.push(e.id);
@@ -1422,7 +1708,8 @@ function campaign(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): vo
   }
   const free = freeArmy(state, p, plan);
   const centreForce = plan.forces.some((f) => f.goal === "centre");
-  if (!centreHeld(state, p.playerId) && !centreForce) {
+  // The hive pays no scrap: the diamond field is nothing to it, and its waves go straight at the enemy.
+  if (!usesHiveEnergy(p.faction) && !centreHeld(state, p.playerId) && !centreForce) {
     if (free.length < prof.centreForce) {
       p.aiNextAttackTick = state.tick + CPU_ATTACK_RETRY_TICKS;
       return;
@@ -1516,9 +1803,10 @@ function freeArmy(state: MatchState, p: SimPlayer, plan: AiPlan): Entity[] {
   return out;
 }
 
-/** A fighter for the land army. Warships keep to the fleet (seaWork). */
+/** A fighter for the land army. Warships keep to the fleet (seaWork). A unit shut down or offline takes no orders. */
 function freeFighter(e: Entity, playerId: string): boolean {
   if (e.ownerId !== playerId || e.hp <= 0 || e.wreck || e.garrisonedIn) return false;
+  if (e.dormant || e.shutdown || e.hiveOffline || e.fieldDivert) return false;
   if (e.kind !== "unit" || !fires(e.type)) return false;
   if (isAircraftType(e.type) || isDroneType(e.type) || isNavalType(e.type) || e.braced) return false;
   return e.state !== "deploy" && e.state !== "undeploy";
@@ -1694,9 +1982,9 @@ function escortWave(state: MatchState, p: SimPlayer, fighters: number[]): void {
   }
 }
 
-/** Medics stay with soldiers, trucks with hulls. Anyone else takes the next fighter in turn. */
+/** Medics and Weavers stay with soldiers, trucks and Siphons with hulls. Anyone else takes the next fighter in turn. */
 function escortPick(state: MatchState, e: Entity, fighters: number[], turn: number): number | null {
-  const wantInfantry = e.type === "medic" ? true : e.type === "supply" ? false : null;
+  const wantInfantry = e.type === "medic" || e.type === "weaver" ? true : e.type === "supply" || e.type === "siphon" ? false : null;
   const pool = fighters.filter((id) => {
     const f = state.entities.get(id);
     if (!f) return false;
@@ -1936,7 +2224,8 @@ function strikeWater(state: MatchState, playerId: string, id: number): Vec | nul
 export function findDockTile(state: MatchState, playerId: string, yard: boolean): { tx: number; ty: number } | null {
   const hq = hqOf(state, playerId);
   if (!hq) return null;
-  const def = catalog("dock");
+  const type = dockOf(state.players.get(playerId)?.faction ?? "alliance");
+  const def = catalog(type);
   const sea = seaOf(state);
   const anchors: Entity[] = [];
   const foes: Vec[] = [];
@@ -1965,7 +2254,7 @@ export function findDockTile(state: MatchState, playerId: string, yard: boolean)
       if (!strikeWater(state, playerId, id)) continue;
       if (yard && !anchors.some((b) => footprintGap(tx, ty, def.tileW, def.tileH, b.tileX, b.tileY, b.tileW, b.tileH) <= BUILD_RADIUS)) continue;
       if (!yard && foes.some((f) => Math.hypot(cx - f.x, cy - f.y) <= d)) continue;
-      if (buildingSiteError(state, "dock", tx, ty)) continue;
+      if (buildingSiteError(state, type, tx, ty)) continue;
       best = { tx, ty };
       bestD = d;
     }
@@ -2200,8 +2489,29 @@ function microUnits(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): 
         if ((e.gatlingGuns ?? 1) === 1) applyCommand(state, p.playerId, { type: "cmd.guns", ids: [e.id], guns: 2 });
         break;
       case "nebelwerfer":
-      case "mawcaster":
         settleLauncher(state, p, e);
+        break;
+      case "mawcaster":
+        airModeWork(state, p, e);
+        settleLauncher(state, p, e);
+        break;
+      case "stalker":
+        stalkerWork(state, p, e, hq);
+        break;
+      case "siphon":
+        siphonWork(state, p, e, hq);
+        break;
+      case "behemoth":
+        pulseWork(state, p, e);
+        break;
+      case "simunit2":
+        purgeWork(state, p, e);
+        break;
+      case "cyborgcommander":
+        commanderWork(state, p, e, hq);
+        break;
+      case "mammoth":
+        mineWork(state, p, e);
         break;
       case "engineer":
         if (e.order?.kind === "build") smelterCrew = true;
@@ -2215,10 +2525,222 @@ function microUnits(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): 
         flyDrone(state, p, e, hq, stage);
         break;
     }
+    // A hive escort whose fighter fell, or that broke out of the ground, walks on beside the wave.
+    if (HIVE_ESCORTS.has(e.type) && !e.order && !e.burrow) rejoin(state, p, e, hq, stage);
     if (YARD_IDLERS.has(e.type) && !e.order && nearBuilding(state, e)) moveTo(state, p, e, stage());
   }
+  // The hive has no engineers, no scrap, and no Marine Base to raise.
+  if (usesHiveEnergy(p.faction)) return;
+  sellForSmelter(state, p);
   if (!smelterCrew && !claimDiamond(state, p, plan)) expandSmelters(state, p, hq);
   if (!smelterCrew) raiseDock(state, p, hq);
+}
+
+// ---------------------------------------------------------------- unit tricks
+
+/** The nearest enemy the side can see within `reach` (world px) of `from`, passing `want`. */
+function nearestFoe(state: MatchState, playerId: string, from: Vec, reach: number, want: (o: Entity) => boolean): Entity | undefined {
+  let best: Entity | undefined;
+  let bestD = reach;
+  for (const o of state.entities.values()) {
+    if (o.hp <= 0 || o.wreck || !o.ownerId || allies(state, playerId, o.ownerId) || isTorpedoBody(o.type)) continue;
+    const d = Math.hypot(o.x - from.x, o.y - from.y);
+    if (d > bestD || !want(o) || !canSeeEntity(state, playerId, o)) continue;
+    best = o;
+    bestD = d;
+  }
+  return best;
+}
+
+/** A unit on the ground (or a building), not a plane, a hopping jet, or a soldier tucked in a garrison. */
+function groundFoe(o: Entity): boolean {
+  return !isAirborne(o) && !o.garrisonedIn;
+}
+
+/** Enemies this close to a Stalker, in tiles, are worth closing in on unseen. */
+const STALK_TILES = 60;
+/** A Stalker or Cyborg Commander this hurt (share of its HP) breaks off. */
+const BREAK_OFF_HP = 0.35;
+/** A Commander back above this share of its HP takes the laser back from the field. */
+const RECOVERED_HP = 0.8;
+
+/**
+ * The Stalker cloaks to close in: a foe in sight and nothing under its gun yet, it goes dark and is
+ * named the foe, so the first shot comes from nowhere. Badly hurt with a foe near, it cloaks and slips
+ * home instead. Cloaking mid-fight would only stop its gun, so it never does that.
+ */
+function stalkerWork(state: MatchState, p: SimPlayer, e: Entity, hq: Entity): void {
+  if (e.cloakUntil != null || state.tick < (e.cloakReady ?? 0)) return;
+  const ts = state.tileSize;
+  const hurt = e.hp < e.hpMax * BREAK_OFF_HP;
+  if (hurt) {
+    if (!nearestFoe(state, p.playerId, e, STALK_TILES * ts, groundFoe)) return;
+    if (!applyCommand(state, p.playerId, { type: "cmd.cloak", ids: [e.id] }).ok) return;
+    moveTo(state, p, e, homeMuster(state, p, hq));
+    return;
+  }
+  if (e.attackTarget != null && state.entities.get(e.attackTarget)?.hp) return;
+  if (e.order && !e.order.auto && e.order.kind !== "attackmove") return;
+  const foe = nearestFoe(state, p.playerId, e, STALK_TILES * ts, groundFoe);
+  if (!foe) return;
+  if (!applyCommand(state, p.playerId, { type: "cmd.cloak", ids: [e.id] }).ok) return;
+  applyCommand(state, p.playerId, { type: "cmd.attack", ids: [e.id], targetId: foe.id });
+}
+
+/** A Siphon digs in with a foe this close, in tiles, once it is hurt or at home; it rises with none within the second. */
+const SIPHON_DIG_TILES = 36;
+const SIPHON_RISE_TILES = 52;
+const SIPHON_DIG_HP = 0.6;
+
+/**
+ * The Siphon's dome is its own; the CPU only decides when it digs in. Under fire in the field, or
+ * with the enemy at the hive, it burrows (five times the plate, and the dome stays up over whoever
+ * stands under it). With no foe left near it breaks back out and walks on with the wave.
+ */
+function siphonWork(state: MatchState, p: SimPlayer, e: Entity, hq: Entity): void {
+  const ts = state.tileSize;
+  if (e.burrow) {
+    if (e.burrow.phase !== "down") return;
+    if (nearestFoe(state, p.playerId, e, SIPHON_RISE_TILES * ts, groundFoe)) return;
+    applyCommand(state, p.playerId, { type: "cmd.burrow", ids: [e.id], on: false });
+    return;
+  }
+  if (!nearestFoe(state, p.playerId, e, SIPHON_DIG_TILES * ts, groundFoe)) return;
+  const home = Math.hypot(e.x - hq.x, e.y - hq.y) <= CPU_DEFEND_TILES * ts;
+  if (!home && e.hp >= e.hpMax * SIPHON_DIG_HP) return;
+  applyCommand(state, p.playerId, { type: "cmd.burrow", ids: [e.id], on: true });
+}
+
+/** The Behemoth fires Light Pulse at soldiers and soft targets, High Pulse at armor and buildings. */
+function pulseWork(state: MatchState, p: SimPlayer, e: Entity): void {
+  const t = e.attackTarget != null ? state.entities.get(e.attackTarget) : undefined;
+  if (!t || t.hp <= 0) return;
+  const light = t.kind === "unit" && (isInfantryType(t.type) || !isArmoredType(t.type));
+  if (!!e.lightPulse !== light) applyCommand(state, p.playerId, { type: "cmd.pulse", ids: [e.id], light });
+}
+
+/** A Sim Unit II looks this far past his blink reach, in tiles, for a garrison to purge. */
+const PURGE_LOOK_TILES = 8;
+
+/**
+ * The Sim Unit II blinks into a garrison the side can see, kills every soldier aboard, and blinks
+ * back out: a Bunker or a Watch Tower full of riflemen is the best thing he can find.
+ */
+function purgeWork(state: MatchState, p: SimPlayer, e: Entity): void {
+  if (e.purge || e.order?.kind === "purge" || state.tick < (e.blinkReady ?? 0)) return;
+  const reach = SIMUNIT_BLINK_RANGE_TILES * state.tileSize + PURGE_LOOK_TILES * state.tileSize;
+  const host = nearestFoe(state, p.playerId, e, reach, (o) => o.garrison.length > 0 && purgeDenied(state, e, o) == null);
+  if (host) applyCommand(state, p.playerId, { type: "cmd.purge", ids: [e.id], targetId: host.id });
+}
+
+/**
+ * The Mawcaster's pods lay on the ground or, set to Air attacks, on fliers alone. With enemy fliers
+ * in reach and nothing on the ground to shell, it switches to Air attacks; back with a ground target.
+ */
+function airModeWork(state: MatchState, p: SimPlayer, e: Entity): void {
+  const ts = state.tileSize;
+  const flier = nearestFoe(state, p.playerId, e, MAWCASTER_AIR_RANGE_TILES * ts, (o) => isAircraftType(o.type) && isAirborne(o));
+  const ground = nearestFoe(state, p.playerId, e, MAWCASTER_RANGE_TILES * ts, (o) => groundFoe(o) && o.kind === "unit");
+  const air = !!flier && !ground;
+  if (!!e.airMode !== air) applyCommand(state, p.playerId, { type: "cmd.airmode", ids: [e.id], air });
+}
+
+/**
+ * The Cyborg Commander, badly hurt, puts his laser's power into the force field (five times the
+ * points and the mend) and walks home. Mended, he takes the laser back and joins the next wave.
+ */
+function commanderWork(state: MatchState, p: SimPlayer, e: Entity, hq: Entity): void {
+  if (!e.fieldDivert && e.hp < e.hpMax * BREAK_OFF_HP) {
+    if (applyCommand(state, p.playerId, { type: "cmd.fielddivert", ids: [e.id], on: true }).ok) moveTo(state, p, e, homeMuster(state, p, hq));
+  } else if (e.fieldDivert && e.hp >= e.hpMax * RECOVERED_HP) {
+    applyCommand(state, p.playerId, { type: "cmd.fielddivert", ids: [e.id], on: false });
+  }
+}
+
+/** A mine pack lands no closer than this, in tiles, and never this close to one of the side's own units. */
+const MINE_MIN_TILES = 16;
+const MINE_CLEAR_TILES = 14;
+
+/**
+ * The Mammoth lobs a mine pack under an enemy hull or squad closing on it, where none of its own
+ * side stands: the mines go off under anyone, friend or foe.
+ */
+function mineWork(state: MatchState, p: SimPlayer, e: Entity): void {
+  if ((e.minePacks ?? 0) <= 0 || e.order?.kind === "minelay") return;
+  const ts = state.tileSize;
+  const foe = nearestFoe(state, p.playerId, e, MAMMOTH_MINE_RANGE_TILES * ts, (o) => o.kind === "unit" && groundFoe(o) && !isNavalType(o.type));
+  if (!foe || Math.hypot(foe.x - e.x, foe.y - e.y) < MINE_MIN_TILES * ts) return;
+  for (const o of state.entities.values()) {
+    if (o.kind !== "unit" || o.hp <= 0 || !o.ownerId || !allies(state, p.playerId, o.ownerId)) continue;
+    if (Math.hypot(o.x - foe.x, o.y - foe.y) < MINE_CLEAR_TILES * ts) return;
+  }
+  applyCommand(state, p.playerId, { type: "cmd.minelay", ids: [e.id], x: foe.x, y: foe.y });
+}
+
+/** A Gnat this close to its scouting point, in tiles, stays where it is. */
+const SCOUT_TILES = 10;
+/** How far ahead of the lead wave a Gnat flies, in tiles. */
+const SCOUT_AHEAD_TILES = 14;
+
+/**
+ * Gnats are the hive's eyes, not its teeth: each hovers ahead of the wave bound for the enemy, so
+ * the turrets and the Bombards behind it see what is coming, or over the middle while none is out.
+ */
+function scoutGnats(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): void {
+  const ts = state.tileSize;
+  let to = diamondCentre(state);
+  const lead = plan.forces.find((f) => f.goal === "enemy");
+  const foe = enemyHq(state, p.playerId);
+  if (lead) {
+    const units = lead.ids.map((id) => state.entities.get(id)).filter((u): u is Entity => !!u && u.hp > 0);
+    if (units.length > 0) {
+      const mid = middleOf(units);
+      to = foe ? along(mid, unit(foe.x - mid.x, foe.y - mid.y), SCOUT_AHEAD_TILES * ts) : mid;
+    }
+  }
+  to = clampToMap(state, to);
+  for (const e of state.entities.values()) {
+    if (e.ownerId !== p.playerId || e.type !== "gnat" || e.hp <= 0 || e.air?.phase === "crash") continue;
+    if (e.order && !e.order.auto && e.order.kind !== "move") continue;
+    if (Math.hypot(e.x - to.x, e.y - to.y) <= SCOUT_TILES * ts) continue;
+    if (e.order?.kind === "move" && e.order.x != null && Math.hypot(e.order.x - to.x, e.order.y! - to.y) <= SCOUT_TILES * ts) continue;
+    moveTo(state, p, e, to);
+  }
+  void hq;
+}
+
+/**
+ * No Smelter left and too little scrap for another: the side would sit broke for good. Sell a spare
+ * building, the smallest whose refund pays for the Smelter (the biggest when none does), extras before
+ * defences. Never the Core, a Dynamo, the Barracks, or the Machine Shop.
+ */
+function sellForSmelter(state: MatchState, p: SimPlayer): void {
+  const faction = p.faction ?? "alliance";
+  const smelter = smelterOf(faction);
+  if (countType(state, p.playerId, smelter) > 0 || p.structure?.type === smelter) return;
+  const short = costFor(smelter, faction) - p.scrap;
+  if (short <= 0 || !findSmelterTile(state, p.playerId)) return;
+  for (const e of state.entities.values()) {
+    if (e.ownerId === p.playerId && e.type === "engineer" && e.hp > 0 && e.order?.kind === "build" && e.order.building === smelter) return;
+  }
+  const keep = new Set<string>(["core", "dynamo", "muster", "armory"]);
+  let pick: { e: Entity; refund: number; defence: boolean } | undefined;
+  const better = (a: { refund: number; defence: boolean }, b: { refund: number; defence: boolean }): boolean => {
+    if (a.defence !== b.defence) return !a.defence;
+    const aPays = a.refund >= short;
+    const bPays = b.refund >= short;
+    if (aPays !== bPays) return aPays;
+    return aPays ? a.refund < b.refund : a.refund > b.refund;
+  };
+  for (const e of state.entities.values()) {
+    if (e.ownerId !== p.playerId || e.kind !== "building" || e.hp <= 0 || e.wreck || e.ruined) continue;
+    if (keep.has(e.type) || isFieldStructure(e.type) || isHqRig(e.type)) continue;
+    const refund = Math.floor(costFor(e.type, faction) * SELL_REFUND);
+    if (refund <= 0) continue;
+    const c = { e, refund, defence: isDefenceStructure(e.type) };
+    if (!pick || better(c, pick)) pick = c;
+  }
+  if (pick) applyCommand(state, p.playerId, { type: "cmd.sell", id: pick.e.id });
 }
 
 /**
@@ -2366,7 +2888,8 @@ function enemySites(state: MatchState, playerId: string): Entity[] {
  */
 function siege(state: MatchState, p: SimPlayer, e: Entity, sites: Entity[]): void {
   if (sites.length === 0 || !freeFighter(e, p.playerId)) return;
-  if (!isInfantryType(e.type) && catalog(e.type).caliber < GARRISON_STRUCTURAL_CALIBER) return;
+  // The Juggernaut has no gun, but a named attack on a building is a ram that brings it down.
+  if (!isInfantryType(e.type) && e.type !== "juggernaut" && catalog(e.type).caliber < GARRISON_STRUCTURAL_CALIBER) return;
   const idle = !e.order || e.order.auto || e.order.kind === "attackmove";
   if (!idle || (e.attackTarget != null && state.entities.get(e.attackTarget)?.hp)) return;
   const reach = CPU_SIEGE_TILES * state.tileSize;
@@ -2528,7 +3051,7 @@ export function findBuildTile(
   type: BuildingType,
 ): { tx: number; ty: number } | null {
   if (isSmelterType(type)) return findSmelterTile(state, playerId);
-  if (type === "dock") return findDockTile(state, playerId, true);
+  if (isDockType(type)) return findDockTile(state, playerId, true);
   const def = catalog(type);
   const hq = hqOf(state, playerId);
   if (!hq) return null;
@@ -2537,7 +3060,13 @@ export function findBuildTile(
   const inwardX = Math.sign(state.width / 2 - ox) || 1;
   const inwardY = Math.sign(state.height / 2 - oy) || 1;
   const radius = buildRadiusOf(type);
-  const maxR = radius + Math.max(def.tileW, def.tileH);
+  // Every base building stretches the yard's reach, so the search runs out past the farthest one.
+  let reach = 0;
+  for (const b of state.entities.values()) {
+    if (b.ownerId !== playerId || b.kind !== "building" || b.hp <= 0 || !anchorsBuildRange(b.type)) continue;
+    reach = Math.max(reach, Math.abs(b.tileX - ox), Math.abs(b.tileX + b.tileW - ox), Math.abs(b.tileY - oy), Math.abs(b.tileY + b.tileH - oy));
+  }
+  const maxR = reach + radius + Math.max(def.tileW, def.tileH);
   const halfW = Math.floor(def.tileW / 2);
   // Scrap is bare ground to the Xenite.
   const scrapGround = scrapIsGround(type);
