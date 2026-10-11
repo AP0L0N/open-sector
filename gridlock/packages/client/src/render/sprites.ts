@@ -74,6 +74,10 @@ import juggernautRamUrl from "../assets/units/juggernaut-ram.png";
 import juggernautRamFistsUrl from "../assets/units/juggernaut-ram-fists.png";
 import juggernautRamhitUrl from "../assets/units/juggernaut-ramhit.png";
 import juggernautRamhitFistsUrl from "../assets/units/juggernaut-ramhit-fists.png";
+import juggernautSprintUrl from "../assets/units/juggernaut-sprint.png";
+import juggernautReassembleUrl from "../assets/units/juggernaut-reassemble.png";
+import juggernautWreckFistsUrl from "../assets/units/wrecks/juggernaut-fists.png";
+import juggernautWreckHammerUrl from "../assets/units/wrecks/juggernaut-hammer.png";
 import ravagerLegsUrl from "../assets/units/ravager-legs.png";
 import ravagerTurretUrl from "../assets/units/ravager-turret.png";
 import ravagerGunUrl from "../assets/units/ravager-gun.png";
@@ -1435,6 +1439,14 @@ export const JUGGERNAUT_RAM_SPRITE = juggernautSheet(juggernautRamUrl, 8);
 export const JUGGERNAUT_RAM_FISTS_SPRITE = juggernautSheet(juggernautRamFistsUrl, 8);
 export const JUGGERNAUT_RAMHIT_SPRITE = juggernautSheet(juggernautRamhitUrl, 4);
 export const JUGGERNAUT_RAMHIT_FISTS_SPRITE = juggernautSheet(juggernautRamhitFistsUrl, 4);
+/** The hammer gone: a flat-out run, striding by ground covered. In water it wades on the fists' sheet. */
+export const JUGGERNAUT_SPRINT_SPRITE = juggernautSheet(juggernautSprintUrl, 8);
+/** From the wreck to its feet: the wreck lit blue, the burst, the plates flying in, whole. Its own pivot, between the wreck's and the live one's. */
+export const JUGGERNAUT_REASSEMBLE_SPRITE = juggernautSheet(juggernautReassembleUrl, 8, 0.74);
+/** Fallen after the throw: the wreck with empty hands. The wreck's pivot. */
+export const JUGGERNAUT_WRECK_FISTS_SPRITE = juggernautSheet(juggernautWreckFistsUrl, 1, 0.62);
+/** The hammer alone where it lies by the wreck, lit blue with a soft halo: pulsed over a wreck that will rise. */
+export const JUGGERNAUT_WRECK_HAMMER_SPRITE = juggernautSheet(juggernautWreckHammerUrl, 1, 0.62);
 
 const ss3Gun: TurretSpriteDef = {
   image: new Image(),

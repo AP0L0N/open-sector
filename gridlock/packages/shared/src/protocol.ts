@@ -19,7 +19,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 155;
+export const PROTOCOL_VERSION = 156;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -165,6 +165,8 @@ export interface EntityView {
   fists?: true;
   /** Juggernaut charging something down. */
   ram?: true;
+  /** Juggernaut wreck knitting back together: seconds until it stands (the hammer by it glows meanwhile). */
+  reassembleIn?: number;
   /** Juggernaut, own side only: ram charge, 0–1. 1 is ready. */
   ramCharge?: number;
   /** Siphon or Bile Worm digging in, down (a Bile Worm only to its own side), or rising. */

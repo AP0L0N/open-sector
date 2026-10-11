@@ -1,14 +1,16 @@
-import { JUGGERNAUT_FIST_SECONDS, JUGGERNAUT_HAMMER_SECONDS } from "@gridlock/shared";
+import { JUGGERNAUT_FIST_SECONDS, JUGGERNAUT_HAMMER_SECONDS, JUGGERNAUT_REASSEMBLE_ANIM_SECONDS } from "@gridlock/shared";
 
 /**
  * Juggernaut on the map: which of its sheets shows and on which frame, and the
  * hammer tumbling through the air once it is thrown.
  */
 
-export type JuggernautSheet = "walk" | "swing" | "fists" | "punch" | "throw" | "ram" | "ramhit";
+export type JuggernautSheet = "walk" | "swing" | "fists" | "sprint" | "punch" | "throw" | "ram" | "ramhit";
 
 /** World px it covers in one 8-frame stride (two steps): a giant's step is long. */
 export const JUGGERNAUT_STRIDE_WORLD = 45;
+/** Without the hammer it runs flat out: longer bounding steps than the walk. */
+export const JUGGERNAUT_SPRINT_STRIDE_WORLD = 59;
 /** The charge's stride: longer, low bounding steps. */
 export const JUGGERNAUT_RAM_STRIDE_WORLD = 65;
 /** Game ms the throw sheet plays, four frames. */
@@ -35,7 +37,8 @@ export interface JuggernautPose {
  * frame 0 is the hammer on the ground, and the hammer waits high until the next blow lands.
  * Punches alternate hands, `blows` counting them. Walking ends a fight pose. A charge (`ramming`)
  * runs on the ram sheet, striding with the ground; the slam (`ramHitAt`) plays over everything.
- * The client swaps in the fists' ram sheets once the hammer is gone.
+ * The client swaps in the fists' ram sheets once the hammer is gone. Without the hammer it moves
+ * on the sprint sheet, a flat-out run, and stands on guard on the fists sheet.
  */
 export function pickJuggernautPose(o: {
   fists: boolean;
@@ -58,7 +61,7 @@ export function pickJuggernautPose(o: {
     const age = (o.now - o.throwAt) * speed;
     if (age >= 0 && age < JUGGERNAUT_THROW_MS) return { sheet: "throw", frame: Math.min(3, Math.floor((age / JUGGERNAUT_THROW_MS) * 4)) };
   }
-  const walk: JuggernautPose = { sheet: o.fists ? "fists" : "walk" };
+  const walk: JuggernautPose = { sheet: o.fists ? (o.stepping ? "sprint" : "fists") : "walk" };
   if (o.blowAt == null) return walk;
   const age = (o.now - o.blowAt) * speed;
   if (age < 0) return walk;
@@ -181,4 +184,25 @@ export function drawRamShock(ctx: CanvasRenderingContext2D, x: number, y: number
     ctx.fillRect(x + cx * run - s / 2, y + cy * run * 0.5 - lift - s / 2, s, s);
   }
   ctx.restore();
+}
+
+/**
+ * A wreck knitting back together, `left` seconds before it stands: the reassembly sheet's frame
+ * over the last JUGGERNAUT_REASSEMBLE_ANIM_SECONDS, else null (the wreck, the hammer glowing by it).
+ */
+export function reassembleFrame(left: number): number | null {
+  if (left > JUGGERNAUT_REASSEMBLE_ANIM_SECONDS) return null;
+  const u = 1 - Math.max(0, left) / JUGGERNAUT_REASSEMBLE_ANIM_SECONDS;
+  return Math.min(7, Math.floor(u * 8));
+}
+
+/**
+ * Opacity of the blue-lit hammer laid over the wreck: a slow, soft pulse, quickening and
+ * brightening as the moment it rises comes on. `left` seconds to go, `nowMs` real time.
+ */
+export function hammerGlowAlpha(left: number, nowMs: number, id: number): number {
+  const near = Math.max(0, Math.min(1, 1 - left / 8));
+  const period = 1500 - 900 * near;
+  const wave = 0.5 + 0.5 * Math.sin((nowMs / period) * Math.PI * 2 + id);
+  return 0.35 + (0.4 + 0.25 * near) * wave;
 }

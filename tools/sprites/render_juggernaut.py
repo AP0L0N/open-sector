@@ -15,7 +15,10 @@ Sheets (frames, what the client does with them):
   walk        8  hammer on the right shoulder, both hands on the haft; a stride every frame
   swing       8  one blow, looped in time with the hits: frame 0 is the hammer on the
                  ground (the hit), then up, held high and drawn back, frame 7 coming down
-  fists       8  the hammer gone: a stride with the fists swinging
+  fists       8  the hammer gone: a stride with the fists swinging (the client shows it standing)
+  sprint      8  the hammer gone, moving: a flat-out run, chest forward, fists pumping
+  reassemble  8  the wreck lit blue, the burst, plates flying in and locking upright, whole
+                 (its own pivot, REASSEMBLE_CONTACT_Y, between the wreck's and the live one's)
   punch       8  two blows: the right fist lands on frame 0, the left on frame 4
   throw       4  wound back, the release, empty hands forward, back on guard
   ram         8  the charge: a long low run, the haft levelled in front, head leading
@@ -25,7 +28,10 @@ Sheets (frames, what the client does with them):
   *-wade      the same five, sunk to mid-thigh in the shared swim pool (derive_swim.py's
               water, foam, and ripple rings); the swing's hit throws up a splash
 Plus the wreck (1 frame, the live cell, contact and scale) at
-assets/units/wrecks/juggernaut.png: face down, the hammer beside it.
+assets/units/wrecks/juggernaut.png: face down, the hammer beside it; wrecks/juggernaut-fists.png
+the same with empty hands (it threw the hammer first), and wrecks/juggernaut-hammer.png the
+hammer alone where it lies, lit blue in a soft halo, which the client pulses over a wreck that
+will rise again.
 
 Writes gridlock/packages/client/src/assets/units/juggernaut-*.png, the east lock at
 tools/sprites/src/juggernaut-east.png, the cameo, and previews/manifests in
@@ -59,6 +65,8 @@ SCALE = 1.6
 CONTACT_Y = 0.82
 # Wreck on the ground: the body's footprint centre, like the infantry corpses.
 WRECK_CONTACT_Y = 0.62
+# Reassembly runs from the wreck (wide, low) to the standing giant (tall): a pivot between the two.
+REASSEMBLE_CONTACT_Y = 0.74
 
 XENO_MATS = {
     "alloy": ((60, 72, 64), (92, 106, 96), (124, 140, 128)),  # cold grey-green alloy, a step under the Drone's
@@ -83,6 +91,12 @@ for _name in ("optic", "conduit"):
     R.EMISSIVE.add(_name)
 R.MATERIALS["flash"] = (130, 255, 96)
 R.MATERIALS["flash_core"] = (232, 255, 214)
+# Reassembly: the hive's cold blue in the conduits and the hammer while the body knits back.
+for _name, _rgb in (("reglow", (96, 176, 255)), ("reglow_core", (214, 236, 255))):
+    R.MATERIALS[_name] = _rgb
+    if _name not in R.MAT_IDS:
+        R.MAT_IDS[_name] = len(R.MAT_IDS)
+    R.EMISSIVE.add(_name)
 # Wading: a foam collar where the body meets the water, and the hammer's splash.
 for _name, _spec in {
     "foam": ((96, 140, 136), (128, 172, 166), (168, 204, 198)),
@@ -519,9 +533,31 @@ def pose_ramhit(frame: int, fists: bool = False) -> Cloud:
     return c
 
 
-def pose_wreck() -> Cloud:
-    """Face down, arms flung forward, the hammer dark on the dirt beside it."""
+def fist_sprint(sh, side: float, phase: float | None) -> np.ndarray:
+    """A sprinter's arm: elbows bent, the fist pumping forward as the leg on its side goes back."""
+    off = 0.0 if side == 1 else 0.5
+    swing = 0.0 if phase is None else math.cos(2 * math.pi * (phase + off))
+    return np.array([5.0 + 11.0 * swing, side * 11.4, sh[2] - 14.0 + 4.0 * max(0.0, swing)])
+
+
+# The sprint without the hammer: thrown forward, long bounding steps, between the walk and the ram.
+SPRINT_LEAN = 0.5
+SPRINT_DROP = 2.0
+SPRINT_STRIDE = 10.0
+SPRINT_STEP = 6.0
+
+
+def pose_sprint(phase: float | None) -> Cloud:
+    """The hammer gone: a flat-out run, chest forward, the fists pumping against the legs."""
     c = Cloud()
+    t = body(c, phase, lean=SPRINT_LEAN, drop=SPRINT_DROP, stride=SPRINT_STRIDE, step=SPRINT_STEP)
+    for key, s in (("R", -1), ("L", 1)):
+        arm(c, t[key], fist_sprint(t[key], s, phase), s, pole=(-0.8, 0, -0.6))
+    return c
+
+
+def _wreck_body(c: Cloud) -> None:
+    """The body face down, arms flung forward, legs out behind: everything of the wreck but the hammer."""
     # Torso along +x, lying on its front.
     ellipsoid(c, (2.0, 0, 9.4), (14.0, 13.0, 8.6), "alloy")
     ellipsoid(c, (-1.0, 0, 15.6), (9.0, 9.0, 4.6), "chitin")  # back hump, up
@@ -545,13 +581,170 @@ def pose_wreck() -> Cloud:
         capsule(c, hip, knee, 6.0, 5.0, "alloy")
         capsule(c, knee, ank, 4.2, 3.4, "chitin")
         box(c, ank + np.array([-2.0, 0, 1.0]), (2.0, 4.0, 5.6), "alloy")
-    hammer(c, np.array([-4.0, 26.0, 2.2]), np.array([1.0, 0.12, 0.0]), glow=False)
+
+
+# Where the hammer lies beside the wreck, body units before the wreck is centred.
+WRECK_HAMMER_GRIP = np.array([-4.0, 26.0, 2.2])
+WRECK_HAMMER_AXIS = np.array([1.0, 0.12, 0.0])
+
+
+def _wreck_centre() -> np.ndarray:
+    """The full wreck's footprint centre: every wreck sheet shifts by it, so none of them moves."""
+    c = Cloud()
+    _wreck_body(c)
+    hammer(c, WRECK_HAMMER_GRIP, WRECK_HAMMER_AXIS, glow=False)
+    allp = np.concatenate(c.pts)
+    return np.array([(allp[:, 0].min() + allp[:, 0].max()) / 2, (allp[:, 1].min() + allp[:, 1].max()) / 2, 0.0])
+
+
+WRECK_CENTRE = _wreck_centre()
+
+
+def _grounded(c: Cloud) -> Cloud:
     for p in c.pts:
         p[:, 2] = np.maximum(p[:, 2], 0.35)
-    allp = np.concatenate(c.pts)
-    ctr = np.array([(allp[:, 0].min() + allp[:, 0].max()) / 2, (allp[:, 1].min() + allp[:, 1].max()) / 2, 0.0])
-    c.pts = [p - ctr for p in c.pts]
+    c.pts = [p - WRECK_CENTRE for p in c.pts]
     return c
+
+
+def pose_wreck(with_body: bool = True, with_hammer: bool = True, hammer_mat: str | None = None) -> Cloud:
+    """Face down, arms flung forward, the hammer dark on the dirt beside it. Without the hammer:
+    it threw it before it fell. Hammer alone (`with_body` off, `hammer_mat` "reglow"): the overlay
+    the client pulses over a wreck that is knitting back."""
+    c = Cloud()
+    if with_body:
+        _wreck_body(c)
+    if with_hammer:
+        start = len(c.pts)
+        hammer(c, WRECK_HAMMER_GRIP, WRECK_HAMMER_AXIS, glow=False)
+        if hammer_mat:
+            relit(c, start, hammer_mat)
+    return _grounded(c)
+
+
+GLOWS = ("conduit", "dead_glow", "optic")
+
+
+def relit(c: Cloud, start: int = 0, mat: str = "reglow") -> Cloud:
+    """Every lit or dead conduit from primitive `start` on burns the reassembly's blue."""
+    want = np.array([R.MAT_IDS[n] for n in GLOWS])
+    to = R.MAT_IDS[mat]
+    for m in c.mat[start:]:
+        m[np.isin(m, want)] = to
+    return c
+
+
+def _hash(i: int, salt: int) -> float:
+    return float(_hash01(np.array([[i, salt, 7]]), salt)[0])
+
+
+def _turn(p: np.ndarray, axis: np.ndarray, ang: float) -> np.ndarray:
+    """Rotation by `ang` about the unit `axis` (Rodrigues)."""
+    k = axis / max(1e-9, np.linalg.norm(axis))
+    K = np.array([[0, -k[2], k[1]], [k[2], 0, -k[0]], [-k[1], k[0], 0]])
+    Rm = np.eye(3) + math.sin(ang) * K + (1 - math.cos(ang)) * (K @ K)
+    return p @ Rm.T
+
+
+def scatter(c: Cloud, k: float, hammer_from: tuple[int, int] | None = None, lift: float = 0.0) -> Cloud:
+    """Each plate of the pose `k` of the way out from where it belongs: thrown wide and low,
+    tumbled about its own middle, so at k = 1 it is a heap of parts on the dirt and at 0 the
+    giant whole. The hammer's primitives (`hammer_from`, a range) travel as one piece, from where
+    it lay beside the wreck. `lift` raises every part off the ground (the burst)."""
+    out = Cloud()
+    ham = range(*hammer_from) if hammer_from else range(0)
+    hc = np.concatenate([c.pts[i] for i in ham]).mean(0) if hammer_from else None
+    lie = WRECK_HAMMER_GRIP + WRECK_HAMMER_AXIS * (HAFT * 0.4) - WRECK_CENTRE
+    for i, (p, n, m, q) in enumerate(zip(c.pts, c.nrm, c.mat, c.part)):
+        if i in ham:
+            # One piece: from the dirt beside the wreck up into the hands, end over end.
+            d = lie - hc
+            arc = np.array([0, 0, 22.0 * math.sin(math.pi * min(1.0, k))])
+            ang = 2.2 * math.pi * k
+            pp = _turn(p - hc, np.array([0.3, 1.0, 0.0]), ang) + hc + d * k + arc
+            nn = _turn(n, np.array([0.3, 1.0, 0.0]), ang)
+        else:
+            mid = p.mean(0)
+            a = 2 * math.pi * _hash(i, 3)
+            out_dir = np.array([mid[0], mid[1], 0.0]) * 0.6 + np.array([math.cos(a), math.sin(a), 0.0]) * 10.0
+            fall = np.array([0, 0, -mid[2] * 0.85 + 2.0 + lift * (0.5 + _hash(i, 9))])
+            off = (out_dir * (0.5 + 0.9 * _hash(i, 5)) + fall) * k
+            ax = np.array([_hash(i, 11) - 0.5, _hash(i, 13) - 0.5, _hash(i, 17) - 0.5])
+            ang = (_hash(i, 19) - 0.5) * 3.0 * k
+            pp = _turn(p - mid, ax, ang) + mid + off
+            nn = _turn(n, ax, ang)
+        out.pts.append(pp)
+        out.nrm.append(nn)
+        out.mat.append(m.copy())
+        out.part.append(q)
+    for p in out.pts:
+        p[:, 2] = np.maximum(p[:, 2], 0.35)
+    return out
+
+
+def sparks(c: Cloud, k: float, seed: int) -> None:
+    """Motes of blue drawn in toward the body as it knits: more and farther out early on."""
+    n = int(4 + 8 * k)
+    for j in range(n):
+        a = 2 * math.pi * _hash(j, seed)
+        r = 8.0 + 26.0 * k * _hash(j, seed + 1)
+        z = 4.0 + 40.0 * _hash(j, seed + 2) * (1.0 - 0.5 * k)
+        at = np.array([math.cos(a) * r, math.sin(a) * r, z])
+        s = 0.9 + 0.8 * _hash(j, seed + 3)
+        ellipsoid(c, at, (s, s, s), "reglow_core" if j % 3 == 0 else "reglow")
+
+
+def walk_parts() -> tuple[Cloud, tuple[int, int]]:
+    """The standing pose (walk frame 0) and the range of its hammer's primitives."""
+    c = Cloud()
+    t = body(c, None)
+    sh_r, sh_l = t["R"], t["L"]
+    low = np.array([11.0, 3.0, sh_r[2] - 22.0])
+    axis = np.array([-0.12, -0.55, 0.83])
+    axis = axis / np.linalg.norm(axis)
+    start = len(c.pts)
+    hammer(c, low, axis)
+    end = len(c.pts)
+    arm(c, sh_l, low + np.array([0.0, 1.0, 0.0]), 1, pole=(-0.4, 0.6, -1))
+    arm(c, sh_r, low + axis * 13.0 + np.array([2.4, 0.0, 0.0]), -1, pole=(-0.4, 0, -1))
+    return c, (start, end)
+
+
+# Reassembly frames 2–6: how far each plate still is from where it belongs.
+REASSEMBLE_SPREAD = (1.0, 0.72, 0.46, 0.24, 0.08)
+
+
+def pose_reassemble(frame: int) -> Cloud:
+    """The wreck knits back into the giant: 0 the wreck lit blue, the hammer burning; 1 it bursts,
+    every plate lifting off the dirt; 2–6 the plates fly in and lock together upright, the hammer
+    rising into its hands; 7 whole, on its feet (walk frame 0)."""
+    if frame == 7:
+        return pose_walk(None)
+    if frame == 0:
+        return relit(pose_wreck())
+    if frame == 1:
+        w = relit(pose_wreck())
+        c = scatter(w, 0.25, lift=10.0)
+        sparks(c, 0.9, 41)
+        return c
+    k = REASSEMBLE_SPREAD[frame - 2]
+    w, ham = walk_parts()
+    c = relit(scatter(w, k, hammer_from=ham))
+    sparks(c, k, 50 + frame * 7)
+    return c
+
+
+def _blue_halo(im: Image.Image, frame: int) -> Image.Image:
+    """A soft blue light round the burning hammer, under it."""
+    from PIL import ImageFilter
+
+    a = np.array(im)
+    mask = Image.fromarray(((a[..., 3] > 40) * 255).astype(np.uint8))
+    glow = mask.filter(ImageFilter.GaussianBlur(5)).point(lambda v: min(255, int(v * 1.6)))
+    halo = Image.new("RGBA", im.size, (96, 176, 255, 0))
+    halo.putalpha(glow.point(lambda v: int(v * 0.55)))
+    halo.alpha_composite(im)
+    return halo
 
 
 # ---------------------------------------------------------------- wading
@@ -640,6 +833,14 @@ SHEETS = [
     R.SheetSpec("punch", 8, CONTACT_Y, SCALE, lambda i: pose_punch(i)),
     R.SheetSpec("throw", 4, CONTACT_Y, SCALE, lambda i: pose_throw(i)),
     R.SheetSpec("wreck", 1, WRECK_CONTACT_Y, SCALE, lambda i: pose_wreck()),
+    R.SheetSpec("sprint", 8, CONTACT_Y, SCALE, lambda i: pose_sprint(None if i == 0 else i / 8)),
+]
+# After the throw it falls with empty hands; the hammer alone, burning blue, is pulsed over the
+# wreck of one that fell holding it; the reassembly plays from the wreck to its feet.
+WRECK_SHEETS = [
+    R.SheetSpec("wreck-fists", 1, WRECK_CONTACT_Y, SCALE, lambda i: pose_wreck(with_hammer=False)),
+    R.SheetSpec("wreck-hammer", 1, WRECK_CONTACT_Y, SCALE, lambda i: pose_wreck(with_body=False, hammer_mat="reglow"), lambda im, i: _blue_halo(im, i)),
+    R.SheetSpec("reassemble", 8, REASSEMBLE_CONTACT_Y, SCALE, lambda i: pose_reassemble(i)),
 ]
 # The ram never runs in water, so it has no wading twins.
 RAM_SHEETS = [
@@ -660,6 +861,7 @@ SHEETS += [
     )
 ]
 SHEETS += RAM_SHEETS
+SHEETS += WRECK_SHEETS
 
 
 def render_sheet(spec):
@@ -686,7 +888,12 @@ def main() -> int:
         R.CLIPPED.clear()
         sheet, placed = render_sheet(spec)
         clipped = sorted({ENGINE_ORDER[r] for r in R.CLIPPED}, key=ENGINE_ORDER.index)
-        out = WRECKS / "juggernaut.png" if spec.name == "wreck" else UNITS / f"juggernaut-{spec.name}.png"
+        if spec.name == "wreck":
+            out = WRECKS / "juggernaut.png"
+        elif spec.name.startswith("wreck-"):
+            out = WRECKS / f"juggernaut-{spec.name[6:]}.png"
+        else:
+            out = UNITS / f"juggernaut-{spec.name}.png"
         sheet.save(out)
         diag = diagnostics(placed, CELL)
         pops = [d["dir"] for d in diag if d.get("pop")]

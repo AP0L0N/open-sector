@@ -451,7 +451,7 @@ function wreckPathRadius(e: Pick<Entity, "radius" | "type">): number {
   return e.radius + reach + UNIT_SPACE_PAD;
 }
 
-function restampWreckBlock(state: MatchState): void {
+export function restampWreckBlock(state: MatchState): void {
   const n = state.width * state.height;
   if (state.wreckBlock.length !== n) state.wreckBlock = new Uint8Array(n);
   else state.wreckBlock.fill(0);
