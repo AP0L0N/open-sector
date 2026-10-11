@@ -121,6 +121,17 @@ describe("Thrall fists", () => {
     assert.ok(!state.entities.has(rifle.id) || rifle.hp <= 0, `rifleman still at ${rifle.hp}`);
   });
 
+  it("picks out and runs down a soldier it can see, with no order given", () => {
+    const { state, a, b } = match();
+    const th = unit(state, "thrall", a, 40, 40);
+    // Ten tiles off: past the old seven-tile hunt, inside the Thrall's sight.
+    const rifle = unit(state, "rifleman", b, 50, 40);
+    rifle.holdPosition = true;
+    ticks(state, secondsToTicks(6));
+    assert.ok(!state.entities.has(rifle.id) || rifle.hp <= 0, `rifleman still at ${rifle.hp}`);
+    assert.ok(state.entities.has(th.id) && th.hp > 0);
+  });
+
   it("detonates on an armored hull instead of punching, and is gone", () => {
     const { state, a, b } = match();
     const th = unit(state, "thrall", a, 40, 40);
