@@ -499,6 +499,10 @@ import {
   JUGGERNAUT_RAM_FISTS_SPRITE,
   JUGGERNAUT_RAM_SPRITE,
   JUGGERNAUT_RAMHIT_FISTS_SPRITE,
+  JUGGERNAUT_REASSEMBLE_SPRITE,
+  JUGGERNAUT_SPRINT_SPRITE,
+  JUGGERNAUT_WRECK_FISTS_SPRITE,
+  JUGGERNAUT_WRECK_HAMMER_SPRITE,
   JUGGERNAUT_RAMHIT_SPRITE,
   JUGGERNAUT_SPRITE,
   JUGGERNAUT_SWING_SPRITE,
@@ -511,8 +515,11 @@ import {
   drawRamShock,
   drawRamTrail,
   drawThrownHammer,
+  hammerGlowAlpha,
   pickJuggernautPose,
+  reassembleFrame,
   JUGGERNAUT_RAM_STRIDE_WORLD,
+  JUGGERNAUT_SPRINT_STRIDE_WORLD,
   JUGGERNAUT_STRIDE_WORLD,
   RAM_SHOCK_MS,
   type JuggernautSheet,
@@ -7843,6 +7850,7 @@ export class MapView {
           walk: JUGGERNAUT_WALK_WADE_SPRITE,
           swing: JUGGERNAUT_SWING_WADE_SPRITE,
           fists: JUGGERNAUT_FISTS_WADE_SPRITE,
+          sprint: JUGGERNAUT_FISTS_WADE_SPRITE,
           punch: JUGGERNAUT_PUNCH_WADE_SPRITE,
           throw: JUGGERNAUT_THROW_WADE_SPRITE,
           ram: e.fists ? JUGGERNAUT_RAM_FISTS_SPRITE : JUGGERNAUT_RAM_SPRITE,
@@ -7852,6 +7860,7 @@ export class MapView {
           walk: JUGGERNAUT_SPRITE,
           swing: JUGGERNAUT_SWING_SPRITE,
           fists: JUGGERNAUT_FISTS_SPRITE,
+          sprint: JUGGERNAUT_SPRINT_SPRITE,
           punch: JUGGERNAUT_PUNCH_SPRITE,
           throw: JUGGERNAUT_THROW_SPRITE,
           // Without the hammer the charge is a shoulder-down run, the slam a two-fisted blow.
@@ -8374,8 +8383,18 @@ export class MapView {
   /** The sheet a unit is drawn from: a hulk's burnt-out sheet when it has one loaded. */
   private drawnSheet(e: EntityView, def: UnitSpriteDef): UnitSpriteDef {
     const corpse = isInfantryType(e.type) && !!e.wreck;
-    const hulk = e.wreck && !corpse ? wreckSpriteFor(e.type) : undefined;
+    const hulk = e.wreck && !corpse ? (e.type === "juggernaut" ? this.juggernautHulk(e) : wreckSpriteFor(e.type)) : undefined;
     return hulk && spriteReady(hulk) ? hulk : def;
+  }
+
+  /**
+   * A Juggernaut's wreck: empty-handed if it threw the hammer first; the reassembly sheet over the
+   * last stretch before one that fell holding it stands again.
+   */
+  private juggernautHulk(e: EntityView): UnitSpriteDef | undefined {
+    if (e.reassembleIn != null && reassembleFrame(e.reassembleIn) != null && spriteReady(JUGGERNAUT_REASSEMBLE_SPRITE)) return JUGGERNAUT_REASSEMBLE_SPRITE;
+    if (e.fists) return JUGGERNAUT_WRECK_FISTS_SPRITE;
+    return wreckSpriteFor(e.type);
   }
 
   /**
@@ -8608,10 +8627,17 @@ export class MapView {
         const odo = this.walkerOdo.get(e.id);
         const d = (odo?.d ?? 0) + strideHop(odo, p);
         this.walkerOdo.set(e.id, { x: p.x, y: p.y, d });
-        const strideWorld = pose.def === JUGGERNAUT_RAM_SPRITE || pose.def === JUGGERNAUT_RAM_FISTS_SPRITE ? JUGGERNAUT_RAM_STRIDE_WORLD : JUGGERNAUT_STRIDE_WORLD;
+        const strideWorld =
+          pose.def === JUGGERNAUT_RAM_SPRITE || pose.def === JUGGERNAUT_RAM_FISTS_SPRITE
+            ? JUGGERNAUT_RAM_STRIDE_WORLD
+            : pose.def === JUGGERNAUT_SPRINT_SPRITE
+              ? JUGGERNAUT_SPRINT_STRIDE_WORLD
+              : JUGGERNAUT_STRIDE_WORLD;
         frameIndex = stepping || e.ram ? strideFrame(d, strideWorld, sheet.frames, e.id) : 0;
       }
     }
+    // Knitting back together: the reassembly plays out on the clock the sim sends.
+    if (e.type === "juggernaut" && e.wreck && sheet === JUGGERNAUT_REASSEMBLE_SPRITE) frameIndex = reassembleFrame(e.reassembleIn ?? 0) ?? 0;
     if (e.type === "walker" && frameIndex == null) {
       const odo = this.walkerOdo.get(e.id);
       const d = (odo?.d ?? 0) + strideHop(odo, p);
@@ -8636,6 +8662,13 @@ export class MapView {
       mountDy: mountDir?.y,
       hullRow,
     });
+    if (drawn && e.type === "juggernaut" && e.wreck && e.reassembleIn != null && sheet !== JUGGERNAUT_REASSEMBLE_SPRITE && spriteReady(JUGGERNAUT_WRECK_HAMMER_SPRITE)) {
+      // The hammer by a wreck that will rise: lit blue, pulsing, quicker as the moment comes.
+      const alpha = ctx.globalAlpha;
+      ctx.globalAlpha = alpha * hammerGlowAlpha(e.reassembleIn, performance.now(), e.id);
+      drawUnitSprite(ctx, JUGGERNAUT_WRECK_HAMMER_SPRITE, s.x, s.y, dir.x, dir.y, { moving: false, id: e.id, now: performance.now(), frameIndex: 0, facing: p.facing, hullShiftX, hullShiftY });
+      ctx.globalAlpha = alpha;
+    }
     if (drawn && e.scout?.out && !e.wreck) {
       drawScoutHead(ctx, s.x + hullShiftX, s.y + hullShiftY, turretDir.x, turretDir.y, size, p.turretFacing);
     }

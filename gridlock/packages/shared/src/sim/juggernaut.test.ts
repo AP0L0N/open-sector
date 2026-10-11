@@ -10,6 +10,8 @@ import {
   JUGGERNAUT_RAM_HULL,
   JUGGERNAUT_RAM_RECHARGE_SECONDS,
   JUGGERNAUT_RAM_SPEED_TILES,
+  JUGGERNAUT_REASSEMBLE_HP,
+  JUGGERNAUT_REASSEMBLE_SECONDS,
   JUGGERNAUT_SPRINT_MUL,
   JUGGERNAUT_WADE_SPEED,
   ONE_AT_A_TIME,
@@ -414,5 +416,70 @@ describe("Juggernaut ram", () => {
     t2.cooldown = 1e6;
     assert.equal(applyCommand(dry, "B", { type: "cmd.move", ids: [j2.id], x: j2.x, y: j2.y + 8 * TILE_SUBDIV * dry.tileSize }).ok, true);
     assert.equal(until(dry, 1, () => !!j2.ram), false, "a move order is not interrupted");
+  });
+});
+
+describe("Juggernaut reassembly", () => {
+  it("killed with the hammer in hand, rises from its wreck at half its pool", () => {
+    const state = field();
+    const j = at(state, "juggernaut", "B", 30, 30);
+    j.hp = 0;
+    ticks(state, 2);
+    assert.equal(j.wreck, true);
+    assert.ok(j.reassembleAt != null, "the clock runs");
+    const view = snapshotFor(state, "B").entities.find((e) => e.id === j.id);
+    assert.ok(view?.reassembleIn != null && view.reassembleIn > JUGGERNAUT_REASSEMBLE_SECONDS - 1, `in ${view?.reassembleIn}`);
+    assert.equal(oneAtATimeTaken(state, "B", "juggernaut"), "alive", "no second one while it knits back");
+    ticks(state, secondsToTicks(JUGGERNAUT_REASSEMBLE_SECONDS) - 5);
+    assert.equal(j.wreck, true, "not yet");
+    ticks(state, 10);
+    assert.equal(j.wreck, false, "it stands again");
+    assert.equal(state.entities.get(j.id), j);
+    assert.equal(j.hpMax, catalog("juggernaut").hp);
+    assert.equal(j.hp, Math.round(j.hpMax * JUGGERNAUT_REASSEMBLE_HP));
+    assert.equal(j.fists, undefined, "the hammer is back in its hands");
+    assert.equal(j.reassembleAt, undefined);
+    assert.equal(state.occupy[j.tileY * state.width + j.tileX] ?? 0, 0, "the hulk no longer holds the ground");
+    assert.equal(snapshotFor(state, "B").entities.find((e) => e.id === j.id)?.reassembleIn, undefined);
+  });
+
+  it("stays down if it fell after the throw", () => {
+    const state = field();
+    const j = at(state, "juggernaut", "B", 30, 30);
+    j.fists = true;
+    j.hp = 0;
+    ticks(state, secondsToTicks(JUGGERNAUT_REASSEMBLE_SECONDS) + 10);
+    assert.equal(j.wreck, true);
+    assert.equal(j.reassembleAt, undefined);
+    assert.equal(oneAtATimeTaken(state, "B", "juggernaut"), null);
+  });
+
+  it("stays down if its wreck is broken up first", () => {
+    const state = field();
+    const j = at(state, "juggernaut", "B", 30, 30);
+    j.hp = 0;
+    ticks(state, 2);
+    j.hp = 0;
+    ticks(state, secondsToTicks(JUGGERNAUT_REASSEMBLE_SECONDS) + 10);
+    assert.equal(state.entities.has(j.id), false);
+  });
+});
+
+describe("Juggernaut without the hammer", () => {
+  it("moves twice as fast, and still rams", () => {
+    const state = field();
+    const j = at(state, "juggernaut", "B", 20, 30);
+    const base = moveSpeedMul(j);
+    j.fists = true;
+    assert.equal(JUGGERNAUT_FIST_PACE_MUL, 2);
+    assert.ok(Math.abs(moveSpeedMul(j) - base * 2) < 1e-9, `${base} -> ${moveSpeedMul(j)}`);
+    const titan = at(state, "titan", "A", 27, 30);
+    titan.cooldown = 1e6;
+    let charged = false;
+    for (let i = 0; i < secondsToTicks(1) && !charged; i++) {
+      step(state, TICK_DT);
+      charged = !!j.ram;
+    }
+    assert.ok(charged, "it breaks into a charge with its fists");
   });
 });

@@ -165,6 +165,8 @@ export interface EntityView {
   fists?: true;
   /** Juggernaut charging something down. */
   ram?: true;
+  /** Juggernaut wreck knitting back together: seconds until it stands (the hammer by it glows meanwhile). */
+  reassembleIn?: number;
   /** Juggernaut, own side only: ram charge, 0–1. 1 is ready. */
   ramCharge?: number;
   /** Siphon or Bile Worm digging in, down (a Bile Worm only to its own side), or rising. */

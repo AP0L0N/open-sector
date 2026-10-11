@@ -2091,8 +2091,17 @@ export const JUGGERNAUT_FIST_BLAST_TILES = t(0.7);
 export const JUGGERNAUT_FIST_SOLDIER = 60;
 export const JUGGERNAUT_FIST_HULL = 22;
 export const JUGGERNAUT_FIST_BUILDING = 55;
-/** Without the hammer it moves this much faster, sprint or walk. */
-export const JUGGERNAUT_FIST_PACE_MUL = 1.35;
+/** Without the hammer it moves this much faster, sprint or walk: twice, and it runs flat out (the sprint sheet). */
+export const JUGGERNAUT_FIST_PACE_MUL = 2;
+/**
+ * Killed with the hammer still in its hands, it knits back: the hammer by the wreck burns blue
+ * for this long, then the giant rises from the wreck with this share of its pool. Blast or
+ * salvage the wreck first and it stays down.
+ */
+export const JUGGERNAUT_REASSEMBLE_SECONDS = 15;
+export const JUGGERNAUT_REASSEMBLE_HP = 0.5;
+/** The last stretch of that wait the client plays the reassembly sheet over, seconds. */
+export const JUGGERNAUT_REASSEMBLE_ANIM_SECONDS = 1.6;
 /**
  * Ram (sim/juggernaut.ts): by itself, every JUGGERNAUT_RAM_RECHARGE_SECONDS, it charges an
  * enemy armored hull between JUGGERNAUT_RAM_MIN_TILES and JUGGERNAUT_RAM_RANGE_TILES off, or the
@@ -6581,7 +6590,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     cost: 0,
     energy: 2000,
     buildSeconds: 24,
-    hp: 4200,
+    hp: 42000,
     power: 0,
     tileW: 1,
     tileH: 1,
@@ -6606,7 +6615,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     wades: true,
     wadeSpeed: JUGGERNAUT_WADE_SPEED,
     fightsWading: true,
-    blurb: `A giant of the hive on two legs, swinging a two-handed hammer. It fights only at arm's reach, and runs at what it goes for at ${JUGGERNAUT_SPRINT_MUL} times its walk. It strides straight through woods, felling every tree it brushes, and wades through water thigh-deep, slower, still swinging: from there it hammers a boat on the surface, but not a submarine running below. Every blow lands in an area: it kills a soldier outright, staves in a tank's plate whatever its armor, and knocks whole walls out of a building. Only its own side is spared. Plated like a light tank and slow to fall. Brought down to ${Math.round(JUGGERNAUT_RAGE_HP * 100)}% it hurls the hammer at the strongest enemy within ${JUGGERNAUT_THROW_RANGE_TILES / TILE_SUBDIV} cells, a heavy blast where it lands, then fights on with its fists: lighter blows, three for every swing of the hammer, and it moves faster. Every ${JUGGERNAUT_RAM_RECHARGE_SECONDS} seconds it rams by itself: it lowers its shoulder and charges an enemy armored hull ${JUGGERNAUT_RAM_MIN_TILES / TILE_SUBDIV} to ${JUGGERNAUT_RAM_RANGE_TILES / TILE_SUBDIV} cells off, or an enemy building you order it to attack, and slams into it: a heavy blow that throws a hull back, and massive damage to a building. Everything of the enemy's in its path is run down on the way. It never charges a soldier. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered. Needs a Neural Nexus.`,
+    blurb: `A giant of the hive on two legs, swinging a two-handed hammer. It fights only at arm's reach, and runs at what it goes for at ${JUGGERNAUT_SPRINT_MUL} times its walk. It strides straight through woods, felling every tree it brushes, and wades through water thigh-deep, slower, still swinging: from there it hammers a boat on the surface, but not a submarine running below. Every blow lands in an area: it kills a soldier outright, staves in a tank's plate whatever its armor, and knocks whole walls out of a building. Only its own side is spared. Plated like a light tank and slow to fall. Brought down to ${Math.round(JUGGERNAUT_RAGE_HP * 100)}% it hurls the hammer at the strongest enemy within ${JUGGERNAUT_THROW_RANGE_TILES / TILE_SUBDIV} cells, a heavy blast where it lands, then fights on with its fists: lighter blows, three for every swing of the hammer, and it runs flat out at ${JUGGERNAUT_FIST_PACE_MUL} times the pace, still ramming. Struck down with the hammer still in its hands, it is not done: the hammer by the wreck glows blue, and ${JUGGERNAUT_REASSEMBLE_SECONDS} seconds later the giant knits itself back together with ${Math.round(JUGGERNAUT_REASSEMBLE_HP * 100)}% of its pool, unless the wreck is blasted apart first. Every ${JUGGERNAUT_RAM_RECHARGE_SECONDS} seconds it rams by itself: it lowers its shoulder and charges an enemy armored hull ${JUGGERNAUT_RAM_MIN_TILES / TILE_SUBDIV} to ${JUGGERNAUT_RAM_RANGE_TILES / TILE_SUBDIV} cells off, or an enemy building you order it to attack, and slams into it: a heavy blow that throws a hull back, and massive damage to a building. Everything of the enemy's in its path is run down on the way. It never charges a soldier. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered. Needs a Neural Nexus.`,
   },
   /** Xenite heavy assimilator: four legs and a dome of energy over everything round it. Unarmed. */
   siphon: {

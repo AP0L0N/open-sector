@@ -388,7 +388,7 @@ describe("pulses and lasers on a hive shield", () => {
 });
 
 describe("Juggernaut", () => {
-  it("has ten times the old 420 hit points", () => {
-    assert.equal(catalog("juggernaut").hp, 4200);
+  it("has ten times the old 4200 hit points", () => {
+    assert.equal(catalog("juggernaut").hp, 42000);
   });
 });
