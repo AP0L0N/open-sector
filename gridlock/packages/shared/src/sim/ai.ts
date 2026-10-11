@@ -258,7 +258,7 @@ const CREWED: readonly BuildingType[] = [...GARRISONS, "mgnest", "pak36", "pak43
 /** Turned toward the enemy when placed. A narrow arc is useless facing the yard. */
 const FACES_ENEMY: ReadonlySet<string> = new Set(["mgnest", "pak36", "pak43", "flak", "tobruk", "casemate", "hochstand", "leitturm"]);
 /** Long guns: they walk two ranks back and fire over the line. */
-const BACK_RANK: ReadonlySet<string> = new Set(["sniper", "mortarman", "nebelwerfer", "jagdtiger", "artillery", "shade", "mawcaster", "assembler", "longspine", "sporemaw", "spitter"]);
+const BACK_RANK: ReadonlySet<string> = new Set(["sniper", "mortarman", "nebelwerfer", "jagdtiger", "artillery", "shade", "mawcaster", "assembler", "longspine", "sporemaw", "bombard"]);
 /** Short reach and thick skin: the front rank beside the hulls. */
 const FRONT_INFANTRY: ReadonlySet<string> = new Set(["cyborg", "cyborgcommander", "simunit2", "xenodrone", "thrall", "lancer", "pyro", "spawnling", "quillback", "bloater"]);
 
@@ -361,7 +361,7 @@ export const XENO_ARMY: readonly { unit: TrainType; want: number }[] = [
   { unit: "xenodrone", want: 10 },
   { unit: "thrall", want: 4 },
   { unit: "lancer", want: 4 },
-  { unit: "spitter", want: 2 },
+  { unit: "bombard", want: 2 },
   { unit: "weaver", want: 2 },
   { unit: "shade", want: 1 },
   { unit: "simunit2", want: 3 },

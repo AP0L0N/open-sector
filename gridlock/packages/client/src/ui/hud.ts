@@ -85,6 +85,7 @@ import {
   radarLaidOf,
   aimsOwnGun,
   rocketsOf,
+  rocketsNow,
   rocketAmmoOf,
   launcherOnlyOf,
   airRackOf,
@@ -934,7 +935,7 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
   const posture = e.swimming
     ? "  ·  swimming"
     : e.wading
-      ? rocketsOf(e.type)
+      ? rocketsNow(e)
         ? "  ·  wading, rockets only"
         : "  ·  wading, cannot fire"
       : e.braced
@@ -983,7 +984,7 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
     ? `  ·  ${e.shell.toUpperCase()} ${ammoOf(e.ammo, e.shell)}`
     : "";
   const rockets =
-    rocketsOf(e.type) && !e.wreck && e.ownerId === ctx.match.youPlayerId
+    rocketsNow(e) && !e.wreck && e.ownerId === ctx.match.youPlayerId
       ? airRackOf(e.type)
         ? `  ·  ${e.airMode ? "air" : "ground"} attacks`
         : e.rocketsOff
@@ -1363,7 +1364,7 @@ const TYPE_ORDER: EntityType[] = [
   "xenodrone",
   "thrall",
   "lancer",
-  "spitter",
+  "bombard",
   "shade",
   "weaver",
   "cyborgcommander",
@@ -1647,7 +1648,7 @@ function buildConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
     body.append(el("div", { class: "tiny", text: "Shell" }), rack);
     if (rocketsOf(focus.type) && mine.length > 0) appendRocketRack(body, focus.type);
   } else if (launcherOnlyOf(focus.type) && !isInfantryType(focus.type)) {
-    // A Spitter is a soldier first: its throat sac has no switch, so it keeps the infantry panel.
+    // A Bombard is a soldier first: its cannon has no switch, so it keeps the infantry panel.
     if (mine.length > 0) {
       if (airRackOf(focus.type)) appendAttackModes(body);
       else appendRocketRack(body, focus.type);

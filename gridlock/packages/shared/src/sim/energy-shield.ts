@@ -283,7 +283,8 @@ export function tickEnergyShields(state: MatchState, dt: number): void {
     const keep: EnergyShield[] = [];
     for (const s of shields) {
       if (s.dome) {
-        if (tickDome(state, s, dt)) keep.push(s);
+        // A Weaver's dome runs on its cell: sim/weaver.ts keeps it.
+        if (s.weave || tickDome(state, s, dt)) keep.push(s);
         continue;
       }
       s.life -= dt;

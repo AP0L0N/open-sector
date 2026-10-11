@@ -303,12 +303,19 @@ import thrallCrawlUrl from "../assets/units/thrall-crawl.png";
 import thrallCrawlFireUrl from "../assets/units/thrall-crawl-fire.png";
 import thrallDieUrl from "../assets/units/thrall-die.png";
 import thrallSwimUrl from "../assets/units/thrall-swim.png";
-import spitterWalkUrl from "../assets/units/spitter-walk.png";
-import spitterFireUrl from "../assets/units/spitter-fire.png";
-import spitterCrawlUrl from "../assets/units/spitter-crawl.png";
-import spitterCrawlFireUrl from "../assets/units/spitter-crawl-fire.png";
-import spitterDieUrl from "../assets/units/spitter-die.png";
-import spitterSwimUrl from "../assets/units/spitter-swim.png";
+import bombardWalkUrl from "../assets/units/bombard-walk.png";
+import bombardFireUrl from "../assets/units/bombard-fire.png";
+import bombardCrawlUrl from "../assets/units/bombard-crawl.png";
+import bombardCrawlFireUrl from "../assets/units/bombard-crawl-fire.png";
+import bombardDieUrl from "../assets/units/bombard-die.png";
+import bombardSwimUrl from "../assets/units/bombard-swim.png";
+import bombardFistsWalkUrl from "../assets/units/bombard-fists-walk.png";
+import bombardFistsFireUrl from "../assets/units/bombard-fists-fire.png";
+import bombardFistsCrawlUrl from "../assets/units/bombard-fists-crawl.png";
+import bombardFistsCrawlFireUrl from "../assets/units/bombard-fists-crawl-fire.png";
+import bombardFistsDieUrl from "../assets/units/bombard-fists-die.png";
+import bombardFistsSwimUrl from "../assets/units/bombard-fists-swim.png";
+import bombardCannonUrl from "../assets/units/bombard-cannon.png";
 import weaverWalkUrl from "../assets/units/weaver-walk.png";
 import weaverFireUrl from "../assets/units/weaver-fire.png";
 import weaverCrawlUrl from "../assets/units/weaver-crawl.png";
@@ -1167,12 +1174,20 @@ export const LANCER_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_FIRE_SPRITE, image:
 export const LANCER_CRAWL_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_SPRITE, image: loadSheet(lancerCrawlUrl) };
 export const LANCER_CRAWL_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_FIRE_SPRITE, image: loadSheet(lancerCrawlFireUrl) };
 export const LANCER_DIE_SPRITE: UnitSpriteDef = { ...CYBORG_DIE_SPRITE, image: loadSheet(lancerDieUrl) };
-/** Spitter, Weaver, and Shade (render_spitter.py, render_weaver.py, render_shade.py): the Drone's lock, their own frames. */
-export const SPITTER_SPRITE: UnitSpriteDef = { ...CYBORG_SPRITE, image: loadSheet(spitterWalkUrl) };
-export const SPITTER_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_FIRE_SPRITE, image: loadSheet(spitterFireUrl) };
-export const SPITTER_CRAWL_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_SPRITE, image: loadSheet(spitterCrawlUrl) };
-export const SPITTER_CRAWL_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_FIRE_SPRITE, image: loadSheet(spitterCrawlFireUrl) };
-export const SPITTER_DIE_SPRITE: UnitSpriteDef = { ...CYBORG_DIE_SPRITE, image: loadSheet(spitterDieUrl) };
+/** Bombard (render_bombard.py): the Thrall's frame on the Drone's lock, hauling a plasma cannon. */
+export const BOMBARD_SPRITE: UnitSpriteDef = { ...CYBORG_SPRITE, image: loadSheet(bombardWalkUrl) };
+export const BOMBARD_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_FIRE_SPRITE, image: loadSheet(bombardFireUrl) };
+export const BOMBARD_CRAWL_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_SPRITE, image: loadSheet(bombardCrawlUrl) };
+export const BOMBARD_CRAWL_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_FIRE_SPRITE, image: loadSheet(bombardCrawlFireUrl) };
+export const BOMBARD_DIE_SPRITE: UnitSpriteDef = { ...CYBORG_DIE_SPRITE, image: loadSheet(bombardDieUrl) };
+/** The Bombard with its cannon dropped: the Thrall's own poses and pace, the drum still on its back. */
+export const BOMBARD_FISTS_SPRITE: UnitSpriteDef = { ...THRALL_SPRITE, image: loadSheet(bombardFistsWalkUrl) };
+export const BOMBARD_FISTS_FIRE_SPRITE: UnitSpriteDef = { ...THRALL_FIRE_SPRITE, image: loadSheet(bombardFistsFireUrl) };
+export const BOMBARD_FISTS_CRAWL_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_SPRITE, image: loadSheet(bombardFistsCrawlUrl) };
+export const BOMBARD_FISTS_CRAWL_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_FIRE_SPRITE, image: loadSheet(bombardFistsCrawlFireUrl) };
+export const BOMBARD_FISTS_DIE_SPRITE: UnitSpriteDef = { ...CYBORG_DIE_SPRITE, image: loadSheet(bombardFistsDieUrl) };
+/** The cannon a Bombard dropped, lying where it fell: one frame, 16 faces, on the corpse's cell and contact. */
+export const BOMBARD_CANNON_SPRITE: UnitSpriteDef = { ...CYBORG_DIE_SPRITE, image: loadSheet(bombardCannonUrl), frames: 1 };
 export const WEAVER_SPRITE: UnitSpriteDef = { ...CYBORG_SPRITE, image: loadSheet(weaverWalkUrl) };
 export const WEAVER_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_FIRE_SPRITE, image: loadSheet(weaverFireUrl) };
 export const WEAVER_CRAWL_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_SPRITE, image: loadSheet(weaverCrawlUrl) };
@@ -1297,10 +1312,13 @@ const SWIM_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   xenodrone: swimSprite(xenodroneSwimUrl),
   thrall: swimSprite(thrallSwimUrl),
   lancer: swimSprite(lancerSwimUrl),
-  spitter: swimSprite(spitterSwimUrl),
+  bombard: swimSprite(bombardSwimUrl),
   weaver: swimSprite(weaverSwimUrl),
   shade: swimSprite(shadeSwimUrl),
 };
+
+/** The Bombard wading with its cannon dropped. */
+export const BOMBARD_FISTS_SWIM_SPRITE: UnitSpriteDef = swimSprite(bombardFistsSwimUrl);
 
 /** 16-dir hatch head (helmet + face). Row 0 = 0001 = south, one frame. */
 export const SCOUT_HEAD_SPRITE: UnitSpriteDef = {
@@ -2106,7 +2124,7 @@ const INFANTRY_DIE: Partial<Record<EntityType, UnitSpriteDef>> = {
   xenodrone: XENODRONE_DIE_SPRITE,
   thrall: THRALL_DIE_SPRITE,
   lancer: LANCER_DIE_SPRITE,
-  spitter: SPITTER_DIE_SPRITE,
+  bombard: BOMBARD_DIE_SPRITE,
   weaver: WEAVER_DIE_SPRITE,
   shade: SHADE_DIE_SPRITE,
 };
@@ -2179,7 +2197,7 @@ export function spriteFor(type: EntityType, stance?: Stance, swimming = false): 
   if (type === "xenodrone") return stance === "crawl" ? XENODRONE_CRAWL_SPRITE : XENODRONE_SPRITE;
   if (type === "thrall") return stance === "crawl" ? THRALL_CRAWL_SPRITE : THRALL_SPRITE;
   if (type === "lancer") return stance === "crawl" ? LANCER_CRAWL_SPRITE : LANCER_SPRITE;
-  if (type === "spitter") return stance === "crawl" ? SPITTER_CRAWL_SPRITE : SPITTER_SPRITE;
+  if (type === "bombard") return stance === "crawl" ? BOMBARD_CRAWL_SPRITE : BOMBARD_SPRITE;
   if (type === "weaver") return stance === "crawl" ? WEAVER_CRAWL_SPRITE : WEAVER_SPRITE;
   if (type === "shade") return stance === "crawl" ? SHADE_CRAWL_SPRITE : SHADE_SPRITE;
   return UNIT_SPRITES[type];

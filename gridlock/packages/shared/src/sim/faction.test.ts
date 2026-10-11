@@ -92,6 +92,7 @@ describe("factions in the catalog", () => {
         "assembler",
         "assimilator",
         "behemoth",
+        "bombard",
         "conversion",
         "forge",
         "fusionnode",
@@ -115,7 +116,6 @@ describe("factions in the catalog", () => {
         "siphon",
         "spawnpool",
         "spineturret",
-        "spitter",
         "stalker",
         "thrall",
         "wasp",
@@ -135,7 +135,7 @@ describe("factions in the catalog", () => {
       assert.equal(producerType(t), want, t);
     }
     for (const t of ["stalker", "ravager", "behemoth", "juggernaut", "siphon", "assembler", "mawcaster"] as const) assert.equal(producerType(t), "forge");
-    for (const t of ["xenodrone", "thrall", "lancer", "spitter", "weaver", "shade"] as const) assert.ok(isCyborg(t) && onUplink(t) && isInfantryType(t), t);
+    for (const t of ["xenodrone", "thrall", "lancer", "bombard", "weaver", "shade"] as const) assert.ok(isCyborg(t) && onUplink(t) && isInfantryType(t), t);
     assert.ok(!onUplink("cyborgcommander"));
   });
 

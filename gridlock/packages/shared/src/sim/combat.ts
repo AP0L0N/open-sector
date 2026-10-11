@@ -146,7 +146,7 @@ import {
   pickLoadedShell,
   reloadSecondsOf,
   rocketsOf,
-  launcherOnlyOf,
+  launcherOnlyNow,
   rocketRackOf,
   rocketRackFor,
   airRackOf,
@@ -168,7 +168,8 @@ import {
   isJuggernaut,
   SIMUNIT_LIGHT_MUL,
   SIMUNIT_SLASH_DAMAGE,
-  meleeOf,
+  meleeNow,
+  rocketsNow,
   biteOf,
   factionDamage,
   factionOf,
@@ -442,7 +443,7 @@ export function tickCombat(state: MatchState, dt: number): void {
   }
   // Rocket racks: their own clock, whatever the main gun is doing. Titan pods also pick their own target.
   for (const e of state.entities.values()) {
-    if (!rocketsOf(e.type) || !canFight(e) || powerSilences(e)) continue;
+    if (!rocketsNow(e) || !canFight(e) || powerSilences(e)) continue;
     tickRocketPods(state, e, dt);
   }
   // The roof mount's first look ran before those launches. Catch the new missiles before they fly.
@@ -1729,7 +1730,7 @@ export function concreteProof(state: MatchState, e: Entity, o: Entity): boolean 
 
 /** Tank shells and bursts chip concrete. Bullets, belts, and the flame stream stop on it. */
 export function chipsConcrete(e: Entity): boolean {
-  if (hasAmmo(e.type) || rocketsOf(e.type) || e.type === "artillery" || e.ship || e.ark) return true;
+  if (hasAmmo(e.type) || rocketsNow(e) || e.type === "artillery" || e.ship || e.ark) return true;
   const gun = infantryGunFor(e)?.id;
   return gun === "mortar" || gun === "launcher" || gun === "penetrator" || gun === "laser";
 }
@@ -1891,14 +1892,14 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   const range = weaponRangeWorld(state, e) * airReachMul(e, target);
   const dist = Math.hypot(aimX - e.x, aimY - e.y);
   // A blade reaches from his centre to the target's body or wall, not to its middle.
-  if (target && meleeOf(e.type) ? !inStrikeReach(state, e, target) : dist > range) {
+  if (target && meleeNow(e) ? !inStrikeReach(state, e, target) : dist > range) {
     if (!holedUp) e.state = "attack";
     return;
   }
   // A submarine closes on a named hull below and only comes up once it is in range.
   if (target) surfaceToStrike(e, target);
   // A laid launcher's only weapon is its rockets (tickRocketPods). Here the frame just swings on.
-  if (launcherOnlyOf(e.type)) {
+  if (launcherOnlyNow(e)) {
     if (!holedUp) e.state = "attack";
     return;
   }
@@ -2003,7 +2004,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   if (!holedUp && !gunArcOk) return;
 
   // The Titan's main gun stays silent in water, and never lays on a drone. Its pods fire on their own in tickRocketPods.
-  if (rocketsOf(e.type) && (unitInWater(state, e) || atDrone)) return;
+  if (rocketsNow(e) && (unitInWater(state, e) || atDrone)) return;
 
   if (e.type === "walker") {
     if (target && walkerSparesBuilding(state, e, target)) return;
@@ -2085,9 +2086,9 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     if (e.order?.once) clearOrder(e);
     return;
   }
-  // The Thrall's fists: blows on soldiers and walls; on an armored hull it detonates.
+  // The Thrall's fists: blows on soldiers and walls; on an armored hull it detonates. A Bombard's only punch.
   if (infantryGun?.id === "fists") {
-    if (target && thrallDetonatesOn(target)) {
+    if (target && e.type === "thrall" && thrallDetonatesOn(target)) {
       detonateThrall(state, e);
       return;
     }
@@ -4160,7 +4161,7 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
   if (e.type === "pyro" && e.clip <= 0) return undefined;
   // The knife reaches an arm; the man carrying it looks further and runs the target down.
   const hunt = isJuggernaut(e.type) ? JUGGERNAUT_HUNT_TILES : SIMUNIT_HUNT_TILES;
-  const range = meleeOf(e.type) ? Math.max(weaponRangeWorld(state, e), hunt * state.tileSize) : weaponRangeWorld(state, e);
+  const range = meleeNow(e) ? Math.max(weaponRangeWorld(state, e), hunt * state.tileSize) : weaponRangeWorld(state, e);
   // The CIWS takes units only, and a plane in the air before anything on the ground.
   const radar = radarLaidOf(e.type);
   let best: Entity | undefined;
@@ -4217,7 +4218,7 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
       continue;
     }
     if (d > (isAirborne(o) ? airRange2 : bestD)) continue;
-    if (launcherOnlyOf(e.type) && !inLauncherBand(state, e, o.x, o.y)) continue;
+    if (launcherOnlyNow(e) && !inLauncherBand(state, e, o.x, o.y)) continue;
     if (e.type === "artillery" && d < (ARTILLERY_MIN_RANGE_TILES * state.tileSize) ** 2) continue;
     if (isBattleship(e.type) && d < (BATTLESHIP_MIN_RANGE_TILES * state.tileSize) ** 2) continue;
     if (isHiveArk(e.type) && d < (ARK_MIN_RANGE_TILES * state.tileSize) ** 2) continue;

@@ -16,6 +16,7 @@ import {
   isInfantryType,
   isSupplyCarrier,
   launcherOnlyOf,
+  rocketsNow,
   rocketAmmoOf,
   SHELL_TYPES,
   SUPPLY_CARGO,
@@ -100,7 +101,8 @@ export function ammoBarRatios(
   if (heavyCap > 0 && e.heavy != null) primary.push(fraction(e.heavy, heavyCap));
 
   const pods = rocketAmmoOf(e.type);
-  if (pods > 0 && e.rockets != null) {
+  // A Bombard that dropped its cannon has no rack left to show.
+  if (pods > 0 && e.rockets != null && rocketsNow(e)) {
     (launcherOnlyOf(e.type) ? primary : secondary).push(fraction(e.rockets, pods));
   }
 

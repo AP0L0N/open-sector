@@ -624,8 +624,8 @@ input[type="range"] { padding: 0; }
 .prod-job[data-type="ravager"] {
   background-image: url("../assets/units/ravager-cameo.png");
 }
-.prod-job[data-type="spitter"] {
-  background-image: url("../assets/units/spitter-cameo.png");
+.prod-job[data-type="bombard"] {
+  background-image: url("../assets/units/bombard-cameo.png");
 }
 .prod-job[data-type="weaver"] {
   background-image: url("../assets/units/weaver-cameo.png");
@@ -969,7 +969,7 @@ input[type="range"] { padding: 0; }
 #train-xenodrone,
 #train-thrall,
 #train-lancer,
-#train-spitter,
+#train-bombard,
 #train-weaver,
 #train-shade,
 #train-stalker,
@@ -1155,10 +1155,10 @@ input[type="range"] { padding: 0; }
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/ravager-cameo.png");
 }
-#train-spitter {
+#train-bombard {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
-    url("../assets/units/spitter-cameo.png");
+    url("../assets/units/bombard-cameo.png");
 }
 #train-weaver {
   background-image:
@@ -1767,7 +1767,7 @@ input[type="range"] { padding: 0; }
 .config-type[data-type="lancer"] { background-image: url("../assets/units/lancer-cameo.png"); }
 .config-type[data-type="stalker"] { background-image: url("../assets/units/stalker-cameo.png"); }
 .config-type[data-type="ravager"] { background-image: url("../assets/units/ravager-cameo.png"); }
-.config-type[data-type="spitter"] { background-image: url("../assets/units/spitter-cameo.png"); }
+.config-type[data-type="bombard"] { background-image: url("../assets/units/bombard-cameo.png"); }
 .config-type[data-type="weaver"] { background-image: url("../assets/units/weaver-cameo.png"); }
 .config-type[data-type="shade"] { background-image: url("../assets/units/shade-cameo.png"); }
 .config-type[data-type="siphon"] { background-image: url("../assets/units/siphon-cameo.png"); }

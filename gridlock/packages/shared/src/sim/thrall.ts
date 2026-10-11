@@ -5,6 +5,7 @@
  */
 
 import {
+  BOMBARD_FIST_HULL_MUL,
   PTRD_LIGHT_FRONT,
   THRALL_BLAST_HEAVY,
   THRALL_BLAST_SOFT,
@@ -47,7 +48,8 @@ export function thrallDetonatesOn(target: Entity): boolean {
 export function punch(state: MatchState, e: Entity, target: Entity): void {
   const rand = () => nextRand(state);
   const soldier = target.kind === "unit" && !target.wreck && isInfantryType(target.type);
-  const mul = target.kind === "building" ? THRALL_BUILDING_MUL : 1;
+  // A Bombard's fists on a hull: it does not detonate like a Thrall, so the plate takes only a little.
+  const mul = target.kind === "building" ? THRALL_BUILDING_MUL : thrallDetonatesOn(target) ? BOMBARD_FIST_HULL_MUL : 1;
   const dmg = factionDamage(e.type, Math.round(THRALL_PUNCH_DAMAGE * mul * (0.85 + 0.3 * rand())));
   let kind: ImpactKind = "hit";
   if (dmg > 0 && domeShelters(state, e.ownerId, e.x, e.y, target, dmg)) {

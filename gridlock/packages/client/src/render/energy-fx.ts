@@ -93,10 +93,13 @@ const SMALL_ORB_CALIBER = 30;
 
 /** A Scourge's plasma bolt against the usual orb: the big one. */
 const SCOURGE_BOLT_SCALE = 1.8;
+/** The Bombard's one big plasma round. */
+const BOMBARD_ROUND_SCALE = 1.6;
 
 /** Size of a plasma orb against the usual one: small for a light anti-air ball, big for a Scourge's bolt. */
 export function plasmaOrbScale(caliber: number, shooterType?: string): number {
   if (shooterType === "scourge") return SCOURGE_BOLT_SCALE;
+  if (shooterType === "bombard") return BOMBARD_ROUND_SCALE;
   return caliber <= SMALL_ORB_CALIBER ? 0.55 : 1;
 }
 

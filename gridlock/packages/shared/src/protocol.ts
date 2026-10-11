@@ -19,7 +19,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 152;
+export const PROTOCOL_VERSION = 153;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -161,7 +161,7 @@ export interface EntityView {
   cloaked?: true;
   /** Stalker, own side only: cloak charge, 0–1. 1 is ready; 0 while cloaked. */
   cloakCharge?: number;
-  /** Juggernaut has thrown its hammer and fights with its fists. */
+  /** Juggernaut has thrown its hammer, or a Bombard dropped its cannon: it fights with its fists. */
   fists?: true;
   /** Juggernaut charging something down. */
   ram?: true;

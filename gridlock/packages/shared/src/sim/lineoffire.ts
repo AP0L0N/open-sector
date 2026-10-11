@@ -9,7 +9,7 @@ import {
   catalog,
   coverHeightOf,
   infantryGunFor,
-  launcherOnlyOf,
+  launcherOnlyNow,
   isConcreteLine,
   isLowFieldWork,
 } from "../catalog.js";
@@ -85,7 +85,7 @@ export function allyInLine(
  * firing down from the air do not need a clear line.
  */
 export function needsClearLine(e: Entity, target: Entity): boolean {
-  if (e.type === "artillery" || e.type === "mortarman" || launcherOnlyOf(e.type)) return false;
+  if (e.type === "artillery" || e.type === "mortarman" || launcherOnlyNow(e)) return false;
   const gun = infantryGunFor(e)?.id;
   if (gun === "mortar" || gun === "flamer") return false;
   if (jetAloft(e) || isAirborne(target)) return false;

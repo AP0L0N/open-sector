@@ -28,7 +28,7 @@ import {
   AIRCRAFT_FLYING_SIGHT_BONUS,
   HORTEN_FLYING_SIGHT_BONUS,
   isReconType,
-  meleeOf,
+  meleeNow,
   TANK_GUN_CLIMB,
   TANK_GUN_ELEV_DEG,
   GROVE_SIGHT_BUDGET,
@@ -41,7 +41,7 @@ import {
   isInfantryType,
   isNavalType,
   radarLaidOf,
-  launcherOnlyOf,
+  launcherOnlyNow,
   rocketRackFor,
   rocketsOf,
   LOW_POWER_SIGHT_MUL,
@@ -314,7 +314,7 @@ export function weaponRangeWorld(state: MatchState, e: Entity): number {
   const base = gun?.rangeTiles ?? (rocketsOf(e.type) ? rocketRackFor(e).rangeTiles : undefined) ?? catalog(e.type).rangeTiles;
   if (base <= 0) return 0;
   // A blade reaches an arm, on a hill or off it.
-  if (meleeOf(e.type)) return base * state.tileSize;
+  if (meleeNow(e)) return base * state.tileSize;
   let tiles = rangeTilesOf(e.type, entityHeight(state, e), base);
   if (inHouse && !host.garrisonHide) tiles += garrisonReachBonusOf(host.type);
   return tiles * state.tileSize * longReachMul(e);
@@ -348,7 +348,7 @@ export function canAimWeapon(
 ): boolean {
   if (isInfantryType(shooter.type) || radarLaidOf(shooter.type) || catalog(shooter.type).rangeTiles <= 0) return true;
   // A laid launcher lobs its rockets; the gun-elevation limit is a direct-fire rule.
-  if (launcherOnlyOf(shooter.type) || shooter.type === "artillery") return true;
+  if (launcherOnlyNow(shooter) || shooter.type === "artillery") return true;
   // A boat's gun rides low on the water and is built to rake the bank: no elevation limit.
   if (isNavalType(shooter.type)) return true;
   const fromH = entityHeight(state, shooter);

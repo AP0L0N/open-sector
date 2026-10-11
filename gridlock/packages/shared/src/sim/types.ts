@@ -624,11 +624,15 @@ export interface Entity {
   cloaked?: true;
   /** Weaver (sim/weaver.ts): the tick of its next mend pulse. */
   mendNext?: number;
+  /** Weaver: the friend a force-attack put its own shield on. Unset: the shield is on the Weaver. */
+  weaveFor?: number;
+  /** Weaver: its shield was drained; it casts no new one until its cell is full again. */
+  weaveSpent?: true;
   /** Assembler (sim/assembler.ts): the tick the Thrall in its bay is finished. */
   assemblyDone?: number;
   /** A Thrall an Assembler built: its id. */
   assembledBy?: number;
-  /** Juggernaut has thrown its hammer: it fights with its fists from now on. */
+  /** Juggernaut has thrown its hammer, or a Bombard dropped its cannon (sim/bombard.ts): fists from now on. */
   fists?: true;
   /**
    * Juggernaut charging (sim/juggernaut.ts): what it rams, the tick it gives up, and the ids it
@@ -907,6 +911,10 @@ export interface EnergyShield {
   energyStruck?: true;
   /** A Siphon's or Hive Ark's dome: stops only what comes in from outside, and follows its unit. */
   dome?: true;
+  /** A Weaver's own dome (sim/weaver.ts): its points are the Weaver's cell, synced each tick. */
+  weave?: true;
+  /** A Weaver's dome: its points at the last sync, so the hits taken since drain the cell. */
+  synced?: number;
 }
 
 export interface SmokeCloud {

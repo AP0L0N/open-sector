@@ -881,8 +881,9 @@ function shieldViews(state: MatchState, youPlayerId: string, vis: Uint8Array): E
       hp: Math.ceil(w.hp),
       hpMax: w.hpMax,
       hit: w.hitTick != null && state.tick - w.hitTick < SHIELD_FLASH_TICKS ? true : undefined,
-      by: w.forId != null ? w.fromId : undefined,
-      ...(w.dome ? { dome: true as const, fromId: w.fromId } : {}),
+      by: w.forId != null && !w.dome ? w.fromId : undefined,
+      // A dome rides on its holder: a Weaver's may sit on the friend it was put on.
+      ...(w.dome ? { dome: true as const, fromId: w.forId ?? w.fromId } : {}),
     });
   }
   return out.length > 0 ? out : undefined;

@@ -577,7 +577,7 @@ export type EntityType =
   | "xenodrone"
   | "thrall"
   | "lancer"
-  | "spitter"
+  | "bombard"
   | "weaver"
   | "shade"
   | "stalker"
@@ -875,7 +875,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "shed",
   "boiler",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "simunit2" | "xenodrone" | "thrall" | "lancer" | "spitter" | "weaver" | "shade" | "stalker" | "ravager" | "behemoth" | "juggernaut" | "siphon" | "assembler" | "mawcaster" | "leech" | "lurker" | "hiveark" | "wasp" | "scourge" | "gnat" | "overseer" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "horten" | "droneop" | "jumpjet" | "spawnling" | "gobber" | "quillback" | "bloater" | "longspine" | "mender" | "skitter" | "goretusk" | "mantis" | "bileworm" | "sporemaw" | "matriarch" | "driftjelly" | "spineback" | "abyssray" | "leviathan" | "broodbarge" | "moth" | "razorwing" | "gasbag" | "drifter" | "harpy";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "simunit2" | "xenodrone" | "thrall" | "lancer" | "bombard" | "weaver" | "shade" | "stalker" | "ravager" | "behemoth" | "juggernaut" | "siphon" | "assembler" | "mawcaster" | "leech" | "lurker" | "hiveark" | "wasp" | "scourge" | "gnat" | "overseer" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "horten" | "droneop" | "jumpjet" | "spawnling" | "gobber" | "quillback" | "bloater" | "longspine" | "mender" | "skitter" | "goretusk" | "mantis" | "bileworm" | "sporemaw" | "matriarch" | "driftjelly" | "spineback" | "abyssray" | "leviathan" | "broodbarge" | "moth" | "razorwing" | "gasbag" | "drifter" | "harpy";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -1000,7 +1000,7 @@ export const BUILDING_FACINGS = 24;
 export function isRotatableBuilding(type: string): type is BuildingType {
   return (ROTATABLE_BUILDINGS as readonly string[]).includes(type);
 }
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "simunit2", "xenodrone", "thrall", "lancer", "spitter", "weaver", "shade", "stalker", "ravager", "behemoth", "juggernaut", "siphon", "assembler", "mawcaster", "leech", "lurker", "hiveark", "wasp", "scourge", "gnat", "overseer", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "horten", "droneop", "jumpjet", "spawnling", "gobber", "quillback", "bloater", "longspine", "mender", "skitter", "goretusk", "mantis", "bileworm", "sporemaw", "matriarch", "driftjelly", "spineback", "abyssray", "leviathan", "broodbarge", "moth", "razorwing", "gasbag", "drifter", "harpy"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "simunit2", "xenodrone", "thrall", "lancer", "bombard", "weaver", "shade", "stalker", "ravager", "behemoth", "juggernaut", "siphon", "assembler", "mawcaster", "leech", "lurker", "hiveark", "wasp", "scourge", "gnat", "overseer", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "horten", "droneop", "jumpjet", "spawnling", "gobber", "quillback", "bloater", "longspine", "mender", "skitter", "goretusk", "mantis", "bileworm", "sporemaw", "matriarch", "driftjelly", "spineback", "abyssray", "leviathan", "broodbarge", "moth", "razorwing", "gasbag", "drifter", "harpy"];
 
 /**
  * A player fields only one of each of these at a time. While it lives, another
@@ -1031,7 +1031,7 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly Bu
   xenodrone: "conversion",
   thrall: "conversion",
   lancer: "conversion",
-  spitter: "conversion",
+  bombard: "conversion",
   weaver: "conversion",
   shade: ["conversion", "nexus"],
   behemoth: "nexus",
@@ -1092,7 +1092,7 @@ export const XENO_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([
   "xenodrone",
   "thrall",
   "lancer",
-  "spitter",
+  "bombard",
   "weaver",
   "shade",
   "stalker",
@@ -3902,6 +3902,16 @@ export const WEAVER_PULSE_SECONDS = 1;
 export const WEAVER_SHIELD_REACH_TILES = t(7);
 export const WEAVER_SHIELD_GAP_SECONDS = 0.5;
 export const WEAVER_CELL: PlasmaCellDef = { shots: 4, rechargeSeconds: 5 };
+/**
+ * The Weaver's own energy shield (sim/weaver.ts): a small dome it keeps up over itself, or over
+ * the friend it is force-attacked onto, for free. It holds WEAVER_DOME_POINTS_PER_SHOT for each
+ * shot in the Weaver's cell: every hit it absorbs drains the cell by its damage, and the walls the
+ * Weaver throws for friends draw on the same cell. Drained to nothing the dome is gone, and the
+ * cell must fill all the way back before the Weaver casts it again.
+ */
+export const WEAVER_DOME_POINTS_PER_SHOT = 40;
+/** World px the dome stands out from the body it covers. */
+export const WEAVER_DOME_PAD_PX = 5;
 export const WEAVER_MEND_CYBORG = 5;
 export const WEAVER_MEND_HEAVY = 4;
 
@@ -3988,32 +3998,36 @@ export const MAWCASTER_AIR_BALL: RocketRackDef = {
 export const MAWCASTER_CELL: PlasmaCellDef = { shots: 24, rechargeSeconds: 2 };
 
 /**
- * Spitter: the Mawcaster on two legs. The throat sac lobs one plasma ball at a time on a high
- * arc over its own line, from long reach, and must stand and face the target to spit. It will
- * not spit inside SPITTER_MIN_RANGE_TILES. One ball, then the sac refills.
+ * Bombard (sim/bombard.ts): a taken body hauling a long plasma cannon, the Mawcaster's maw
+ * for one soldier. It must stand and face the target, then throws one big plasma round on an
+ * arc from long reach and waits for the cannon to charge again. It cannot lay the cannon on
+ * anything inside BOMBARD_MIN_RANGE_TILES. Attacked from inside that ring, it drops the cannon
+ * for good and fights on with its fists (Entity.fists), at the Thrall's reach and pace of blows.
  */
-export const SPITTER_RANGE_TILES = t(15);
-export const SPITTER_MIN_RANGE_TILES = t(3);
-export const SPITTER_BALL: RocketRackDef = {
+export const BOMBARD_RANGE_TILES = t(19);
+export const BOMBARD_MIN_RANGE_TILES = t(5);
+export const BOMBARD_ROUND: RocketRackDef = {
   salvo: 1,
   interval: 0,
-  reload: 4,
-  scatterNearTiles: t(0.4),
-  scatterFarTiles: t(2),
-  splashTiles: t(1.1),
-  speed: t(11) * TILE_SIZE,
-  podLift: 3,
-  damage: 30,
-  armorDamage: 6,
+  reload: 7,
+  scatterNearTiles: t(0.3),
+  scatterFarTiles: t(1.6),
+  splashTiles: t(1.7),
+  speed: t(12) * TILE_SIZE,
+  podLift: 6,
+  damage: 80,
+  armorDamage: 24,
   airMul: 0,
-  penetration: 20,
-  caliber: 60,
+  penetration: 45,
+  caliber: 150,
   antiAir: false,
-  apexNear: 20,
-  apexFar: 40,
-  minRangeTiles: SPITTER_MIN_RANGE_TILES,
+  apexNear: 24,
+  apexFar: 48,
+  minRangeTiles: BOMBARD_MIN_RANGE_TILES,
   laid: true,
 };
+/** The Bombard's fists on an armored hull: the share of a blow that tells on plate. It never detonates. */
+export const BOMBARD_FIST_HULL_MUL = 0.25;
 
 export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
   rifle: RIFLE,
@@ -6362,23 +6376,23 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: LAUNCHER.spreadDeg,
     blurb: `Anti-armor cyborg. A plasma lance rides its shoulder and throws a burning bolt like a rocket: loose at full reach, tighter up close, a burst among soldiers that dents a tank. The capacitor on its back recharges the lance between shots. Heavy plating keeps it standing where a Rocketer would fall. In a fight it raises the Drone's small energy wall in front of it (${INFANTRY_SHIELD.hp} points). No stance orders. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
   },
-  /** Xenite cyborg: the Mawcaster on two legs, lobbing one plasma ball at a time. */
-  spitter: {
-    type: "spitter",
+  /** Xenite cyborg: a long plasma cannon for one big round from far off; dropped for its fists when closed with. */
+  bombard: {
+    type: "bombard",
     kind: "unit",
-    name: "Spitter",
+    name: "Bombard",
     letter: "i",
     cost: 0,
-    energy: 35,
-    buildSeconds: 11,
-    hp: 170,
+    energy: 45,
+    buildSeconds: 13,
+    hp: 200,
     power: 0,
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: paced(1.7 * INFANTRY_PACE),
-    turnDegPerSec: 1100,
-    rangeTiles: SPITTER_RANGE_TILES,
+    moveTilesPerSec: paced(1.5 * INFANTRY_PACE),
+    turnDegPerSec: 1000,
+    rangeTiles: BOMBARD_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
     cooldown: 0,
     damage: 0,
@@ -6386,8 +6400,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     ...UNARMED,
     rockets: true,
     rocketAmmo: 5,
-    rocketRack: SPITTER_BALL,
-    blurb: `A taken body with a swollen throat sac: the Mawcaster on two legs. It stands, rears back, and lobs one plasma ball at a time on a high arc over your own line, from long reach, then waits ${SPITTER_BALL.reload} seconds while the sac refills. Force attack sends the ball anywhere in that reach, seen or not. It will not spit inside ${SPITTER_MIN_RANGE_TILES / TILE_SUBDIV} cells, and must stop and face the target first. The ball scatters at full reach and bursts among soldiers; armor only dents. No stance orders. Near death its legs are torn off and it crawls on, still spitting. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
+    rocketRack: BOMBARD_ROUND,
+    blurb: `A taken body on a heavy frame, hauling a long plasma cannon in both arms. It stands, braces, and throws one big plasma round on an arc from long reach (${BOMBARD_RANGE_TILES / TILE_SUBDIV} cells), then waits ${BOMBARD_ROUND.reload} seconds while the cannon charges. The round bursts wide among soldiers and tells on armor too. Force attack sends it anywhere in that reach, seen or not. It cannot lay the cannon on anything inside ${BOMBARD_MIN_RANGE_TILES / TILE_SUBDIV} cells and must stop and face the target first. Attacked from inside that ring, it drops the cannon where it stands and fights on with two armoured fists like a Thrall's; the cannon is lost for good and it never picks it up again. Its fists only dent a hull; it does not detonate. No stance orders. Near death its legs are torn off and it crawls on, still fighting. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
   },
   /** Xenite cyborg: unarmed support, shields friends under fire and mends hive units. */
   weaver: {
@@ -6412,7 +6426,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     plasmaCell: WEAVER_CELL,
-    blurb: `Support. No weapon. Four needle arms and a spindle of nanites on its back. When a unit of your side is under fire within ${WEAVER_SHIELD_REACH_TILES / TILE_SUBDIV} cells, the Weaver itself too, it throws a small energy wall in front of it, facing the fire: one soldier wide and ${WEAVER_SHIELD.hp} points strong, standing ${WEAVER_SHIELD.seconds} seconds unless shot down. Enemy rounds stop on it and enemies cannot walk through; your side shoots and walks through. Each wall takes a quarter of its energy cell, which regrows a quarter every ${WEAVER_CELL.rechargeSeconds} seconds. It does not stop shells lobbed from above. It also sends a mend every second into each hive unit of yours within ${WEAVER_REACH_TILES / TILE_SUBDIV} cells: ${WEAVER_MEND_CYBORG} HP to a cyborg, ${WEAVER_MEND_HEAVY} to a heavy assimilator or anything else the hive fields. Two Weavers on one unit mend it once. It cannot mend itself; another Weaver can. Torn legs grow back once the body is whole enough. No stance orders. It hears the hive through your Conversion Chamber's spire, and shields and mends nothing while dark.`,
+    blurb: `Support. No weapon. Four needle arms and a spindle of nanites on its back. When a unit of your side is under fire within ${WEAVER_SHIELD_REACH_TILES / TILE_SUBDIV} cells, the Weaver itself too, it throws a small energy wall in front of it, facing the fire: one soldier wide and ${WEAVER_SHIELD.hp} points strong, standing ${WEAVER_SHIELD.seconds} seconds unless shot down. Enemy rounds stop on it and enemies cannot walk through; your side shoots and walks through. Each wall takes a quarter of its energy cell, which regrows a quarter every ${WEAVER_CELL.rechargeSeconds} seconds. It does not stop shells lobbed from above. Its own energy shield it keeps up for free: a small dome over itself that stops every round, shell, and blast that comes in, while the Weaver walks and works inside. Force attack a unit of your side and the Weaver puts that dome over the friend instead, walking after it to keep it within ${WEAVER_SHIELD_REACH_TILES / TILE_SUBDIV} cells; force attack the Weaver, or Stop, to take it back. The dome's points are the energy cell (${WEAVER_DOME_POINTS_PER_SHOT} a quarter): each hit it absorbs drains the cell, and so does each wall. Drained, the dome is gone until the cell is full again. It also sends a mend every second into each hive unit of yours within ${WEAVER_REACH_TILES / TILE_SUBDIV} cells: ${WEAVER_MEND_CYBORG} HP to a cyborg, ${WEAVER_MEND_HEAVY} to a heavy assimilator or anything else the hive fields. Two Weavers on one unit mend it once. It cannot mend itself; another Weaver can. Torn legs grow back once the body is whole enough. No stance orders. It hears the hive through your Conversion Chamber's spire, and shields and mends nothing while dark.`,
   },
   /** Xenite cyborg: cloaked spine sniper. */
   shade: {
@@ -6716,7 +6730,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `A low chitin dome ringed with glowing conversion pods, under a synapse spire. Taken bodies go into the pods and walk out as the hive's foot soldiers: the Drone, the Thrall, the Lancer, the Spitter, the Weaver, the Sim Unit II, and, with a Neural Nexus standing, the Shade. They hear the hive through its spire: if it falls, ${CYBORG_SHUTDOWN_SECONDS} seconds later every one of them on the field goes dark: still yours, but dead still and silent. Raise a new Chamber and they wake up, unless an enemy Cyborg Commander took them first.`,
+    blurb: `A low chitin dome ringed with glowing conversion pods, under a synapse spire. Taken bodies go into the pods and walk out as the hive's foot soldiers: the Drone, the Thrall, the Lancer, the Bombard, the Weaver, the Sim Unit II, and, with a Neural Nexus standing, the Shade. They hear the hive through its spire: if it falls, ${CYBORG_SHUTDOWN_SECONDS} seconds later every one of them on the field goes dark: still yours, but dead still and silent. Raise a new Chamber and they wake up, unless an enemy Cyborg Commander took them first.`,
   },
   /** Xenite vehicle factory. */
   forge: {
@@ -9187,7 +9201,7 @@ export function armorLabel(type: EntityType): string | null {
   return `F${d.armorFront} / S${d.armorSide} / R${d.armorRear}`;
 }
 
-const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "cyborg", "cyborgcommander", "simunit2", "xenodrone", "thrall", "lancer", "spitter", "weaver", "shade", "droneop", "jumpjet", "spawnling", "gobber", "quillback", "bloater", "longspine", "mender"];
+const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "cyborg", "cyborgcommander", "simunit2", "xenodrone", "thrall", "lancer", "bombard", "weaver", "shade", "droneop", "jumpjet", "spawnling", "gobber", "quillback", "bloater", "longspine", "mender"];
 
 /** Soldier with a jet pack: the Jump Jet. */
 export function isJumpJetType(type: EntityType): boolean {
@@ -9292,7 +9306,7 @@ export function isInfantryType(type: EntityType): boolean {
  * no random limb hits, legs tied to HP.
  */
 export function isCyborg(type: EntityType): boolean {
-  return type === "cyborg" || type === "cyborgcommander" || isSimUnit(type) || type === "xenodrone" || type === "thrall" || type === "lancer" || type === "spitter" || type === "weaver" || type === "shade";
+  return type === "cyborg" || type === "cyborgcommander" || isSimUnit(type) || type === "xenodrone" || type === "thrall" || type === "lancer" || type === "bombard" || type === "weaver" || type === "shade";
 }
 
 /**
@@ -9321,6 +9335,21 @@ export function canPowerDown(type: EntityType): boolean {
 /** Fights at arm's reach, no round in the air: the Sim Unit II's daggers, the Thrall's fists, the Juggernaut's hammer and fists, the Lurker's jaws. */
 export function meleeOf(type: EntityType): boolean {
   return isSimUnit(type) || type === "thrall" || type === "spawnling" || isJuggernaut(type) || biteOf(type);
+}
+
+/** Carries a cannon it drops for its fists when an enemy closes in (sim/bombard.ts): the Bombard. */
+export function dropsCannon(type: EntityType): boolean {
+  return type === "bombard";
+}
+
+/** Fights at arm's reach now: a melee type, or a Bombard that has dropped its cannon. */
+export function meleeNow(e: { type: EntityType; fists?: true }): boolean {
+  return meleeOf(e.type) || (!!e.fists && dropsCannon(e.type));
+}
+
+/** Its rocket rack or cannon still rides on it: a rocket type, less a Bombard that dropped its cannon. */
+export function rocketsNow(e: { type: EntityType; fists?: true }): boolean {
+  return rocketsOf(e.type) && !(e.fists && dropsCannon(e.type));
 }
 
 /** The lighter hulls, guns, and trucks the Apocalypse rolls flat. */
@@ -9440,8 +9469,11 @@ export function infantryGunFor(e: {
   crits?: readonly Crit[];
   weapon?: InfantryWeaponId | null;
   mountedGun?: number | null;
+  fists?: true;
 }): InfantryGun | null {
   if (!isInfantryType(e.type)) return null;
+  // A Bombard that dropped its cannon has only its fists left, whatever else is hurt.
+  if (e.fists && dropsCannon(e.type)) return FISTS;
   // Manning an LST deck tub: the mount's gun, whatever he carries and however he is hurt.
   if (e.mountedGun != null) return DECK_MG;
   if (hasCrit({ crits: e.crits ?? [] }, "arm")) {
@@ -9972,6 +10004,11 @@ export function rocketRackFor(e: { type: EntityType; airMode?: boolean }): Rocke
 /** Rockets are this type's only weapon, on a frame that must bear (the Nebelwerfer). */
 export function launcherOnlyOf(type: EntityType): boolean {
   return rocketsOf(type) && rocketRackOf(type).laid === true;
+}
+
+/** launcherOnlyOf for this unit now: a Bombard that dropped its cannon fights with its fists instead. */
+export function launcherOnlyNow(e: { type: EntityType; fists?: true }): boolean {
+  return launcherOnlyOf(e.type) && rocketsNow(e);
 }
 
 /** Rockets in a full rack. 0 on every type without pods. */

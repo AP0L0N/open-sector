@@ -542,11 +542,18 @@ import {
   SHADE_DIE_SPRITE,
   SHADE_FIRE_SPRITE,
   SHADE_SPRITE,
-  SPITTER_CRAWL_FIRE_SPRITE,
-  SPITTER_CRAWL_SPRITE,
-  SPITTER_DIE_SPRITE,
-  SPITTER_FIRE_SPRITE,
-  SPITTER_SPRITE,
+  BOMBARD_CRAWL_FIRE_SPRITE,
+  BOMBARD_CRAWL_SPRITE,
+  BOMBARD_DIE_SPRITE,
+  BOMBARD_FIRE_SPRITE,
+  BOMBARD_SPRITE,
+  BOMBARD_CANNON_SPRITE,
+  BOMBARD_FISTS_CRAWL_FIRE_SPRITE,
+  BOMBARD_FISTS_CRAWL_SPRITE,
+  BOMBARD_FISTS_DIE_SPRITE,
+  BOMBARD_FISTS_FIRE_SPRITE,
+  BOMBARD_FISTS_SPRITE,
+  BOMBARD_FISTS_SWIM_SPRITE,
   WEAVER_CRAWL_FIRE_SPRITE,
   WEAVER_CRAWL_SPRITE,
   WEAVER_DIE_SPRITE,
@@ -559,7 +566,7 @@ import {
 const HIVE_SHEETS: Partial<Record<string, { stand: UnitSpriteDef; fire: UnitSpriteDef; crawl: UnitSpriteDef; crawlFire: UnitSpriteDef; die: UnitSpriteDef }>> = {
   xenodrone: { stand: XENODRONE_SPRITE, fire: XENODRONE_FIRE_SPRITE, crawl: XENODRONE_CRAWL_SPRITE, crawlFire: XENODRONE_CRAWL_FIRE_SPRITE, die: XENODRONE_DIE_SPRITE },
   lancer: { stand: LANCER_SPRITE, fire: LANCER_FIRE_SPRITE, crawl: LANCER_CRAWL_SPRITE, crawlFire: LANCER_CRAWL_FIRE_SPRITE, die: LANCER_DIE_SPRITE },
-  spitter: { stand: SPITTER_SPRITE, fire: SPITTER_FIRE_SPRITE, crawl: SPITTER_CRAWL_SPRITE, crawlFire: SPITTER_CRAWL_FIRE_SPRITE, die: SPITTER_DIE_SPRITE },
+  bombard: { stand: BOMBARD_SPRITE, fire: BOMBARD_FIRE_SPRITE, crawl: BOMBARD_CRAWL_SPRITE, crawlFire: BOMBARD_CRAWL_FIRE_SPRITE, die: BOMBARD_DIE_SPRITE },
   // The Weaver's "fire" sheet is its mending pose.
   weaver: { stand: WEAVER_SPRITE, fire: WEAVER_FIRE_SPRITE, crawl: WEAVER_CRAWL_SPRITE, crawlFire: WEAVER_CRAWL_FIRE_SPRITE, die: WEAVER_DIE_SPRITE },
   shade: { stand: SHADE_SPRITE, fire: SHADE_FIRE_SPRITE, crawl: SHADE_CRAWL_SPRITE, crawlFire: SHADE_CRAWL_FIRE_SPRITE, die: SHADE_DIE_SPRITE },
@@ -576,6 +583,11 @@ import { lineFrame, lineProfile, lineShapes, type LineShape } from "./line-bend.
 const BRIDGE_DRAW_LAYER = -1.5;
 /** Laser Fence beams: over corpses, under everything that stands, so a unit in the beam covers it. */
 const FENCE_BEAM_DRAW_LAYER = 0.75;
+/** How long a Bombard's dropped cannon lies on the ground, and the last stretch of that it fades over. */
+const DROPPED_CANNON_MS = 120_000;
+const DROPPED_CANNON_FADE_MS = 8_000;
+/** Most dropped cannons kept on the ground at once; the oldest goes first. */
+const DROPPED_CANNON_CAP = 40;
 /** Screen px above a Weaver's feet where its nanite spindle sits: the thread to a wall starts there. */
 const WEAVER_SPINDLE_LIFT_PX = 12;
 
@@ -828,7 +840,7 @@ const EXTRUDE: Record<EntityType, number> = {
   xenodrone: 24,
   thrall: 27,
   lancer: 27,
-  spitter: 24,
+  bombard: 24,
   weaver: 28,
   shade: 26,
   stalker: 28,
@@ -1295,6 +1307,8 @@ export class MapView {
   private crushBumps = new Map<number, number>();
   /** When each Thrall's current stagger began (performance.now()), for its hit sheet. */
   private staggerAt = new Map<number, number>();
+  /** Cannons Bombards dropped for their fists: where, which way it fell, and when. Client-side only. */
+  private droppedCannons: { x: number; y: number; facing: number; at: number }[] = [];
   /** Each vaulting Thrall's lift over the obstacle, screen px, and when it was last eased. */
   private vaultLift = new Map<number, { h: number; at: number }>();
   private crushBumpSeen = new Set<number>();
@@ -1690,6 +1704,14 @@ export class MapView {
       } else this.beamSeen.delete(e.id);
       this.lastHp.set(e.id, e.hp);
       if (e.stagger && !this.prevById.get(e.id)?.stagger) this.staggerAt.set(e.id, now);
+      // A Bombard just dropped its cannon: it lies where it fell.
+      if (e.type === "bombard" && e.fists && !e.wreck) {
+        const was = this.prevById.get(e.id);
+        if (was && !was.fists) {
+          this.droppedCannons.push({ x: e.x, y: e.y, facing: e.facing, at: now });
+          if (this.droppedCannons.length > DROPPED_CANNON_CAP) this.droppedCannons.shift();
+        }
+      }
       const scoutHp = e.scout?.hp;
       if (scoutHp !== undefined) {
         const prevScout = this.lastScoutHp.get(e.id);
@@ -3739,15 +3761,17 @@ export class MapView {
 
   private commitForceAttack(px: number, py: number): void {
     const you = this.curr.youPlayerId;
+    // A building drawn from memory in the fog is still a target in reach.
+    const hit = this.hit(px, py) ?? this.hitGhost(px, py);
+    // A Weaver force-attacked onto a unit of your side puts its own shield on it.
+    const shieldOn = !!hit && hit.kind === "unit" && hit.hp > 0 && !hit.wreck && ownerAllied(this.curr, hit.ownerId);
     const ids = this.ownForceIds().filter((id) => {
       const ent = this.currById.get(id);
       // A transport has no gun: its force-attack is the drop.
-      return !!ent && (fires(ent.type) || isTransportType(ent.type) || this.forceHost(ent, you));
+      return !!ent && (fires(ent.type) || isTransportType(ent.type) || this.forceHost(ent, you) || (shieldOn && ent.type === "weaver"));
     });
     if (!this.keepModeForQueue()) this.setForceAttackMode(false);
     if (ids.length === 0) return;
-    // A building drawn from memory in the fog is still a target in reach.
-    const hit = this.hit(px, py) ?? this.hitGhost(px, py);
     if (hit && hit.hp > 0 && ids.some((id) => id !== hit.id)) {
       this.command({ type: "cmd.forceattack", ids, x: hit.x, y: hit.y, targetId: hit.id });
       return;
@@ -4965,6 +4989,7 @@ export class MapView {
     this.collectMuzzleSmoke(items);
     this.collectFires(items, w, h);
     this.collectShields(items, w, h);
+    this.collectDroppedCannons(items, w, h);
     items.push({ layer: FENCE_BEAM_DRAW_LAYER, z: 0, run: () => this.drawLaserFences(now) });
     this.collectNukeScorch(items);
     this.collectAirdrops(items, w, h);
@@ -8013,6 +8038,21 @@ export class MapView {
       if (sheet === "fire") return THRALL_FIRE_SPRITE;
       return THRALL_SPRITE;
     }
+    // A Bombard that dropped its cannon fights in the Thrall's poses, the drum still on its back.
+    if (e.type === "bombard" && e.fists) {
+      const sheet = cyborgSheet({
+        swimming: e.swimming,
+        wreck: e.wreck,
+        stance: e.stance,
+        shotAgeMs: this.infantryShotAge(e.id),
+      });
+      if (sheet === "die") return BOMBARD_FISTS_DIE_SPRITE;
+      if (sheet === "fire") return BOMBARD_FISTS_FIRE_SPRITE;
+      if (sheet === "crawl-fire") return BOMBARD_FISTS_CRAWL_FIRE_SPRITE;
+      if (sheet === "crawl") return BOMBARD_FISTS_CRAWL_SPRITE;
+      if (sheet === "swim") return BOMBARD_FISTS_SWIM_SPRITE;
+      return BOMBARD_FISTS_SPRITE;
+    }
     const hive = HIVE_SHEETS[e.type];
     if (hive) {
       const sheet = cyborgSheet({
@@ -8512,7 +8552,7 @@ export class MapView {
     // A hulk has its own burnt-out sheet on the same cell and contact; without one it greys the live art.
     const sheet = this.drawnSheet(e, def);
     let frameIndex: number | undefined;
-    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ROCKETER_DIE_SPRITE || def === PYRO_DIE_SPRITE || def === MORTARMAN_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE || def === DRONEOP_DIE_SPRITE || def === CYBORG_DIE_SPRITE || def === CYBORGCOMMANDER_DIE_SPRITE || def === SIMUNIT2_DIE_SPRITE || def === XENODRONE_DIE_SPRITE || def === LANCER_DIE_SPRITE || def === THRALL_DIE_SPRITE || def === JUMPJET_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
+    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ROCKETER_DIE_SPRITE || def === PYRO_DIE_SPRITE || def === MORTARMAN_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE || def === DRONEOP_DIE_SPRITE || def === CYBORG_DIE_SPRITE || def === CYBORGCOMMANDER_DIE_SPRITE || def === SIMUNIT2_DIE_SPRITE || def === XENODRONE_DIE_SPRITE || def === LANCER_DIE_SPRITE || def === THRALL_DIE_SPRITE || def === BOMBARD_DIE_SPRITE || def === BOMBARD_FISTS_DIE_SPRITE || def === JUMPJET_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
     else if (def === TROOPER_RIFLE_FIRE_SPRITE || def === GUNNER_FIRE_SPRITE || def === SNIPER_FIRE_SPRITE || def === ATINFANTRY_FIRE_SPRITE || def === ROCKETER_FIRE_SPRITE || def === PYRO_FIRE_SPRITE || def === JUMPJET_FIRE_SPRITE) {
       frameIndex = heldFrame(this.infantryShotAge(e.id) ?? 0, def.fps, def.frames);
     } else if (def === THRALL_HIT_SPRITE) {
@@ -9662,6 +9702,31 @@ export class MapView {
           const y = s.y - airLiftPx(alt);
           drawCrate(this.ctx, s.x, y, size, this.playerColor(c.ownerId), left);
           if (alt > 0.5) drawCanopy(this.ctx, s.x, y - size * 0.75, size * 1.6, canopySway(c.id, now));
+        },
+      });
+    }
+  }
+
+  /** Dropped Bombard cannons on the ground, with the corpses: under everything standing. */
+  private collectDroppedCannons(items: DrawItem[], w: number, h: number): void {
+    if (this.droppedCannons.length === 0) return;
+    const now = performance.now();
+    this.droppedCannons = this.droppedCannons.filter((c) => now - c.at < DROPPED_CANNON_MS);
+    const ts = this.ts();
+    const ctx = this.ctx;
+    for (const c of this.droppedCannons) {
+      const p = this.toScreen(c.x, c.y, this.elevAt(c.x, c.y));
+      if (p.x < -64 || p.y < -64 || p.x > w + 64 || p.y > h + 64) continue;
+      const dir = facingToIso(c.facing, ts);
+      const fade = Math.min(1, (DROPPED_CANNON_MS - (now - c.at)) / DROPPED_CANNON_FADE_MS);
+      items.push({
+        layer: CORPSE_DRAW_LAYER,
+        z: isoDepth(c.x, c.y),
+        run: () => {
+          ctx.save();
+          ctx.globalAlpha *= fade;
+          drawUnitSprite(ctx, BOMBARD_CANNON_SPRITE, p.x, p.y, dir.x, dir.y, { moving: false, id: 0, now, facing: c.facing, frameIndex: 0 });
+          ctx.restore();
         },
       });
     }

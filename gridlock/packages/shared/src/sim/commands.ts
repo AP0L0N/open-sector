@@ -73,6 +73,7 @@ import { NOT_YOUR_FACTION, cancelTrain, pauseTrain, setContinuous, setRally, sta
 import { groupMovePace, groupMoveTargets } from "./formation.js";
 import { escortAnchor } from "./orders.js";
 import { setPath } from "./path.js";
+import { isWeaver } from "./weaver.js";
 import { tickStance } from "./stance.js";
 import { dismountSupply, orderBoard, orderDisable, orderSupply, supplyCanDrive } from "./supply.js";
 import { orderCrew, orderTow } from "./artillery.js";
@@ -1018,6 +1019,19 @@ function cmdForceAttack(
     e.state = "attack";
     n++;
   }
+  // A Weaver force-attacked onto a unit of its side puts its own shield on it; onto itself, takes it back.
+  const shielded = t && t.kind === "unit" && allies(state, playerId, t.ownerId) ? t : undefined;
+  for (const e of units) {
+    if (!shielded || !isWeaver(e.type)) continue;
+    e.weaveFor = shielded.id === e.id ? undefined : shielded.id;
+    if (e.weaveFor != null && !e.holdPosition && e.garrisonedIn == null) {
+      e.order = { kind: "move", x: shielded.x, y: shielded.y };
+      e.attackTarget = null;
+      e.state = "move";
+      setPath(state, e, shielded.x, shielded.y);
+    }
+    n++;
+  }
   for (const e of units) {
     if (!fires(e.type) || e.fieldDivert) continue;
     if (e.state === "deploy" || e.state === "undeploy") continue;
@@ -1425,6 +1439,8 @@ function cmdStop(state: MatchState, playerId: string, ids: number[]): CmdResult 
     if (e.ownerId !== playerId && !holdsGarrison) continue;
     if (e.state === "deploy" || e.state === "undeploy") continue;
     clearOrder(e);
+    // A Weaver's own shield comes back to it.
+    e.weaveFor = undefined;
     // Freeze a sweeping spotlight where it is. A unit's stop already dropped its order.
     if (hasSpotlight(e.type)) e.spotAim = undefined;
     for (const u of livingGarrison(state, e)) {

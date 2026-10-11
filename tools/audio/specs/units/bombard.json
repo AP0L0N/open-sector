@@ -1,0 +1,55 @@
+{
+  "key": "bombard",
+  "out": "units/bombard",
+  "voice": {
+    "name": "Open Sector - Xenomorph Drone",
+    "voice_id": "502QtipFv6YOD230VZTi",
+    "note": "Shares the Xenomorph Drone voice (voices/xenodrone.json): the account holds more than 20 custom voices, all in use, so no new one is designed. Heavier and slower than the plain drone, under the weight of the cannon.",
+    "description": "A thin, flat, hollow chorus of many young androgynous voices speaking the same words in perfect unison, like a single drone of an alien cyborg hive: lighter and younger than a commander, emotionless and obedient, airy and slightly metallic with a faint electronic buzz and a hollow tube-like resonance, quick clipped machine cadence, no personality of its own.",
+    "stability": 0.6,
+    "similarity": 0.8,
+    "style": 0.3,
+    "speed": 0.95
+  },
+  "lines": {
+    "select": [
+      "Bombard.",
+      "Cannon charged.",
+      "We carry the fire.",
+      "[whispers] Long reach."
+    ],
+    "move": [
+      "Complying.",
+      "Bombard moves.",
+      "Hauling forward.",
+      "Path received."
+    ],
+    "attack": [
+      "Firing on the mark.",
+      "One shot. One end.",
+      "Plasma away.",
+      "Burn them from afar."
+    ],
+    "ready": [
+      "Bombard grown. Cannon charged."
+    ],
+    "die": [
+      "[gasps] The fire... fades...",
+      "Bombard... spent..."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "A heavy alien plasma cannon firing a single big shot: a rising electric charge whine for half a second, then a deep powerful whumping discharge with a crackling energy thump and a sizzling hiss trailing off, close, outdoors, no music, no voice",
+      "duration": 1.8,
+      "variants": 3,
+      "influence": 0.6
+    },
+    "move": {
+      "prompt": "Steady heavy walking footsteps of a big armoured cyborg carrying a heavy metal cannon, left right left right, six heavy thudding footfalls on dirt with a metallic clank and rattle of the carried gun on each step and a faint servo whir, spread evenly over two seconds, close, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.5
+    }
+  }
+}

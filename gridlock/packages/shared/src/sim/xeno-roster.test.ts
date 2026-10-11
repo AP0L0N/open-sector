@@ -13,9 +13,10 @@ import {
   MAWCASTER_CELL,
   MAWCASTER_POD,
   MAWCASTER_SALVO,
-  SPITTER_BALL,
-  SPITTER_MIN_RANGE_TILES,
-  SPITTER_RANGE_TILES,
+  BOMBARD_FIST_HULL_MUL,
+  BOMBARD_ROUND,
+  BOMBARD_MIN_RANGE_TILES,
+  BOMBARD_RANGE_TILES,
   SCOPED,
   SHADE_REVEAL_SECONDS,
   TICK_DT,
@@ -25,6 +26,8 @@ import {
   WEAVER_MEND_HEAVY,
   WEAVER_PULSE_SECONDS,
   WEAVER_CELL,
+  WEAVER_DOME_POINTS_PER_SHOT,
+  FISTS,
   WEAVER_SHIELD,
   WEAVER_SHIELD_GAP_SECONDS,
   catalog,
@@ -48,6 +51,7 @@ import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { revealShade } from "./shade.js";
 import { snapshotFor } from "./snapshot.js";
+import { dropCannon } from "./bombard.js";
 import { producerType } from "./train.js";
 import { canSeeEntity } from "./vision.js";
 import type { Entity, MatchState } from "./types.js";
@@ -88,7 +92,7 @@ function at(state: MatchState, type: EntityType, owner: string, cx: number, cy: 
 function still(e: Entity): Entity {
   e.holdPosition = true;
   e.cooldown = 1e9;
-  // A launcher (the Spitter's sac, the Mawcaster's maw) keeps its own clock: hold the rack too.
+  // A launcher (the Bombard's sac, the Mawcaster's maw) keeps its own clock: hold the rack too.
   e.rocketsOff = true;
   return e;
 }
@@ -98,7 +102,7 @@ function uplink(state: MatchState): void {
   still(at(state, "cyborgcommander", "B", 4, 4));
 }
 
-const CYBORGS = ["spitter", "weaver", "shade"] as const;
+const CYBORGS = ["bombard", "weaver", "shade"] as const;
 const HEAVIES = ["siphon", "assembler", "mawcaster"] as const;
 
 describe("new Xenite roster", () => {
@@ -138,23 +142,23 @@ describe("new Xenite roster", () => {
   });
 });
 
-describe("Spitter", () => {
-  it("is the Mawcaster on two legs: a laid launcher with one plasma ball a salvo, no infantry gun", () => {
-    const def = catalog("spitter");
+describe("Bombard", () => {
+  it("hauls a long plasma cannon: a laid launcher with one big round a salvo, no infantry gun while it holds it", () => {
+    const def = catalog("bombard");
     assert.equal(def.rockets, true);
-    assert.equal(def.rocketRack, SPITTER_BALL);
-    assert.equal(SPITTER_BALL.salvo, 1);
-    assert.equal(SPITTER_BALL.laid, true);
-    assert.equal(def.rangeTiles, SPITTER_RANGE_TILES);
-    assert.ok(SPITTER_RANGE_TILES > INFANTRY_SIGHT_TILES, "it reaches past its own eyes");
-    assert.equal(infantryGunFor({ type: "spitter", crits: [] }) ?? undefined, undefined);
-    assert.equal(isInfantryType("spitter"), true);
+    assert.equal(def.rocketRack, BOMBARD_ROUND);
+    assert.equal(BOMBARD_ROUND.salvo, 1);
+    assert.equal(BOMBARD_ROUND.laid, true);
+    assert.equal(def.rangeTiles, BOMBARD_RANGE_TILES);
+    assert.ok(BOMBARD_RANGE_TILES > INFANTRY_SIGHT_TILES, "it reaches past its own eyes");
+    assert.equal(infantryGunFor({ type: "bombard", crits: [] }) ?? undefined, undefined);
+    assert.equal(isInfantryType("bombard"), true);
   });
 
-  it("lobs one ball at a time at a target and never runs dry", () => {
+  it("throws one round at a time at a target and never runs dry", () => {
     const state = field();
     uplink(state);
-    const s = at(state, "spitter", "B", 20, 30);
+    const s = at(state, "bombard", "B", 20, 30);
     s.holdPosition = true;
     const tank = still(at(state, "warden", "A", 30, 30));
     tank.hp = tank.hpMax = 1e9;
@@ -162,7 +166,7 @@ describe("Spitter", () => {
     assert.equal(applyCommand(state, "B", { type: "cmd.attack", ids: [s.id], targetId: tank.id }).ok, true);
     const seen = new Set<number>();
     let most = 0;
-    for (let i = 0; i < secondsToTicks(SPITTER_BALL.reload * 3 + 4); i++) {
+    for (let i = 0; i < secondsToTicks(BOMBARD_ROUND.reload * 3 + 4); i++) {
       step(state, TICK_DT);
       const flying = state.projectiles.filter((p) => p.fromId === s.id && p.flight === "rocket");
       most = Math.max(most, flying.length);
@@ -170,20 +174,78 @@ describe("Spitter", () => {
     }
     assert.ok(seen.size >= 3, `${seen.size} balls`);
     assert.equal(most, 1, "one ball in the air at a time");
-    assert.equal(s.rockets ?? rocketAmmoOf("spitter"), rocketAmmoOf("spitter"), "the hive refills the sac");
+    assert.equal(s.rockets ?? rocketAmmoOf("bombard"), rocketAmmoOf("bombard"), "the hive refills the sac");
   });
 
-  it("will not spit inside its least range", () => {
+  it("will not fire inside its least range", () => {
     const state = field();
     uplink(state);
-    const s = at(state, "spitter", "B", 20, 30);
+    const s = at(state, "bombard", "B", 20, 30);
     s.holdPosition = true;
-    const close = (SPITTER_MIN_RANGE_TILES / TILE_SUBDIV) * 0.5;
+    const close = (BOMBARD_MIN_RANGE_TILES / TILE_SUBDIV) * 0.5;
     const foe = still(at(state, "rifleman", "A", 20 + close, 30));
     foe.hp = foe.hpMax = 1e9;
     assert.equal(applyCommand(state, "B", { type: "cmd.attack", ids: [s.id], targetId: foe.id }).ok, true);
     ticks(state, secondsToTicks(3));
     assert.equal(state.projectiles.filter((p) => p.fromId === s.id).length, 0);
+  });
+});
+
+describe("Bombard drops its cannon", () => {
+  it("attacked from inside its least range, drops the cannon for good and closes with its fists", () => {
+    const state = field();
+    uplink(state);
+    const s = at(state, "bombard", "B", 20, 30);
+    const foe = at(state, "rifleman", "A", 22, 30);
+    foe.holdPosition = true;
+    foe.hp = foe.hpMax = 1e9;
+    foe.attackTarget = s.id;
+    s.hp = s.hpMax = 1e9;
+    ticks(state, 2);
+    assert.equal(s.fists, true, "the cannon is down");
+    assert.equal(infantryGunFor(s), FISTS);
+    assert.equal(s.attackTarget, foe.id, "it squares up to the one that came in close");
+    assert.equal(snapshotFor(state, "B").entities.find((v) => v.id === s.id)?.fists, true);
+    const before = foe.hp;
+    ticks(state, secondsToTicks(4));
+    assert.ok(foe.hp < before, "its fists land");
+    assert.equal(state.projectiles.filter((p) => p.fromId === s.id && p.flight === "rocket").length, 0, "no more rounds");
+    // The foe gone, it still has only its fists: the cannon does not come back.
+    destroyEntity(state, foe);
+    ticks(state, secondsToTicks(BOMBARD_ROUND.reload * 2));
+    assert.equal(s.fists, true);
+    const far = still(at(state, "warden", "A", 34, 30));
+    far.hp = far.hpMax = 1e9;
+    assert.equal(applyCommand(state, "B", { type: "cmd.attack", ids: [s.id], targetId: far.id }).ok, true);
+    ticks(state, secondsToTicks(2));
+    assert.equal(state.projectiles.filter((p) => p.fromId === s.id && p.flight === "rocket").length, 0, "it walks in instead of firing");
+  });
+
+  it("keeps the cannon when the enemy attacks from outside the ring", () => {
+    const state = field();
+    uplink(state);
+    const s = at(state, "bombard", "B", 20, 30);
+    s.holdPosition = true;
+    s.hp = s.hpMax = 1e9;
+    const foe = at(state, "rifleman", "A", 20 + BOMBARD_MIN_RANGE_TILES / TILE_SUBDIV + 2, 30);
+    foe.holdPosition = true;
+    foe.attackTarget = s.id;
+    ticks(state, secondsToTicks(2));
+    assert.equal(s.fists, undefined);
+  });
+
+  it("punches a hull for a share of the blow and never detonates like a Thrall", () => {
+    const state = field();
+    uplink(state);
+    const s = at(state, "bombard", "B", 20, 30);
+    dropCannon(s);
+    const tank = still(at(state, "warden", "A", 21, 30));
+    tank.hp = tank.hpMax = 1e6;
+    assert.equal(applyCommand(state, "B", { type: "cmd.attack", ids: [s.id], targetId: tank.id }).ok, true);
+    ticks(state, secondsToTicks(2));
+    assert.ok(state.entities.has(s.id) && s.hp > 0, "still standing");
+    const lost = 1e6 - tank.hp;
+    assert.ok(lost > 0 && lost <= 2 * 8 * FISTS.damage * BOMBARD_FIST_HULL_MUL * 1.2, `the plate took ${lost}`);
   });
 });
 
@@ -216,14 +278,14 @@ describe("Weaver", () => {
     const state = field();
     uplink(state);
     const w = still(at(state, "weaver", "B", 20, 30));
-    const friend = still(at(state, "spitter", "B", 25, 30));
-    const far = still(at(state, "spitter", "B", 20, 45));
+    const friend = still(at(state, "bombard", "B", 25, 30));
+    const far = still(at(state, "bombard", "B", 20, 45));
     const foe = still(at(state, "rifleman", "A", 31, 30));
     const foe2 = still(at(state, "rifleman", "A", 20, 52));
     foe.attackTarget = friend.id;
     foe2.attackTarget = far.id;
     ticks(state, 2);
-    const walls = (state.energyShields ?? []).filter((s) => s.fromId === w.id);
+    const walls = (state.energyShields ?? []).filter((s) => s.fromId === w.id && !s.dome);
     assert.equal(walls.length, 1, "one wall, for the friend in reach; the far one is beyond it");
     const s = walls[0]!;
     assert.equal(s.forId, friend.id);
@@ -238,21 +300,97 @@ describe("Weaver", () => {
     assert.equal(view.by, w.id);
   });
 
-  it("shields itself, runs dry after four walls, and throws again once the cell regrows", () => {
+  it("runs dry after four walls, which draw its dome down too, and throws again once the cell regrows", () => {
     const state = field();
     uplink(state);
     const w = still(at(state, "weaver", "B", 20, 30));
-    const friends = [w, ...[0, 1, 2, 3].map((i) => still(at(state, "spitter", "B", 22, 26 + i * 2)))];
-    friends.forEach((f, i) => {
-      still(at(state, "rifleman", "A", 28, 26 + i * 2)).attackTarget = f.id;
+    const friends = [w, ...[0, 1, 2, 3].map((i) => still(at(state, "bombard", "B", 22, 26 + i * 2)))];
+    const shooters = friends.map((f, i) => {
+      const r = still(at(state, "rifleman", "A", 28, 26 + i * 2));
+      r.attackTarget = f.id;
+      return r;
     });
     ticks(state, secondsToTicks(WEAVER_SHIELD_GAP_SECONDS * 6));
-    const mine = () => state.energyShields!.filter((s) => s.fromId === w.id);
+    const mine = () => state.energyShields!.filter((s) => s.fromId === w.id && !s.dome);
     assert.equal(mine().length, WEAVER_CELL.shots, "four walls drain the cell");
     assert.ok(w.energy! < 1);
-    assert.ok(mine().some((s) => s.forId === w.id), "all as hurt, so the nearest first: the Weaver itself");
+    assert.ok(!mine().some((s) => s.forId === w.id), "its own dome guards it, so the walls go to the friends");
+    const dome = () => state.energyShields!.find((s) => s.weave && s.fromId === w.id);
+    assert.ok(dome() && dome()!.hp < WEAVER_DOME_POINTS_PER_SHOT, "the walls drew the dome down to a sliver");
+    dome()!.hp = 0;
+    ticks(state, 1);
+    assert.equal(dome(), undefined, "broken, the dome is gone");
+    assert.equal(w.energy, 0, "and the cell with it");
+    // Its shooter had looked elsewhere while the dome stood.
+    shooters[0]!.attackTarget = w.id;
+    ticks(state, secondsToTicks(WEAVER_CELL.rechargeSeconds + 0.5));
+    assert.equal(mine().length, WEAVER_CELL.shots + 1, "one more once a quarter regrows: on itself, the dome still down");
+    assert.ok(mine().some((s) => s.forId === w.id));
+    assert.equal(dome(), undefined, "a quarter is not a full cell");
+  });
+
+  it("keeps a free dome over itself; hits drain its cell, and drained it waits for a full cell", () => {
+    const state = field();
+    uplink(state);
+    const w = still(at(state, "weaver", "B", 20, 30));
+    ticks(state, 2);
+    const dome = () => state.energyShields!.find((s) => s.weave && s.fromId === w.id);
+    const d = dome()!;
+    assert.ok(d, "dome up");
+    assert.equal(d.forId, undefined);
+    assert.equal(d.hpMax, WEAVER_CELL.shots * WEAVER_DOME_POINTS_PER_SHOT);
+    assert.equal(w.energy ?? WEAVER_CELL.shots, WEAVER_CELL.shots, "holding it costs nothing");
+    d.hp -= 2 * WEAVER_DOME_POINTS_PER_SHOT;
+    ticks(state, 1);
+    assert.ok(Math.abs(w.energy! - 2) < 0.01, `half the cell paid for the hits: ${w.energy}`);
+    assert.ok(Math.abs(dome()!.hp - w.energy! * WEAVER_DOME_POINTS_PER_SHOT) < 1e-6);
+    dome()!.hp = 0;
+    ticks(state, 2);
+    assert.equal(dome(), undefined, "drained, it is gone");
+    ticks(state, secondsToTicks(WEAVER_CELL.rechargeSeconds * (WEAVER_CELL.shots - 0.5)));
+    assert.equal(dome(), undefined, "not cast again on a part-filled cell");
     ticks(state, secondsToTicks(WEAVER_CELL.rechargeSeconds));
-    assert.equal(mine().length, WEAVER_CELL.shots + 1, "one more once a quarter regrows");
+    assert.ok(dome(), "cast again once the cell is full");
+  });
+
+  it("stops an enemy round with its dome", () => {
+    const state = field();
+    uplink(state);
+    const w = still(at(state, "weaver", "B", 20, 30));
+    w.hp = w.hpMax = 1000;
+    const foe = at(state, "rifleman", "A", 24, 30);
+    foe.holdPosition = true;
+    ticks(state, 1);
+    assert.equal(applyCommand(state, "A", { type: "cmd.attack", ids: [foe.id], targetId: w.id }).ok, true);
+    ticks(state, secondsToTicks(3));
+    assert.equal(w.hp, 1000, "the dome took the rounds");
+    assert.ok((w.energy ?? WEAVER_CELL.shots) < WEAVER_CELL.shots, "and the cell paid for them");
+  });
+
+  it("force attack on a friend puts the dome on it; the Weaver follows; Stop takes it back", () => {
+    const state = field();
+    uplink(state);
+    const w = at(state, "weaver", "B", 20, 30);
+    const friend = still(at(state, "xenodrone", "B", 24, 30));
+    ticks(state, 2);
+    assert.equal(applyCommand(state, "B", { type: "cmd.forceattack", ids: [w.id], x: friend.x, y: friend.y, targetId: friend.id }).ok, true);
+    assert.equal(w.weaveFor, friend.id);
+    ticks(state, 2);
+    const dome = () => state.energyShields!.find((s) => s.weave && s.fromId === w.id)!;
+    assert.equal(dome().forId, friend.id);
+    assert.equal(dome().x, friend.x);
+    assert.equal(dome().r, friend.radius + 5);
+    assert.equal(snapshotFor(state, "B").shields!.find((v) => v.id === dome().id)?.fromId, friend.id, "drawn on the friend");
+    // The friend walks off: the Weaver goes after it.
+    friend.holdPosition = false;
+    friend.x += 14 * TILE_SUBDIV * state.tileSize;
+    ticks(state, secondsToTicks(16));
+    assert.ok(Math.hypot(w.x - friend.x, w.y - friend.y) < 7.5 * TILE_SUBDIV * state.tileSize, "it caught up");
+    assert.equal(dome().forId, friend.id);
+    assert.equal(applyCommand(state, "B", { type: "cmd.stop", ids: [w.id] }).ok, true);
+    ticks(state, 1);
+    assert.equal(w.weaveFor, undefined);
+    assert.equal(dome().forId, undefined, "back on the Weaver");
   });
 
   it("mends nothing shut down", () => {

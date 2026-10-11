@@ -3,7 +3,7 @@ import {
   FACE_MOVE_DEG,
   fires,
   hasTurret,
-  meleeOf,
+  meleeNow,
   REVERSE_CONE_DEG,
   REVERSE_TILES,
   snapTankYaw,
@@ -27,7 +27,7 @@ import type { Entity, MatchState } from "./types.js";
 /** Guard order that follows a living unit instead of holding a point. */
 /** Close enough to stop and fight: the gun's reach to the target's middle, a blade's to its body or wall. */
 function inWeaponReach(state: MatchState, e: Entity, t: Entity): boolean {
-  if (meleeOf(e.type)) return inStrikeReach(state, e, t);
+  if (meleeNow(e)) return inStrikeReach(state, e, t);
   return Math.hypot(t.x - e.x, t.y - e.y) <= weaponRangeWorld(state, e);
 }
 
