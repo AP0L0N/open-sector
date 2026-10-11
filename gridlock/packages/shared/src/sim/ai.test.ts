@@ -6,6 +6,7 @@ import type { AiDifficulty } from "../protocol.js";
 import { AI_PROFILES } from "./ai-profile.js";
 import {
   XENO_ARMY,
+  XENO_FACTORIES,
   CPU_ARMY,
   CPU_EXPAND_TILES,
   CPU_FLEET_MIN,
@@ -19,11 +20,13 @@ import {
   rankOf,
   tickAi,
   waveSize,
+  xenoFenceSites,
 } from "./ai.js";
 import { TILE_WATER } from "../maps.js";
 import { hasCore, inBuildRadius, isWater, makeEntity, scrapAt } from "./geo.js";
 import { createMatch, stepMatch } from "./match.js";
 import { smelterRateOn } from "./smelter.js";
+import { canSeeEntity } from "./vision.js";
 import { producerType } from "./train.js";
 import type { AiPlan, Entity, MatchState, Vec } from "./types.js";
 
@@ -54,6 +57,8 @@ function waitCore(state: MatchState, playerId: string, n = 40): void {
 }
 
 function coreOf(state: MatchState, aiId: string): Entity {
+  const hive = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "hivecore");
+  if (hive) return hive;
   return [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "core")!;
 }
 
@@ -1422,11 +1427,11 @@ describe("easy CPU at sea", () => {
 });
 
 describe("Xenite CPU", () => {
-  function humanVsXeno(): { state: MatchState; aiId: string } {
+  function humanVsXeno(ai: AiDifficulty = "defensive"): { state: MatchState; aiId: string } {
     const made = createRoom({ id: "AIB", hostId: "A", hostName: "Alpha", mapId: "yard-64", maxSlots: 8 });
     if (!made.ok) throw new Error(made.message);
     const room = made.value;
-    const add = hostSlot(room, "A", 1, { status: "ai", ai: "defensive", faction: "xeno" });
+    const add = hostSlot(room, "A", 1, { status: "ai", ai, faction: "xeno" });
     if (!add.ok) throw new Error(add.message);
     updateSelf(room, "A", { ready: true });
     const started = startMatch(room, "A", () => 0);
@@ -1440,7 +1445,7 @@ describe("Xenite CPU", () => {
 
   function standBy(state: MatchState, aiId: string, types: Entity["type"][]): void {
     const hq = hiveOf(state, aiId);
-    const spots: [number, number][] = [[-12, 0], [16, 0], [0, 16], [0, -14], [16, 16]];
+    const spots: [number, number][] = [[-12, 0], [16, 0], [0, 16], [0, -14], [16, 16], [-12, 16], [-12, -14], [16, -14]];
     types.forEach((type, i) => {
       const [dx, dy] = spots[i]!;
       makeEntity(state, type, aiId, hq.x + dx * 8, hq.y + dy * 8, { tileX: hq.tileX + dx, tileY: hq.tileY + dy });
@@ -1481,10 +1486,335 @@ describe("Xenite CPU", () => {
     assert.ok(XENO_ARMY.some((r) => r.unit === central.queue[0]!.type));
   });
 
-  it("lists only Xenite units, all from the Conversion Chamber", () => {
-    for (const row of XENO_ARMY) {
-      assert.equal(factionOf(row.unit), "xeno", row.unit);
-      assert.equal(producerType(row.unit), "conversion", row.unit);
+  it("lists only Xenite units, each under the factory that trains it", () => {
+    for (const row of XENO_ARMY) assert.equal(producerType(row.unit), "conversion", row.unit);
+    for (const { factory, army } of XENO_FACTORIES) {
+      for (const row of army) {
+        assert.equal(factionOf(row.unit), "xeno", row.unit);
+        assert.equal(producerType(row.unit), factory, row.unit);
+      }
     }
+  });
+
+  const BASE: Entity["type"][] = ["fusionnode", "conversion", "fusionnode", "forge", "fusionnode"];
+
+  /** Strategy passes, each defence job finished on the spot, until `n` jobs have had their chance. */
+  function rootDefences(state: MatchState, aiId: string, n: number): void {
+    const cpu = state.players.get(aiId)!;
+    for (let i = 0; i < n * 2; i++) {
+      micro(state, aiId);
+      if (cpu.defence) cpu.defence.ready = true;
+      micro(state, aiId);
+    }
+  }
+
+  it("roots a Spine Turret toward the enemy and moves on to the Neural Nexus", () => {
+    const { state, aiId } = humanVsXeno();
+    waitCore(state, aiId);
+    standBy(state, aiId, BASE);
+    const cpu = state.players.get(aiId)!;
+    cpu.structure = null;
+    micro(state, aiId);
+    assert.equal(cpu.defence?.type, "spineturret");
+    cpu.defence!.ready = true;
+    micro(state, aiId);
+    const spine = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "spineturret");
+    assert.ok(spine, "the turret was placed");
+    const hq = hiveOf(state, aiId);
+    const foe = foeCore(state, aiId);
+    assert.ok(Math.hypot(spine.x - foe.x, spine.y - foe.y) < Math.hypot(hq.x - foe.x, hq.y - foe.y), "on the side facing the enemy");
+    standBy(state, aiId, ["fusionnode"]);
+    assert.equal(nextStructure(state, aiId), "nexus", "the base lane is not stuck behind the turret");
+  });
+
+  it("roots as many Spine Turrets as its type calls for", () => {
+    for (const ai of ["defensive", "aggressive"] as const) {
+      const { state, aiId } = humanVsXeno(ai);
+      waitCore(state, aiId);
+      standBy(state, aiId, [...BASE, "fusionnode"]);
+      rootDefences(state, aiId, 8);
+      const spines = [...state.entities.values()].filter((e) => e.ownerId === aiId && e.type === "spineturret").length;
+      assert.equal(spines, AI_PROFILES[ai].hiveSpines, ai);
+    }
+  });
+
+  it("lays a Laser Fence across the approach once the front Spine Turret stands, unless Aggressive", () => {
+    for (const ai of ["balanced", "aggressive"] as const) {
+      const { state, aiId } = humanVsXeno(ai);
+      waitCore(state, aiId);
+      standBy(state, aiId, [...BASE, "fusionnode"]);
+      const cpu = state.players.get(aiId)!;
+      assert.ok(xenoFenceSites(state, aiId, hiveOf(state, aiId)).length >= 3, "the yard has room for a line");
+      rootDefences(state, aiId, 1);
+      micro(state, aiId);
+      if (AI_PROFILES[ai].hiveFence) {
+        assert.equal(cpu.line?.type, "laserfence", ai);
+        assert.ok((cpu.line?.sites?.length ?? 0) >= 3, "a line of posts");
+      } else {
+        assert.notEqual(cpu.line?.type, "laserfence", ai);
+      }
+    }
+  });
+
+  it("keeps room in the hive's energy for the Neural Nexus instead of training past it", () => {
+    const { state, aiId } = humanVsXeno();
+    waitCore(state, aiId);
+    standBy(state, aiId, BASE);
+    // Three Nodes and the Hive Core hold 1700; the Chamber and the Forge take 455. The Nexus wants 1260.
+    const cpu = state.players.get(aiId)!;
+    cpu.structure = null;
+    tickAi(state);
+    const queued = [...state.entities.values()]
+      .filter((e) => e.ownerId === aiId && e.kind === "building")
+      .flatMap((b) => b.queue)
+      .reduce((s, j) => s + (catalog(j.type).energy ?? 0), 0);
+    assert.equal(queued, 0, "nothing trained into the Nexus's room");
+    assert.equal(state.players.get(aiId)!.structure?.type, "fusionnode", "another Node goes up to make room");
+  });
+
+  it("sends its waves straight at the enemy, not to the diamond field", () => {
+    const { state, aiId } = humanVsXeno();
+    waitCore(state, aiId);
+    standBy(state, aiId, BASE);
+    fighters(state, aiId, "xenodrone", 10);
+    planOf(state, aiId).posture = "campaign";
+    wavePass(state, aiId);
+    const forces = planOf(state, aiId).forces;
+    assert.ok(forces.length > 0, "a force left");
+    assert.ok(forces.every((f) => f.goal === "enemy"));
+  });
+
+  it("walks its Weavers and Siphons out beside the wave", () => {
+    const { state, aiId } = humanVsXeno();
+    waitCore(state, aiId);
+    standBy(state, aiId, BASE);
+    fighters(state, aiId, "xenodrone", 10);
+    const weaver = fighters(state, aiId, "weaver", 1, 3)[0]!;
+    const siphon = fighters(state, aiId, "siphon", 1, 5)[0]!;
+    planOf(state, aiId).posture = "campaign";
+    wavePass(state, aiId);
+    assert.equal(state.entities.get(weaver.id)!.order?.kind, "guard");
+    assert.equal(state.entities.get(siphon.id)!.order?.kind, "guard");
+  });
+
+  it("leaves a shut-down or offline unit out of its forces", () => {
+    const { state, aiId } = humanVsXeno();
+    waitCore(state, aiId);
+    standBy(state, aiId, BASE);
+    const drones = fighters(state, aiId, "xenodrone", 10);
+    drones[0]!.dormant = true;
+    drones[1]!.hiveOffline = true;
+    drones[1]!.shutdown = true;
+    planOf(state, aiId).posture = "campaign";
+    wavePass(state, aiId);
+    const ids = planOf(state, aiId).forces.flatMap((f) => f.ids);
+    assert.ok(ids.length > 0, "a force left");
+    assert.ok(!ids.includes(drones[0]!.id) && !ids.includes(drones[1]!.id));
+  });
+});
+
+describe("CPU unit tricks", () => {
+  function xenoVsHuman(): { state: MatchState; aiId: string } {
+    const made = createRoom({ id: "AIT", hostId: "A", hostName: "Alpha", mapId: "yard-64", maxSlots: 8 });
+    if (!made.ok) throw new Error(made.message);
+    const room = made.value;
+    const add = hostSlot(room, "A", 1, { status: "ai", ai: "balanced", faction: "xeno" });
+    if (!add.ok) throw new Error(add.message);
+    updateSelf(room, "A", { ready: true });
+    const started = startMatch(room, "A", () => 0);
+    if (!started.ok) throw new Error(started.message);
+    const state = createMatch(room, started.value);
+    waitCore(state, "ai:1");
+    return { state, aiId: "ai:1" };
+  }
+
+  /** Open ground halfway between the two bases, and the way toward the human from there. */
+  function field(state: MatchState, aiId: string): { at: Vec; dir: Vec } {
+    const mine = [...state.entities.values()].find((e) => e.ownerId === aiId && (e.type === "hivecore" || e.type === "core"))!;
+    const foe = foeCore(state, aiId);
+    const dir = unitVec(foe.x - mine.x, foe.y - mine.y);
+    return { at: { x: (mine.x + foe.x) / 2, y: (mine.y + foe.y) / 2 }, dir };
+  }
+
+  function put(state: MatchState, type: Entity["type"], owner: string, at: Vec): Entity {
+    return makeEntity(state, type, owner, at.x, at.y);
+  }
+
+  function step(at: Vec, dir: Vec, tiles: number, ts: number): Vec {
+    return { x: at.x + dir.x * tiles * ts, y: at.y + dir.y * tiles * ts };
+  }
+
+  /** `type` of the human's, `tiles` from `at` on the first bearing where `aiId` sees it: trees and ridges hide some. */
+  function seenFoe(state: MatchState, aiId: string, type: Entity["type"], at: Vec, tiles: number): Entity {
+    for (let deg = 0; deg < 360; deg += 30) {
+      const r = (deg * Math.PI) / 180;
+      const foe = put(state, type, "A", step(at, { x: Math.cos(r), y: Math.sin(r) }, tiles, state.tileSize));
+      stepMatch(state);
+      if (canSeeEntity(state, aiId, foe)) return foe;
+      state.entities.delete(foe.id);
+    }
+    throw new Error(`no bearing where ${aiId} sees a ${type}`);
+  }
+
+  it("fires the Behemoth's Light Pulse at soldiers and its High Pulse at armor", () => {
+    const { state, aiId } = xenoVsHuman();
+    const { at, dir } = field(state, aiId);
+    const beast = put(state, "behemoth", aiId, at);
+    const rifle = put(state, "rifleman", "A", step(at, dir, 30, state.tileSize));
+    const tank = put(state, "warden", "A", step(at, dir, 34, state.tileSize));
+    beast.attackTarget = rifle.id;
+    micro(state, aiId);
+    assert.equal(state.entities.get(beast.id)!.lightPulse, true);
+    beast.attackTarget = tank.id;
+    micro(state, aiId);
+    assert.notEqual(state.entities.get(beast.id)!.lightPulse, true);
+  });
+
+  it("cloaks a Stalker to close in on a foe it has not opened fire on", () => {
+    const { state, aiId } = xenoVsHuman();
+    const { at, dir } = field(state, aiId);
+    const stalker = put(state, "stalker", aiId, at);
+    const rifle = put(state, "rifleman", "A", step(at, dir, 20, state.tileSize));
+    stepMatch(state);
+    const s = state.entities.get(stalker.id)!;
+    s.attackTarget = null;
+    s.order = null;
+    delete s.cloakUntil;
+    s.cloakReady = 0;
+    micro(state, aiId);
+    assert.ok(s.cloakUntil != null, "cloaked");
+    assert.equal(state.entities.get(s.id)!.order?.kind, "attack");
+    assert.equal(state.entities.get(s.id)!.order?.targetId, rifle.id);
+  });
+
+  it("digs a Siphon in with the enemy at the hive, and breaks it out when they are gone", () => {
+    const { state, aiId } = xenoVsHuman();
+    const hq = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "hivecore")!;
+    const foe = foeCore(state, aiId);
+    const dir = unitVec(foe.x - hq.x, foe.y - hq.y);
+    const siphon = put(state, "siphon", aiId, step(hq, dir, 14, state.tileSize));
+    const rifle = put(state, "rifleman", "A", step(hq, dir, 30, state.tileSize));
+    stepMatch(state);
+    micro(state, aiId);
+    assert.ok(state.entities.get(siphon.id)!.burrow, "dug in");
+    state.entities.delete(rifle.id);
+    siphon.burrow = { phase: "down", until: 0 };
+    micro(state, aiId);
+    assert.notEqual(state.entities.get(siphon.id)!.burrow?.phase, "down", "rising");
+  });
+
+  it("switches a Mawcaster to Air attacks for a flier with nothing on the ground to shell", () => {
+    const { state, aiId } = xenoVsHuman();
+    const { at, dir } = field(state, aiId);
+    const maw = put(state, "mawcaster", aiId, at);
+    const plane = put(state, "fw190", "A", step(at, dir, 20, state.tileSize));
+    plane.air!.phase = "fly";
+    plane.air!.alt = 20;
+    micro(state, aiId);
+    assert.equal(state.entities.get(maw.id)!.airMode, true);
+    state.entities.delete(plane.id);
+    put(state, "warden", "A", step(at, dir, 40, state.tileSize));
+    micro(state, aiId);
+    assert.notEqual(state.entities.get(maw.id)!.airMode, true);
+  });
+
+  it("sends a Sim Unit II to purge an enemy garrison in blink reach", () => {
+    const { state, aiId } = xenoVsHuman();
+    const { at, dir } = field(state, aiId);
+    const sim = put(state, "simunit2", aiId, at);
+    const spot = step(at, dir, 24, state.tileSize);
+    const def = catalog("bunker");
+    const tileX = Math.floor(spot.x / state.tileSize);
+    const tileY = Math.floor(spot.y / state.tileSize);
+    const bunker = makeEntity(state, "bunker", "A", (tileX + def.tileW / 2) * state.tileSize, (tileY + def.tileH / 2) * state.tileSize, { tileX, tileY });
+    const rifle = put(state, "rifleman", "A", bunker);
+    rifle.garrisonedIn = bunker.id;
+    bunker.garrison.push(rifle.id);
+    const s = state.entities.get(sim.id)!;
+    s.order = null;
+    s.blinkReady = 0;
+    micro(state, aiId);
+    assert.ok(state.entities.get(s.id)!.order?.kind === "purge" || state.entities.get(s.id)!.purge, "purging the bunker");
+  });
+
+  it("names buildings for the Juggernaut's ram once it reaches the enemy yard", () => {
+    const { state, aiId } = xenoVsHuman();
+    const { at } = field(state, aiId);
+    const jug = put(state, "juggernaut", aiId, at);
+    const target = seenFoe(state, aiId, "tower", at, 20);
+    const j = state.entities.get(jug.id)!;
+    // A bare Hive Core cannot feed a Juggernaut: wake it as though the Nodes stood.
+    delete j.hiveOffline;
+    delete j.shutdown;
+    j.order = null;
+    j.attackTarget = null;
+    micro(state, aiId);
+    assert.equal(state.entities.get(j.id)!.order?.kind, "attack");
+    assert.equal(state.entities.get(j.id)!.order!.targetId, target.id);
+  });
+
+  it("keeps the Gnat out of the strike and flies it ahead as a scout", () => {
+    const { state, aiId } = xenoVsHuman();
+    const hq = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "hivecore")!;
+    const gnat = put(state, "gnat", aiId, { x: hq.x, y: hq.y + 10 * state.tileSize });
+    gnat.order = null;
+    micro(state, aiId);
+    const order = state.entities.get(gnat.id)!.order;
+    assert.equal(order?.kind, "move");
+    const c = diamondCentre(state);
+    assert.ok(Math.hypot(order!.x! - c.x, order!.y! - c.y) < 12 * state.tileSize, "over the middle while no wave is out");
+  });
+
+  it("turns Engage contacts on for its Cyborgs", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    const hq = coreOf(state, aiId);
+    const cy = put(state, "cyborg", aiId, { x: hq.x, y: hq.y + 14 * state.tileSize });
+    micro(state, aiId);
+    assert.equal(state.entities.get(cy.id)!.engageContacts, true);
+  });
+
+  it("diverts a badly hurt Cyborg Commander's laser into his field and walks him home, then takes it back", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    const { at } = field(state, aiId);
+    const cc = put(state, "cyborgcommander", aiId, at);
+    cc.hp = cc.hpMax * 0.2;
+    micro(state, aiId);
+    const c = state.entities.get(cc.id)!;
+    assert.equal(c.fieldDivert, true);
+    assert.equal(c.order?.kind, "move");
+    c.hp = c.hpMax;
+    micro(state, aiId);
+    assert.notEqual(state.entities.get(cc.id)!.fieldDivert, true);
+  });
+
+  it("lobs a Mammoth's mines under an enemy closing in, never where its own side stands", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    const { at } = field(state, aiId);
+    const mammoth = put(state, "mammoth", aiId, at);
+    const foe = seenFoe(state, aiId, "warden", at, 20);
+    const m = state.entities.get(mammoth.id)!;
+    const friend = put(state, "rifleman", aiId, foe);
+    m.order = null;
+    micro(state, aiId);
+    assert.notEqual(state.entities.get(m.id)!.order?.kind, "minelay", "a friend stands there");
+    state.entities.delete(friend.id);
+    micro(state, aiId);
+    assert.equal(state.entities.get(m.id)!.order?.kind, "minelay");
+  });
+
+  it("sells a spare building to pay for a Smelter when its last one fell and the scrap is short", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    withBase(state, aiId, ["dynamo", "muster", "research"]);
+    const cpu = state.players.get(aiId)!;
+    cpu.scrap = 200;
+    cpu.structure = null;
+    micro(state, aiId);
+    const research = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "research" && e.hp > 0);
+    assert.ok(!research || cpu.scrap > 200, "the Research Facility went for scrap");
+    assert.ok([...state.entities.values()].some((e) => e.ownerId === aiId && e.type === "muster" && e.hp > 0), "the Barracks stays");
   });
 });
