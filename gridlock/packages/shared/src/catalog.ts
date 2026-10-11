@@ -30,6 +30,8 @@ export const LINE_BUILD_RADIUS = 2 * BUILD_RADIUS;
 export const UNIT_CAP = 60;
 /** Max train jobs waiting or in progress on one producer. */
 export const TRAIN_QUEUE_CAP = 39;
+/** Most structures of one type waiting behind the one in the yard (only Fusion Nodes queue). */
+export const STRUCTURE_QUEUE_CAP = 9;
 export const DEPLOY_SECONDS = 3;
 export const SELL_REFUND = 0.5;
 /** Share of the hull's cost an engineer recovers by breaking up the wreck. */
@@ -1262,6 +1264,13 @@ export type PowerPlantType = "dynamo" | "fusionnode" | "lumenbulb";
 /** A building that only makes power. */
 export function isPowerPlantType(type: string): type is PowerPlantType {
   return type === "dynamo" || type === "fusionnode" || type === "lumenbulb";
+}
+/**
+ * May more of this structure be queued behind the one in the yard? Only the Xenite Fusion Node.
+ * They still build one at a time: the next starts once the last is placed.
+ */
+export function canQueueStructure(type: string): boolean {
+  return type === "fusionnode";
 }
 const SMELTER_OF: Record<Faction, SmelterType> = { alliance: "smelter", xeno: "assimilator", bloom: "gorger" };
 const POWER_PLANT_OF: Record<Faction, PowerPlantType> = { alliance: "dynamo", xeno: "fusionnode", bloom: "lumenbulb" };

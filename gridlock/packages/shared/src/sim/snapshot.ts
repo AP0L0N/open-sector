@@ -255,6 +255,7 @@ function structureQueueView(job: StructureJob | null | undefined): StructureQueu
     ready: job.ready,
     paused: job.paused,
     ...(job.sites?.length ? { sites: job.sites.map((s) => ({ x: s.x, y: s.y, facing: s.facing })) } : {}),
+    ...(job.queued ? { queued: job.queued } : {}),
   };
 }
 

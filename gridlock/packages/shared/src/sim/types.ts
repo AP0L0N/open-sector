@@ -31,6 +31,8 @@ export interface StructureJob {
   paid: number;
   /** Sandbag or wall line sited before the yard builds it. */
   sites?: { x: number; y: number; facing: number }[];
+  /** More of this type waiting behind it (canQueueStructure). The next starts once this one is placed. */
+  queued?: number;
 }
 
 export interface Order {

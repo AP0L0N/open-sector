@@ -27,6 +27,8 @@ import {
   SHELL_TYPES,
   STANCE_LABEL,
   TRAIN_QUEUE_CAP,
+  STRUCTURE_QUEUE_CAP,
+  canQueueStructure,
   techNeeds,
   BUILD_REQUIRES,
   TRAIN_TYPES,
@@ -337,6 +339,9 @@ export function mountBattlefield(
       if (mine && !mine.ready) {
         if ((e.target as HTMLElement | null)?.closest(".cameo-hold, .cameo-paused") || mine.paused) {
           ctx.net.send({ type: "cmd.pause", what: "structure", paused: !mine.paused, building: type });
+        } else if (canQueueStructure(type) && (mine.queued ?? 0) < STRUCTURE_QUEUE_CAP) {
+          // Another Fusion Node behind this one; it starts once this one is placed.
+          ctx.net.send({ type: "cmd.build", building: type });
         }
         return;
       }
@@ -360,6 +365,12 @@ export function mountBattlefield(
       }
       if (!q || q.type !== type) {
         readyCancelArmed = null;
+        return;
+      }
+      if (q.ready && (q.queued ?? 0) > 0) {
+        // Drop one queued Fusion Node; the ready one stays for placing.
+        readyCancelArmed = null;
+        ctx.net.send({ type: "cmd.cancel", what: "structure", building: type });
         return;
       }
       if (q.ready) {
@@ -398,6 +409,11 @@ export function mountBattlefield(
       e.preventDefault();
       const m = ctx.match;
       if (!m) return;
+      // First right-click holds the unit in production; the next one cancels.
+      if (jobsOfType(m, unit).some((j) => j.active && !j.paused)) {
+        ctx.net.send({ type: "cmd.pause", what: "train", unit, paused: true });
+        return;
+      }
       if ((m.you.continuous ?? []).includes(unit)) {
         ctx.net.send({ type: "cmd.continuous", unit, on: false });
         return;
@@ -476,6 +492,7 @@ function hiveCameo(id: string, type: BuildingType | TrainType | YardFieldType, b
   if (meta) meta.textContent = price;
   const deny = b.querySelector(".cameo-deny");
   if (deny) deny.textContent = "NO ENERGY";
+  if (canQueueStructure(type)) b.title = "Left: build, again to queue more  ·  Right: pause, again to remove one";
   return b;
 }
 
@@ -493,7 +510,7 @@ function cameoButton(
   const hold = train || showReady
     ? `<span class="cameo-hold hidden" title="Pause production"></span><span class="cameo-paused">PAUSED</span><span class="cameo-count hidden">0</span>${train ? `<span class="cameo-loop">LOOP</span>` : ""}`
     : "";
-  if (train) b.title = "Left: train  ·  Pause icon: hold  ·  Right: cancel one";
+  if (train) b.title = "Left: train  ·  Pause icon: hold  ·  Right: pause, again to cancel one";
   if (showReady) b.title = "Left: build  ·  Right: pause, again to cancel";
   b.innerHTML = `<span class="cameo-name">${name}</span><span class="cameo-meta">${cost}${powerTxt ? " · " + powerTxt : ""}</span><span class="pip"></span><span class="cameo-deny">NO SCRAP</span>${ready}${hold}`;
   return b;
@@ -766,6 +783,13 @@ export function paintBattleHud(ctx: Ctx): void {
     btn.classList.toggle("slow-power", m.you.lowPower && !!job && !job.ready && !job.paused);
     const hold = btn.querySelector(".cameo-hold") as HTMLElement | null;
     hold?.classList.toggle("hidden", !job || job.ready || job.paused);
+    // Fusion Nodes queued behind the one in the yard: the badge counts them all.
+    const count = btn.querySelector(".cameo-count") as HTMLElement | null;
+    if (count) {
+      const n = job ? 1 + (job.queued ?? 0) : 0;
+      count.textContent = String(n);
+      count.classList.toggle("hidden", n <= 1);
+    }
   }
 
   const jobs = ownTrainJobs(m);
@@ -804,7 +828,7 @@ export function paintBattleHud(ctx: Ctx): void {
           : held === "queued"
             ? `${name} — only one at a time. One is already in the queue.`
             : looping
-              ? `${name} — building continuously. Right-click stops and cancels it.`
+              ? `${name} — building continuously. Right-click pauses; again stops and cancels it.`
               : canContinuousTrain(unit) && unitJobs.length === 0
                 ? `${name} — Left: train. Right: build continuously.`
                 : btn.dataset.baseTitle;

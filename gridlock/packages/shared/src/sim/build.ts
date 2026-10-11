@@ -23,6 +23,8 @@ import {
   isSmelterType,
   HQ_OF,
   scrapIsGround,
+  canQueueStructure,
+  STRUCTURE_QUEUE_CAP,
 } from "../catalog.js";
 import { NOT_YOUR_FACTION } from "./train.js";
 import {
@@ -121,21 +123,32 @@ export function startBuild(state: MatchState, playerId: string, type: BuildingTy
   if (!hasCore(state, playerId)) return `Deploy the ${catalog(HQ_OF[faction].rig).name}.`;
   if (isFenceLine(type)) return "Site the fence posts first.";
   const slot = slotOf(type);
-  if (jobIn(p, slot)) return "Construction already underway.";
-  const def = catalog(type);
+  const busy = jobIn(p, slot);
+  if (busy) {
+    // A Fusion Node still building takes another behind it; it starts once this one is placed.
+    if (busy.type !== type || !canQueueStructure(type) || busy.ready) return "Construction already underway.";
+    if ((busy.queued ?? 0) >= STRUCTURE_QUEUE_CAP) return "The queue is full.";
+    busy.queued = (busy.queued ?? 0) + 1;
+    return null;
+  }
   const missing = buildTechMissing(state, playerId, type);
   if (missing.length > 0) return `Need a ${missing.map((t) => catalog(t).name).join(" and a ")}.`;
-  putJob(p, slot, {
+  putJob(p, slot, newJob(type));
+  // A new base job has no ghost yet. Leave a ready defence's placement alone.
+  if (slot === "structure") p.placingType = null;
+  return null;
+}
+
+function newJob(type: BuildingType | YardFieldType): StructureJob {
+  const def = catalog(type);
+  return {
     type,
     progressTicks: 0,
     totalTicks: secondsToTicks(isYardField(type) ? def.buildSeconds : yardBuildSeconds(type)),
     ready: false,
     paused: false,
     paid: 0,
-  });
-  // A new base job has no ghost yet. Leave a ready defence's placement alone.
-  if (slot === "structure") p.placingType = null;
-  return null;
+  };
 }
 
 export function pauseStructure(
@@ -159,6 +172,12 @@ export function cancelStructure(
   const p = state.players.get(playerId);
   const job = p ? resolveJob(p, building) : null;
   if (!p || !job) return "Nothing to cancel.";
+  // Queued Fusion Nodes go first; nothing was paid for them. The one in the yard goes last.
+  if ((job.queued ?? 0) > 0) {
+    job.queued = (job.queued ?? 0) - 1;
+    if (job.queued === 0) delete job.queued;
+    return null;
+  }
   refundJob(p, job);
   dropJob(p, job);
   return null;
@@ -332,6 +351,13 @@ export function placeBuilding(
   }
   raiseBuilding(state, playerId, type, tx, ty, facing);
   dropJob(p, job);
+  // The next queued Fusion Node starts now and carries the rest of the queue.
+  const left = job.queued ?? 0;
+  if (left > 0) {
+    const next = newJob(type);
+    if (left > 1) next.queued = left - 1;
+    putJob(p, slotOf(type), next);
+  }
   return null;
 }
 
