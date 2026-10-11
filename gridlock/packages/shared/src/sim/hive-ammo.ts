@@ -23,16 +23,16 @@ export function tickHiveAmmo(state: MatchState): void {
     const cell = plasmaCellOf(e.type);
     if (cell) {
       e.energy = Math.min(cell.shots, (e.energy ?? cell.shots) + TICK_DT / cell.rechargeSeconds);
-      if (e.energyDrained && e.energy >= resumeShots(cell.shots)) e.energyDrained = undefined;
+      if (e.energyDrained && e.energy >= resumeShots(cell.shots, cell.resumeShare)) e.energyDrained = undefined;
     }
     if (!endlessAmmo(e.type)) continue;
     topUp(e);
   }
 }
 
-/** Energy a drained cell of `shots` needs back before its gun fires again. */
-export function resumeShots(shots: number): number {
-  return Math.max(1, shots * PLASMA_RESUME_SHARE);
+/** Energy a drained cell of `shots` needs back before its gun fires again: `share` of it, the default unless the gun names its own. */
+export function resumeShots(shots: number, share = PLASMA_RESUME_SHARE): number {
+  return Math.max(1, shots * share);
 }
 
 /** Shots of energy `e`'s plasma cell may spend now: 0 while drained and still regrowing, Infinity when its gun has no cell. */

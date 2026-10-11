@@ -157,6 +157,22 @@ describe("plasma cannon energy cell", () => {
     assert.ok(bolts(secondsToTicks(cell.rechargeSeconds * resume * 0.3)) > 0, "fires again past a tenth");
   });
 
+  it("the Spine Turret holds 30 rounds and, run dry, waits until 30% of the cell regrows", () => {
+    const state = field();
+    const t = at(state, "spineturret", "B", 20, 30);
+    const cell = plasmaCellOf("spineturret")!;
+    assert.equal(cell.shots, 30);
+    t.energy = 1;
+    drawPlasma(t);
+    assert.equal(t.energyDrained, true);
+    const resume = resumeShots(cell.shots, cell.resumeShare);
+    assert.equal(resume, 9);
+    ticks(state, secondsToTicks(cell.rechargeSeconds * (resume - 2)));
+    assert.equal(t.energyDrained, true, "still climbing back to 30%");
+    ticks(state, secondsToTicks(cell.rechargeSeconds * 3));
+    assert.equal(t.energyDrained, undefined, "fires again once 30% has regrown");
+  });
+
   it("every cell needs at least one shot back before it fires again", () => {
     for (const t of ["stalker", "ravager", "siphon", "behemoth", "pulsespire", "leech", "wasp", "scourge", "overseer", "weaver"] as const) {
       const cell = plasmaCellOf(t);

@@ -1332,10 +1332,11 @@ export const BLOOM_GESTATOR = "gestator";
  * lands XENO_DAMAGE_MUL of what the same round, beam, or blade would do from anyone else.
  */
 export const XENO_DAMAGE_MUL = 0.8;
-/** A plasma cannon's energy cell: how many shots it holds full, and the seconds to regrow one. */
+/** A plasma cannon's energy cell: how many shots it holds full, the seconds to regrow one, and (when not the default) the share that must regrow before a drained gun fires again. */
 export interface PlasmaCellDef {
   shots: number;
   rechargeSeconds: number;
+  resumeShare?: number;
 }
 /** The energy cell on `type`'s main gun (the Weaver's feeds its shields), or undefined when it has none. */
 export function plasmaCellOf(type: string): PlasmaCellDef | undefined {
@@ -2227,12 +2228,12 @@ export interface EnergyWallDef {
   radiusTiles: number;
   /** Half of the curve's span either side of the heading, degrees. */
   halfDeg: number;
-  /** Points regained each second while it stands. */
+  /** Points regained each second, while it stands and while it is down. */
   regenPerSecond: number;
-  /** Seconds from the curtain going down until the core raises it again, at full points. */
-  rechargeSeconds: number;
+  /** Share of the points that must mend back after the curtain goes down before the core raises it again. */
+  resumeShare: number;
 }
-export const ENERGY_WALL: EnergyWallDef = { hp: 1500, radiusTiles: t(3), halfDeg: 55, regenPerSecond: 10, rechargeSeconds: 25 };
+export const ENERGY_WALL: EnergyWallDef = { hp: 1500, radiusTiles: t(3), halfDeg: 55, regenPerSecond: 10, resumeShare: 0.3 };
 /** The core's solid height, elevation units: under a hull's gun (HULL_EYE_HEIGHT), so its own side fires over it. */
 export const ENERGY_WALL_COVER_HEIGHT = 0.5;
 /** The curtain this building holds, or undefined. */
@@ -2372,10 +2373,11 @@ export const LASER_FENCE_REACH_TILES = t(6);
 export const LASER_FENCE_BURN_SHARE = 0.6;
 export const LASER_FENCE_BURN_MIN = 60;
 /**
- * The Spine Turret's cell: it fires at an MG42's pace (20 rounds a second), so 60 rounds is a
- * 3-second burst, and it regrows 10 rounds a second: held on a target, it settles at half pace.
+ * The Spine Turret's cell: it fires at an MG42's pace (20 rounds a second), so 30 rounds is a
+ * 1.5-second burst, and it regrows 10 rounds a second: held on a target, it settles at half pace.
+ * Run dry, it holds fire until 30% of the cell has regrown.
  */
-export const SPINE_TURRET_CELL = { shots: 60, rechargeSeconds: 0.1 };
+export const SPINE_TURRET_CELL: PlasmaCellDef = { shots: 30, rechargeSeconds: 0.1, resumeShare: 0.3 };
 /** Hive energy a fence link holds per cell of its length, on top of each post's own (sim/hive-energy.ts). */
 export const LASER_FENCE_ENERGY_PER_CELL = 5.75;
 /** World px either side of a fence beam that a body still touches. */
@@ -6875,7 +6877,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     plasmaCell: SPINE_TURRET_CELL,
     poweredGun: true,
     capturable: false,
-    blurb: "A chitin bulb rooted in the ground with a twin pulse repeater for a head. Nobody works it: it lays itself all the way round and cuts down soldiers at an MG42's pace from a little short of an MG Nest's reach, and draws its charge from the hive: a cell that holds 3 seconds of fire and regrows at half the pace it fires, so a long burst slows to a stutter. Tank plate turns them, and they do not bring a building down. Takes hive energy while it stands; offline, it falls silent. Cannot move.",
+    blurb: "A chitin bulb rooted in the ground with a twin pulse repeater for a head. Nobody works it: it lays itself all the way round and cuts down soldiers at an MG42's pace from a little short of an MG Nest's reach, and draws its charge from the hive: a cell that holds 1.5 seconds of fire and regrows at half the pace it fires, so a long burst slows to a stutter. Run dry, it waits until 30% of the cell has regrown before it fires again. Tank plate turns them, and they do not bring a building down. Takes hive energy while it stands; offline, it falls silent. Cannot move.",
   },
   /** Xenite fence post: links to the posts beside it with two laser beams (sim/laser-fence.ts). */
   laserfence: {
@@ -6964,7 +6966,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     // Squat: your own side's soldiers and hulls shoot over the core.
     coverHeight: ENERGY_WALL_COVER_HEIGHT,
     capturable: false,
-    blurb: `A squat emitter core with a fan of field vanes. It holds a curtain of green energy ${ENERGY_WALL.radiusTiles / TILE_SUBDIV} cells out across its front, far wider than a Behemoth's wall and as tall as a Pulse Spire. Enemy rounds and beams stop on it and enemy soldiers and hulls cannot walk through; shells and bombs lobbed from above fall over it. Your own side walks and shoots through, and over the low core. Each hit drains the curtain (${ENERGY_WALL.hp} points); it slowly mends while it stands, and once drained it is down for ${ENERGY_WALL.rechargeSeconds} seconds. Turn it before placing: it holds that way for good. Takes hive energy while it stands; offline, the curtain falls. Needs a Neural Nexus. Cannot move.`,
+    blurb: `A squat emitter core with a fan of field vanes. It holds a curtain of green energy ${ENERGY_WALL.radiusTiles / TILE_SUBDIV} cells out across its front, far wider than a Behemoth's wall and as tall as a Pulse Spire. Enemy rounds and beams stop on it and enemy soldiers and hulls cannot walk through; shells and bombs lobbed from above fall over it. Your own side walks and shoots through, and over the low core. Each hit drains the curtain (${ENERGY_WALL.hp} points); it slowly mends while it stands, and once drained it is down until it has mended back to ${Math.round(ENERGY_WALL.resumeShare * 100)}% of its points, and then it goes up again by itself. Turn it before placing: it holds that way for good. Takes hive energy while it stands; offline, the curtain falls. Needs a Neural Nexus. Cannot move.`,
   },
   /** Xenite shipyard: grows the Leech and the Lurker. Stands on open water like a Marine Base. */
   spawnpool: {

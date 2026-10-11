@@ -7,7 +7,7 @@ import { tickSpotlights } from "./night.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { tickProjectiles } from "./combat.js";
-import { domeCharge, holdShieldLines, shieldSweep, shieldWatch, tickEnergyShields } from "./energy-shield.js";
+import { domeCharge, holdShieldLines, shieldSweep, shieldWatch, soakShield, tickEnergyShields } from "./energy-shield.js";
 import { fireLaser } from "./laser.js";
 import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
@@ -436,7 +436,7 @@ describe("Energy Wall", () => {
     assert.equal(allyInLine(state, stalker, stalker.x, stalker.y, tiger), undefined);
   });
 
-  it("drained, it is down until the core recharges, then up at full; it mends while it stands", () => {
+  it("drained, it is down until it mends back to its resume share, then up again; it mends while it stands", () => {
     const { state, post } = wallPost();
     tickEnergyShields(state, TICK_DT);
     const w = state.energyShields![0]!;
@@ -446,13 +446,31 @@ describe("Energy Wall", () => {
     w.hp = 0;
     tickEnergyShields(state, TICK_DT);
     assert.equal(state.energyShields!.length, 0);
-    state.tick += secondsToTicks(ENERGY_WALL.rechargeSeconds) - 1;
+    assert.equal(post.energyDrained, true);
+    assert.equal(domeCharge(state, post), 0);
+    const need = ENERGY_WALL.hp * ENERGY_WALL.resumeShare;
+    const secs = Math.ceil(need / ENERGY_WALL.regenPerSecond);
+    for (let i = 0; i < secondsToTicks(secs - 2); i++) tickEnergyShields(state, TICK_DT);
+    assert.equal(state.energyShields!.length, 0, "still mending");
+    for (let i = 0; i < secondsToTicks(3); i++) tickEnergyShields(state, TICK_DT);
+    assert.equal(state.energyShields!.length, 1, "up again once it has its resume share");
+    const up = state.energyShields![0]!;
+    assert.ok(up.hp >= need && up.hp < need + ENERGY_WALL.regenPerSecond * 2, `placed with ${up.hp}`);
+    assert.equal(post.energyDrained, undefined);
+  });
+
+  it("each hit takes its damage off the curtain; it goes down exactly at zero", () => {
+    const { state, post } = wallPost();
     tickEnergyShields(state, TICK_DT);
-    assert.equal(state.energyShields!.length, 0, "still recharging");
-    state.tick += 1;
+    const w = state.energyShields![0]!;
+    w.hp = 100;
+    soakShield(state, w, 60);
+    assert.equal(w.hp, 40);
+    soakShield(state, w, 40);
+    assert.equal(w.hp, 0);
     tickEnergyShields(state, TICK_DT);
-    assert.equal(state.energyShields![0]!.hp, ENERGY_WALL.hp);
-    assert.equal(domeCharge(state, post), 1);
+    assert.equal(state.energyShields!.length, 0, "gone at zero");
+    assert.equal(domeCharge(state, post), 0);
   });
 
   it("offline, the curtain falls and keeps its points for when it comes back", () => {

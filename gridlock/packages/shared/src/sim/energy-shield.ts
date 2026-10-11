@@ -18,7 +18,7 @@ import type { Entity, EnergyShield, MatchState, Projectile } from "./types.js";
  *
  * An Energy Wall building holds a far wider curtain the same way a wall stands, but for as long
  * as the core is online, across the way the core was placed. Hits drain it, it mends slowly, and
- * drained it is down until the core recharges.
+ * drained it is down until it has mended back to its resume share, then it goes up by itself.
  *
  * Pulses and lasers (another hive's bolts, a Cyborg's beam) glance off: a bolt fired flat
  * turns back off the face, live, and a beam stops there. Either still costs the shield, but
@@ -287,7 +287,7 @@ function canHoldCurtain(e: Entity): boolean {
 
 /**
  * An Energy Wall's curtain: it faces the way the core was placed and slowly mends. Drained, it is
- * gone and the core waits out the recharge; lowered because the core went offline, the core
+ * gone and the core mends from nothing until it can raise it again; lowered because the core went offline, the core
  * keeps what was left. True while it still stands.
  */
 function tickCurtain(state: MatchState, s: EnergyShield, dt: number): boolean {
@@ -295,8 +295,9 @@ function tickCurtain(state: MatchState, s: EnergyShield, dt: number): boolean {
   const def = from ? energyWallOf(from.type) : undefined;
   if (!from || !def) return false;
   if (s.hp <= 0) {
-    from.energy = undefined;
-    from.shieldReady = state.tick + secondsToTicks(def.rechargeSeconds);
+    // Drained: the core keeps the points it mends from now on, from nothing.
+    from.energy = 0;
+    from.energyDrained = true;
     return false;
   }
   if (!canHoldCurtain(from)) {
@@ -305,6 +306,14 @@ function tickCurtain(state: MatchState, s: EnergyShield, dt: number): boolean {
   }
   s.hp = Math.min(s.hpMax, s.hp + def.regenPerSecond * dt);
   return true;
+}
+
+/** A drained curtain's core mends its points back; at `resumeShare` of them the curtain goes up again. */
+function mendCurtain(state: MatchState, e: Entity, def: EnergyWallDef, dt: number): void {
+  e.energy = Math.min(def.hp, (e.energy ?? 0) + def.regenPerSecond * dt);
+  if (e.energy < def.hp * def.resumeShare) return;
+  e.energyDrained = undefined;
+  raiseCurtain(state, e, def);
 }
 
 function raiseCurtain(state: MatchState, e: Entity, def: EnergyWallDef): void {
@@ -364,7 +373,10 @@ export function tickEnergyShields(state: MatchState, dt: number): void {
     }
     const curtain = energyWallOf(e.type);
     if (curtain) {
-      if (canHoldCurtain(e) && (e.shieldReady == null || state.tick >= e.shieldReady)) raiseCurtain(state, e, curtain);
+      if (canHoldCurtain(e)) {
+        if (e.energyDrained) mendCurtain(state, e, curtain, dt);
+        else raiseCurtain(state, e, curtain);
+      }
       continue;
     }
     const def = energyShieldOf(e.type);
@@ -390,11 +402,12 @@ export function tickEnergyShields(state: MatchState, dt: number): void {
 export function domeCharge(state: MatchState, e: Entity): number | undefined {
   const dome = energyDomeOf(e.type);
   const wall = energyWallOf(e.type);
-  const def = dome ? { full: dome.energy, recharge: dome.rechargeSeconds } : wall ? { full: wall.hp, recharge: wall.rechargeSeconds } : null;
+  const def = dome ? { full: dome.energy, recharge: dome.rechargeSeconds } : wall ? { full: wall.hp, recharge: 0 } : null;
   if (!def || e.hp <= 0 || e.wreck) return undefined;
   const up = state.energyShields?.find((s) => (s.dome || s.post) && s.fromId === e.id);
   let share: number;
   if (up) share = up.hp / up.hpMax;
+  else if (wall && e.energyDrained) share = (e.energy ?? 0) / (def.full * wall.resumeShare);
   else if (e.shieldReady != null && state.tick < e.shieldReady) {
     share = 1 - (e.shieldReady - state.tick) / Math.max(1, secondsToTicks(def.recharge));
   } else share = (e.energy ?? def.full) / def.full;
