@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   MAP_ZOOM_MAX,
   MAP_ZOOM_MIN,
+  MAP_ZOOM_START,
   clampMapZoom,
   mapZoomAfterWheel,
   zoomCamAt,
@@ -56,8 +57,13 @@ describe("zoomCamAt", () => {
 
 describe("mapZoomAfterWheel", () => {
   it("zooms in on scroll up and out on scroll down", () => {
-    assert.ok(mapZoomAfterWheel(1, -100) > 1);
-    assert.ok(mapZoomAfterWheel(1, 100) < 1);
+    assert.ok(mapZoomAfterWheel(MAP_ZOOM_START, -100) > MAP_ZOOM_START);
+    assert.ok(mapZoomAfterWheel(MAP_ZOOM_START, 100) < MAP_ZOOM_START);
+  });
+
+  it("opens inside the zoom range, with room to zoom out", () => {
+    assert.ok(MAP_ZOOM_START > MAP_ZOOM_MIN);
+    assert.ok(MAP_ZOOM_START < MAP_ZOOM_MAX);
   });
 
   it("treats a line-mode notch like a pixel wheel tick", () => {

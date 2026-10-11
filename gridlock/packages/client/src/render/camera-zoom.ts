@@ -1,5 +1,7 @@
-/** Battlefield zoom. 1 is the default iso pixel = CSS pixel scale. */
-export const MAP_ZOOM_MIN = 0.9;
+/** Battlefield zoom. 1 is the iso pixel = CSS pixel scale. The floor keeps zoom-out at or above that scale. */
+export const MAP_ZOOM_MIN = 1;
+/** Zoom the battlefield opens at: a little closer than the floor, so the map reads at a glance. */
+export const MAP_ZOOM_START = 1.25;
 /** Close enough that a soldier fills a readable patch of the screen. */
 export const MAP_ZOOM_MAX = 6;
 /** Maps a pixel wheel delta onto a multiplicative zoom step. */

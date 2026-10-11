@@ -1948,21 +1948,19 @@ function holdOff(state: MatchState, e: Entity, tx: number, ty: number, standoff:
 }
 
 /**
- * A Wasp on station: hang HIVE_WASP_STANDOFF_TILES off the target, at its height when it is a plane,
- * low over the ground otherwise, and loose an energy burst whenever the emitters are clear, the
- * target is on the nose and in reach, and the cell holds a charge.
+ * A Wasp on station: hang HIVE_WASP_STANDOFF_TILES off the target at the height it flies at (it
+ * never sinks to fire, only finishes a climb to cruise), and loose an energy burst whenever the
+ * emitters are clear, the target is on the nose and in reach, and the cell holds a charge. The
+ * bolts slope down (or up) from there onto the spot or the plane.
  */
 function waspStation(state: MatchState, e: Entity, strike: HoverStrike, dt: number): void {
   const a = e.air!;
   const t = strike.target;
-  const aloft = !!t && isAirborne(t);
   const { d, off } = holdOff(state, e, strike.x, strike.y, HIVE_WASP_STANDOFF_TILES * state.tileSize, dt);
-  const goal = aloft && t ? Math.max(AIR_STRAFE_ALT, entityHeight(state, t) + airAlt(t) - worldTileHeight(state, e.x, e.y)) : AIR_STRAFE_ALT;
-  hoverAlt(a, goal, dt);
+  hoverAlt(a, Math.max(a.alt, airCruiseAltOf(e.type)), dt);
   if (e.cooldown > 0 || plasmaShots(e) < 1) return;
   if (d > WASP_BURST_TILES * state.tileSize || d < e.radius * 2) return;
   if (off > (WASP_BURST_ARC_DEG * Math.PI) / 180) return;
-  if (aloft && t && Math.abs(airAlt(t) - a.alt) > AIR_STRAFE_ALT) return;
   fireWaspBurst(state, e, strike.x, strike.y, t, strike.forced);
   if (e.order?.once) e.order = null;
 }

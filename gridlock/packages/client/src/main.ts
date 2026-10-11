@@ -1,6 +1,15 @@
 import "./style/ra-feel.css";
-import type { CustomMapSpec, ServerMessage } from "@gridlock/shared";
-import { DEFAULT_MAP_ID, foldScenery, getMap, isPlaytestMapId, listMaps, loadCustomMap, unregisterMap } from "@gridlock/shared";
+import type { ClientMessage, CustomMapSpec, RoomState, ServerMessage, SkirmishSetup } from "@gridlock/shared";
+import {
+  DEFAULT_MAP_ID,
+  foldScenery,
+  getMap,
+  isPlaytestMapId,
+  listMaps,
+  loadCustomMap,
+  skirmishSetupOf,
+  unregisterMap,
+} from "@gridlock/shared";
 import { GameSocket } from "./net/client.js";
 import type { Ctx, Screen } from "./ctx.js";
 import { getMusic, getSfx, setMusic, setSfx } from "./ui/audio.js";
@@ -21,6 +30,37 @@ import { bindMenuSounds, screenSound } from "./ui/menu-sounds.js";
 import type { MapView } from "./render/mapview.js";
 
 const NAME_KEY = "gridlock.name";
+/** The last skirmish lobby, per callsign, so the next skirmish opens the same way. */
+const SKIRMISH_KEY = "gridlock.skirmish.";
+
+function loadSkirmishSetup(name: string): SkirmishSetup | undefined {
+  try {
+    const raw = localStorage.getItem(SKIRMISH_KEY + name);
+    return raw ? (JSON.parse(raw) as SkirmishSetup) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function saveSkirmishSetup(name: string, room: RoomState): void {
+  try {
+    localStorage.setItem(SKIRMISH_KEY + name, JSON.stringify(skirmishSetupOf(room)));
+  } catch {
+    // Storage blocked or full: the next skirmish just opens fresh.
+  }
+}
+
+/** A skirmish `room.create`, carrying the remembered lobby. An explicit `mapId` wins over the remembered map. */
+function skirmishCreate(name: string, mapId: string | null | undefined): ClientMessage {
+  const setup = loadSkirmishSetup(name);
+  return {
+    type: "room.create",
+    mapId: mapId ?? (setup?.mapId && getMap(setup.mapId) ? setup.mapId : DEFAULT_MAP_ID),
+    maxSlots: 8,
+    mode: "skirmish",
+    ...(setup ? { setup: mapId ? { ...setup, mapId } : setup } : {}),
+  };
+}
 const found = document.getElementById("app");
 if (!found) throw new Error("#app missing");
 const appEl: HTMLElement = found;
@@ -108,12 +148,7 @@ const ctx: Ctx = {
     ctx.pendingSkirmish = false;
     ctx.pendingSkirmishMap = null;
     ctx.net.send({ type: "hello", name: ctx.name });
-    ctx.net.send({
-      type: "room.create",
-      mapId: mapId ?? DEFAULT_MAP_ID,
-      maxSlots: 8,
-      mode: "skirmish",
-    });
+    ctx.net.send(skirmishCreate(ctx.name, mapId));
   },
   holdSkirmish() {
     ctx.leaveOpen = true;
@@ -222,12 +257,7 @@ function onMessage(msg: ServerMessage): void {
         net.send({ type: "match.load", save });
       } else if (ctx.pendingSkirmish) {
         ctx.pendingSkirmish = false;
-        net.send({
-          type: "room.create",
-          mapId: ctx.pendingSkirmishMap ?? DEFAULT_MAP_ID,
-          maxSlots: 8,
-          mode: "skirmish",
-        });
+        net.send(skirmishCreate(ctx.name, ctx.pendingSkirmishMap));
         ctx.pendingSkirmishMap = null;
       }
       break;
@@ -237,6 +267,14 @@ function onMessage(msg: ServerMessage): void {
       ctx.banner = "";
       ctx.pendingJoin = null;
       ctx.pendingSkirmish = false;
+      if (
+        msg.room.mode === "skirmish" &&
+        msg.room.phase === "lobby" &&
+        msg.room.hostId === net.playerId &&
+        !isPlaytestMapId(msg.room.mapId)
+      ) {
+        saveSkirmishSetup(ctx.name, msg.room);
+      }
       // A Map Builder play test starts the moment its room exists: no lobby in between.
       if (isPlaytestMapId(msg.room.mapId) && msg.room.phase === "lobby") break;
       if (

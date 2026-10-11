@@ -3511,6 +3511,8 @@ export const SPOTLIGHT_TURN_DEG_PER_SEC = 18;
  */
 export const TITAN_LAMP_SWEEP_DEG = 18;
 export const TITAN_LAMP_SWEEP_PERIOD_SECONDS = 8;
+/** A Titan's smashed lamp comes back on by itself this long after it went dark. */
+export const TITAN_LAMP_FIX_SECONDS = 30;
 /**
  * Spotlight post. The cab lamp on a steel pole over a sandbagged foot, worked by one
  * man who comes with it. Its beam reaches as far as the tower's, cast from the pole top.
@@ -9273,6 +9275,11 @@ export function hasTracks(type: EntityType): boolean {
  * A side hit, blast, or mine can throw tracks. The Mammoth and aircraft have
  * none to lose. A rear hit can still wreck their engines.
  */
+/** The Juggernaut and the Titan have no engine a hit can break. */
+export function engineCritAllowed(type: EntityType): boolean {
+  return type !== "juggernaut" && type !== "titan";
+}
+
 export function trackCritAllowed(type: EntityType): boolean {
   return type !== "mammoth" && !isAircraftType(type) && !isNavalType(type);
 }
@@ -9640,6 +9647,7 @@ export function addCrit(
   c: Crit,
 ): void {
   if (e.crits.includes(c)) return;
+  if (c === "engine" && e.type && !engineCritAllowed(e.type)) return;
   e.crits.push(c);
   if (c === "arm" && e.type && infantryLoadout(e.type).some((g) => g.id === "handgun")) {
     e.weapon = "handgun";

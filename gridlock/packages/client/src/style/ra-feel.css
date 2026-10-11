@@ -877,13 +877,46 @@ input[type="range"] { padding: 0; }
 }
 
 .cameo .cameo-name { display: block; }
+/* Price badge: a dark chip so the figure reads over any cameo art. */
 .cameo .cameo-meta {
-  display: block;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px 4px;
+  margin-top: 3px;
+  white-space: nowrap;
   font-family: "Share Tech Mono", monospace;
-  font-size: 0.62rem;
-  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1;
   letter-spacing: 0;
 }
+.cameo .cameo-cost,
+.cameo .cameo-pow {
+  padding: 2px 4px 1px;
+  background: rgba(8, 5, 3, 0.86);
+  border: 1px solid rgba(232, 184, 74, 0.45);
+  border-radius: 2px;
+  color: #ffd877;
+  text-shadow: 0 1px 0 #000;
+  font-weight: 700;
+}
+.cameo .cameo-cost::before {
+  content: "◆ ";
+  font-size: 0.6rem;
+  color: var(--amber-dim);
+}
+.cameo .cameo-cost.is-energy,
+.cameo .cameo-cost.is-supply {
+  color: #8ff4ff;
+  border-color: rgba(110, 230, 255, 0.45);
+}
+.cameo .cameo-cost.is-energy::before,
+.cameo .cameo-cost.is-supply::before { content: ""; }
+.cameo .cameo-cost.is-supply { color: var(--ready); border-color: rgba(125, 255, 106, 0.45); }
+.cameo .cameo-pow { font-size: 0.66rem; border-color: rgba(138, 122, 100, 0.5); }
+.cameo .cameo-pow::after { content: "\26A1\FE0E"; margin-left: 1px; }
+.cameo .cameo-pow.is-plus { color: var(--ready); }
+.cameo .cameo-pow.is-minus { color: #ff9a80; }
 
 .cameo .pip {
   position: absolute;
@@ -914,7 +947,7 @@ input[type="range"] { padding: 0; }
 }
 .cameo.is-ready .cameo-ready { display: flex; }
 .cameo.is-ready .pip { background: var(--ready); }
-.cameo.unaffordable .cameo-meta { color: var(--danger); }
+.cameo.unaffordable .cameo-cost { color: var(--danger); border-color: var(--danger); }
 .cameo.unaffordable:not(:disabled) { opacity: 0.78; }
 .cameo.slow-power .pip {
   background: repeating-linear-gradient(90deg, var(--danger) 0 6px, #5a2018 6px 10px);
@@ -1012,6 +1045,7 @@ input[type="range"] { padding: 0; }
 #build-aerie,
 #build-forge,
 #build-nexus,
+#build-fusioncore,
 #build-spineturret,
 #build-pulsespire,
 #build-energywall,
@@ -1403,6 +1437,11 @@ input[type="range"] { padding: 0; }
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/buildings/nexus-cameo.png");
 }
+#build-fusioncore {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/fusioncore-cameo.png");
+}
 #build-spineturret {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
@@ -1554,9 +1593,22 @@ input[type="range"] { padding: 0; }
     url("../assets/buildings/dock-cameo.png");
 }
 
+/* Dim the art and name with an overlay rather than opacity, so the price above it still reads. */
 .cameo:disabled, .cameo.is-disabled {
-  opacity: 0.38;
   cursor: not-allowed;
+  border-color: #4a2216;
+}
+.cameo:disabled::after, .cameo.is-disabled::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 7, 5, 0.62);
+  pointer-events: none;
+}
+.cameo:disabled .cameo-meta, .cameo.is-disabled .cameo-meta {
+  position: relative;
+  z-index: 1;
+  opacity: 0.85;
 }
 
 @keyframes scrap-flash {
@@ -1812,6 +1864,7 @@ input[type="range"] { padding: 0; }
 .config-type[data-type="assimilator"] { background-image: url("../assets/buildings/assimilator-cameo.png"); }
 .config-type[data-type="forge"] { background-image: url("../assets/buildings/forge-cameo.png"); }
 .config-type[data-type="nexus"] { background-image: url("../assets/buildings/nexus-cameo.png"); }
+.config-type[data-type="fusioncore"] { background-image: url("../assets/buildings/fusioncore-cameo.png"); }
 .config-type[data-type="conversion"] { background-image: url("../assets/buildings/conversion-cameo.png"); }
 .config-type[data-type="spineturret"] { background-image: url("../assets/buildings/spineturret-cameo.png"); }
 .config-type[data-type="pulsespire"] { background-image: url("../assets/buildings/pulsespire-cameo.png"); }
@@ -2154,6 +2207,180 @@ input[type="range"] { padding: 0; }
   background: #1a100c;
 }
 .cmd-tip-body { margin-top: 3px; }
+
+/* Sidebar card: opens left of the sidebar after a hover pause. Art and price, figures, weapon, traits, blurb, live state. */
+.cameo-card {
+  position: fixed;
+  z-index: 30;
+  width: 340px;
+  max-height: calc(100vh - 16px);
+  overflow: hidden;
+  padding: 10px 12px 10px;
+  background: linear-gradient(180deg, rgba(30, 20, 13, 0.98), rgba(12, 8, 6, 0.98));
+  border: 2px solid var(--rust);
+  box-shadow: 0 0 0 1px #000, 0 10px 28px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(232, 184, 74, 0.12);
+  color: var(--text);
+  font-size: 0.76rem;
+  line-height: 1.38;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(6px);
+  transition: opacity 0.12s, transform 0.12s, visibility 0s linear 0.12s;
+}
+.cameo-card.is-shown {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: opacity 0.12s, transform 0.12s;
+}
+.cameo-card::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--rust-hi), var(--amber), var(--rust-hi));
+}
+.card-head {
+  display: grid;
+  grid-template-columns: 112px 1fr;
+  gap: 10px;
+  align-items: start;
+}
+.card-art {
+  width: 112px;
+  height: 112px;
+  background-color: #0b0806;
+  background-image: radial-gradient(circle at 50% 60%, rgba(232, 184, 74, 0.14), transparent 70%);
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  border: 1px solid #3a2418;
+  box-shadow: var(--inset);
+  image-rendering: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 600 2.4rem "Oswald", sans-serif;
+  color: var(--amber-dim);
+}
+.card-title { display: flex; flex-direction: column; min-width: 0; }
+.card-kind {
+  font-family: "Share Tech Mono", monospace;
+  font-size: 0.64rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.card-name {
+  font-family: "Oswald", sans-serif;
+  font-weight: 600;
+  font-size: 1.05rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--amber);
+  line-height: 1.15;
+}
+.card-role { margin-top: 2px; color: #e6d6b8; font-size: 0.74rem; }
+.card-price {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+}
+.card-price-value {
+  font-family: "Share Tech Mono", monospace;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #ffd877;
+  text-shadow: 0 1px 0 #000;
+}
+.card-price-value small { font-size: 0.62rem; letter-spacing: 0.1em; color: var(--amber-dim); }
+.card-price.is-energy .card-price-value { color: #8ff4ff; }
+.card-price.is-supply .card-price-value { color: var(--ready); }
+.card-price.is-free .card-price-value { color: var(--ready); }
+.card-price-note { font-size: 0.66rem; color: var(--muted); }
+.card-meta { display: flex; gap: 10px; width: 100%; }
+.card-meta .card-stat { padding: 0; background: none; border: 0; flex-direction: row; gap: 4px; align-items: baseline; }
+.card-stats {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+.card-stat {
+  display: flex;
+  flex-direction: column;
+  padding: 3px 6px 4px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid #2c1c12;
+  min-width: 0;
+}
+.card-stat.is-wide { grid-column: span 2; }
+.card-stat-label {
+  font-family: "Share Tech Mono", monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.card-stat-value {
+  font-family: "Share Tech Mono", monospace;
+  font-size: 0.86rem;
+  color: #f2e4c4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.card-stat-value small { font-size: 0.6rem; color: var(--muted); }
+.card-weapon { margin-top: 8px; }
+.card-weapon .card-stats { margin-top: 4px; }
+.card-section {
+  font-family: "Oswald", sans-serif;
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--amber);
+  border-bottom: 1px solid #3a2418;
+  padding-bottom: 2px;
+}
+.card-section::before { content: "▸ "; color: var(--rust-hi); }
+.card-traits { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px; }
+.card-trait {
+  padding: 1px 6px;
+  border: 1px solid var(--amber-dim);
+  background: rgba(232, 184, 74, 0.08);
+  color: var(--amber);
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+}
+.card-blurb {
+  margin: 8px 0 0;
+  color: #cdbd9f;
+  font-size: 0.72rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 7;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.card-reqs { margin-top: 6px; font-size: 0.68rem; color: var(--muted); }
+.card-note {
+  margin-top: 6px;
+  padding: 3px 6px;
+  border-left: 3px solid var(--danger);
+  background: rgba(255, 90, 74, 0.1);
+  color: #ffb0a0;
+  font-size: 0.7rem;
+}
+.card-hint {
+  margin-top: 6px;
+  padding-top: 5px;
+  border-top: 1px solid #2c1c12;
+  font-family: "Share Tech Mono", monospace;
+  font-size: 0.64rem;
+  color: var(--muted);
+}
 
 /* Garrison: occupants of the selected host down the left edge. Click one to send it out. */
 .garrison-dock {

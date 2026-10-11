@@ -10,8 +10,11 @@ import {
   updateSelf,
   hostSlot,
   setMap,
+  applySkirmishSetup,
+  skirmishSetupOf,
 } from "./lobby.js";
-import type { RoomState } from "./protocol.js";
+import { getMap } from "./maps.js";
+import type { RoomState, Slot } from "./protocol.js";
 
 function room(maxSlots = 8): RoomState {
   const r = createRoom({
@@ -279,5 +282,62 @@ describe("lobby rules", () => {
     assert.equal(hostSlot(r, "host", 1, { kick: true }).ok, true);
     assert.equal(r.slots[1]?.status, "open");
     assert.equal(r.slots[1]?.playerId, undefined);
+  });
+});
+
+describe("skirmish setup", () => {
+  const skirmish = (): RoomState => {
+    const r = createRoom({ id: "S1", hostId: "host", hostName: "Cmdr", mapId: "yard-64", maxSlots: 8, mode: "skirmish" });
+    if (!r.ok) throw new Error(r.message);
+    return r.value;
+  };
+  it("rebuilds CPUs, factions, colors, teams and starts", () => {
+    const a = skirmish();
+    const [s1, s2, s3] = getMap("yard-64")!.spawns.map((s) => s.id).reverse();
+    assert.equal(updateSelf(a, "host", { faction: "xeno", colorId: 3, team: 1, spawnId: s2 }).ok, true);
+    assert.equal(hostSlot(a, "host", 2, { status: "ai", ai: "aggressive", faction: "xeno", team: 2, spawnId: s1 }).ok, true);
+    assert.equal(hostSlot(a, "host", 1, { status: "ai", ai: "defensive", team: 2, spawnId: s3 }).ok, true);
+    // Swap the CPUs' colors with the host's: an order a naive replay would trip on.
+    assert.equal(hostSlot(a, "host", 2, { colorId: 5 }).ok, true);
+    assert.equal(hostSlot(a, "host", 1, { colorId: 0 }).ok, true);
+    const setup = JSON.parse(JSON.stringify(skirmishSetupOf(a)));
+
+    const b = skirmish();
+    applySkirmishSetup(b, setup);
+    assert.equal(b.mapId, "yard-64");
+    const pick = (s: Slot) => ({ status: s.status, ai: s.ai, faction: s.faction ?? "alliance", colorId: s.colorId, team: s.team, spawnId: s.spawnId });
+    assert.deepEqual(b.slots.map(pick), a.slots.map(pick));
+    assert.equal(b.maxSlots, a.maxSlots);
+  });
+
+  it("skips what no longer fits and never trusts the payload", () => {
+    const b = skirmish();
+    applySkirmishSetup(b, {
+      mapId: "gone-map",
+      host: { faction: "nope", colorId: 99, team: 9, spawnId: 999 },
+      cpus: [
+        { index: 0, ai: "aggressive" },
+        { index: 1, ai: "made-up" },
+        { index: 2, ai: "defensive", colorId: 0 },
+        "junk",
+      ],
+    });
+    assert.equal(b.mapId, "yard-64");
+    assert.equal(b.slots[0]?.status, "human");
+    assert.equal(b.slots[0]?.colorId, 0);
+    assert.equal(b.slots[0]?.team, 0);
+    assert.equal(b.slots[0]?.spawnId, 0);
+    assert.notEqual(b.slots[1]?.status, "ai");
+    assert.equal(b.slots[2]?.status, "ai");
+    assert.notEqual(b.slots[2]?.colorId, b.slots[0]?.colorId);
+    applySkirmishSetup(b, null);
+    applySkirmishSetup(b, "x");
+  });
+
+  it("caps CPUs at the map's seats", () => {
+    const b = skirmish();
+    const seats = getMap("yard-64")!.spawns.length;
+    applySkirmishSetup(b, { cpus: [1, 2, 3, 4, 5, 6, 7].map((index) => ({ index, ai: "defensive" })) });
+    assert.equal(b.slots.filter((s) => s.status === "ai").length, Math.min(7, seats - 1));
   });
 });
