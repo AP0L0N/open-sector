@@ -75,13 +75,14 @@ export function fenceLineEnergy(state: MatchState, playerId: string, sites: read
 
 /**
  * Energy each living unit, defence, and base structure of `playerId` takes, oldest first. An Assembler's Thralls
- * are its, and a Hive Ark's Wasps are the Ark's: they take none.
+ * are its, and a Hive Ark's Wasps are the Ark's: they take none. Nor does a unit shut down on
+ * its side's order: the hive has its energy back until it powers up again.
  */
 function consumers(state: MatchState, playerId: string): { e: Entity; energy: number }[] {
   const links = linkEnergyByPost(state, fencePosts(state, playerId));
   const out: { e: Entity; energy: number }[] = [];
   for (const e of state.entities.values()) {
-    if (e.ownerId !== playerId || !live(e) || e.ruined || e.assembledBy != null || e.arkOf != null) continue;
+    if (e.ownerId !== playerId || !live(e) || e.ruined || e.assembledBy != null || e.arkOf != null || e.dormant) continue;
     const energy = energyOf(e.type) + (links.get(e.id) ?? 0);
     if (energy > 0) out.push({ e, energy });
   }

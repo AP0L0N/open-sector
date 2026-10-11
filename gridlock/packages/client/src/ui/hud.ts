@@ -2321,16 +2321,6 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       title: "Hold position — fire in range, no chase, no withdraw (P)",
       on: holding,
     });
-    const xenos = units.filter((e) => isCyborg(e.type));
-    if (xenos.length) {
-      out.push({
-        slot: "engage",
-        act: "engage",
-        label: "Engage",
-        title: "Engage contacts — fire on what thermal and APS radar read, out of sight but in range",
-        on: xenos.every((e) => e.engageContacts),
-      });
-    }
     out.push({
       slot: "rotate",
       act: "rotate",
@@ -3083,14 +3073,6 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     if (units.length) {
       const hold = !units.every((e) => e.holdPosition);
       ctx.net.send({ type: "cmd.hold", ids: units.map((e) => e.id), hold });
-    }
-    return;
-  }
-  if (act === "engage") {
-    const xenos = units.filter((e) => isCyborg(e.type));
-    if (xenos.length) {
-      const on = !xenos.every((e) => e.engageContacts);
-      ctx.net.send({ type: "cmd.engagecontacts", ids: xenos.map((e) => e.id), on });
     }
     return;
   }

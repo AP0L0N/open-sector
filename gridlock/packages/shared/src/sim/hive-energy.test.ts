@@ -99,6 +99,23 @@ describe("hive energy", () => {
     assert.deepEqual(snapshotFor(state, "B").you.energy, { cap: 700, used: want, offline: 0 });
   });
 
+  it("gets a unit's energy back while it is shut down on order, and pays it again on power up", () => {
+    const state = field();
+    at(state, "fusionnode", 40, 40);
+    at(state, "conversion", 34, 30);
+    const lancer = at(state, "lancer", 20, 20);
+    ticks(state, 1);
+    const base = energyOf("conversion");
+    assert.equal(hiveEnergyOf(state, "B").used, base + energyOf("lancer"));
+    assert.equal(applyCommand(state, "B", { type: "cmd.powerdown", ids: [lancer.id], on: true }).ok, true);
+    ticks(state, 1);
+    assert.ok(lancer.dormant);
+    assert.deepEqual(hiveEnergyOf(state, "B"), { cap: HIVE_CORE_ENERGY + FUSION_NODE_ENERGY, used: base, offline: 0 });
+    assert.equal(applyCommand(state, "B", { type: "cmd.powerdown", ids: [lancer.id], on: false }).ok, true);
+    ticks(state, 1);
+    assert.equal(hiveEnergyOf(state, "B").used, base + energyOf("lancer"));
+  });
+
   it("never refuses or waits on energy: it builds and trains below zero, and pays no scrap", () => {
     const state = field();
     at(state, "conversion", 30, 30);
