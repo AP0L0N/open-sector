@@ -1464,7 +1464,7 @@ function cmdAmmo(state: MatchState, playerId: string, ids: number[], shell: Shel
 function cmdRockets(state: MatchState, playerId: string, ids: number[], on: boolean): CmdResult {
   // A RAM holds its barrage and its interceptors the same way.
   const units = [...owned(state, playerId, ids), ...ownedMounts(state, playerId, ids)].filter((e) => rocketsOf(e.type));
-  if (units.length === 0) return fail("not_yours", "Select a Titan, a Nebelwerfer, or a RAM.");
+  if (units.length === 0) return fail("not_yours", "Select a Titan, a Hailstorm, or a RAM.");
   for (const e of units) {
     e.rocketsOff = on ? undefined : true;
     // Switching off mid-salvo holds the rest in the rack.

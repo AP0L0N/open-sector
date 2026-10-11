@@ -2,16 +2,16 @@
   "key": "ss3",
   "out": "units/ss3",
   "voice": {
-    "name": "Open Sector - StuG III",
+    "name": "Open Sector - Vanguard",
     "description": "Scrappy male assault gun crewman in his late twenties, quick wiry mid-range voice with a cheeky streetwise accent, practical and blunt, a bit sarcastic, talks fast like a mechanic who fixes things with a hammer, shouting over engine noise on a tank radio.",
-    "sample": "StuG here, low and mean. No turret, no problem, we just point the whole tank at it. Keep them in front of us and we'll knock them flat. Just don't let anybody sneak round the side, alright?",
+    "sample": "Vanguard here, low and mean. No turret, no problem, we just point the whole tank at it. Keep them in front of us and we'll knock them flat. Just don't let anybody sneak round the side, alright?",
     "stability": 0.4,
     "similarity": 0.8,
     "style": 0.5
   },
   "lines": {
     "select": [
-      "StuG here.",
+      "Vanguard here.",
       "Low and ready.",
       "What's the job?",
       "Yeah, boss?",
@@ -31,7 +31,7 @@
       "Front toward enemy!"
     ],
     "ready": [
-      "StuG three, built and ready."
+      "Vanguard three, built and ready."
     ],
     "hit": [
       "[shouting] Not the sides!",
@@ -44,14 +44,14 @@
   },
   "sfx": {
     "fire": {
-      "prompt": "Distant, powerful boom of a World War 2 StuG III assault gun firing its 75mm cannon in an open field, the blast rolling and echoing off the hills.",
+      "prompt": "Distant, powerful boom of a modern assault gun firing its main cannon in an open field, the blast rolling and echoing off the hills.",
       "duration": 5.0,
       "variants": 3,
       "influence": 0.6,
       "lufs": -9
     },
     "move": {
-      "prompt": "Medium WWII armored vehicle engine revving and steel tracks pivoting on dirt, squealing turn and clanking, short one-shot, close, no music, no voice",
+      "prompt": "Modern armored vehicle diesel engine revving and steel tracks pivoting on dirt, squealing turn and clanking, short one-shot, close, no music, no voice",
       "duration": 2.2,
       "variants": 1,
       "influence": 0.6

@@ -2,8 +2,8 @@
   "key": "lst",
   "out": "units/lst",
   "voice": {
-    "name": "Open Sector - Transport LST",
-    "description": "Male Royal Canadian Navy officer in his mid forties commanding a 1940s landing ship, speaking over a radio and the drone of big diesel engines, steady and unhurried, a gravelly weathered mid-range voice with a warm Canadian accent, calm maritime authority, a seasoned skipper who has run many beach landings.",
+    "name": "Open Sector - Landing Ship",
+    "description": "Male navy officer in his mid forties commanding a landing ship, speaking over a radio and the drone of big diesel engines, steady and unhurried, a gravelly weathered mid-range voice with a warm Canadian accent, calm maritime authority, a seasoned skipper who has run many beach landings.",
     "sample": "Wheelhouse here. Beach is three hundred yards off the bow, steady as she goes. Gunners, keep your heads down till we touch bottom. Stand by the bow doors and get those tanks warmed up. Easy now, lads, we've done this before.",
     "stability": 0.6,
     "similarity": 0.8,
@@ -55,13 +55,13 @@
   },
   "sfx": {
     "fire": {
-      "prompt": "Deck-mounted World War 2 heavy machine gun on a landing ship firing a short burst, loud rapid hammering .50 caliber reports with brass casings clinking on a steel deck, outdoors at sea, no music, no voice",
+      "prompt": "Deck-mounted heavy machine gun on a landing ship firing a short burst, loud rapid hammering .50 caliber reports with brass casings clinking on a steel deck, outdoors at sea, no music, no voice",
       "duration": 1.2,
       "variants": 3,
       "influence": 0.6
     },
     "move": {
-      "prompt": "Big World War 2 landing ship getting under way, twin heavy diesel engines rumbling up with a deep throb, propellers churning water against a flat steel hull, a short low ship horn blast, close, no music, no voice",
+      "prompt": "Big modern landing ship getting under way, twin heavy diesel engines rumbling up with a deep throb, propellers churning water against a flat steel hull, a short low ship horn blast, close, no music, no voice",
       "duration": 3.0,
       "variants": 1,
       "influence": 0.55
@@ -73,7 +73,7 @@
       "influence": 0.55
     },
     "special": {
-      "prompt": "Heavy steel bow doors of a World War 2 landing ship grinding open on rusty hinges with a chain winch rattling, then a massive steel ramp dropping down onto a sandy beach with a loud metallic clang and thud, close, no music, no voice",
+      "prompt": "Heavy steel bow doors of a modern landing ship grinding open on rusty hinges with a chain winch rattling, then a massive steel ramp dropping down onto a sandy beach with a loud metallic clang and thud, close, no music, no voice",
       "duration": 4.0,
       "variants": 1,
       "influence": 0.6

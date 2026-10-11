@@ -2,7 +2,7 @@
   "key": "bv222",
   "out": "units/bv222",
   "voice": {
-    "name": "Open Sector - BV 222",
+    "name": "Open Sector - Pelican",
     "description": "Male transport flying-boat pilot in his mid-forties, easygoing and good-humored, warm mellow chuckling voice over the radio with a relaxed coastal accent, unhurried like a bus driver on a sunny route, a friendly uncle figure who treats every delivery as a pleasant day trip.",
     "sample": "Afternoon, everybody! Big bird's coming in low and slow, all six engines purring like kittens. Got your crate, got your paratroopers, even got a thermos of coffee. Where would you like it dropped?",
     "stability": 0.5,
@@ -30,7 +30,7 @@
       "[sighs] Wrong plane for that."
     ],
     "ready": [
-      "BV 222 ready. Mind the propellers."
+      "Pelican ready. Mind the propellers."
     ],
     "hit": [
       "Hey! I'm a delivery plane!",
@@ -48,7 +48,7 @@
   },
   "sfx": {
     "move": {
-      "prompt": "Huge six-engined WWII flying boat flying overhead, deep heavy droning of many propeller engines with slow doppler fly-by, outdoors, no music, no voice",
+      "prompt": "Huge four-engined turboprop flying boat flying overhead, deep heavy droning of turboprop engines with slow doppler fly-by, outdoors, no music, no voice",
       "duration": 3.0,
       "variants": 1,
       "influence": 0.55

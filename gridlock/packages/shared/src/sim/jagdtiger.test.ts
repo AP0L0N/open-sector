@@ -58,7 +58,7 @@ const tiger = catalog("warden");
 
 describe("jagdtiger catalog", () => {
   it("is a casemate tank destroyer trained at the Armory behind Research", () => {
-    assert.equal(jt.name, "Jagdtiger");
+    assert.equal(jt.name, "Breaker");
     assert.ok(TRAIN_TYPES.includes("jagdtiger"));
     assert.equal(producerType("jagdtiger"), "armory");
     assert.equal(TECH_REQUIRES.jagdtiger, "research");
@@ -73,7 +73,7 @@ describe("jagdtiger catalog", () => {
     assert.ok((jt.blurb ?? "").length > 24);
   });
 
-  it("is heavier and slower than the Tiger, with the thickest front on the field", () => {
+  it("is heavier and slower than the Warden, with the thickest front on the field", () => {
     assert.ok(jt.cost > tiger.cost);
     assert.ok(jt.hp > tiger.hp);
     assert.ok(jt.armorFront > tiger.armorFront);
@@ -113,8 +113,8 @@ describe("jagdtiger catalog", () => {
 describe("jagdtiger ballistics", () => {
   const gun = { damage: jt.damage, penetration: jt.penetration, caliber: jt.caliber, spreadDeg: jt.spreadDeg };
 
-  it("kills a Tiger with one AP hit to the front plate", () => {
-    // Tiger faces +x; the shell flies -x into its nose.
+  it("kills a Warden with one AP hit to the front plate", () => {
+    // Warden faces +x; the shell flies -x into its nose.
     const res = resolveHit({ gun, target: tiger, targetFacing: 0, targetHp: tiger.hp, targetHpMax: tiger.hp, vx: -1, vy: 0, rand: seq([0.5]) });
     assert.equal(res.face, "front");
     assert.equal(res.kind, "kill");
@@ -127,7 +127,7 @@ describe("jagdtiger ballistics", () => {
     assert.ok(res.damage >= jt.damage, `damage=${res.damage} kind=${res.kind}`);
   });
 
-  it("shrugs a Tiger AP round off the front plate but not off the rear", () => {
+  it("shrugs a Warden AP round off the front plate but not off the rear", () => {
     const tigerGun = { damage: SHELLS.ap.damage, penetration: SHELLS.ap.penetration, caliber: SHELLS.ap.caliber, spreadDeg: SHELLS.ap.spreadDeg };
     const front = resolveHit({ gun: tigerGun, target: jt, targetFacing: 0, targetHp: jt.hp, targetHpMax: jt.hp, vx: -1, vy: 0, rand: seq([0.5, 0.5, 0.5]) });
     assert.equal(front.face, "front");

@@ -2,7 +2,7 @@
   "key": "fw190",
   "out": "units/fw190",
   "voice": {
-    "name": "Open Sector - Fw 190",
+    "name": "Open Sector - Kestrel",
     "description": "Male ace fighter pilot in his early thirties, ice-cool and effortlessly smooth over the cockpit radio, relaxed low baritone with a hint of a continental European accent, laconic and a little arrogant, never raises his voice, sounds like he is smiling behind his oxygen mask.",
     "sample": "Relax, I have the bandit. Rolling in from the sun, he never sees me. Two short bursts and he is finished. Back home in time for coffee. Nobody out-turns me up here, nobody.",
     "stability": 0.5,
@@ -31,7 +31,7 @@
       "Short burst, long goodbye."
     ],
     "ready": [
-      "Fw 190, airborne and bored. Find me someone."
+      "Kestrel, airborne and bored. Find me someone."
     ],
     "hit": [
       "Hm. A lucky one.",
@@ -44,14 +44,14 @@
   },
   "sfx": {
     "fire": {
-      "prompt": "A World War 2 fighter plane strafing with heavy 30mm cannons: a rapid string of hard thudding cannon shots and shells slamming into the ground, echoing over an open field.",
+      "prompt": "A jet fighter strafing with heavy 30mm cannons: a rapid string of hard thudding cannon shots and shells slamming into the ground, echoing over an open field.",
       "duration": 3.0,
       "variants": 3,
       "influence": 0.6,
       "lufs": -9
     },
     "move": {
-      "prompt": "WWII radial-engine fighter plane accelerating and flying past fast overhead, loud powerful engine roar with doppler shift, outdoors, no music, no voice",
+      "prompt": "Jet fighter accelerating and flying past fast overhead, loud afterburner roar with doppler shift, outdoors, no music, no voice",
       "duration": 2.0,
       "variants": 1,
       "influence": 0.55

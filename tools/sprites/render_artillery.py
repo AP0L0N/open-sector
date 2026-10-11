@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Artillery: towed field gun, one 16-face hull sheet.
+"""Artillery: lightweight towed howitzer, one 16-face hull sheet.
 
-Same numpy rasterizer, camera, splinter camo, scale, and outline as
-render_nebelwerfer.py, so it sits in the vehicle class at the same meters per
-pixel. The barrel is the facing: 0001 = muzzle screen-south, then clockwise
-22.5° through 0016. The crew is drawn by the client, not baked in.
+Modern line (render_alliance_kit.py): same camera, palette, scale, and outline
+as render_nebelwerfer.py (the Hailstorm), so it sits in the vehicle class at the
+same meters per pixel. The barrel is the facing: 0001 = muzzle screen-south,
+then clockwise 22.5° through 0016. The crew is drawn by the client, not baked in.
 
-  hull  two spoked wheels on an axle, a gun shield with a gray team stripe,
-        the elevated barrel with recoil cylinder and muzzle brake, and the
-        split trail with its spades on the ground behind.
+  hull  two rubber road wheels on a cranked axle, a low cradle with twin
+        recuperators over the breech, a long elevated barrel with a baffled
+        muzzle brake, a small splinter shield carrying the gray team stripe,
+        and long split box trails spread back to their spades.
 
   python tools/sprites/render_artillery.py \\
       --out gridlock/packages/client/src/assets/units/artillery
@@ -21,58 +22,22 @@ import math
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
 
-from render_procedural import Mesh, render_turntable
+import render_alliance_kit as kit
+from render_alliance_kit import Mesh, tube
 
 # Meters. +x muzzle, +y left, +z up. Wheels on z = 0. Origin under the axle.
-WHEEL_R = 0.62
+WHEEL_R = 0.5
 AXLE_Z = WHEEL_R
-TRUNNION_Z = 1.1
+TRUNNION_Z = 1.05
 ELEV = math.radians(45)  # barrel elevation: high-angle fire
-BARREL_LEN = 3.3
-SCALE_FRAC = 0.1  # px per meter / cell px, locked to the Nebelwerfer
+BARREL_LEN = 3.7
+SCALE_FRAC = 0.1  # px per meter / cell px, locked to the Hailstorm
 Z_MID = 1.0
 CY_FRAC = 0.6
 
 
-def tube(m: Mesh, p0: np.ndarray, p1: np.ndarray, r: float, mat: str, n: int = 10, bore: bool = False) -> None:
-    """Cylinder from p0 to p1. `bore` darkens the far end like a muzzle."""
-    axis = p1 - p0
-    axis = axis / np.linalg.norm(axis)
-    up = np.array([0.0, 0.0, 1.0])
-    u = np.cross(axis, up)
-    if np.linalg.norm(u) < 1e-6:
-        u = np.array([0.0, 1.0, 0.0])
-    u /= np.linalg.norm(u)
-    v = np.cross(u, axis)
-    ring = lambda c, rr: [c + rr * (math.cos(2 * math.pi * k / n) * u + math.sin(2 * math.pi * k / n) * v) for k in range(n)]
-    m.loft([ring(p0, r), ring(p1, r)], mat)
-    if bore:
-        m.loft([ring(p1 + axis * 0.01, r * 0.6), ring(p1 + axis * 0.012, r * 0.6)], "tire")
-
-
-def wheel(m: Mesh, y: float, n: int = 16) -> None:
-    """Tire as a short cylinder along y, a hub, and six spokes on the outer face."""
-    half = 0.09
-    side = 1 if y > 0 else -1
-    rings = []
-    for yy in (y - half, y + half):
-        rings.append([np.array([WHEEL_R * math.cos(2 * math.pi * k / n), yy, AXLE_Z + WHEEL_R * math.sin(2 * math.pi * k / n)]) for k in range(n)])
-    m.loft(rings, "tire")
-    face = y + side * (half + 0.01)
-    rim = [np.array([0.5 * math.cos(2 * math.pi * k / n), face, AXLE_Z + 0.5 * math.sin(2 * math.pi * k / n)]) for k in range(n)]
-    m.loft([rim, [p + np.array([0, side * 0.015, 0]) for p in rim]], "frame")
-    for k in range(6):
-        a = 2 * math.pi * k / 6
-        p0 = np.array([0.0, face + side * 0.03, AXLE_Z])
-        p1 = np.array([0.48 * math.cos(a), face + side * 0.03, AXLE_Z + 0.48 * math.sin(a)])
-        tube(m, p0, p1, 0.035, "camo", n=6)
-    hub = [np.array([0.13 * math.cos(2 * math.pi * k / 8), face + side * 0.04, AXLE_Z + 0.13 * math.sin(2 * math.pi * k / 8)]) for k in range(8)]
-    m.loft([hub, [p + np.array([0, side * 0.06, 0]) for p in hub]], "metal")
-
-
-def trail_leg(m: Mesh, root: np.ndarray, end: np.ndarray, w: float, h: float) -> None:
+def trail_leg(m: Mesh, root: np.ndarray, end: np.ndarray, w: float, h: float, mat: str = "armor") -> None:
     """Box-section trail leg from the carriage back to the spade."""
     axis = end - root
     axis = axis / np.linalg.norm(axis)
@@ -80,70 +45,57 @@ def trail_leg(m: Mesh, root: np.ndarray, end: np.ndarray, w: float, h: float) ->
     side /= np.linalg.norm(side)
     up = np.cross(axis, side)
     corners = lambda c: [c + side * sy * w + up * sz * h for sy, sz in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
-    m.loft([corners(root), corners(end)], "camo")
+    m.loft([corners(root), corners(end)], mat)
 
 
 def build_hull() -> Mesh:
     m = Mesh()
-    # Axle and the two wheels.
-    tube(m, np.array([0.0, -0.82, AXLE_Z]), np.array([0.0, 0.82, AXLE_Z]), 0.07, "metal")
+    # Cranked axle and the two rubber wheels.
+    tube(m, (0.0, -0.85, AXLE_Z), (0.0, 0.85, AXLE_Z), 0.07, "wheel", 8)
     for s in (-1, 1):
-        wheel(m, s * 0.82)
+        kit.road_wheel(m, 0.0, s * 0.9, WHEEL_R, 0.26)
     # Carriage saddle on the axle, the cradle above it.
-    m.box((-0.45, -0.32, AXLE_Z - 0.05), (0.55, 0.32, AXLE_Z + 0.25), "camo")
-    m.box((-0.2, -0.2, AXLE_Z + 0.25), (0.35, 0.2, TRUNNION_Z - 0.05), "frame")
-    # Split trail: two legs spread back to the spades on the ground.
+    m.box((-0.5, -0.34, AXLE_Z - 0.05), (0.55, 0.34, AXLE_Z + 0.22), "armor")
+    m.box((-0.25, -0.22, AXLE_Z + 0.22), (0.4, 0.22, TRUNNION_Z - 0.05), "plate")
+    # Split box trails, long and spread, with spades and a towing eye bar between them.
     for s in (-1, 1):
-        root = np.array([-0.35, s * 0.24, AXLE_Z + 0.05])
-        end = np.array([-2.55, s * 0.62, 0.16])
-        trail_leg(m, root, end, 0.08, 0.1)
-        m.box((-2.78, s * 0.62 - 0.17, 0.0), (-2.58, s * 0.62 + 0.17, 0.34), "metal")
-        m.box((-2.5, s * 0.62 - 0.05, 0.16), (-2.3, s * 0.62 + 0.05, 0.3), "frame")  # handspike bracket
-    # Gun shield: a wide plate in front of the axle, its top stripe takes the team tint.
-    m.box((0.52, -0.98, 0.42), (0.6, 0.98, 1.38), "camo")
-    m.box((0.6, -0.96, 1.22), (0.63, 0.96, 1.36), "team")
+        root = np.array([-0.4, s * 0.26, AXLE_Z + 0.02])
+        end = np.array([-3.1, s * 0.75, 0.14])
+        trail_leg(m, root, end, 0.09, 0.09)
+        m.box((-3.3, s * 0.75 - 0.18, 0.0), (-3.1, s * 0.75 + 0.18, 0.3), "plate")  # spade
+        m.box((-2.0, s * 0.56 - 0.05, 0.12), (-1.8, s * 0.56 + 0.05, 0.3), "slat")  # lifting handle bracket
+    # Small splinter shield in front of the axle; its top edge takes the team tint.
+    m.box((0.55, -0.9, 0.5), (0.62, 0.9, 1.25), "armor")
+    m.box((0.62, -0.88, 1.12), (0.65, 0.88, 1.24), "team")
     for s in (-1, 1):
-        m.box((0.4, s * 0.98 - 0.04, 0.5), (0.56, s * 0.98 + 0.04, 1.3), "camo")  # folded side wings
-    # Barrel: breech behind the trunnion, recoil cylinder under it, muzzle brake on the end.
+        m.box((0.42, s * 0.9 - 0.04, 0.55), (0.58, s * 0.9 + 0.04, 1.2), "armor")  # folded wings
+    # Barrel: breech block behind the trunnion, twin recuperators above the cradle,
+    # a long tube and a two-baffle muzzle brake on the end.
     pivot = np.array([0.0, 0.0, TRUNNION_Z])
     fwd = np.array([math.cos(ELEV), 0.0, math.sin(ELEV)])
     upn = np.array([-math.sin(ELEV), 0.0, math.cos(ELEV)])
-    breech = pivot - fwd * 0.7
+    breech = pivot - fwd * 0.75
     muzzle = pivot + fwd * BARREL_LEN
-    m.box(tuple(breech - np.array([0.28, 0.17, 0.15])), tuple(breech + np.array([0.12, 0.17, 0.15])), "metal")
-    tube(m, breech, pivot + fwd * 1.0, 0.13, "camo")
-    tube(m, pivot + fwd * 1.0, muzzle, 0.085, "metal", bore=True)
-    tube(m, pivot - fwd * 0.4 - upn * 0.17, pivot + fwd * 1.15 - upn * 0.17, 0.09, "frame")
-    tube(m, muzzle - fwd * 0.3, muzzle + fwd * 0.04, 0.14, "metal", bore=True)
-    # Elevating arc beside the cradle.
+    m.box(tuple(breech - np.array([0.3, 0.18, 0.16])), tuple(breech + np.array([0.12, 0.18, 0.16])), "plate")
+    tube(m, breech, pivot + fwd * 1.1, 0.15, "barrel")
+    tube(m, pivot + fwd * 1.1, muzzle, 0.1, "barrel")
     for s in (-1, 1):
-        m.box((-0.3, s * 0.22 - 0.02, AXLE_Z + 0.25), (0.2, s * 0.22 + 0.02, TRUNNION_Z + 0.08), "metal")
+        tube(m, pivot - fwd * 0.45 + upn * 0.2 + np.array([0, s * 0.1, 0]), pivot + fwd * 1.2 + upn * 0.2 + np.array([0, s * 0.1, 0]), 0.07, "plate")
+    tube(m, muzzle - fwd * 0.42, muzzle - fwd * 0.3, 0.17, "plate", 10)
+    tube(m, muzzle - fwd * 0.2, muzzle - fwd * 0.08, 0.17, "plate", 10)
+    tube(m, muzzle - fwd * 0.42, muzzle, 0.1, "barrel")
+    tube(m, muzzle, muzzle + fwd * 0.012, 0.06, "tire", 8)
+    # Elevating arc beside the cradle, and a sighting box on the left.
+    for s in (-1, 1):
+        m.box((-0.3, s * 0.24 - 0.02, AXLE_Z + 0.22), (0.2, s * 0.24 + 0.02, TRUNNION_Z + 0.06), "plate")
+    kit.sight_box(m, -0.25, 0.05, 0.3, 0.48, TRUNNION_Z + 0.05, TRUNNION_Z + 0.3)
     return m
 
 
+LAYERS = (("hull", build_hull),)
 CAMEO_FACE = "0014"  # ESE: wheel, shield, barrel, and trail all read on the train button
-CAMEO_GAIN = 1.55
+CAMEO_GAIN = 1.5
 CAMEO_LIFT = 0.04
-
-
-def cameo(out: Path, face: str = CAMEO_FACE) -> None:
-    """Static cameo, brightened for the dark sidebar and filling the 128 frame."""
-    hull = Image.open(out / "hull" / f"{face}.png").convert("RGBA")
-    crop = hull.crop(hull.getbbox())
-    px = np.asarray(crop).astype(np.float64) / 255
-    rgb = px[..., :3]
-    dark = rgb.max(axis=-1, keepdims=True) < 0.12
-    lifted = np.clip(rgb * CAMEO_GAIN + CAMEO_LIFT, 0, 1)
-    px[..., :3] = np.where(dark, rgb, lifted)
-    crop = Image.fromarray((px * 255 + 0.5).astype(np.uint8), "RGBA")
-    size, pad = 128, 3
-    fit = (size - 2 * pad) / max(crop.width, crop.height)
-    small = crop.resize((max(1, round(crop.width * fit)), max(1, round(crop.height * fit))), Image.Resampling.LANCZOS)
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    img.alpha_composite(small, ((size - small.width) // 2, size - pad - small.height))
-    path = out.parent / "artillery-cameo.png"
-    img.save(path)
-    print("wrote", path)
 
 
 def main() -> None:
@@ -151,14 +103,15 @@ def main() -> None:
     ap.add_argument("--out", required=True, help="unit folder; writes hull/ inside it")
     ap.add_argument("--ss", type=int, default=4)
     ap.add_argument("--cameo-only", action="store_true")
+    ap.add_argument("--preview", help="write a contact sheet here")
     args = ap.parse_args()
     out = Path(args.out)
     if args.cameo_only:
-        cameo(out)
+        kit.cameo(out, ["hull"], out.parent / "artillery-cameo.png", CAMEO_FACE, CAMEO_GAIN, CAMEO_LIFT)
         return
-    render_turntable(build_hull(), out / "hull", "artillery_hull", "artillery-hull.json",
-                     scale_frac=SCALE_FRAC, z_mid=Z_MID, cy_frac=CY_FRAC, ss=args.ss)
-    cameo(out)
+    kit.render_unit("artillery", out, LAYERS, SCALE_FRAC, Z_MID, CY_FRAC, ss=args.ss, cameo_face=CAMEO_FACE, cameo_gain=CAMEO_GAIN, cameo_lift=CAMEO_LIFT)
+    if args.preview:
+        kit.contact_sheet(out, ["hull"], Path(args.preview))
 
 
 if __name__ == "__main__":

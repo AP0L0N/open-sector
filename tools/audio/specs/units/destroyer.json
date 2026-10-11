@@ -49,13 +49,13 @@
   },
   "sfx": {
     "fire": {
-      "prompt": "Twin 40mm Bofors anti-aircraft autocannon on a World War 2 destroyer firing a rapid burst, heavy thumping pom-pom-pom reports with metallic clatter of shell casings on a steel deck, outdoors at sea, no music, no voice",
+      "prompt": "Twin 40mm Bofors anti-aircraft autocannon on a modern destroyer firing a rapid burst, heavy thumping pom-pom-pom reports with metallic clatter of shell casings on a steel deck, outdoors at sea, no music, no voice",
       "duration": 1.5,
       "variants": 3,
       "influence": 0.6
     },
     "move": {
-      "prompt": "World War 2 destroyer steam turbines spinning up with a rising whine, twin propellers churning the sea and a bow wave hissing along the steel hull, close, no music, no voice",
+      "prompt": "modern destroyer steam turbines spinning up with a rising whine, twin propellers churning the sea and a bow wave hissing along the steel hull, close, no music, no voice",
       "duration": 2.5,
       "variants": 1,
       "influence": 0.55

@@ -2,7 +2,7 @@
   "key": "nebelwerfer",
   "out": "units/nebelwerfer",
   "voice": {
-    "name": "Open Sector - Nebelwerfer",
+    "name": "Open Sector - Hailstorm",
     "description": "Wiry young male rocket artillery gunner in his mid twenties, high-energy and manic, slightly raspy tenor voice, talks fast and giggles at explosions, a gleeful pyromaniac who loves big booms, shouting happily over a truck radio with a light Central European accent.",
     "sample": "Oh, oh, oh, look at that! Twelve tubes, one second, boom boom boom! Did you hear them scream? Beautiful! Give me another target, please, I want to see the sky light up again!",
     "stability": 0.3,
@@ -31,7 +31,7 @@
       "All twelve, now!"
     ],
     "ready": [
-      "Nebelwerfer loaded and giggling!"
+      "Hailstorm loaded and giggling!"
     ],
     "hit": [
       "Hey! Not the rockets!",
@@ -44,14 +44,14 @@
   },
   "sfx": {
     "fire": {
-      "prompt": "Terrifying salvo of a World War 2 Nebelwerfer rocket launcher firing in an open field: six rockets launch one after another with a roaring whoosh, each shrieking and wailing like a scream as it climbs away into the distance.",
+      "prompt": "Terrifying salvo of a modern multiple rocket launcher firing in an open field: six rockets launch one after another with a roaring whoosh, each shrieking and wailing like a scream as it climbs away into the distance.",
       "duration": 5.0,
       "variants": 3,
       "influence": 0.6,
       "lufs": -9
     },
     "move": {
-      "prompt": "WWII military truck diesel engine revving and pulling away, rattling rocket tubes on the back, close, no music, no voice",
+      "prompt": "Modern military truck diesel engine revving and pulling away, rattling rocket tubes on the back, close, no music, no voice",
       "duration": 2.0,
       "variants": 1,
       "influence": 0.6

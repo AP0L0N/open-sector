@@ -93,7 +93,7 @@ const fw = catalog("feuerwirbel");
 
 describe("feuerwirbel catalog", () => {
   it("is trained at the Armory with no Research Facility needed", () => {
-    assert.equal(fw.name, "Feuerwirbel");
+    assert.equal(fw.name, "Firestorm");
     assert.ok(TRAIN_TYPES.includes("feuerwirbel"));
     assert.equal(producerType("feuerwirbel"), "armory");
     assert.equal(TECH_REQUIRES.feuerwirbel, undefined);
@@ -157,14 +157,14 @@ describe("feuerwirbel gatlings", () => {
       fired += n;
     }
     assert.ok(fired > 0, "the gatlings fired");
-    // 180° at 300°/s is six ticks; a Tiger's turret would take more than eight.
+    // 180° at 300°/s is six ticks; a Warden's turret would take more than eight.
     assert.ok(firstTick >= 0 && firstTick <= 8, `first round on tick ${firstTick}`);
     assert.ok(e.clip < FEUERWIRBEL_BELT, "the belt ran down");
     assert.ok(Math.abs(e.facing) < 1e-6, "the hull stayed put; the foe is out of the flamer's reach");
     assert.equal(e.mgAmmo, HULL_FLAMER_FUEL, "no fuel spent past the flamer's reach");
   });
 
-  it("lets a Tiger's front plate alone unless told to fire", () => {
+  it("lets a Warden's front plate alone unless told to fire", () => {
     const { state, y, ts } = pad();
     const e = tank(state, 90 * ts, y * ts, 0);
     const tiger = dummy(state, "warden", 97 * ts, y * ts);

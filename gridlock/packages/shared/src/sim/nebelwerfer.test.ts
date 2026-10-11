@@ -91,7 +91,7 @@ function watchLaunches(state: MatchState, e: Entity, n: number, seen = new Map<n
   return seen;
 }
 
-/** A Nebelwerfer rocket fused to burst at (x, y) on the next tick. */
+/** A Hailstorm rocket fused to burst at (x, y) on the next tick. */
 function rocketAt(state: MatchState, ownerId: string, x: number, y: number, rack = NEBELWERFER_ROCKET): void {
   state.projectiles.push({
     id: state.nextId++,
@@ -127,7 +127,7 @@ describe("nebelwerfer", () => {
     const def = catalog("nebelwerfer");
     assert.ok(TRAIN_TYPES.includes("nebelwerfer"));
     assert.equal(producerType("nebelwerfer"), "armory");
-    assert.equal(def.name, "Nebelwerfer");
+    assert.equal(def.name, "Hailstorm");
     assert.equal(def.damage, 0, "no gun besides the tubes");
     assert.equal(fires("nebelwerfer"), true, "still takes attack orders");
     assert.equal(NEBELWERFER_SALVO, 12);

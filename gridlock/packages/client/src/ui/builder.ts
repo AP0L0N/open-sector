@@ -3204,7 +3204,7 @@ function toolsPanel(ctx: Ctx): HTMLElement {
       bridgeFaceRow,
       el("p", {
         class: "bld-hint",
-        text: "Laid brick by brick, like a wall: click where it starts, click each corner, Enter lays it, right-click takes a corner back. The deck keeps the level of the ground you start on; its piles or piers reach down to whatever is under it, and the water stays water. Start it high on a bank and small boats sail under it (never the LST or the Battle Ship). Bricks stand on water or open ground, not on mountain rock or woods. They belong to no one: anyone crosses, only a force-attack hurts one, and a brick shot down drops into the water while the rest stands.",
+        text: "Laid brick by brick, like a wall: click where it starts, click each corner, Enter lays it, right-click takes a corner back. The deck keeps the level of the ground you start on; its piles or piers reach down to whatever is under it, and the water stays water. Start it high on a bank and small boats sail under it (never the Landing Ship or the Battle Ship). Bricks stand on water or open ground, not on mountain rock or woods. They belong to no one: anyone crosses, only a force-attack hurts one, and a brick shot down drops into the water while the rest stands.",
       }),
     ),
   );

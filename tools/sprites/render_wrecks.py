@@ -385,7 +385,7 @@ class Spec:
 
 
 SPECS = [
-    Spec("warden", 128, 0.92, "turret", src="tiger", layers=["hull", "turret", "gun"], turn=3, keep=0.42),
+    Spec("warden", 128, 0.92, "turret", src="warden", layers=["hull", "turret", "gun"], turn=3, keep=0.42),
     Spec("apocalypse", 128, 0.92, "turret", src="apocalypse", layers=["hull", "turret", "gun", "ciws"], turn=-2, keep=0.5, holes=4, debris=18),
     Spec("ss3", 128, 0.92, "casemate", src="ss3", layers=["hull", "gun"], keep=0.4),
     Spec("jagdtiger", 128, 0.92, "casemate", src="jagdtiger", layers=["hull", "gun"], keep=0.36, holes=4, debris=16),

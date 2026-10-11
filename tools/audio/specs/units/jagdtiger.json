@@ -2,9 +2,9 @@
   "key": "jagdtiger",
   "out": "units/jagdtiger",
   "voice": {
-    "name": "Open Sector - Jagdtiger",
+    "name": "Open Sector - Breaker",
     "description": "Patient, deliberate male hunter in his fifties, very deep slow bass voice, quiet and calculating, almost a murmur, speaks like a sniper stalking prey from far away, each word measured and cold, faint rasp, heard over a tank intercom.",
-    "sample": "Jagdtiger. I do not chase. I wait. They will come into my sights, one by one, and one shot is all I need. Patience is the heaviest armor. Let them think they are safe.",
+    "sample": "Breaker. I do not chase. I wait. They will come into my sights, one by one, and one shot is all I need. Patience is the heaviest armor. Let them think they are safe.",
     "stability": 0.65,
     "similarity": 0.8,
     "style": 0.35
@@ -14,7 +14,7 @@
       "Hunter here.",
       "[whispers] Patience.",
       "I am watching.",
-      "Jagdtiger.",
+      "Breaker.",
       "The long gun waits."
     ],
     "move": [
@@ -31,7 +31,7 @@
       "The hunt ends."
     ],
     "ready": [
-      "Jagdtiger. The hunt begins."
+      "Breaker. The hunt begins."
     ],
     "hit": [
       "[sighs] Scratched.",
@@ -44,7 +44,7 @@
   },
   "sfx": {
     "fire": {
-      "prompt": "Distant, earth-shaking boom of a World War 2 Jagdtiger tank destroyer firing its huge 128mm gun in an open field, a deep thunderous blast that rolls across the hills for seconds.",
+      "prompt": "Distant, earth-shaking boom of a modern heavy tank destroyer firing its huge 128mm gun in an open field, a deep thunderous blast that rolls across the hills for seconds.",
       "duration": 5.0,
       "variants": 3,
       "influence": 0.6,

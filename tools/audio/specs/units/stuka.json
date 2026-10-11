@@ -2,7 +2,7 @@
   "key": "stuka",
   "out": "units/stuka",
   "voice": {
-    "name": "Open Sector - Stuka",
+    "name": "Open Sector - Striker",
     "description": "Young male dive-bomber pilot in his late twenties, speaking over a cockpit radio, fearless and slightly unhinged, giggles at danger, wild breathless enthusiasm with a manic gleam, quick sharp voice with a light Bavarian flavored accent, loves the vertical dive more than life itself.",
     "sample": "Ha! Straight down, that's the only direction worth flying! Hold on to your stomach, gunner, we're going vertical. Siren on, bomb armed, and pull up at the very last second. Probably.",
     "stability": 0.3,
@@ -13,7 +13,7 @@
   },
   "lines": {
     "select": [
-      "Stuka here! Point me down!",
+      "Striker here! Point me down!",
       "Bomb's armed, nerves aren't.",
       "Ready to scream!",
       "[laughs] You called?",
@@ -33,7 +33,7 @@
       "[laughs] Straight down the chimney!"
     ],
     "ready": [
-      "Stuka fueled and bombed up. Let's dive!"
+      "Striker fueled and bombed up. Let's dive!"
     ],
     "hit": [
       "Flak! Lovely flak!",
@@ -50,7 +50,7 @@
   },
   "sfx": {
     "fire": {
-      "prompt": "Junkers Ju 87 Stuka dive bomber pulling out of its dive right overhead, heard from the ground: a heavy mechanical clunk as the bomb swings free of its crutch, then the piston engine roars at full power as the plane levels out and climbs away, fading into the distance, no siren, no whistle, no explosion, no music, no voice",
+      "prompt": "jet attack aircraft pulling out of its dive right overhead, heard from the ground: a heavy mechanical clunk as the bomb drops from its pylon, then the turbine roars at full power as the plane levels out and climbs away, fading into the distance, no siren, no whistle, no explosion, no music, no voice",
       "duration": 2.5,
       "variants": 3,
       "influence": 0.65,
@@ -59,16 +59,16 @@
     "dive": {
       "source": "imports/stuka-dive.mp3",
       "variants": 1,
-      "note": "Jericho trumpet wind-up, played as the Stuka tips over into its dive. Take from the prompt: 'Air-raid style screaming siren on a diving WWII Stuka: one continuous ear-piercing wail that sweeps upward in pitch the whole time, a long rising glissando from a low moan to a shrill howl, never falling, propeller engine roar growing louder underneath, outdoors, no explosion, no music, no voice' (3.5 s, influence 0.8); it climbs ~400 to ~1450 Hz over 2.2 s, then holds. A 0.8 s fade-out was put on its tail."
+      "note": "Jericho trumpet wind-up, played as the Striker tips over into its dive. Take from the prompt: 'Air-raid style screaming siren on a diving Striker jet: one continuous ear-piercing wail that sweeps upward in pitch the whole time, a long rising glissando from a low moan to a shrill howl, never falling, propeller engine roar growing louder underneath, outdoors, no explosion, no music, no voice' (3.5 s, influence 0.8); it climbs ~400 to ~1450 Hz over 2.2 s, then holds. A 0.8 s fade-out was put on its tail."
     },
     "move": {
-      "prompt": "WWII single-engine piston dive bomber flying past overhead, propeller engine roar with doppler shift, outdoors, no music, no voice",
+      "prompt": "Jet attack aircraft flying past overhead, turbine roar with doppler shift, outdoors, no music, no voice",
       "duration": 2.5,
       "variants": 1,
       "influence": 0.55
     },
     "special": {
-      "prompt": "Screaming wind-driven dive siren of a WWII dive bomber rising in pitch as the plane dives steeply, piercing howl over engine roar, no music, no voice",
+      "prompt": "Screaming dive siren of a jet attack aircraft rising in pitch as it dives steeply, piercing howl over turbine roar, no music, no voice",
       "duration": 3.0,
       "variants": 1,
       "influence": 0.6

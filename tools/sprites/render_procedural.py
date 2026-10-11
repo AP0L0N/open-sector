@@ -5,15 +5,18 @@ A small numpy rasterizer stands in for Blender: one mesh, one locked
 camera, the subject yaws in place. It writes the same drop-in files the
 Blender path does, so the engine and compose tools treat them alike.
 
-  stuka     16 unique faces, 0001 = nose screen-south, clockwise 22.5°.
+The Alliance air wing is the modern line (render_alliance_kit.py palette): low-vis
+gray-green jets and turboprops, no splinter camo, no gear hanging down.
+
+  stuka     the Striker jet attack aircraft: 16 unique faces, 0001 = nose screen-south, clockwise 22.5°.
             gridlock/packages/client/src/assets/units/stuka/hull/0001.png … 0016.png
-  fw190     the Fw 190 fighter, same camera, face order, and meters-to-px as the Stuka.
+  fw190     the Kestrel jet fighter, same camera, face order, and meters-to-px as the Striker.
             gridlock/packages/client/src/assets/units/fw190/hull/0001.png … 0016.png
-  bv222     the BV 222 transport flying boat, same camera and face order; its wingspan sets the scale.
+  bv222     the Pelican four-engine turboprop transport flying boat, same camera and face order; its wingspan sets the scale.
             gridlock/packages/client/src/assets/units/bv222/hull/0001.png … 0016.png
-  he111     the He 111 torpedo bomber, same camera and face order; its wingspan sets the scale.
+  he111     the Albatross twin-jet maritime strike aircraft, same camera and face order; its wingspan sets the scale.
             gridlock/packages/client/src/assets/units/he111/hull/0001.png … 0016.png
-  horten    the Horten VII flying wing, same camera and face order; its wingspan sets the scale.
+  horten    the Wraith flying-wing reconnaissance drone, same camera and face order; its wingspan sets the scale.
             gridlock/packages/client/src/assets/units/horten/hull/0001.png … 0016.png
   drone     the Drone Op's quadcopter, same camera and face order.
             gridlock/packages/client/src/assets/units/drone/hull/0001.png … 0016.png
@@ -26,8 +29,8 @@ Camera: orthographic, 30° down, so the ground foreshortens 2:1 like the map.
 Each face yaws the model so its nose lands on the exact on-screen bearing of
 that sheet row (engineRowFromScreen), not a raw 22.5° ground step.
 
-No national insignia. The rear-fuselage band and the spinner stay neutral gray
-so the game can tint them.
+No national insignia. The rear-fuselage band, the wingtip panels, and the
+spinner or nozzle ring stay neutral gray so the game can tint them.
 
   python tools/sprites/render_procedural.py stuka \\
       --out gridlock/packages/client/src/assets/units/stuka/hull
@@ -169,502 +172,407 @@ def wing_panel(m: Mesh, root, tip, mat_top: str, mat_bot: str, thick_root: float
     m.tri(rle, rl_bot, rl_top, mat_top)
 
 
+def _modern_mats() -> None:
+    """Register the modern Alliance palette (render_alliance_kit) plus the airframe skins."""
+    import render_alliance_kit as kit  # adds plate / barrel / sensor / radome / team ... to its render_procedural's MAT
+
+    # Run as a script, this file is __main__ and the kit patched a second copy of the module: copy its entries over.
+    for name, mat in kit.rp.MAT.items():
+        MAT.setdefault(name, mat)
+    MAT.setdefault("skin", (hex_rgb("#5e6860"), 0.10, 1.0))  # low-vis gray-green upper skin
+    MAT.setdefault("skin2", (hex_rgb("#4d5650"), 0.08, 1.0))  # darker spine / nacelles
+    MAT.setdefault("nozzle", (hex_rgb("#2e2d2a"), 0.30, 1.0))
+
+
+def _prop_disc(m: Mesh, x: float, y: float, z: float, r: float, n: int = 24) -> None:
+    ctr = m.v((x, y, z))
+    rim = [m.v((x, y + r * math.cos(2 * math.pi * k / n), z + r * math.sin(2 * math.pi * k / n))) for k in range(n)]
+    for k in range(n):
+        m.tri(ctr, rim[k], rim[(k + 1) % n], "prop")
+
+
+def _fin(m: Mesh, x_lead_root: float, x_trail_root: float, x_lead_tip: float, x_trail_tip: float, y: float, z0: float, z1: float, hw: float = 0.1, cant: float = 0.0, mat: str = "skin") -> None:
+    """A swept fin: root chord at z0, tip chord at z1, optional cant (y offset at the tip)."""
+    root = [np.array([x_lead_root, y - hw, z0]), np.array([x_trail_root, y - hw, z0]), np.array([x_trail_root, y + hw, z0]), np.array([x_lead_root, y + hw, z0])]
+    tip = [np.array([x_lead_tip, y + cant - hw * 0.6, z1]), np.array([x_trail_tip, y + cant - hw * 0.6, z1]), np.array([x_trail_tip, y + cant + hw * 0.6, z1]), np.array([x_lead_tip, y + cant + hw * 0.6, z1])]
+    m.loft([root, tip], mat)
+
+
+def _underside(s: int, n_ring: int, cut: float = -0.45) -> bool:
+    return math.sin(2 * math.pi * (s + 0.5) / n_ring) < cut
+
+
 def build_stuka() -> Mesh:
-    """Ju 87 B in meters. +x nose, +y left wing, +z up. Wheels at z=0."""
+    """Striker: single-engine jet attack aircraft in meters. +x nose, +y left wing, +z up. Bomb belly at z=0.
+
+    Pointed radome nose, a bubble canopy, cheek intakes feeding one engine with
+    a nozzle at the tail, a cropped delta wing with two cannon ports at the
+    roots, slab stabilators and a single swept fin, one bomb on the centreline.
+    Low-vis gray-green over a pale belly. Neutral band ahead of the tail,
+    neutral wingtip panels, and a neutral nozzle ring for the team tint.
+    """
+    _modern_mats()
     m = Mesh()
-    zc = 2.35  # fuselage centerline height over the wheels
-    # Fuselage loft: (x, half-width, half-height, center z offset)
+    zc = 1.45  # fuselage centerline over the bomb's belly
     stations = [
-        (5.05, 0.30, 0.34, 0.02),
-        (4.70, 0.52, 0.62, 0.00),
-        (3.60, 0.58, 0.74, -0.02),
-        (2.30, 0.60, 0.78, 0.00),
-        (0.60, 0.60, 0.80, 0.02),
-        (-1.20, 0.54, 0.72, 0.06),
-        (-3.00, 0.40, 0.56, 0.14),
-        (-4.80, 0.22, 0.38, 0.24),
-        (-6.00, 0.08, 0.20, 0.34),
+        (6.50, 0.08, 0.08, 0.00),
+        (5.95, 0.34, 0.36, 0.00),
+        (5.10, 0.56, 0.62, 0.00),
+        (3.60, 0.70, 0.74, 0.00),
+        (1.60, 0.78, 0.80, 0.00),
+        (-1.00, 0.76, 0.78, 0.02),
+        (-3.60, 0.62, 0.66, 0.06),
+        (-5.60, 0.52, 0.54, 0.08),
+        (-6.60, 0.44, 0.44, 0.08),
     ]
     rings = [ellipse_ring(x, 0.0, zc + oz, hw, hh) for x, hw, hh, oz in stations]
-
     n_ring = len(rings[0])
 
     def fus_mat(r: int, s: int) -> str:
-        if r == 6:
-            return "team"  # neutral band ahead of the tail
         if r == 0:
-            return "metal"
-        # Lower third of the ring is the pale underside.
-        if math.sin(2 * math.pi * (s + 0.5) / n_ring) < -0.45:
-            return "under"
-        return "camo"
+            return "radome"
+        if r == 7:
+            return "team"
+        if r == 8:
+            return "nozzle"
+        return "under" if _underside(s, n_ring) else "skin"
 
     m.loft(rings, fus_mat)
-    # Chin radiator
-    m.box((3.1, -0.36, zc - 1.05), (4.4, 0.36, zc - 0.55), "metal")
-    # Canopy greenhouse
-    can = [
-        (2.30, 0.20, 0.10),
-        (1.90, 0.38, 0.38),
-        (0.60, 0.42, 0.46),
-        (-0.60, 0.40, 0.42),
-        (-1.50, 0.26, 0.22),
-    ]
-    can_rings = [ellipse_ring(x, 0.0, zc + 0.55, hw, hh, 14) for x, hw, hh in can]
-
-    def can_mat(r: int, s: int) -> str:
-        return "frame" if s % 4 == 0 or r == 1 else "glass"
-
-    m.loft(can_rings, can_mat)
-    # Inverted gull wing: inner panels droop, outer panels rise.
-    wz = zc - 0.55
-    kink_y, kink_z = 2.45, zc - 1.25
-    tip_y, tip_z = 6.9, zc - 0.55
+    # Nozzle: a short dark can with a neutral ring at the lip.
+    noz = [ellipse_ring(x, 0.0, zc + 0.08, r, r, 12) for x, r in ((-6.60, 0.44), (-7.25, 0.38), (-7.35, 0.22))]
+    m.loft(noz, lambda r, s: "team" if r == 0 else "nozzle")
+    # Bubble canopy over the cockpit.
+    can = [(4.90, 0.16, 0.08), (4.40, 0.42, 0.40), (3.30, 0.50, 0.52), (2.20, 0.46, 0.42), (1.40, 0.20, 0.10)]
+    can_rings = [ellipse_ring(x, 0.0, zc + 0.62, hw, hh, 14) for x, hw, hh in can]
+    m.loft(can_rings, lambda r, s: "frame" if r == 1 else "glass")
+    # Cheek intakes either side, their mouths facing forward.
     for side in (1, -1):
-        wing_panel(
-            m,
-            (1.25, -1.35, 0.45 * side, wz),
-            (1.05, -1.25, kink_y * side, kink_z),
-            "camo",
-            "under",
-            0.42,
-            0.34,
-        )
-        wing_panel(
-            m,
-            (1.05, -1.25, kink_y * side, kink_z),
-            (0.55, -0.55, tip_y * side, tip_z),
-            "camo",
-            "under",
-            0.34,
-            0.14,
-        )
-        # Neutral panel near the wing tip for team tint.
-        wing_panel(
-            m,
-            (0.62, -0.62, (tip_y - 1.1) * side, tip_z - 0.05 + 0.02),
-            (0.56, -0.56, (tip_y - 0.3) * side, tip_z + 0.02),
-            "team",
-            "under",
-            0.2,
-            0.16,
-        )
-        # Trousered undercarriage from the kink down to the wheel spat.
-        gy = kink_y * side
-        leg = [
-            ellipse_ring(0.25, gy, kink_z - 0.05, 0.22, 0.34, 10),
-            ellipse_ring(0.25, gy, 0.95, 0.20, 0.30, 10),
-        ]
-        leg_rings = [[p + np.array([0.0, 0.0, 0.0]) for p in ring] for ring in leg]
-        # Rotate the leg ring to be horizontal slices (loft goes down in z).
-        leg_rings = [
-            [np.array([0.25 + 0.45 * math.cos(2 * math.pi * k / 10), gy + 0.2 * math.sin(2 * math.pi * k / 10), z]) for k in range(10)]
-            for z in (kink_z - 0.1, 0.9)
-        ]
-        m.loft(leg_rings, "camo")
-        spat = [
-            ellipse_ring(x, gy, 0.55, hw, hh, 10)
-            for x, hw, hh in ((1.05, 0.06, 0.10), (0.75, 0.22, 0.42), (0.1, 0.24, 0.50), (-0.55, 0.12, 0.28))
-        ]
-        m.loft(spat, "camo")
-        m.box((-0.05, gy - 0.07, 0.0), (0.55, gy + 0.07, 0.18), "tire")
-    # Tailplane and fin
+        y = 0.95 * side
+        lo, hi = sorted((y - 0.32 * side, y + 0.32 * side))
+        m.box((-0.6, lo, zc - 0.55), (2.6, hi, zc + 0.05), "skin2")
+        m.box((2.6, lo + 0.05, zc - 0.5), (2.72, hi - 0.05, zc + 0.0), "nozzle")
+    # Cropped delta wing: deep root, swept leading edge, a clipped tip.
+    wz = zc - 0.30
+    tip_y, tip_z = 6.1, wz + 0.15
     for side in (1, -1):
-        wing_panel(m, (-4.70, -5.85, 0.2 * side, zc + 0.40), (-5.05, -5.85, 2.75 * side, zc + 0.46), "camo", "under", 0.16, 0.08)
-    m.box((-5.95, -0.06, zc + 0.35), (-4.95, 0.06, zc + 1.85), "camo")
-    m.box((-6.05, -0.05, zc + 0.9), (-5.6, 0.05, zc + 1.9), "camo")
-    # SC 250 under the belly on the crutch
-    bomb = [ellipse_ring(x, 0.0, zc - 1.05, r, r, 12) for x, r in ((1.55, 0.05), (1.25, 0.24), (0.1, 0.25), (-0.75, 0.12))]
+        wing_panel(m, (2.4, -3.3, 0.75 * side, wz), (-1.7, -3.4, tip_y * side, tip_z), "skin", "under", 0.46, 0.12)
+        wing_panel(m, (-1.2, -3.37, (tip_y - 1.1) * side, tip_z - 0.02 + 0.03), (-1.65, -3.4, (tip_y - 0.25) * side, tip_z + 0.03), "team", "under", 0.16, 0.12)
+        # Cannon port at the wing root: a short barrel out of the leading edge.
+        gy = 1.45 * side
+        m.box((2.0, gy - 0.12, wz - 0.1), (2.9, gy + 0.12, wz + 0.14), "plate")
+        m.box((2.9, gy - 0.05, wz - 0.02), (3.5, gy + 0.05, wz + 0.08), "barrel")
+        # Wing pylon stub under each wing (empty).
+        py = 3.4 * side
+        m.box((-0.4, py - 0.07, wz - 0.42), (1.0, py + 0.07, wz - 0.08), "plate")
+    # Slab stabilators and the single swept fin.
+    for side in (1, -1):
+        wing_panel(m, (-4.4, -6.3, 0.45 * side, zc + 0.05), (-5.6, -6.5, 2.5 * side, zc + 0.1), "skin", "under", 0.16, 0.06)
+    _fin(m, -4.2, -6.4, -6.0, -6.7, 0.0, zc + 0.5, zc + 2.4)
+    # The bomb on the centreline: ogive nose, long body, a boxed fin tail.
+    bomb = [ellipse_ring(x, 0.0, zc - 1.1, r, r, 12) for x, r in ((2.1, 0.05), (1.7, 0.24), (0.3, 0.27), (-1.2, 0.2), (-1.6, 0.1))]
     m.loft(bomb, "bomb")
-    for side in (1, -1):
-        m.box((-1.05, 0.02 * side - 0.03, zc - 1.35), (-0.75, 0.02 * side + 0.03, zc - 0.75), "bomb")
-    # Spinner (neutral) and a translucent prop disc
-    spin = [ellipse_ring(x, 0.0, zc + 0.02, r, r, 12) for x, r in ((5.0, 0.26), (5.35, 0.18), (5.62, 0.02))]
-    m.loft(spin, "team")
-    ctr = m.v((5.18, 0.0, zc + 0.02))
-    n = 28
-    rim = [m.v((5.18, 1.7 * math.cos(2 * math.pi * k / n), zc + 0.02 + 1.7 * math.sin(2 * math.pi * k / n))) for k in range(n)]
-    for k in range(n):
-        m.tri(ctr, rim[k], rim[(k + 1) % n], "prop")
+    m.box((-1.7, -0.3, zc - 1.4), (-1.2, 0.3, zc - 0.8), "metal")
+    m.box((-0.4, -0.08, zc - 1.0), (0.6, 0.08, zc - 0.6), "plate")  # crutch
     return m
 
 
 def build_fw190() -> Mesh:
-    """Fw 190 in meters. +x nose, +y left wing, +z up. Wheels at z=0.
+    """Kestrel: small single-engine jet fighter in meters. +x nose, +y left wing, +z up. Pod belly at z=0.
 
-    Blunt radial cowl, bubble canopy, a straight low wing, wide-track gear, and
-    one long 30 mm cannon slung in a gondola under each wing so the pair reads
-    at gameplay size. No bomb. Neutral band ahead of the tail, neutral wingtip
-    panels, and a neutral spinner for the team tint.
+    Sharp nose with a chin intake, a bubble canopy, swept wings with a long
+    cannon pod under each, slab stabilators and twin canted fins over one
+    nozzle. No bomb, no propeller. Neutral band ahead of the tail, neutral
+    wingtip panels, and a neutral nozzle ring for the team tint.
     """
+    _modern_mats()
     m = Mesh()
-    zc = 1.9  # fuselage centerline height over the wheels
+    zc = 1.15
     stations = [
-        (4.30, 0.50, 0.50, 0.00),
-        (4.05, 0.66, 0.66, 0.00),
-        (3.00, 0.66, 0.68, 0.02),
-        (2.00, 0.56, 0.66, 0.05),
-        (0.80, 0.50, 0.62, 0.08),
-        (-1.00, 0.42, 0.52, 0.12),
-        (-2.60, 0.30, 0.40, 0.18),
-        (-4.00, 0.14, 0.26, 0.26),
-        (-4.60, 0.05, 0.14, 0.30),
+        (6.00, 0.06, 0.06, 0.00),
+        (5.40, 0.30, 0.30, 0.00),
+        (4.20, 0.50, 0.54, 0.00),
+        (2.60, 0.62, 0.66, 0.02),
+        (0.80, 0.66, 0.68, 0.04),
+        (-1.40, 0.62, 0.62, 0.06),
+        (-3.60, 0.52, 0.52, 0.08),
+        (-4.90, 0.44, 0.44, 0.08),
+        (-5.60, 0.38, 0.38, 0.08),
     ]
     rings = [ellipse_ring(x, 0.0, zc + oz, hw, hh) for x, hw, hh, oz in stations]
     n_ring = len(rings[0])
 
     def fus_mat(r: int, s: int) -> str:
         if r == 0:
-            return "metal"  # cowl ring round the engine face
-        if r == 6:
+            return "radome"
+        if r == 7:
             return "team"
-        if math.sin(2 * math.pi * (s + 0.5) / n_ring) < -0.45:
-            return "under"
-        return "camo"
+        if r == 8:
+            return "nozzle"
+        return "under" if _underside(s, n_ring) else "skin"
 
     m.loft(rings, fus_mat)
-    # Bubble canopy
-    can = [
-        (1.30, 0.18, 0.10),
-        (0.90, 0.34, 0.36),
-        (0.10, 0.36, 0.44),
-        (-0.60, 0.30, 0.34),
-        (-1.05, 0.12, 0.10),
-    ]
-    can_rings = [ellipse_ring(x, 0.0, zc + 0.52, hw, hh, 14) for x, hw, hh in can]
-
-    def can_mat(r: int, s: int) -> str:
-        return "frame" if r == 0 or s % 7 == 0 else "glass"
-
-    m.loft(can_rings, can_mat)
-    # Straight low wing, a little dihedral, rounded-off tips.
-    wz = zc - 0.45
-    tip_y, tip_z = 5.25, wz + 0.35
+    noz = [ellipse_ring(x, 0.0, zc + 0.08, r, r, 12) for x, r in ((-5.60, 0.38), (-6.15, 0.32), (-6.25, 0.18))]
+    m.loft(noz, lambda r, s: "team" if r == 0 else "nozzle")
+    # Chin intake under the nose.
+    m.box((2.2, -0.42, zc - 0.95), (4.2, 0.42, zc - 0.45), "skin2")
+    m.box((4.2, -0.36, zc - 0.9), (4.32, 0.36, zc - 0.5), "nozzle")
+    # Bubble canopy.
+    can = [(4.20, 0.14, 0.08), (3.70, 0.36, 0.36), (2.70, 0.42, 0.46), (1.70, 0.38, 0.38), (0.90, 0.16, 0.10)]
+    can_rings = [ellipse_ring(x, 0.0, zc + 0.56, hw, hh, 14) for x, hw, hh in can]
+    m.loft(can_rings, lambda r, s: "frame" if r == 1 else "glass")
+    # Swept wing, a little anhedral off a mid-set root.
+    wz = zc - 0.1
+    tip_y, tip_z = 5.25, wz - 0.1
     gun_y = 2.35
     for side in (1, -1):
-        wing_panel(m, (1.55, -0.95, 0.45 * side, wz), (0.60, -0.40, tip_y * side, tip_z), "camo", "under", 0.40, 0.14)
-        wing_panel(
-            m,
-            (0.68, -0.45, (tip_y - 0.9) * side, tip_z - 0.06 + 0.02),
-            (0.60, -0.40, (tip_y - 0.2) * side, tip_z + 0.02),
-            "team",
-            "under",
-            0.2,
-            0.14,
-        )
-        # Cannon gondola under the wing and its long barrel out past the leading edge.
+        wing_panel(m, (1.9, -1.6, 0.6 * side, wz), (-0.9, -1.9, tip_y * side, tip_z), "skin", "under", 0.36, 0.10)
+        wing_panel(m, (-0.45, -1.85, (tip_y - 0.9) * side, tip_z + 0.02), (-0.85, -1.9, (tip_y - 0.2) * side, tip_z + 0.03), "team", "under", 0.14, 0.10)
+        # Cannon pod slung under the wing, barrel out past the leading edge.
         gy = gun_y * side
-        gz = wz + (tip_z - wz) * (gun_y / tip_y) - 0.30
-        pod = [ellipse_ring(x, gy, gz, r, r, 10) for x, r in ((1.55, 0.08), (1.30, 0.17), (-0.30, 0.17), (-0.70, 0.06))]
-        m.loft(pod, "metal")
-        m.box((1.50, gy - 0.07, gz - 0.07), (3.05, gy + 0.07, gz + 0.07), "metal")
-        m.box((3.05, gy - 0.10, gz - 0.10), (3.30, gy + 0.10, gz + 0.10), "metal")  # muzzle brake
-        # Wide-track main gear: leg, cover plate, and wheel.
-        ly = 1.75 * side
-        m.box((0.30, ly - 0.06, 0.30), (0.44, ly + 0.06, wz - 0.12), "metal")
-        m.box((0.46, ly - 0.03, 0.40), (0.95, ly + 0.03, wz - 0.18), "camo")
-        m.box((0.05, ly - 0.10, 0.0), (0.69, ly + 0.10, 0.64), "tire")
-    # Tailplane and fin. The sheet flies level, so no tailwheel strut hangs under it.
+        gz = wz + (tip_z - wz) * (gun_y / tip_y) - 0.36
+        pod = [ellipse_ring(x, gy, gz, r, r, 10) for x, r in ((1.6, 0.08), (1.3, 0.18), (-0.9, 0.18), (-1.3, 0.07))]
+        m.loft(pod, "plate")
+        m.box((0.4, gy - 0.1, gz + 0.1), (0.9, gy + 0.1, gz + 0.4), "plate")  # pylon
+        m.box((1.55, gy - 0.07, gz - 0.07), (3.3, gy + 0.07, gz + 0.07), "barrel")
+    # Stabilators and twin canted fins.
     for side in (1, -1):
-        wing_panel(m, (-3.70, -4.50, 0.15 * side, zc + 0.18), (-4.05, -4.50, 1.85 * side, zc + 0.20), "camo", "under", 0.14, 0.06)
-    m.box((-4.60, -0.05, zc + 0.20), (-3.75, 0.05, zc + 1.05), "camo")
-    m.box((-4.65, -0.04, zc + 0.60), (-4.20, 0.04, zc + 1.25), "camo")
-    # Spinner (neutral) and a translucent prop disc
-    spin = [ellipse_ring(x, 0.0, zc, r, r, 12) for x, r in ((4.28, 0.34), (4.60, 0.24), (4.88, 0.03))]
-    m.loft(spin, "team")
-    ctr = m.v((4.45, 0.0, zc))
-    n = 28
-    rim = [m.v((4.45, 1.65 * math.cos(2 * math.pi * k / n), zc + 1.65 * math.sin(2 * math.pi * k / n))) for k in range(n)]
-    for k in range(n):
-        m.tri(ctr, rim[k], rim[(k + 1) % n], "prop")
+        wing_panel(m, (-3.4, -5.2, 0.4 * side, zc + 0.05), (-4.5, -5.4, 2.4 * side, zc + 0.08), "skin", "under", 0.14, 0.06)
+        _fin(m, -3.2, -5.1, -4.6, -5.5, 0.42 * side, zc + 0.45, zc + 1.9, hw=0.08, cant=0.45 * side)
     return m
 
 
 def build_bv222() -> Mesh:
-    """BV 222 Wiking flying boat in meters. +x nose, +y left wing, +z up. Keel at z=0.
+    """Pelican: four-engine turboprop transport flying boat in meters. +x nose, +y left wing, +z up. Keel at z=0.
 
-    A deep two-step boat hull, a long high wing on the hull's back carrying six
-    engines on its leading edge, wing floats on struts outboard, and a single
-    fin with the tailplane set on the hull. Pale boat bottom, splinter camo on
-    top. Neutral band ahead of the tail, neutral wingtip panels, and neutral
-    spinners for the team tint.
+    A deep stepped boat hull with a flight deck high on the nose, a long high
+    wing with four slim turboprop nacelles on the leading edge, stub sponsons
+    low on the hull for stability on the water, a T-tail, and a rear ramp under
+    the up-swept tail. Low-vis gray-green over a pale boat bottom. Neutral band
+    ahead of the tail, neutral wingtip panels, and neutral spinners for the team
+    tint.
     """
+    _modern_mats()
     m = Mesh()
-    zc = 2.8  # hull centerline height over the keel
+    zc = 2.8
     stations = [
-        (18.0, 0.30, 0.60, 0.70),
-        (17.2, 1.05, 1.55, 0.40),
-        (15.4, 1.45, 2.25, 0.18),
-        (12.0, 1.60, 2.60, 0.00),
-        (5.0, 1.60, 2.60, 0.00),
-        (0.0, 1.50, 2.40, 0.22),
-        (-5.0, 1.20, 2.00, 0.62),
-        (-10.0, 0.82, 1.50, 1.20),
-        (-13.5, 0.62, 1.20, 1.60),
-        (-15.5, 0.46, 0.96, 1.90),
-        (-18.0, 0.14, 0.46, 2.30),
+        (18.0, 0.40, 0.70, 0.60),
+        (17.0, 1.10, 1.60, 0.35),
+        (15.2, 1.50, 2.30, 0.15),
+        (12.0, 1.65, 2.60, 0.00),
+        (5.0, 1.65, 2.60, 0.00),
+        (0.0, 1.55, 2.45, 0.20),
+        (-5.0, 1.25, 2.05, 0.60),
+        (-10.0, 0.90, 1.55, 1.20),
+        (-13.5, 0.70, 1.20, 1.65),
+        (-15.5, 0.52, 0.95, 1.95),
+        (-18.0, 0.18, 0.40, 2.35),
     ]
     rings = [ellipse_ring(x, 0.0, zc + oz, hw, hh, 20) for x, hw, hh, oz in stations]
     n_ring = len(rings[0])
 
     def hull_mat(r: int, s: int) -> str:
         if r == 0:
-            return "metal"
+            return "radome"
         if r == 8:
             return "team"
-        # The boat bottom is pale up to the chines.
-        if math.sin(2 * math.pi * (s + 0.5) / n_ring) < -0.35:
+        if _underside(s, n_ring, -0.35):
             return "under"
-        return "camo"
+        return "skin"
 
     m.loft(rings, hull_mat)
-    # Flight-deck glazing high on the nose, and a row of cabin windows.
-    can = [
-        (15.2, 0.40, 0.10),
-        (14.6, 0.95, 0.42),
-        (13.2, 1.05, 0.52),
-        (12.2, 0.90, 0.30),
-    ]
+    # Flight-deck glazing: a wrap-around band of dark sensor glass.
+    can = [(15.3, 0.45, 0.10), (14.6, 1.0, 0.40), (13.2, 1.1, 0.52), (12.2, 0.95, 0.30)]
     can_rings = [ellipse_ring(x, 0.0, zc + 2.1, hw, hh, 14) for x, hw, hh in can]
-
-    def can_mat(r: int, s: int) -> str:
-        return "frame" if r == 0 or s % 5 == 0 else "glass"
-
-    m.loft(can_rings, can_mat)
+    m.loft(can_rings, lambda r, s: "frame" if r == 0 else "glass")
+    # A chin radome and a row of small cabin windows.
+    m.box((14.0, -0.6, zc - 2.1), (16.4, 0.6, zc - 1.6), "plate")
     for side in (1, -1):
-        for x in (9.0, 6.5, 4.0, 1.5, -1.0):
-            m.box((x - 0.35, side * 1.52 - 0.06, zc + 0.55), (x + 0.35, side * 1.52 + 0.06, zc + 1.05), "glass")
-    # Long high wing on a shallow fairing along the hull's back.
+        for x in (8.5, 6.5, 4.5, 2.5, 0.5):
+            m.box((x - 0.3, side * 1.56 - 0.06, zc + 0.6), (x + 0.3, side * 1.56 + 0.06, zc + 1.0), "glass")
+        # Stub sponson low on the hull.
+        sy = side
+        lo, hi = sorted((1.3 * sy, 4.6 * sy))
+        m.box((-1.0, lo, zc - 1.9), (6.0, hi, zc - 1.2), "skin2")
+    # High wing on a fairing along the back.
     wz = zc + 2.55
-    m.box((-2.6, -0.9, zc + 1.9), (3.6, 0.9, wz), "camo")
-    tip_y, tip_z = 23.0, wz + 0.45
+    m.box((-2.6, -1.0, zc + 1.9), (4.0, 1.0, wz + 0.1), "skin2")
+    tip_y, tip_z = 22.5, wz + 0.6
     for side in (1, -1):
-        wing_panel(m, (3.8, -2.6, 0.6 * side, wz), (1.6, -1.1, tip_y * side, tip_z), "camo", "under", 0.95, 0.30)
-        wing_panel(
-            m,
-            (1.85, -1.25, (tip_y - 2.6) * side, tip_z - 0.05 + 0.03),
-            (1.6, -1.1, (tip_y - 0.4) * side, tip_z + 0.03),
-            "team",
-            "under",
-            0.34,
-            0.28,
-        )
-        # Three engines a side on the leading edge.
-        for ey in (4.6, 9.4, 14.2):
+        wing_panel(m, (3.6, -2.8, 0.8 * side, wz), (1.4, -1.6, tip_y * side, tip_z), "skin", "under", 0.9, 0.3)
+        wing_panel(m, (1.65, -1.7, (tip_y - 2.6) * side, tip_z - 0.02 + 0.03), (1.4, -1.6, (tip_y - 0.4) * side, tip_z + 0.03), "team", "under", 0.32, 0.28)
+        # Four slim turboprop nacelles, two a side, on the leading edge.
+        for ey in (6.0, 12.0):
             y = ey * side
             u = ey / tip_y
-            lead = 3.8 + (1.6 - 3.8) * u
-            ez = wz + (tip_z - wz) * u - 0.05
-            nac = [
-                ellipse_ring(x, y, ez, r, r * 1.05, 12)
-                for x, r in ((lead + 2.6, 0.42), (lead + 2.3, 0.66), (lead + 0.6, 0.70), (lead - 1.6, 0.46), (lead - 2.6, 0.12))
-            ]
-            m.loft(nac, lambda r, s: "metal" if r == 0 else "camo")
-            spin = [ellipse_ring(x, y, ez, r, r, 10) for x, r in ((lead + 2.6, 0.30), (lead + 2.95, 0.18), (lead + 3.2, 0.02))]
+            lead = 3.6 + (1.4 - 3.6) * u
+            ez = wz + (tip_z - wz) * u - 0.55
+            nac = [ellipse_ring(x, y, ez, r, r * 1.15, 12) for x, r in ((lead + 2.6, 0.5), (lead + 2.2, 0.74), (lead + 0.2, 0.78), (lead - 2.6, 0.5), (lead - 3.6, 0.12))]
+            m.loft(nac, lambda r, s: "nozzle" if r == 0 else "plate")
+            spin = [ellipse_ring(x, y, ez, r, r, 10) for x, r in ((lead + 2.6, 0.38), (lead + 3.0, 0.22), (lead + 3.3, 0.02))]
             m.loft(spin, "team")
-            ctr = m.v((lead + 2.8, y, ez))
-            n = 24
-            rim = [m.v((lead + 2.8, y + 1.75 * math.cos(2 * math.pi * k / n), ez + 1.75 * math.sin(2 * math.pi * k / n))) for k in range(n)]
-            for k in range(n):
-                m.tri(ctr, rim[k], rim[(k + 1) % n], "prop")
-        # Wing float on a pair of struts, lowered.
-        fy = 16.8 * side
-        fz = wz - 2.7
-        flt = [ellipse_ring(x, fy, fz, hw, hh, 10) for x, hw, hh in ((3.2, 0.08, 0.10), (2.4, 0.42, 0.40), (-0.4, 0.44, 0.42), (-2.2, 0.10, 0.14))]
-        m.loft(flt, lambda r, s: "under" if math.sin(2 * math.pi * (s + 0.5) / 10) < -0.3 else "camo")
-        for sx in (1.4, -0.6):
-            m.box((sx - 0.12, fy - 0.08, fz + 0.2), (sx + 0.12, fy + 0.08, wz + 0.25), "metal")
-    # Tailplane on the hull, and the tall single fin.
+            _prop_disc(m, lead + 2.85, y, ez, 2.2)
+    # T-tail: a tall fin with the tailplane on top, and a ramp hint under the tail.
     tz = zc + 2.35
-    for side in (1, -1):
-        wing_panel(m, (-13.6, -17.4, 0.4 * side, tz), (-15.4, -17.6, 7.4 * side, tz + 0.35), "camo", "under", 0.36, 0.14)
     fin = [
-        [np.array([-13.4, -0.14, tz]), np.array([-18.0, -0.14, tz]), np.array([-18.2, 0.14, tz]), np.array([-13.4, 0.14, tz])],
-        [np.array([-16.2, -0.08, tz + 5.2]), np.array([-18.3, -0.08, tz + 5.2]), np.array([-18.4, 0.08, tz + 5.2]), np.array([-16.2, 0.08, tz + 5.2])],
+        [np.array([-13.4, -0.16, tz]), np.array([-18.0, -0.16, tz]), np.array([-18.2, 0.16, tz]), np.array([-13.4, 0.16, tz])],
+        [np.array([-16.4, -0.1, tz + 5.4]), np.array([-18.6, -0.1, tz + 5.4]), np.array([-18.7, 0.1, tz + 5.4]), np.array([-16.4, 0.1, tz + 5.4])],
     ]
-    m.loft(fin, "camo")
+    m.loft(fin, "skin")
+    ht = tz + 5.4
+    for side in (1, -1):
+        wing_panel(m, (-16.2, -18.8, 0.2 * side, ht), (-17.4, -18.9, 6.6 * side, ht + 0.05), "skin", "under", 0.3, 0.14)
+    m.box((-14.5, -1.1, zc + 0.3), (-9.5, 1.1, zc + 0.55), "plate")  # ramp seam
     return m
 
 
 def build_he111() -> Mesh:
-    """He 111 H-6 torpedo bomber in meters. +x nose, +y left wing, +z up. Torpedo's belly lowest.
+    """Albatross: twin-jet maritime strike aircraft in meters. +x nose, +y left wing, +z up. Torpedo's belly lowest.
 
-    The fully glazed stepless nose, a long slim fuselage, the elliptical wing with
-    a Jumo 211 nacelle on each side (annular radiator ring round the engine face),
-    the ventral Bola gondola, the dorsal gun position, an elliptical tailplane and
-    single fin, and one LT F5b torpedo on a rack beside the gondola. The sheet
-    flies level, so no gear hangs down. Neutral band ahead of the tail, neutral
-    wingtip panels, and neutral spinners for the team tint.
+    A pointed radome nose with a stepped cockpit, a search radome under the
+    chin, a moderately swept wing with a turbofan pod under each side, a single
+    swept fin with slab stabilators, and one torpedo on the centreline rack.
+    Neutral band ahead of the tail, neutral wingtip panels, neutral nozzle rings.
     """
+    _modern_mats()
     m = Mesh()
-    zc = 1.75  # fuselage centerline over the torpedo's belly
+    zc = 1.75
     stations = [
-        (8.25, 0.10, 0.10, 0.06),
-        (8.00, 0.52, 0.52, 0.05),
-        (7.40, 0.80, 0.82, 0.03),
-        (6.50, 0.88, 0.92, 0.00),
+        (8.40, 0.08, 0.08, 0.05),
+        (7.80, 0.45, 0.48, 0.05),
+        (6.80, 0.80, 0.84, 0.02),
         (5.50, 0.90, 0.95, 0.00),
-        (3.00, 0.88, 0.95, 0.00),
-        (0.00, 0.80, 0.90, 0.05),
-        (-3.00, 0.62, 0.72, 0.15),
-        (-4.40, 0.52, 0.62, 0.22),
-        (-5.10, 0.46, 0.56, 0.26),
-        (-7.20, 0.22, 0.32, 0.38),
-        (-8.20, 0.06, 0.12, 0.45),
+        (3.00, 0.90, 0.95, 0.00),
+        (0.00, 0.84, 0.90, 0.05),
+        (-3.00, 0.66, 0.74, 0.15),
+        (-5.10, 0.50, 0.58, 0.26),
+        (-6.40, 0.38, 0.44, 0.34),
+        (-7.60, 0.24, 0.30, 0.40),
+        (-8.20, 0.08, 0.12, 0.45),
     ]
     rings = [ellipse_ring(x, 0.0, zc + oz, hw, hh, 20) for x, hw, hh, oz in stations]
     n_ring = len(rings[0])
 
     def fus_mat(r: int, s: int) -> str:
-        if r <= 2:
-            # Stepless greenhouse: glass panes in a frame lattice, nose to cockpit.
-            return "frame" if s % 5 == 0 or (r == 2 and s % 5 == 2) else "glass"
-        if r == 8:
+        if r == 0:
+            return "radome"
+        if r == 7:
             return "team"
-        if math.sin(2 * math.pi * (s + 0.5) / n_ring) < -0.45:
+        if _underside(s, n_ring):
             return "under"
-        return "camo"
+        return "skin"
 
     m.loft(rings, fus_mat)
-    # Dorsal gun position: a low glazed hood behind the wing.
-    dors = [ellipse_ring(x, 0.0, zc + 0.78, hw, hh, 12) for x, hw, hh in ((-0.4, 0.10, 0.06), (-0.9, 0.36, 0.26), (-1.9, 0.34, 0.22), (-2.4, 0.08, 0.05))]
-    m.loft(dors, lambda r, s: "frame" if s % 4 == 0 else "glass")
-    # Ventral Bola gondola under the forward fuselage, glazed at its back.
-    bola = [
-        ellipse_ring(x, 0.0, zc - 0.82 + oz, hw, hh, 12)
-        for x, hw, hh, oz in ((3.2, 0.10, 0.08, 0.10), (2.8, 0.44, 0.34, 0.0), (0.6, 0.46, 0.36, 0.0), (-0.6, 0.30, 0.22, 0.08))
-    ]
-    m.loft(bola, lambda r, s: "glass" if r == 2 else "camo" if math.sin(2 * math.pi * (s + 0.5) / 12) > 0.3 else "under")
-    # Elliptical wing, a little dihedral: root, two outer panels, and a rounded tip.
-    wz = zc - 0.40
+    # Stepped cockpit glazing, and the search radome under the chin.
+    can = [(6.6, 0.3, 0.1), (6.1, 0.72, 0.4), (4.9, 0.78, 0.48), (3.9, 0.6, 0.26)]
+    can_rings = [ellipse_ring(x, 0.0, zc + 0.78, hw, hh, 14) for x, hw, hh in can]
+    m.loft(can_rings, lambda r, s: "frame" if r == 0 else "glass")
+    dome = [ellipse_ring(x, 0.0, zc - 0.85, hw, hh, 12) for x, hw, hh in ((5.9, 0.2, 0.1), (5.2, 0.6, 0.38), (3.6, 0.62, 0.4), (2.6, 0.3, 0.15))]
+    m.loft(dome, "radome")
+    # Moderately swept wing with a little dihedral.
+    wz = zc - 0.35
     panels = [
-        (2.80, -2.50, 0.85, 0.00),
-        (2.30, -2.00, 4.40, 0.20),
-        (1.70, -1.55, 7.80, 0.42),
-        (0.95, -1.05, 10.30, 0.58),
-        (0.15, -0.45, 11.30, 0.64),
+        (2.6, -2.3, 0.85, 0.0),
+        (1.5, -2.0, 5.0, 0.25),
+        (0.2, -1.6, 9.0, 0.5),
+        (-0.7, -1.4, 11.3, 0.62),
     ]
-    thick = [0.70, 0.55, 0.38, 0.22, 0.10]
-    eng_y = 3.6
+    thick = [0.66, 0.5, 0.3, 0.12]
+    eng_y = 3.4
     for side in (1, -1):
         for i in range(len(panels) - 1):
             (l0, t0, y0, z0), (l1, t1, y1, z1) = panels[i], panels[i + 1]
-            wing_panel(m, (l0, t0, y0 * side, wz + z0), (l1, t1, y1 * side, wz + z1), "camo", "under", thick[i], thick[i + 1])
-        wing_panel(m, (1.10, -1.15, 9.70 * side, wz + 0.56 + 0.03), (0.95, -1.05, 10.30 * side, wz + 0.58 + 0.03), "team", "under", 0.24, 0.22)
-        # Jumo 211 nacelle on the leading edge, running back past the trailing edge.
+            wing_panel(m, (l0, t0, y0 * side, wz + z0), (l1, t1, y1 * side, wz + z1), "skin", "under", thick[i], thick[i + 1])
+        wing_panel(m, (-0.4, -1.47, 10.3 * side, wz + 0.57 + 0.03), (-0.7, -1.4, 11.3 * side, wz + 0.62 + 0.03), "team", "under", 0.18, 0.12)
+        # Turbofan pod on a pylon under the wing.
         y = eng_y * side
-        ez = wz + 0.14 - 0.05
-        lead = 2.32
-        nac = [
-            ellipse_ring(x, y, ez, r, r * 1.08, 14)
-            for x, r in ((lead + 2.25, 0.50), (lead + 2.05, 0.66), (lead + 1.20, 0.70), (lead - 1.50, 0.62), (lead - 3.60, 0.40), (lead - 5.10, 0.10))
-        ]
-        m.loft(nac, lambda r, s: "metal" if r == 0 else "under" if math.sin(2 * math.pi * (s + 0.5) / 14) < -0.5 else "camo")
-        # Oil cooler scoop under the nacelle.
-        m.box((lead + 0.4, y - 0.22, ez - 0.92), (lead + 1.6, y + 0.22, ez - 0.55), "metal")
-        spin = [ellipse_ring(x, y, ez, r, r, 10) for x, r in ((lead + 2.25, 0.32), (lead + 2.60, 0.20), (lead + 2.85, 0.02))]
-        m.loft(spin, "team")
-        ctr = m.v((lead + 2.45, y, ez))
-        n = 28
-        rim = [m.v((lead + 2.45, y + 1.75 * math.cos(2 * math.pi * k / n), ez + 1.75 * math.sin(2 * math.pi * k / n))) for k in range(n)]
-        for k in range(n):
-            m.tri(ctr, rim[k], rim[(k + 1) % n], "prop")
-    # Elliptical tailplane on the tail cone, and the single rounded fin.
-    tz = zc + 0.32
+        ez = wz + 0.12 - 0.95
+        lead = 1.9
+        pod = [ellipse_ring(x, y, ez, r, r * 1.02, 14) for x, r in ((lead + 1.9, 0.58), (lead + 1.5, 0.66), (lead - 0.5, 0.66), (lead - 2.2, 0.5), (lead - 2.6, 0.36))]
+        m.loft(pod, lambda r, s: "nozzle" if r == 0 else "skin2")
+        m.box((lead - 1.6, y - 0.12, ez + 0.3), (lead + 0.6, y + 0.12, wz + 0.2), "plate")  # pylon
+        noz = [ellipse_ring(x, y, ez, r, r, 10) for x, r in ((lead - 2.6, 0.36), (lead - 2.9, 0.3))]
+        m.loft(noz, lambda r, s: "team" if r == 0 else "nozzle")
+    # Slab stabilators and the single swept fin.
+    tz = zc + 0.35
     for side in (1, -1):
-        wing_panel(m, (-6.10, -8.00, 0.25 * side, tz), (-6.55, -7.95, 2.60 * side, tz + 0.04), "camo", "under", 0.20, 0.14)
-        wing_panel(m, (-6.55, -7.95, 2.60 * side, tz + 0.04), (-7.20, -7.80, 4.10 * side, tz + 0.06), "camo", "under", 0.14, 0.06)
-    fin = [
-        [np.array([-6.30, -0.10, tz]), np.array([-8.25, -0.10, tz]), np.array([-8.25, 0.10, tz]), np.array([-6.30, 0.10, tz])],
-        [np.array([-7.00, -0.08, tz + 1.50]), np.array([-8.45, -0.08, tz + 1.50]), np.array([-8.45, 0.08, tz + 1.50]), np.array([-7.00, 0.08, tz + 1.50])],
-        [np.array([-7.60, -0.05, tz + 2.30]), np.array([-8.30, -0.05, tz + 2.30]), np.array([-8.30, 0.05, tz + 2.30]), np.array([-7.60, 0.05, tz + 2.30])],
-    ]
-    m.loft(fin, "camo")
-    # LT F5b torpedo on the rack to starboard of the gondola: blunt nose, long body, boxed tail.
-    ty_, tzc, tr = -1.02, zc - 1.05, 0.25
-    torp = [ellipse_ring(x, ty_, tzc, r, r, 12) for x, r in ((2.75, 0.04), (2.60, 0.18), (2.30, tr), (-1.70, tr), (-2.30, 0.12), (-2.45, 0.04))]
+        wing_panel(m, (-5.6, -7.7, 0.3 * side, tz), (-6.9, -7.9, 3.9 * side, tz + 0.1), "skin", "under", 0.2, 0.08)
+    _fin(m, -5.0, -7.8, -7.3, -8.4, 0.0, tz + 0.1, tz + 2.6, hw=0.1)
+    # The torpedo on the centreline rack: blunt nose, long body, a boxed tail.
+    tzc, tr = zc - 1.3, 0.25
+    torp = [ellipse_ring(x, 0.0, tzc, r, r, 12) for x, r in ((2.0, 0.04), (1.8, 0.18), (1.5, tr), (-2.4, tr), (-3.0, 0.12), (-3.15, 0.04))]
     m.loft(torp, "bomb")
-    m.box((-2.55, ty_ - 0.34, tzc - 0.34), (-2.05, ty_ + 0.34, tzc + 0.34), "metal")  # tail box
-    for rx in (1.2, -0.8):
-        m.box((rx - 0.12, ty_ - 0.06, tzc + tr - 0.02), (rx + 0.12, ty_ + 0.30, zc - 0.55), "metal")  # rack crutch
+    m.box((-3.2, -0.34, tzc - 0.34), (-2.7, 0.34, tzc + 0.34), "metal")
+    for rx in (0.6, -1.4):
+        m.box((rx - 0.12, -0.1, tzc + tr - 0.02), (rx + 0.12, 0.1, zc - 0.8), "plate")
     return m
 
 
 def build_horten() -> Mesh:
-    """Horten H.VII flying wing in meters. +x nose, +y left wing, +z up. Belly lowest.
+    """Wraith: flying-wing reconnaissance drone in meters. +x nose, +y left wing, +z up. Belly lowest.
 
-    No fuselage and no tail: a thick centre section with a glazed two-seat
-    canopy faired into the leading edge, a swept wing tapering to narrow tips,
-    and two Argus engines buried in the wing either side of the centre, each
-    turning a pusher propeller behind the trailing edge on an extension shaft.
-    Splinter camo on top, pale underneath. A neutral band across the centre
-    section's back, neutral wingtip panels, and neutral spinners for the team
-    tint. The sheet flies level, so no gear hangs down.
+    No fuselage, no tail, no canopy: a thick blended centre body with a small
+    dorsal sensor hump, two intakes buried in the leading edge either side, two
+    nozzles in the trailing edge, and a sharply swept wing tapering to narrow
+    tips. Low-vis gray-green over a pale underside. A neutral band across the
+    centre section's back, neutral wingtip panels, and neutral nozzle rings for
+    the team tint.
     """
+    _modern_mats()
     m = Mesh()
-    zc = 1.15  # centre-section chord line over the belly
-    # Centre section: a short, deep lifting body, blunt in front, thinning to the trailing edge.
+    zc = 1.0
     stations = [
-        (2.75, 0.10, 0.10, 0.00),
-        (2.45, 0.62, 0.46, 0.02),
-        (1.60, 0.90, 0.66, 0.04),
-        (0.20, 0.95, 0.70, 0.04),
-        (-1.40, 0.92, 0.56, 0.02),
-        (-2.60, 0.80, 0.36, 0.00),
-        (-3.50, 0.66, 0.12, 0.00),
+        (3.40, 0.08, 0.08, 0.00),
+        (3.00, 0.60, 0.40, 0.02),
+        (2.00, 0.95, 0.62, 0.04),
+        (0.40, 1.05, 0.70, 0.04),
+        (-1.40, 1.00, 0.56, 0.02),
+        (-2.80, 0.86, 0.34, 0.00),
+        (-3.80, 0.70, 0.12, 0.00),
     ]
     rings = [ellipse_ring(x, 0.0, zc + oz, hw, hh, 18) for x, hw, hh, oz in stations]
     n_ring = len(rings[0])
 
     def body_mat(r: int, s: int) -> str:
         if r == 0:
-            return "metal"
-        if math.sin(2 * math.pi * (s + 0.5) / n_ring) < -0.4:
+            return "radome"
+        if _underside(s, n_ring, -0.4):
             return "under"
         if r == 4 and math.sin(2 * math.pi * (s + 0.5) / n_ring) > 0.3:
-            return "team"  # band across the back, where the others carry it ahead of the tail
-        return "camo"
+            return "team"
+        return "skin"
 
     m.loft(rings, body_mat)
-    # Tandem canopy: a long low glazed hood on the centre section, framed.
-    can = [(2.25, 0.16, 0.08), (1.85, 0.40, 0.34), (0.70, 0.44, 0.42), (-0.30, 0.38, 0.32), (-0.95, 0.12, 0.08)]
-    can_rings = [ellipse_ring(x, 0.0, zc + 0.52, hw, hh, 14) for x, hw, hh in can]
-    m.loft(can_rings, lambda r, s: "frame" if r == 0 or s % 4 == 0 or r == 2 else "glass")
-    # Swept wing: root, engine bay, outer panel, and a narrow tip. A little dihedral.
+    # Dorsal sensor hump: a low blister with a dark window looking forward.
+    hump = [ellipse_ring(x, 0.0, zc + 0.66, hw, hh, 12) for x, hw, hh in ((1.6, 0.1, 0.06), (1.1, 0.36, 0.24), (-0.2, 0.38, 0.26), (-1.1, 0.2, 0.08))]
+    m.loft(hump, lambda r, s: "sensor" if r == 0 else "skin2")
+    # Sharply swept wing: root, engine bay, outer panel, narrow tip.
     wz = zc - 0.05
     panels = [
-        (2.05, -3.30, 0.80, 0.00),
-        (1.45, -3.05, 2.40, 0.10),
-        (-0.30, -2.90, 5.50, 0.28),
-        (-2.10, -3.40, 8.90, 0.48),
-        (-2.75, -3.45, 9.95, 0.55),
+        (2.4, -3.6, 0.9, 0.0),
+        (1.3, -3.3, 2.6, 0.08),
+        (-1.0, -3.3, 6.0, 0.26),
+        (-3.3, -4.0, 9.2, 0.46),
+        (-3.9, -4.1, 9.95, 0.52),
     ]
-    thick = [0.80, 0.66, 0.42, 0.18, 0.10]
-    eng_y = 2.40
+    thick = [0.78, 0.62, 0.38, 0.16, 0.08]
+    eng_y = 2.3
     for side in (1, -1):
         for i in range(len(panels) - 1):
             (l0, t0, y0, z0), (l1, t1, y1, z1) = panels[i], panels[i + 1]
-            top = "team" if i == len(panels) - 2 else "camo"
+            top = "team" if i == len(panels) - 2 else "skin"
             wing_panel(m, (l0, t0, y0 * side, wz + z0), (l1, t1, y1 * side, wz + z1), top, "under", thick[i], thick[i + 1])
-        # Engine bay: a low hump over the buried Argus, a cooling intake in the leading edge.
+        # Buried engine: a flush intake slot in the leading edge, a low bay, a nozzle in the trailing edge.
         y = eng_y * side
-        ez = wz + 0.10
-        hump = [
-            ellipse_ring(x, y, ez, hw, hh, 12)
-            for x, hw, hh in ((1.35, 0.12, 0.10), (0.90, 0.40, 0.42), (-1.40, 0.42, 0.40), (-2.80, 0.26, 0.22), (-3.15, 0.16, 0.14))
-        ]
-        m.loft(hump, lambda r, s: "metal" if r == 0 else "under" if math.sin(2 * math.pi * (s + 0.5) / 12) < -0.5 else "camo")
-        # Extension shaft fairing, the spinner, and a translucent pusher disc behind the trailing edge.
-        shaft = [ellipse_ring(x, y, ez, r, r, 10) for x, r in ((-3.10, 0.16), (-3.45, 0.10))]
-        m.loft(shaft, "metal")
-        spin = [ellipse_ring(x, y, ez, r, r, 10) for x, r in ((-3.45, 0.20), (-3.75, 0.14), (-3.95, 0.02))]
-        m.loft(spin, "team")
-        ctr = m.v((-3.55, y, ez))
-        n = 28
-        rim = [m.v((-3.55, y + 1.15 * math.cos(2 * math.pi * k / n), ez + 1.15 * math.sin(2 * math.pi * k / n))) for k in range(n)]
-        for k in range(n):
-            m.tri(ctr, rim[k], rim[(k + 1) % n], "prop")
+        ez = wz + 0.1
+        lo, hi = sorted((y - 0.45, y + 0.45))
+        m.box((1.2, lo, ez - 0.12), (1.75, hi, ez + 0.2), "skin2")
+        m.box((1.75, lo + 0.06, ez - 0.08), (1.85, hi - 0.06, ez + 0.16), "nozzle")
+        bay = [ellipse_ring(x, y, ez, hw, hh, 12) for x, hw, hh in ((1.2, 0.4, 0.34), (-0.6, 0.44, 0.38), (-2.6, 0.32, 0.26), (-3.5, 0.24, 0.18))]
+        m.loft(bay, lambda r, s: "under" if math.sin(2 * math.pi * (s + 0.5) / 12) < -0.5 else "skin2")
+        noz = [ellipse_ring(x, y, ez, r, r, 10) for x, r in ((-3.5, 0.24), (-3.9, 0.2), (-4.0, 0.1))]
+        m.loft(noz, lambda r, s: "team" if r == 0 else "nozzle")
     return m
+
 
 def build_aswheli() -> Mesh:
     """The Destroyer's ASW helicopter in meters. +x nose, +y left, +z up. Skids at z=0.
@@ -935,12 +843,12 @@ def screen_to_ground_yaw(phi: float) -> float:
 
 
 def render_stuka(out: Path, cell: int = 256, ss: int = 4) -> None:
-    # Meters -> px. Wingspan 13.8 m fits the cell with room for the outline.
+    # Meters -> px. The Striker (12.2 m span, 14 m long) fits the cell with room for the outline and its wreck.
     render_turntable(build_stuka(), out, "stuka_hull", "stuka-hull.json", 0.062, 1.2, cell=cell, ss=ss)
 
 
 def render_fw190(out: Path, cell: int = 256, ss: int = 4) -> None:
-    # Same meters -> px as the Stuka, so the smaller fighter reads smaller in the source cell.
+    # Same meters -> px as the Striker, so the smaller fighter reads smaller in the source cell.
     render_turntable(build_fw190(), out, "fw190_hull", "fw190-hull.json", 0.062, 1.0, cell=cell, ss=ss)
 
 
@@ -951,14 +859,14 @@ def render_bv222(out: Path, cell: int = 256, ss: int = 4) -> None:
 
 
 def render_he111(out: Path, cell: int = 256, ss: int = 4) -> None:
-    # A 22.6 m span: like the BV 222, the wingspan sets the scale and fills the cell
-    # the way the Stuka's does (span x scale ~ 0.86 of the cell).
+    # A 22.6 m span: like the Pelican, the wingspan sets the scale and fills the cell
+    # the way the Striker's does (span x scale ~ 0.86 of the cell).
     render_turntable(build_he111(), out, "he111_hull", "he111-hull.json", 0.038, 1.6, cell=cell, ss=ss)
 
 
 def render_horten(out: Path, cell: int = 256, ss: int = 4) -> None:
-    # A 20 m span: like the He 111, the wingspan sets the scale and fills the cell
-    # the way the Stuka's does (span x scale ~ 0.84 of the cell).
+    # A 20 m span: like the Albatross, the wingspan sets the scale and fills the cell
+    # the way the Striker's does (span x scale ~ 0.84 of the cell).
     render_turntable(build_horten(), out, "horten_hull", "horten-hull.json", 0.042, 1.2, cell=cell, ss=ss)
 
 

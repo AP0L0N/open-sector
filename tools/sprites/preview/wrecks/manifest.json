@@ -41,6 +41,15 @@
     "clipped_dirs": []
   },
   {
+    "type": "feuerwirbel",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/feuerwirbel.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.92,
+    "clipped_dirs": []
+  },
+  {
     "type": "supply",
     "out": "gridlock/packages/client/src/assets/units/wrecks/supply.png",
     "cell": 128,
@@ -170,6 +179,33 @@
     "clipped_dirs": []
   },
   {
+    "type": "destroyer",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/destroyer.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.74,
+    "clipped_dirs": []
+  },
+  {
+    "type": "lst",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/lst.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.74,
+    "clipped_dirs": []
+  },
+  {
+    "type": "aswheli",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/aswheli.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.8,
+    "clipped_dirs": []
+  },
+  {
     "type": "battleship",
     "out": "gridlock/packages/client/src/assets/units/wrecks/battleship.png",
     "cell": 384,
@@ -179,30 +215,30 @@
     "clipped_dirs": []
   },
   {
-    "type": "gnat",
-    "out": "gridlock/packages/client/src/assets/units/wrecks/gnat.png",
+    "type": "stalker",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/stalker.png",
     "cell": 128,
     "rows": 16,
     "frames": 1,
-    "contactY": 0.8,
+    "contactY": 0.92,
     "clipped_dirs": []
   },
   {
-    "type": "lurker",
-    "out": "gridlock/packages/client/src/assets/units/wrecks/lurker.png",
+    "type": "behemoth",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/behemoth.png",
     "cell": 128,
     "rows": 16,
     "frames": 1,
-    "contactY": 0.74,
+    "contactY": 0.92,
     "clipped_dirs": []
   },
   {
-    "type": "overseer",
-    "out": "gridlock/packages/client/src/assets/units/wrecks/overseer.png",
+    "type": "ravager",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/ravager.png",
     "cell": 128,
     "rows": 16,
     "frames": 1,
-    "contactY": 0.8,
+    "contactY": 0.92,
     "clipped_dirs": []
   },
   {
@@ -230,6 +266,60 @@
     "rows": 16,
     "frames": 1,
     "contactY": 0.92,
+    "clipped_dirs": []
+  },
+  {
+    "type": "leech",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/leech.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.74,
+    "clipped_dirs": []
+  },
+  {
+    "type": "lurker",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/lurker.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.74,
+    "clipped_dirs": []
+  },
+  {
+    "type": "wasp",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/wasp.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.8,
+    "clipped_dirs": []
+  },
+  {
+    "type": "scourge",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/scourge.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.8,
+    "clipped_dirs": []
+  },
+  {
+    "type": "overseer",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/overseer.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.8,
+    "clipped_dirs": []
+  },
+  {
+    "type": "gnat",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/gnat.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.8,
     "clipped_dirs": []
   }
 ]

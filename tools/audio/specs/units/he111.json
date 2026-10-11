@@ -2,7 +2,7 @@
   "key": "he111",
   "out": "units/he111",
   "voice": {
-    "name": "Open Sector - He 111",
+    "name": "Open Sector - Albatross",
     "description": "Male bomber crew captain in his early forties, methodical and businesslike over the intercom, steady even mid-low voice with a crisp precise northern accent, sounds like an engineer reading a checklist, dry understated humor, never hurries, everything by the book.",
     "sample": "Crew, checklist. Altitude fifty meters, speed two hundred and sixty, bearing one-four-zero. Torpedo armed. Navigator, confirm the target. Good. We do this once, and we do it properly.",
     "stability": 0.6,
@@ -31,7 +31,7 @@
       "By the book, gentlemen."
     ],
     "ready": [
-      "He 111 crew on board. Torpedo secured."
+      "Albatross crew on board. Torpedo secured."
     ],
     "hit": [
       "Damage report, please.",
@@ -55,7 +55,7 @@
       "influence": 0.6
     },
     "move": {
-      "prompt": "WWII twin-engine propeller airplane taking off, smooth steady piston engine roar and spinning propellers rising in pitch as it accelerates down the runway and climbs away, close, outdoors, no music, no voice",
+      "prompt": "Twin-engine jet maritime strike aircraft taking off, smooth turbine roar rising in pitch as it accelerates down the runway and climbs away, close, outdoors, no music, no voice",
       "duration": 2.5,
       "variants": 1,
       "influence": 0.55
