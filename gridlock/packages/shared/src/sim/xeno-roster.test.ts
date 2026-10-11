@@ -304,7 +304,7 @@ describe("Weaver", () => {
     assert.equal(w1.hp, 100 + 3 * WEAVER_MEND_CYBORG);
   });
 
-  it("throws a small wall in front of a friend under fire, facing the shooter, for a quarter of its cell", () => {
+  it("throws a small wall in front of a friend under fire, facing the shooter, for all of its cell", () => {
     const state = field();
     uplink(state);
     const w = still(at(state, "weaver", "B", 20, 30));
@@ -323,14 +323,15 @@ describe("Weaver", () => {
     assert.equal(s.r, WEAVER_SHIELD.arcPx);
     assert.equal(s.hpMax, WEAVER_SHIELD.hp);
     assert.ok(Math.abs(s.angle) < 0.05, "faces the rifleman to the east");
-    assert.ok(w.energy! >= 3 && w.energy! < 3.1, `a quarter of the cell spent: ${w.energy}`);
+    assert.equal(w.energy, 0, `the wall takes the whole cell: ${w.energy}`);
+    assert.equal(w.energyDrained, true);
     ticks(state, secondsToTicks(2));
     assert.equal(state.energyShields!.filter((x) => x.forId === friend.id).length, 1, "never two walls on one friend");
     const view = snapshotFor(state, "B").shields!.find((x) => x.id === s.id)!;
     assert.equal(view.by, w.id);
   });
 
-  it("runs dry after four walls, which draw its dome down too, and throws again once the cell regrows", () => {
+  it("runs dry after one wall, which takes its dome down too, and throws again once a quarter regrows", () => {
     const state = field();
     uplink(state);
     const w = still(at(state, "weaver", "B", 20, 30));
@@ -342,21 +343,16 @@ describe("Weaver", () => {
     });
     ticks(state, secondsToTicks(WEAVER_SHIELD_GAP_SECONDS * 6));
     const mine = () => state.energyShields!.filter((s) => s.fromId === w.id && !s.dome);
-    assert.equal(mine().length, WEAVER_CELL.shots, "four walls drain the cell");
-    assert.ok(w.energy! < 1);
+    assert.equal(mine().length, 1, "one wall takes the whole cell, so no second one comes");
+    assert.ok(w.energy! < 1, `all of it spent, less what has regrown since: ${w.energy}`);
     assert.ok(!mine().some((s) => s.forId === w.id), "its own dome guards it, so the walls go to the friends");
     const dome = () => state.energyShields!.find((s) => s.weave && s.fromId === w.id);
-    assert.ok(dome() && dome()!.hp < WEAVER_DOME_POINTS_PER_SHOT, "the walls drew the dome down to a sliver");
-    dome()!.hp = 0;
-    ticks(state, 1);
-    assert.equal(dome(), undefined, "broken, the dome is gone");
-    assert.equal(w.energy, 0, "and the cell with it");
+    assert.equal(dome(), undefined, "the wall drained the cell, and the dome with it");
     // Its shooter had looked elsewhere while the dome stood.
     shooters[0]!.attackTarget = w.id;
     ticks(state, secondsToTicks(WEAVER_CELL.rechargeSeconds + 0.5));
-    assert.equal(mine().length, WEAVER_CELL.shots + 1, "one more once a quarter regrows: on itself, the dome still down");
-    assert.ok(mine().some((s) => s.forId === w.id));
-    assert.equal(dome(), undefined, "a quarter is not a full cell");
+    assert.equal(mine().length, 2, "a quarter regrown is enough for the next wall");
+    assert.equal(dome(), undefined, "a quarter is not a full cell, so no dome");
   });
 
   it("keeps a free dome over itself; hits drain its cell, and drained it waits for a full cell", () => {

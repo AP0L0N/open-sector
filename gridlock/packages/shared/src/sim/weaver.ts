@@ -73,7 +73,8 @@ export function tickWeavers(state: MatchState): void {
 
 /**
  * The Weaver's shields. A working Weaver with a quarter of its cell charged throws a WEAVER_SHIELD in
- * front of a unit of its side under fire within WEAVER_SHIELD_REACH_TILES, itself included: the wall
+ * front of a unit of its side under fire within WEAVER_SHIELD_REACH_TILES, itself included, and the wall
+ * takes all of its cell: whatever charge it had is spent, so it runs dry until the cell regrows. The wall
  * stands about the friend, facing the nearest enemy shooting at it. "Under fire" means an enemy has it
  * as its target and in reach. The friend most hurt goes first, then the nearest. A friend behind its own
  * wall or another Weaver's gets none, so two Weavers never double up on one unit.
@@ -124,7 +125,8 @@ export function tickWeaverShields(state: MatchState): void {
       hpMax: WEAVER_SHIELD.hp,
       life: WEAVER_SHIELD.seconds,
     });
-    drawPlasma(w);
+    drawPlasma(w, plasmaShots(w));
+    w.weaveSpent = true;
     w.shieldReady = state.tick + secondsToTicks(WEAVER_SHIELD_GAP_SECONDS);
     guarded.add(best.id);
   }
