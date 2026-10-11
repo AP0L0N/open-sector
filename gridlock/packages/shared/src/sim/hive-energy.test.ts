@@ -140,36 +140,37 @@ describe("hive energy", () => {
 
   it("shuts down the hungriest first, one at a time, and only as many as it takes", () => {
     const state = field();
-    const node = at(state, "fusionnode", 40, 40);
-    const behemoth = at(state, "behemoth", 20, 20);
-    const ravagers = [0, 1, 2, 3].map((i) => at(state, "ravager", 24 + i * 2, 24));
-    const juggernaut = at(state, "juggernaut", 30, 20);
+    const nodes = [at(state, "fusionnode", 40, 40), at(state, "fusionnode", 44, 40)];
+    const siphon = at(state, "siphon", 20, 20);
+    const small = [at(state, "ravager", 24, 24), at(state, "ravager", 26, 24)];
+    const stalker = at(state, "stalker", 30, 20);
     ticks(state, 2);
-    // 700 holds 200 + 4 × 50 + 150 = 550.
-    assert.ok([behemoth, juggernaut, ...ravagers].every((u) => !u.shutdown));
-    destroyEntity(state, node);
+    // 1200 holds 500 + 2 × 90 + 120 = 800.
+    assert.ok([siphon, stalker, ...small].every((u) => !u.shutdown));
+    for (const n of nodes) destroyEntity(state, n);
     ticks(state, 1);
-    // 200 against 550: the Behemoth (200) goes first.
-    assert.ok(behemoth.shutdown && behemoth.hiveOffline);
-    assert.ok(!juggernaut.shutdown, "one at a time");
+    // 200 against 800: the Siphon (500) goes first.
+    assert.ok(siphon.shutdown && siphon.hiveOffline);
+    assert.ok(!stalker.shutdown, "one at a time");
     ticks(state, secondsToTicks(HIVE_SWITCH_SECONDS));
-    // Still 350 against 200: the Juggernaut (150) next, and that is enough.
-    assert.ok(juggernaut.shutdown && juggernaut.hiveOffline);
+    // Still 300 against 200: the Stalker (120) next, and that is enough.
+    assert.ok(stalker.shutdown && stalker.hiveOffline);
     ticks(state, secondsToTicks(HIVE_SWITCH_SECONDS) * 6);
-    assert.ok(ravagers.every((u) => !u.shutdown), "the Ravagers fit: they stay up");
-    assert.deepEqual(hiveEnergyOf(state, "B"), { cap: 200, used: 200, offline: 2 });
-    assert.equal(snapshotFor(state, "B").entities.find((e) => e.id === behemoth.id)?.shutdown, true);
+    assert.ok(small.every((u) => !u.shutdown), "the Ravagers fit: they stay up");
+    assert.deepEqual(hiveEnergyOf(state, "B"), { cap: 200, used: 180, offline: 2 });
+    assert.equal(snapshotFor(state, "B").entities.find((e) => e.id === siphon.id)?.shutdown, true);
     // An order to an offline unit goes nowhere.
-    const before = { x: behemoth.x, y: behemoth.y };
-    applyCommand(state, "B", { type: "cmd.move", ids: [behemoth.id], x: before.x + 200, y: before.y });
+    const before = { x: siphon.x, y: siphon.y };
+    applyCommand(state, "B", { type: "cmd.move", ids: [siphon.id], x: before.x + 200, y: before.y });
     ticks(state, 20);
-    assert.deepEqual({ x: behemoth.x, y: behemoth.y }, before);
-    // A new Fusion Node: they wake one at a time, the hungriest that fits first.
+    assert.deepEqual({ x: siphon.x, y: siphon.y }, before);
+    // New Fusion Nodes: they wake one at a time, the hungriest that fits first.
+    at(state, "fusionnode", 40, 40);
     at(state, "fusionnode", 44, 40);
     ticks(state, 1);
-    assert.ok(!behemoth.shutdown && juggernaut.shutdown);
+    assert.ok(!siphon.shutdown && stalker.shutdown);
     ticks(state, secondsToTicks(HIVE_SWITCH_SECONDS));
-    assert.ok(!juggernaut.shutdown && !juggernaut.hiveOffline);
+    assert.ok(!stalker.shutdown && !stalker.hiveOffline);
   });
 
   it("silences an offline defence", () => {
