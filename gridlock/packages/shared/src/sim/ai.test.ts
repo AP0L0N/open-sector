@@ -9,6 +9,7 @@ import {
   XENO_FACTORIES,
   CPU_ARMY,
   CPU_EXPAND_TILES,
+  CPU_EXPAND_MAP_SHARE,
   CPU_FLEET_MIN,
   CPU_SEA_REACH_TILES,
   aiPlanOf,
@@ -16,14 +17,17 @@ import {
   findBuildTile,
   findDiamondSmelterTile,
   findDockTile,
+  findOutlyingSmelterTile,
   findSmelterTile,
   rankOf,
   tickAi,
   waveSize,
   xenoFenceSites,
 } from "./ai.js";
-import { TILE_WATER } from "../maps.js";
-import { hasCore, inBuildRadius, isWater, makeEntity, scrapAt } from "./geo.js";
+import { TILE_EMPTY, TILE_SCRAP, TILE_WATER, unregisterMap } from "../maps.js";
+import { encodeRuns, loadCustomMap } from "../custom-maps.js";
+import { HEIGHT_BASE } from "../catalog.js";
+import { hasCore, hqOf, inBuildRadius, isWater, makeEntity, scrapAt } from "./geo.js";
 import { createMatch, stepMatch } from "./match.js";
 import { smelterRateOn } from "./smelter.js";
 import { canSeeEntity } from "./vision.js";
@@ -585,6 +589,131 @@ describe("CPU types", () => {
     assert.ok(smelterRateOn((x, y) => scrapAt(state, x, y), tx, ty) > 0, "the Smelter stands on the field");
     assert.equal(inBuildRadius(state, aiId, tx, ty, def.tileW, def.tileH, BUILD_RADIUS), false, "out past the yard");
     assert.ok(Math.hypot(tx - hq.tileX, ty - hq.tileY) <= CPU_EXPAND_TILES + def.tileW);
+  });
+
+  it("does not save for a Smelter its yard has no field for: the Machine Shop goes up instead", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    withBase(state, aiId, ["dynamo", "smelter", "muster", "dynamo"]);
+    troopers(state, aiId, 4);
+    makeEntity(state, "tower", aiId, coreOf(state, aiId).x, coreOf(state, aiId).y - 30 * 8);
+    // A builder map can seat a start beside one field only.
+    state.scrapYield.fill(0);
+    state.scrapRev++;
+    const cpu = state.players.get(aiId)!;
+    cpu.structure = null;
+    cpu.scrap = catalog("armory").cost + 100;
+    tickAi(state);
+    assert.equal(findSmelterTile(state, aiId), null);
+    assert.equal(state.players.get(aiId)!.structure?.type, "armory");
+  });
+
+  it("sends an engineer out for its second Smelter while it fortifies, when the yard has one field", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    withBase(state, aiId, ["dynamo", "smelter", "muster", "armory", "dynamo", "dynamo"]);
+    const hq = coreOf(state, aiId);
+    state.scrapYield.fill(0);
+    state.scrapRev++;
+    const def = catalog("smelter");
+    const toMid = unitVec(state.width / 2 - hq.tileX, state.height / 2 - hq.tileY);
+    const out = BUILD_RADIUS + def.tileH + 70;
+    const fx = Math.round(hq.tileX + toMid.x * out);
+    const fy = Math.round(hq.tileY + toMid.y * out);
+    for (let y = fy; y < fy + def.tileH * 2; y++) {
+      for (let x = fx; x < fx + def.tileW * 2; x++) {
+        state.scrapYield[y * state.width + x] = SCRAP_TILE_YIELD;
+        state.blocked[y * state.width + x] = 0;
+      }
+    }
+    const eng = fighters(state, aiId, "engineer", 1)[0]!;
+    state.players.get(aiId)!.scrap = 5000;
+    micro(state, aiId);
+    assert.equal(planOf(state, aiId).posture, "fortify");
+    assert.equal(eng.order?.kind, "build");
+    assert.equal(eng.order?.building, "smelter");
+  });
+
+  it("reaches a scrap field out past the Scrap Yard's range on a big builder map", () => {
+    const side = 144 * 4;
+    const tiles = new Array(side * side).fill(TILE_EMPTY);
+    // One field 180 tiles along the edge from each start: past CPU_EXPAND_TILES, still on that start's side.
+    const out = 180;
+    for (const [fx, fy] of [
+      [30 + out, 24],
+      [side - 30 - out - 12, side - 36],
+    ] as const) {
+      for (let y = fy; y < fy + 12; y++) for (let x = fx; x < fx + 12; x++) tiles[y * side + x] = TILE_SCRAP;
+    }
+    const loaded = loadCustomMap({
+      id: "c-expand0001",
+      name: "Wide Ground",
+      author: "Tester",
+      width: side,
+      height: side,
+      maxPlayers: 2,
+      tiles: encodeRuns(tiles),
+      heights: encodeRuns(new Array(side * side).fill(HEIGHT_BASE)),
+      spawns: [
+        { id: 1, x: 30, y: 30 },
+        { id: 2, x: side - 30, y: side - 30 },
+      ],
+      features: [],
+      updatedAt: 1,
+    });
+    if (!loaded.ok) throw new Error(loaded.message);
+    try {
+      const made = createRoom({ id: "WIDE", hostId: "A", hostName: "Alpha", mapId: "c-expand0001", maxSlots: 8 });
+      if (!made.ok) throw new Error(made.message);
+      assert.equal(hostSlot(made.value, "A", 1, { status: "ai" }).ok, true);
+      updateSelf(made.value, "A", { ready: true });
+      const started = startMatch(made.value, "A", () => 0);
+      if (!started.ok) throw new Error(started.message);
+      const state = createMatch(made.value, started.value);
+      const hq = hqOf(state, "ai:1")!;
+      const spot = findOutlyingSmelterTile(state, "ai:1", hq);
+      assert.ok(spot, "the field out on the CPU's side is found");
+      const d = Math.hypot(spot!.tx - hq.x / state.tileSize, spot!.ty - hq.y / state.tileSize);
+      assert.ok(d > CPU_EXPAND_TILES && d <= side * CPU_EXPAND_MAP_SHARE, `field ${d.toFixed(0)} tiles out`);
+    } finally {
+      unregisterMap("c-expand0001");
+    }
+  });
+
+  it("leaves a diamond field held by a strong neutral garrison and sends the wave at the enemy", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    campaign(state, aiId);
+    const c = diamondCentre(state);
+    for (let i = 0; i < 12; i++) makeEntity(state, "rifleman", "", c.x + (i % 4) * 10, c.y + Math.floor(i / 4) * 10);
+    fighters(state, aiId, "rifleman", AI_PROFILES.defensive.waveMin);
+    wavePass(state, aiId);
+    const force = planOf(state, aiId).forces[0];
+    assert.equal(force?.goal, "enemy", "too few to storm the middle, enough for a wave");
+  });
+
+  it("has a soldier stand the capture of an empty neutral tower it comes upon, not shell it", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    const hq = coreOf(state, aiId);
+    const inward = Math.sign((state.width * state.tileSize) / 2 - hq.x) || 1;
+    const x = hq.x + inward * 240;
+    const tower = makeEntity(state, "tower", "", x, hq.y + 120, {
+      tileX: Math.floor(x / state.tileSize),
+      tileY: hq.tileY + 12,
+    });
+    const rifle = makeEntity(state, "rifleman", aiId, x, hq.y + 40);
+    const tiger = makeEntity(state, "warden", aiId, x + 24, hq.y + 40);
+    for (const e of [rifle, tiger]) e.order = { kind: "attackmove", x: tower.x, y: tower.y };
+    stepMatch(state);
+    for (const e of [rifle, tiger]) {
+      e.order = { kind: "attackmove", x: tower.x, y: tower.y };
+      e.attackTarget = null;
+    }
+    micro(state, aiId);
+    assert.equal(rifle.order?.kind, "attack");
+    assert.equal(rifle.order?.targetId, tower.id);
+    assert.notEqual(tiger.order?.targetId, tower.id, "a gun leaves the prize standing");
   });
 
   it("raises a fire-control tower on the middle, then watch towers, once the diamond Smelter stands", () => {

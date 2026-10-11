@@ -27,6 +27,9 @@ import {
   isDockType,
   BATTLESHIP_BARREL_AMMO,
   BUILD_RADIUS,
+  canCaptureType,
+  isCapturable,
+  NEUTRAL_OWNER,
   DEFENCE_BUILD_RADIUS,
   DIAMOND_SCRAP_MUL,
   DIAMOND_SCRAP_TILE_YIELD,
@@ -103,6 +106,8 @@ export const CPU_MIN_FIGHTERS = 4;
 export const CPU_FORTIFY_SMELTERS = 2;
 /** An engineer raises a Smelter on a scrap field this far from the Core at most, in tiles. */
 export const CPU_EXPAND_TILES = 30 * 4;
+/** On a bigger map the engineers reach this share of its long side instead, when that is farther. */
+export const CPU_EXPAND_MAP_SHARE = 0.4;
 /** Enemies this far from the HQ, in tiles, pull the home guard. */
 export const CPU_DEFEND_TILES = DEFENCE_BUILD_RADIUS + 6 * 4;
 /** Campaign towers, around the middle and then toward the enemy, start no faster than this. */
@@ -132,6 +137,8 @@ const CENTRE_RING_TILES = 18;
 const CENTRE_HOLD_TILES = 26;
 /** Enemies this close to a held middle, in tiles, pull the fighters near it. */
 const CENTRE_DEFEND_TILES = 40;
+/** Fighters the force for the middle takes per neutral soldier holding it (centreGuard). */
+const CENTRE_GUARD_MUL = 1.5;
 /** Wall line: sections in front of a tower, and the gated line in front of the main one. */
 const WALL_PIECES = 4;
 const GATE_WALL_PIECES = 8;
@@ -841,8 +848,12 @@ function placeReadyBuilding(state: MatchState, p: SimPlayer, job: StructureJob |
 function nextBuilding(state: MatchState, p: SimPlayer): BuildingType | null {
   const pow = powerOf(state, p.playerId);
   const roomy = (t: BuildingType): boolean => (p.aiNoRoomUntil?.[t] ?? 0) <= state.tick;
+  // A yard with no scrap field left in reach saves for no Smelter: engineers raise them out on the
+  // fields instead (expandSmelters), and the Machine Shop and the rest go up meanwhile.
+  const yardSmelter = (): boolean => roomy("smelter") && findSmelterTile(state, p.playerId) != null;
   for (const { type: t, n } of BUILD_ORDER) {
     if (t === "dock" && !wantDock(state, p)) continue;
+    if (t === "smelter" && !yardSmelter()) continue;
     if (countType(state, p.playerId, t) >= n || !roomy(t)) continue;
     const draw = Math.max(0, -catalog(t).power);
     if (t !== "dynamo" && pow.used + draw > pow.provided) return roomy("dynamo") ? "dynamo" : null;
@@ -850,7 +861,7 @@ function nextBuilding(state: MatchState, p: SimPlayer): BuildingType | null {
   }
   if (pow.used >= pow.provided && roomy("dynamo")) return "dynamo";
   // The base is complete: every further Smelter adds its own pour.
-  if (countType(state, p.playerId, "smelter") < aiProfile(p.ai).wantSmelters && roomy("smelter")) {
+  if (countType(state, p.playerId, "smelter") < aiProfile(p.ai).wantSmelters && yardSmelter()) {
     const draw = Math.max(0, -catalog("smelter").power);
     if (pow.used + draw > pow.provided) return roomy("dynamo") ? "dynamo" : null;
     return "smelter";
@@ -1010,6 +1021,9 @@ function trainReserve(state: MatchState, p: SimPlayer): number {
   }
   if (countType(state, p.playerId, "armory") === 0) return catalog("armory").cost;
   if (fighterCount(state, p.playerId) < CPU_MIN_FIGHTERS * 2) return 0;
+  // A Smelter out on a field is the best buy going: save for it while an engineer is there to raise it.
+  const hq = hqOf(state, p.playerId);
+  if (hq && countType(state, p.playerId, "engineer") > 0 && outlyingSmelterWanted(state, p, hq)) return catalog("smelter").cost;
   // Either lane already drawing scrap is the build being saved for. Do not reserve it twice.
   if (p.structure || p.defence) return 0;
   const next = nextBuilding(state, p);
@@ -1709,20 +1723,27 @@ function campaign(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): vo
   const free = freeArmy(state, p, plan);
   const centreForce = plan.forces.some((f) => f.goal === "centre");
   // The hive pays no scrap: the diamond field is nothing to it, and its waves go straight at the enemy.
-  if (!usesHiveEnergy(p.faction) && !centreHeld(state, p.playerId) && !centreForce) {
-    if (free.length < prof.centreForce) {
-      p.aiNextAttackTick = state.tick + CPU_ATTACK_RETRY_TICKS;
-      return;
-    }
-    const c = groundNear(state, diamondCentre(state));
-    launch(state, p, hq, plan, free, "centre", [homeMuster(state, p, hq), c]);
-    p.aiNextAttackTick = state.tick + prof.attackEveryTicks;
-    return;
-  }
-  const foe = enemyHq(state, p.playerId);
   // At the unit cap the army cannot grow into a bigger wave: send what stands ready.
   const capped = unitCount(state, p.playerId) >= UNIT_CAP - 2;
   const need = capped ? Math.min(waveSize(prof, plan.waves), prof.waveMin) : waveSize(prof, plan.waves);
+  if (!usesHiveEnergy(p.faction) && !centreHeld(state, p.playerId) && !centreForce) {
+    // A map can wall the diamond field in and man it: go in only with men enough to take it.
+    const guard = centreGuard(state);
+    const needCentre = Math.max(prof.centreForce, Math.ceil(guard * CENTRE_GUARD_MUL));
+    if (free.length >= needCentre) {
+      const c = groundNear(state, diamondCentre(state));
+      launch(state, p, hq, plan, free, "centre", [homeMuster(state, p, hq), c]);
+      p.aiNextAttackTick = state.tick + prof.attackEveryTicks;
+      return;
+    }
+    // Held by more than the army can take yet: the waves go for the enemy meanwhile, and wear
+    // the garrison down on the way. With no garrison there, wait for the few the middle needs.
+    if (guard === 0 || free.length < need) {
+      p.aiNextAttackTick = state.tick + CPU_ATTACK_RETRY_TICKS;
+      return;
+    }
+  }
+  const foe = enemyHq(state, p.playerId);
   if (!foe || free.length < need) {
     p.aiNextAttackTick = state.tick + CPU_ATTACK_RETRY_TICKS;
     return;
@@ -1935,6 +1956,18 @@ function holdObjective(state: MatchState, p: SimPlayer, f: AiForce, units: Entit
     f.boundTick = state.tick;
   }
   return true;
+}
+
+/** Neutral soldiers on and around the diamond field, in its garrisons or out on it. A builder map can fortify the middle. */
+function centreGuard(state: MatchState): number {
+  const c = diamondCentre(state);
+  const reach = CENTRE_DEFEND_TILES * state.tileSize;
+  let n = 0;
+  for (const e of state.entities.values()) {
+    if (e.kind !== "unit" || e.ownerId !== NEUTRAL_OWNER || e.hp <= 0 || e.wreck || !fires(e.type)) continue;
+    if (Math.hypot(e.x - c.x, e.y - c.y) <= reach) n++;
+  }
+  return n;
 }
 
 /** The middle is held by a tower with men in it, or the Smelter stands and the force is not needed. */
@@ -2472,11 +2505,12 @@ function followFleet(state: MatchState, p: SimPlayer, e: Entity): void {
 
 function microUnits(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): void {
   const sites = enemySites(state, p.playerId);
+  const prizes = prizeSites(state, p.playerId);
   const stage = stagingFinder(state, hq);
   let smelterCrew = false;
   for (const e of [...state.entities.values()]) {
     if (e.ownerId !== p.playerId || e.hp <= 0 || e.wreck || e.garrisonedIn || e.kind !== "unit") continue;
-    siege(state, p, e, sites);
+    siege(state, p, e, sites, prizes);
     diveOnContact(state, p, e);
     switch (e.type) {
       case "warden":
@@ -2778,16 +2812,25 @@ function freeEngineer(state: MatchState, playerId: string, at: Vec): Entity | un
  * out and raises a Smelter on the nearest field on the CPU's own side of the map.
  */
 function expandSmelters(state: MatchState, p: SimPlayer, hq: Entity): void {
-  if (aiPlanOf(p).posture !== "campaign") return;
-  if (countType(state, p.playerId, "smelter") >= aiProfile(p.ai).wantSmelters) return;
-  if (p.scrap < catalog("smelter").cost || !powerFor(state, p.playerId, "smelter")) return;
-  if (findSmelterTile(state, p.playerId)) return;
-  const spot = findOutlyingSmelterTile(state, p.playerId, hq);
+  if (p.scrap < catalog("smelter").cost) return;
+  const spot = outlyingSmelterWanted(state, p, hq);
   if (!spot) return;
   const def = catalog("smelter");
   const at = { x: (spot.tx + def.tileW / 2) * state.tileSize, y: (spot.ty + def.tileH / 2) * state.tileSize };
   const eng = freeEngineer(state, p.playerId, at);
   if (eng) applyCommand(state, p.playerId, { type: "cmd.construct", ids: [eng.id], building: "smelter", tx: spot.tx, ty: spot.ty });
+}
+
+/**
+ * The field an engineer should raise the next Smelter on, or null. Fortifying, the CPU wants its
+ * second Smelter (CPU_FORTIFY_SMELTERS) out there when the yard has one field only, as on a builder
+ * map whose starts each sit by a single field; campaigning, up to the type's wantSmelters.
+ */
+function outlyingSmelterWanted(state: MatchState, p: SimPlayer, hq: Entity): { tx: number; ty: number } | null {
+  const want = aiPlanOf(p).posture === "campaign" ? aiProfile(p.ai).wantSmelters : CPU_FORTIFY_SMELTERS;
+  if (countType(state, p.playerId, "smelter") >= want) return null;
+  if (!powerFor(state, p.playerId, "smelter") || findSmelterTile(state, p.playerId)) return null;
+  return findOutlyingSmelterTile(state, p.playerId, hq);
 }
 
 /**
@@ -2808,6 +2851,8 @@ function findOutlyingSmelterTileNow(state: MatchState, playerId: string, hq: Ent
   }
   const ox = hq.x / state.tileSize;
   const oy = hq.y / state.tileSize;
+  // A builder map can be twice the Scrap Yard's size, its starts each beside a single field.
+  const reach = Math.max(CPU_EXPAND_TILES, Math.max(state.width, state.height) * CPU_EXPAND_MAP_SHARE);
   let best: { tx: number; ty: number } | null = null;
   let bestD = Infinity;
   for (let ty = 0; ty + def.tileH <= state.height; ty++) {
@@ -2818,7 +2863,7 @@ function findOutlyingSmelterTileNow(state: MatchState, playerId: string, hq: Ent
       const cx = tx + def.tileW / 2;
       const cy = ty + def.tileH / 2;
       const d = Math.hypot(cx - ox, cy - oy);
-      if (d > CPU_EXPAND_TILES || d >= bestD) continue;
+      if (d > reach || d >= bestD) continue;
       if (foes.some((f) => Math.hypot(cx - f.x, cy - f.y) <= d)) continue;
       if (!smelterSiteOk(state, tx, ty) || !keepsLanes(state, tx, ty, def.tileW, def.tileH)) continue;
       best = { tx, ty };
@@ -2883,11 +2928,25 @@ function enemySites(state: MatchState, playerId: string): Entity[] {
 }
 
 /**
+ * A map's own towers, bunkers, and guns standing empty, their neutral crews dead or never there:
+ * free for a soldier to stand the capture of, and then the CPU mans them (crewBunkers).
+ */
+function prizeSites(state: MatchState, playerId: string): Entity[] {
+  const out: Entity[] = [];
+  for (const e of state.entities.values()) {
+    if (e.kind !== "building" || e.ownerId !== NEUTRAL_OWNER || e.hp <= 0 || e.wreck || e.garrison.length > 0) continue;
+    if (!(CREWED as readonly string[]).includes(e.type) || !isCapturable(e.type)) continue;
+    if (canSeeEntity(state, playerId, e)) out.push(e);
+  }
+  return out;
+}
+
+/**
  * A fighter that reached the enemy yard with nothing to shoot goes for the nearest building:
  * soldiers stand the capture, guns shell it. A halt with no target counts as nothing to shoot.
  */
-function siege(state: MatchState, p: SimPlayer, e: Entity, sites: Entity[]): void {
-  if (sites.length === 0 || !freeFighter(e, p.playerId)) return;
+function siege(state: MatchState, p: SimPlayer, e: Entity, sites: Entity[], prizes: Entity[]): void {
+  if ((sites.length === 0 && prizes.length === 0) || !freeFighter(e, p.playerId)) return;
   // The Juggernaut has no gun, but a named attack on a building is a ram that brings it down.
   if (!isInfantryType(e.type) && e.type !== "juggernaut" && catalog(e.type).caliber < GARRISON_STRUCTURAL_CALIBER) return;
   const idle = !e.order || e.order.auto || e.order.kind === "attackmove";
@@ -2895,7 +2954,8 @@ function siege(state: MatchState, p: SimPlayer, e: Entity, sites: Entity[]): voi
   const reach = CPU_SIEGE_TILES * state.tileSize;
   let best: Entity | undefined;
   let bestD = Infinity;
-  for (const b of sites) {
+  // Only a soldier takes a prize: a gun would shell the post it could have had.
+  for (const b of canCaptureType(e.type) ? [...sites, ...prizes] : sites) {
     const d = Math.hypot(b.x - e.x, b.y - e.y);
     if (d > reach || d >= bestD) continue;
     best = b;
