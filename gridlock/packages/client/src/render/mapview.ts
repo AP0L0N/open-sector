@@ -619,7 +619,7 @@ interface BridgeLook {
   layout: BrickLayout;
   ruined?: boolean;
 }
-import { mapZoomAfterWheel, zoomCamAt } from "./camera-zoom.js";
+import { MAP_ZOOM_START, mapZoomAfterWheel, zoomCamAt } from "./camera-zoom.js";
 import { drawActionCursor, drawDeployCursor, type DeployCursorMode } from "./cursor.js";
 import { strideFrame, strideHop, unitStepping, WALKER_STRIDE_WORLD } from "./stepping.js";
 import { atInfantrySheet, cyborgSheet, gunnerSheet, heldFrame, jumpJetSheet, medicSheet, mortarmanSheet, pyroSheet, rocketerSheet, sniperSheet, trooperSheet } from "./infantry-visual.js";
@@ -1141,8 +1141,8 @@ export class MapView {
   /** Top-left of the viewport in isometric space. */
   private camX = 0;
   private camY = 0;
-  /** CSS pixels per iso pixel. 1 is the default; the wheel zooms in and out from here. */
-  private zoom = 1;
+  /** CSS pixels per iso pixel. Opens at MAP_ZOOM_START; the wheel zooms in and out from here. */
+  private zoom = MAP_ZOOM_START;
   private keys = new Set<string>();
   private panning = false;
   private lastMX = 0;

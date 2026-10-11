@@ -7,6 +7,8 @@ import { buildingSiteError } from "./build.js";
 import { beginDeploy } from "./deploy.js";
 import { makeEntity, tileCenter } from "./geo.js";
 import { createMatch } from "./match.js";
+import { previewSite } from "./preview.js";
+import { snapshotFor } from "./snapshot.js";
 import type { MatchState } from "./types.js";
 
 function twoPlayerMatch(): MatchState {
@@ -54,6 +56,9 @@ describe("Xenite build on scrap", () => {
       paint(state, 24, 24, 36, 36, kind);
       assert.equal(buildingSiteError(state, "fusionnode", 26, 26), null);
       assert.equal(buildingSiteError(state, "dynamo", 26, 26), "Cannot place there.");
+      const snap = snapshotFor(state, "A");
+      assert.equal(previewSite(snap, "fusionnode", 26, 26), true, "client ghost agrees: a Xenite stands on it");
+      assert.equal(previewSite(snap, "dynamo", 26, 26), false, "client ghost agrees: an Alliance Dynamo stays red");
     });
 
     it(`the Seed unfolds its Hive Core on ${kind}; the Alliance Rig does not`, () => {
