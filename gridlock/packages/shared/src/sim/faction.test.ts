@@ -96,6 +96,7 @@ describe("factions in the catalog", () => {
         "conversion",
         "energywall",
         "forge",
+        "fusioncore",
         "fusionnode",
         "gnat",
         "hiveark",

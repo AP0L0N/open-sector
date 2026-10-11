@@ -1459,6 +1459,7 @@ const TYPE_ORDER: EntityType[] = [
   "husk",
   "dynamo",
   "fusionnode",
+  "fusioncore",
   "smelter",
   "assimilator",
   "muster",
