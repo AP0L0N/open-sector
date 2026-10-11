@@ -87,6 +87,7 @@ import {
   rocketsOf,
   rocketsNow,
   rocketAmmoOf,
+  plasmaCellOf,
   launcherOnlyOf,
   airRackOf,
   isStance,
@@ -987,6 +988,8 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
     rocketsNow(e) && !e.wreck && e.ownerId === ctx.match.youPlayerId
       ? airRackOf(e.type)
         ? `  ·  ${e.airMode ? "air" : "ground"} attacks`
+        : e.energy != null && plasmaCellOf(e.type)
+          ? `  ·  energy ${Math.round(e.energy * 100)}%${(e.rocketReload ?? 0) > 0 ? ` · ${e.rocketReload!.toFixed(1)}s` : ""}`
         : e.rocketsOff
         ? `  ·  rockets off ${e.rockets ?? 0}`
         : (e.rockets ?? 0) <= 0

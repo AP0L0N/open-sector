@@ -4009,7 +4009,10 @@ export const MAWCASTER_CELL: PlasmaCellDef = { shots: 24, rechargeSeconds: 2 };
  * for good and fights on with its fists (Entity.fists), at the Thrall's reach and pace of blows.
  */
 export const BOMBARD_RANGE_TILES = t(19);
-export const BOMBARD_MIN_RANGE_TILES = t(5);
+/** Just past the round's own splash: it never bursts on the Bombard. */
+export const BOMBARD_MIN_RANGE_TILES = t(2);
+/** The cannon's energy cell: every round draws one shot, and each regrows slowly. */
+export const BOMBARD_CELL: PlasmaCellDef = { shots: 3, rechargeSeconds: 15 };
 export const BOMBARD_ROUND: RocketRackDef = {
   salvo: 1,
   interval: 0,
@@ -6405,7 +6408,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rockets: true,
     rocketAmmo: 5,
     rocketRack: BOMBARD_ROUND,
-    blurb: `A taken body on a heavy frame, hauling a long plasma cannon in both arms. It stands, braces, and throws one big plasma round on an arc from long reach (${BOMBARD_RANGE_TILES / TILE_SUBDIV} cells), then waits ${BOMBARD_ROUND.reload} seconds while the cannon charges. The round bursts wide among soldiers and tells on armor too. Force attack sends it anywhere in that reach, seen or not. It cannot lay the cannon on anything inside ${BOMBARD_MIN_RANGE_TILES / TILE_SUBDIV} cells and must stop and face the target first. Attacked from inside that ring, it drops the cannon where it stands and fights on with two armoured fists like a Thrall's; the cannon is lost for good and it never picks it up again. Its fists only dent a hull; it does not detonate. No stance orders. Near death its legs are torn off and it crawls on, still fighting. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
+    plasmaCell: BOMBARD_CELL,
+    blurb: `A taken body on a heavy frame, hauling a long plasma cannon in both arms. It stands, braces, and throws one big plasma round on an arc from long reach (${BOMBARD_RANGE_TILES / TILE_SUBDIV} cells), then waits ${BOMBARD_ROUND.reload} seconds while the cannon charges. Every round drains its energy cell; the cell holds ${BOMBARD_CELL.shots} rounds and regrows one every ${BOMBARD_CELL.rechargeSeconds} seconds. The round bursts wide among soldiers and tells on armor too. Force attack sends it anywhere in that reach, seen or not. It cannot lay the cannon on anything inside ${BOMBARD_MIN_RANGE_TILES / TILE_SUBDIV} cells and must stop and face the target first. Attacked from inside that ring, it drops the cannon where it stands and fights on with two armoured fists like a Thrall's; the cannon is lost for good and it never picks it up again. Its fists only dent a hull; it does not detonate. No stance orders. Near death its legs are torn off and it crawls on, still fighting. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
   },
   /** Xenite cyborg: unarmed support, shields friends under fire and mends hive units. */
   weaver: {
