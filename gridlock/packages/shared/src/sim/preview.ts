@@ -1,4 +1,4 @@
-import { SMELTER_SCRAP_COVER, anchorsBuildRange, bridgeBrickLength, buildRadiusOf, catalog, isBridge, isEngineerBuilding, isFieldStructure, isSmelterType, isYardField, onWaterBuilding, type BridgeType, type BuildingType, type FieldStructureType, type YardFieldType } from "../catalog.js";
+import { SMELTER_SCRAP_COVER, anchorsBuildRange, bridgeBrickLength, buildRadiusOf, catalog, isBridge, isEngineerBuilding, isFieldStructure, isSmelterType, isYardField, onWaterBuilding, scrapIsGround, type BridgeType, type BuildingType, type FieldStructureType, type YardFieldType } from "../catalog.js";
 import { TILE_BLOCKED, TILE_FENCE, TILE_WATER, getMap, isGroveTile, isMountainCliff } from "../maps.js";
 import type { MatchSnapshot } from "../protocol.js";
 import { planBridgeLine, type BridgeBrick, type BridgeGround, type BridgeSpan } from "../bridge-plan.js";
@@ -62,7 +62,8 @@ export function previewYardField(snap: MatchSnapshot, type: YardFieldType, x: nu
 
 /**
  * Snapshot twin of the sim's site check: open ground under the footprint, and for a
- * Smelter enough scrap under it; for everything else no scrap at all. A Marine Base
+ * Smelter enough scrap under it; for everything else no scrap at all, unless the Xenite
+ * builds on it (scrap is bare ground to it). A Marine Base
  * wants open water under every tile; nothing else stands on water or a fence.
  * `facing` turns a rotatable building; (tx, ty) is then the top-left of its turned box.
  */
@@ -88,8 +89,8 @@ export function previewSite(snap: MatchSnapshot, type: BuildingType, tx: number,
     if (kind === TILE_BLOCKED || kind === TILE_FENCE) return false;
     if (isMountainCliff(map.tiles, map.heights, map.width, map.height, t.x, t.y)) return false;
     if (scrapCells.has(i)) {
-      if (!isSmelterType(type)) return false;
-      scrapUnder++;
+      if (isSmelterType(type)) scrapUnder++;
+      else if (!scrapIsGround(type)) return false;
     }
     if (built.has(i)) return false;
   }
