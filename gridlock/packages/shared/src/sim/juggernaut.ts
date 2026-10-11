@@ -20,6 +20,8 @@ import {
   JUGGERNAUT_RAM_SPEED_TILES,
   JUGGERNAUT_RAM_TRAMPLE_HULL,
   JUGGERNAUT_RAM_TRAMPLE_SOLDIER,
+  JUGGERNAUT_REASSEMBLE_HP,
+  JUGGERNAUT_REASSEMBLE_SECONDS,
   JUGGERNAUT_SPRINT_MUL,
   JUGGERNAUT_THROW_BLAST_TILES,
   JUGGERNAUT_THROW_BUILDING,
@@ -42,7 +44,7 @@ import type { ImpactKind } from "../protocol.js";
 import { isAirborne } from "./air.js";
 import { takeDamage } from "./crits.js";
 import { wallsShieldGarrison, woundGarrison } from "./garrison.js";
-import { allies, buildingBounds, inBounds, isWater, ownerless, playerTeam, walkable, worldToTile } from "./geo.js";
+import { allies, buildingBounds, inBounds, isWater, ownerless, playerTeam, restampWreckBlock, vacateEntity, walkable, worldToTile } from "./geo.js";
 import { mortarFalloff } from "./mortar.js";
 import { diving } from "./naval.js";
 import { nextRand } from "./rng.js";
@@ -64,7 +66,7 @@ import { canSeeEntity } from "./vision.js";
  * Rage: at JUGGERNAUT_RAGE_HP of its pool it throws the hammer, once, at the strongest enemy it
  * sees inside JUGGERNAUT_THROW_RANGE_TILES. The hammer flies on an arc and lands in a bigger
  * blast. From then on it fights with its fists: lighter, tighter blows on a much shorter clock,
- * and it moves JUGGERNAUT_FIST_PACE_MUL faster. Nothing in reach to throw at: it keeps swinging.
+ * and it runs JUGGERNAUT_FIST_PACE_MUL times as fast. It still rams. Nothing in reach to throw at: it keeps swinging.
  * A friend that brought it there on a force-attack takes the hammer: it goes at whoever hurt it last.
  *
  * Ram: every JUGGERNAUT_RAM_RECHARGE_SECONDS it charges by itself. The mark is an enemy armored
@@ -75,6 +77,11 @@ import { canSeeEntity } from "./vision.js";
  * runs down every enemy it passes (once a charge). On contact it slams: a heavy blow through any
  * plate that throws the hull back, or massive damage to a building. A wall or the water's edge in
  * its way stops it short.
+ *
+ * Reassembly: killed with the hammer still in its hands, its wreck lies JUGGERNAUT_REASSEMBLE_SECONDS
+ * (the hammer by it glowing), then the giant rises from it with JUGGERNAUT_REASSEMBLE_HP of its pool,
+ * the hammer back in its hands. A wreck blasted or salvaged away first is gone for good. One that
+ * fell after the throw stays a wreck.
  *
  * tickJuggernauts runs after tickSimUnits, before movement. The blows are in fireAtCurrent
  * (combat.ts) through juggernautBlow; the thrown hammer lands in tickProjectiles.
@@ -528,12 +535,38 @@ function tickRam(state: MatchState, e: Entity): void {
   }
 }
 
+/** A wreck that fell with the hammer: start its clock, and on the tick stand it back up. */
+function tickReassembly(state: MatchState, e: Entity): void {
+  if (e.fists || e.garrisonedIn != null) return;
+  if (e.reassembleAt == null) {
+    e.reassembleAt = state.tick + secondsToTicks(JUGGERNAUT_REASSEMBLE_SECONDS);
+    return;
+  }
+  if (state.tick < e.reassembleAt) return;
+  // Off the ground it held as a hulk, then a live body again.
+  vacateEntity(state, e);
+  e.wreck = false;
+  restampWreckBlock(state);
+  e.state = "idle";
+  e.hpMax = catalog(e.type).hp;
+  e.hp = Math.max(1, Math.round(e.hpMax * JUGGERNAUT_REASSEMBLE_HP));
+  e.juggHpSeen = e.hp;
+  e.reassembleAt = undefined;
+  e.crits = [];
+  e.order = null;
+  e.waypoints = [];
+  e.attackTarget = null;
+  e.cooldown = 0;
+  e.lastAttacker = undefined;
+}
+
 export function tickJuggernauts(state: MatchState): void {
   for (const e of state.entities.values()) {
     if (e.kind !== "unit" || !isJuggernaut(e.type)) continue;
     if (e.hp <= 0 || e.wreck) {
       e.sprint = undefined;
       e.ram = undefined;
+      if (e.wreck && e.hp > 0) tickReassembly(state, e);
       continue;
     }
     // Ready, it looks for a mark every few ticks, not every one.

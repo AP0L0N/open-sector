@@ -59,7 +59,8 @@ export function techMissing(state: MatchState, playerId: string, unit: TrainType
 
 /**
  * A one-at-a-time unit (ONE_AT_A_TIME: the Titan, the Cyborg Commander) the player
- * already has: "alive" while one stands (a wreck does not count), "queued" while one
+ * already has: "alive" while one stands (a wreck does not count, unless it is a Juggernaut
+ * knitting back together), "queued" while one
  * sits in any of his production queues. Null when he may queue one, and for every other type.
  */
 export function oneAtATimeTaken(state: MatchState, playerId: string, unit: TrainType): "alive" | "queued" | null {
@@ -67,7 +68,7 @@ export function oneAtATimeTaken(state: MatchState, playerId: string, unit: Train
   let queued = false;
   for (const e of state.entities.values()) {
     if (e.ownerId !== playerId) continue;
-    if (e.type === unit && e.hp > 0 && !e.wreck) return "alive";
+    if (e.type === unit && e.hp > 0 && (!e.wreck || e.reassembleAt != null)) return "alive";
     if (e.queue.some((j) => j.type === unit)) queued = true;
   }
   return queued ? "queued" : null;

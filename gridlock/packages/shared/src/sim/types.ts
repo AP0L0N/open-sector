@@ -645,6 +645,8 @@ export interface Entity {
   ram?: { targetId: number; until: number; hit: number[] };
   /** Juggernaut: the tick it can ram again. Unset or past means ready. */
   ramReady?: number;
+  /** Juggernaut wreck that fell with the hammer in its hands: the tick it rises again (sim/juggernaut.ts). */
+  reassembleAt?: number;
   /** Juggernaut (sim/juggernaut.ts): HP last tick, and the unit that last hurt it (a friend's force-attack too). */
   juggHpSeen?: number;
   lastAttacker?: number;

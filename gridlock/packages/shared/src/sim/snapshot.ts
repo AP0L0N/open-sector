@@ -493,6 +493,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       cloakCharge: friendly && canCloak(e.type) && !e.wreck ? Math.round(cloakCharge(state, e) * 100) / 100 : undefined,
       fists: e.fists,
       ram: e.ram ? true : undefined,
+      reassembleIn: e.reassembleAt != null && e.wreck ? Math.max(0, Math.round(((e.reassembleAt - state.tick) * TICK_DT) * 100) / 100) : undefined,
       ramCharge: friendly && e.type === "juggernaut" && !e.wreck ? Math.round(ramCharge(state, e) * 100) / 100 : undefined,
       purge: friendly && e.purge ? { hostId: e.purge.hostId, u: purgeProgress(state, e) ?? 0 } : undefined,
       takeover: e.takeover ? { by: e.takeover.by, u: Math.min(1, e.takeover.ticks / secondsToTicks(CYBORG_TAKEOVER_SECONDS)) } : undefined,
