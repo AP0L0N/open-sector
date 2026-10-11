@@ -35,6 +35,7 @@ import {
   levelSightExtra,
   liveSightExtra,
   lowPowerSight,
+  sightDimmed,
   sightTilesForEntity,
   sightTilesOf,
   uphillSightForEntity,
@@ -94,6 +95,8 @@ export type SightSource = {
   crits?: readonly Crit[];
   /** A building whose owner is short on power has a dark lamp and shorter sight. */
   unpowered?: boolean;
+  /** A Xenite structure whose hive is below zero: no glow, the same shorter sight. */
+  hiveDark?: boolean;
   /** Who is inside: the Spotlight post's lamp burns only with its man. */
   garrison?: readonly unknown[] | { count: number };
 };
@@ -429,7 +432,7 @@ function sightParams(
     return {
       ox: e.tileX + Math.floor(e.tileW / 2),
       oy: e.tileY + Math.floor(e.tileH / 2),
-      radius: nightTiles(e.sightTiles ?? lowPowerSight(sightTilesOf(e.type, maxH), e.unpowered), light.mul),
+      radius: nightTiles(e.sightTiles ?? lowPowerSight(sightTilesOf(e.type, maxH), sightDimmed(e)), light.mul),
       eye,
       uphill,
       ignore,
@@ -1013,7 +1016,7 @@ function visionKeyNow(state: MatchState, playerId: string): number {
     h = mix(h, e.scoutOut && e.scoutHp > 0 ? 1 : 0);
     h = mix(h, e.air ? Math.round(e.air.alt) : 0);
     h = mix(h, occupantSightTiles(state, e) ?? -1);
-    if (e.kind === "building") h = mix(h, e.unpowered ? 1 : 0);
+    if (e.kind === "building") h = mix(h, sightDimmed(e) ? 1 : 0);
     if (light.spots && hasSpotlight(e.type)) {
       h = mix(h, e.crits.includes("lamp") ? 0 : 1);
       h = mix(h, e.garrison.length);
@@ -1896,7 +1899,7 @@ function catalogSight(
   const ty = e.kind === "building" ? e.tileY + Math.floor(e.tileH / 2) : worldToTile(e.y, tileSize);
   const h = elev ? elevAtSafe(elev, width, height, tx, ty) : 0;
   if (e.scout?.out) return sightTilesOf("rifleman", h);
-  return lowPowerSight(sightTilesOf(e.type, h, liveSightExtra(e)), e.kind === "building" && e.unpowered);
+  return lowPowerSight(sightTilesOf(e.type, h, liveSightExtra(e)), sightDimmed(e));
 }
 
 function snapshotSightTiles(

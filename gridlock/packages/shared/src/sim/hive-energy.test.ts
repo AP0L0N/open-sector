@@ -18,11 +18,13 @@ import {
 } from "../catalog.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import { applyCommand } from "./commands.js";
+import { lowPowerSight, sightTilesForEntity } from "./elevation.js";
 import { destroyEntity, hasCore, hqOf, makeEntity, tileCenter } from "./geo.js";
 import { fenceEnergyToAdd, hiveEnergyOf, hiveSpeed, jobSpeed } from "./hive-energy.js";
 import { liveFenceLinks } from "./laser-fence.js";
 import { createMatch, step } from "./match.js";
 import { powerOf } from "./power.js";
+import { radarOnline } from "./radar.js";
 import { snapshotFor } from "./snapshot.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -178,6 +180,38 @@ describe("hive energy", () => {
     // 300 against 200: the Pulse Spire (100) is the hungriest.
     assert.equal(spire.hiveOffline, true);
     assert.equal(spire.unpowered, true);
+  });
+
+  it("darkens every structure while below zero: no glow, and a fifth less sight", () => {
+    const state = field();
+    const core = [...state.entities.values()].find((e) => e.ownerId === "B" && e.kind === "building" && e.hp > 0)!;
+    const full = sightTilesForEntity(state, core);
+    // 200 + 3 × 500 holds the Nexus (1260) with room to spare.
+    for (let i = 0; i < 3; i++) at(state, "fusionnode", 40 + i * 4, 36);
+    const nexus = at(state, "nexus", 44, 40);
+    ticks(state, 1);
+    assert.equal(radarOnline(state, "B"), true);
+    // Hold the switch off so the hive stays short.
+    state.players.get("B")!.hiveSwitchTick = state.tick + 1000;
+    const juggernauts = [0, 1, 2, 3, 4].map((i) => at(state, "juggernaut", 20 + i * 4, 20));
+    ticks(state, 1);
+    assert.ok(hiveEnergyOf(state, "B").used > hiveEnergyOf(state, "B").cap, "short");
+    assert.equal(core.hiveDark, true);
+    assert.equal(nexus.hiveDark, true);
+    assert.equal(radarOnline(state, "B"), false, "the radar is down");
+    assert.equal(snapshotFor(state, "B").you.radar, false);
+    assert.equal(core.unpowered, undefined, "dark is not silenced");
+    assert.equal(sightTilesForEntity(state, core), lowPowerSight(full, true));
+    assert.equal(snapshotFor(state, "B").entities.find((e) => e.id === core.id)?.hiveDark, true);
+    assert.ok(juggernauts.every((u) => !u.hiveDark), "units are not dark, only structures");
+    // Room again: the glow and the sight come back.
+    state.players.get("B")!.hiveSwitchTick = 0;
+    ticks(state, 1);
+    for (const u of juggernauts) destroyEntity(state, u);
+    ticks(state, 1);
+    assert.equal(core.hiveDark, undefined);
+    assert.equal(sightTilesForEntity(state, core), full);
+    assert.equal(radarOnline(state, "B"), true);
   });
 
   it("charges a Laser Fence more the longer its link", () => {

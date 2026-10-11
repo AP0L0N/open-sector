@@ -308,6 +308,8 @@ export interface EntityView {
   spotFacing?: number;
   /** Building whose owner is short on power: its lamps are dark and a CIWS or RAM is silent. Omitted when powered. */
   unpowered?: boolean;
+  /** Xenite structure whose hive is below zero: its glow is out and it sees less far. Omitted otherwise. */
+  hiveDark?: true;
   /** Titan pods switched off. Friendly snapshots; omitted while on. */
   rocketsOff?: boolean;
   /** Mawcaster set to Air attacks. Friendly snapshots; omitted on Ground attacks. */

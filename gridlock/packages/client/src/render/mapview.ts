@@ -691,9 +691,13 @@ function fillPool(c: CanvasRenderingContext2D, p: NightPool, rgb: string, a: num
   c.restore();
 }
 
-/** A live Xenite or Bloom unit or structure out in the open: it glows. Not a wreck, a ruin, a passenger, or a burrowed or submerged body. */
+/**
+ * A live Xenite or Bloom unit or structure out in the open: it glows. Not a wreck, a ruin, a passenger, or a burrowed or submerged body,
+ * nor one powered down (offline for want of hive energy), nor any structure of a hive below zero.
+ */
 function xenoGlows(e: EntityView): boolean {
   if (factionOf(e.type) === "alliance" || e.hp <= 0 || e.wreck || e.ruined) return false;
+  if (e.shutdown || e.unpowered || e.hiveDark) return false;
   if (e.garrisonedIn != null || e.burrow === "down" || e.submerged) return false;
   return e.kind === "unit" || e.kind === "building";
 }
