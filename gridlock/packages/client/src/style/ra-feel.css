@@ -766,6 +766,15 @@ input[type="range"] { padding: 0; }
   flex-shrink: 0;
 }
 
+.zoom-level {
+  font-family: "Share Tech Mono", monospace;
+  font-size: 0.7rem;
+  color: var(--text);
+  text-align: right;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
 #minimap {
   width: 100%;
   aspect-ratio: 1;

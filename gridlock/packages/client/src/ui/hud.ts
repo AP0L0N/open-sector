@@ -241,8 +241,9 @@ export function mountBattlefield(
     el("span", { class: "match-clock-next", text: "NIGHT AT 20:30" }),
   );
   radarHead.append(el("h3", { text: "Radar" }), clock);
+  const zoomLevel = el("div", { class: "zoom-level", attrs: { id: "zoom-level" } });
   const mini = el("canvas", { attrs: { id: "minimap" } });
-  side.append(radarHead, mini);
+  side.append(radarHead, zoomLevel, mini);
 
   const tabs = el("div", { class: "group-tabs", attrs: { id: "group-tabs", role: "tablist" } });
   const heading = el("h3", { class: "group-heading", attrs: { id: "group-heading" } });
@@ -296,7 +297,7 @@ export function mountBattlefield(
   root.append(wrap);
 
   existing?.destroy();
-  const view = new MapView(canvas, mini, ctx.match);
+  const view = new MapView(canvas, mini, ctx.match, zoomLevel);
   viewRef = view;
   view.onCommand = (msg) => ctx.net.send(msg);
   view.onPlaceMode = () => paintBattleHud(ctx);
