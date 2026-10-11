@@ -674,7 +674,7 @@ function outOfFunds(m: MatchSnapshot): boolean {
  * full at 200 / 200 with a bare Hive Core, emptying as it feeds more, and below zero when short.
  */
 function hiveEnergyHtml(hive: { cap: number; used: number; offline: number }): string {
-  const left = hive.cap - hive.used;
+  const left = Math.round(hive.cap - hive.used);
   const share = hive.cap > 0 ? Math.max(0, Math.min(1, left / hive.cap)) : 0;
   const speed = hiveSpeed(hive.cap, hive.used);
   const slow = speed < 1 ? ` · SLOW ×${speed.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}` : "";

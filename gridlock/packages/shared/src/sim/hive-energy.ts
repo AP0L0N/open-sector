@@ -1,4 +1,4 @@
-import { energyOf, energySupplyOf, HIVE_SWITCH_SECONDS, isDefenceStructure, LOW_POWER_MIN_SPEED, secondsToTicks, usesHiveEnergy } from "../catalog.js";
+import { energyOf, energySupplyOf, HIVE_SHORT_SPEED, HIVE_SWITCH_SECONDS, isDefenceStructure, secondsToTicks, usesHiveEnergy } from "../catalog.js";
 import { isAirborne } from "./air.js";
 import { clearOrder } from "./geo.js";
 import { fenceLinkEnergy, laserFenceLinks, laserFenceReach, totalFenceLinkEnergy, type FencePost } from "./laser-fence.js";
@@ -12,12 +12,13 @@ import type { Entity, MatchState, SimPlayer } from "./types.js";
  * it holds. The HUD counts down from the full store: 200 / 200 with a bare Hive Core, less for each
  * thing the hive feeds, and below zero when it feeds more than it holds.
  *
- * Nothing is refused for want of energy. Below zero the yard and the factories work slower, in
- * proportion, as a short-powered base does (never under LOW_POWER_MIN_SPEED). And while the hive
+ * Nothing is refused for want of energy. Below zero the yard and the factories work at
+ * HIVE_SHORT_SPEED, every job alike (a Fusion Node too), however far short the hive is. And while the hive
  * is below zero, its units and defences go offline one at a time, every HIVE_SWITCH_SECONDS, the
  * hungriest first, until it is back at zero or above: a unit shuts down where it stands, a defence
  * falls silent. Base structures never go offline, and a plane in the air keeps flying. Once there
- * is room again they wake one at a time, the hungriest that fits first. Before the first Hive Core
+ * is room again they wake one at a time, the hungriest that fits first. While it is below zero every
+ * structure of the hive is dark: its glow goes out and it sees as far as one short on power. Before the first Hive Core
  * stands there is no store to run short of, and nothing goes offline. Runs right after tickPower.
  */
 
@@ -107,10 +108,10 @@ export function hiveEnergyOf(state: MatchState, playerId: string): HiveEnergy {
   return { cap: hiveEnergyCap(state, playerId), used, offline };
 }
 
-/** How fast the hive builds and grows at `cap` held and `used` taken: 1 at zero or above, slower in proportion below. */
+/** How fast the hive builds and grows at `cap` held and `used` taken: 1 at zero or above, HIVE_SHORT_SPEED below. */
 export function hiveSpeed(cap: number, used: number): number {
   if (cap <= 0 || used <= cap) return 1;
-  return Math.max(LOW_POWER_MIN_SPEED, cap / used);
+  return HIVE_SHORT_SPEED;
 }
 
 /** Pace of `playerId`'s yard and factories: the hive's energy for the Xenite, power for everyone else. */
@@ -152,6 +153,14 @@ function goOffline(e: Entity): void {
   e.holdPosition = false;
 }
 
+/** Every structure of `playerId`'s loses its glow, and the sight that goes with it, while the hive is below zero. */
+function darkenHive(state: MatchState, playerId: string, dark: boolean): void {
+  for (const e of state.entities.values()) {
+    if (e.ownerId !== playerId || e.kind !== "building") continue;
+    e.hiveDark = (dark && live(e) && !e.ruined) || undefined;
+  }
+}
+
 function comeOnline(e: Entity): void {
   if (!e.hiveOffline) return;
   e.hiveOffline = undefined;
@@ -166,6 +175,7 @@ export function tickHiveEnergy(state: MatchState): void {
     // No Hive Core yet (the Seed still on the move, or units the map gave): no store to run short of.
     if (cap <= 0) {
       for (const c of list) comeOnline(c.e);
+      darkenHive(state, p.playerId, false);
       continue;
     }
     let used = 0;
@@ -177,7 +187,10 @@ export function tickHiveEnergy(state: MatchState): void {
         used += c.energy;
       }
     }
-    if (state.tick < (p.hiveSwitchTick ?? 0)) continue;
+    if (state.tick < (p.hiveSwitchTick ?? 0)) {
+      darkenHive(state, p.playerId, used > cap);
+      continue;
+    }
     const left = cap - used;
     let pick: { e: Entity; energy: number } | undefined;
     if (left < 0) {
@@ -186,15 +199,22 @@ export function tickHiveEnergy(state: MatchState): void {
         if (c.e.hiveOffline || !switchable(c.e)) continue;
         if (!pick || c.energy > pick.energy || (c.energy === pick.energy && c.e.id > pick.e.id)) pick = c;
       }
-      if (pick) goOffline(pick.e);
+      if (pick) {
+        goOffline(pick.e);
+        used -= pick.energy;
+      }
     } else {
       // Room again: the hungriest offline one that fits wakes, the oldest among equals.
       for (const c of list) {
         if (!c.e.hiveOffline || c.energy > left) continue;
         if (!pick || c.energy > pick.energy || (c.energy === pick.energy && c.e.id < pick.e.id)) pick = c;
       }
-      if (pick) comeOnline(pick.e);
+      if (pick) {
+        comeOnline(pick.e);
+        used += pick.energy;
+      }
     }
+    darkenHive(state, p.playerId, used > cap);
     if (pick) p.hiveSwitchTick = state.tick + secondsToTicks(HIVE_SWITCH_SECONDS);
   }
 }

@@ -5,9 +5,9 @@ import { allies } from "./geo.js";
 import { entityOnMask } from "./vision.js";
 import type { Entity, MatchState } from "./types.js";
 
-/** A Radar Station (or Xenite Neural Nexus) this side reads: allied, standing, not a wreck. */
+/** A Radar Station (or Xenite Neural Nexus) this side reads: allied, standing, not a wreck, not dark for want of hive energy. */
 function radarStands(state: MatchState, playerId: string, e: Entity): boolean {
-  return isRadarStation(e.type) && e.kind === "building" && e.hp > 0 && !e.wreck && allies(state, playerId, e.ownerId);
+  return isRadarStation(e.type) && e.kind === "building" && e.hp > 0 && !e.wreck && !e.hiveDark && allies(state, playerId, e.ownerId);
 }
 
 /** Radar Stations whose sweep this side reads. */

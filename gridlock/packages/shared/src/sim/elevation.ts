@@ -296,7 +296,12 @@ export function sightTilesForEntity(state: MatchState, e: Entity): number {
     }
   }
   if (entityIsScouting(e)) return sightTilesOf("rifleman", entityHeight(state, e));
-  return lowPowerSight(sightTilesOf(e.type, entityHeight(state, e), liveSightExtra(e)), e.kind === "building" && e.unpowered);
+  return lowPowerSight(sightTilesOf(e.type, entityHeight(state, e), liveSightExtra(e)), sightDimmed(e));
+}
+
+/** A building short on power, or a Xenite one whose hive is below zero: its lamps or its glow are out. */
+export function sightDimmed(e: { kind: string; unpowered?: boolean; hiveDark?: boolean }): boolean {
+  return e.kind === "building" && (!!e.unpowered || !!e.hiveDark);
 }
 
 /** A building short on power sees a fifth less far, as its lamps go dark. */

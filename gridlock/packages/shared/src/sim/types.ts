@@ -585,6 +585,8 @@ export interface Entity {
    * `shutdown`, a building `unpowered`. It wakes by itself once the hive has room for it.
    */
   hiveOffline?: true;
+  /** Xenite structure while its hive is below zero: no glow, and it sees as far as one short on power. Set each tick. */
+  hiveDark?: true;
   /** Shut-down Cyborg only: the Cyborg Commander taking him over, and ticks of uplink so far. */
   takeover?: { by: number; ticks: number };
   /** Cyborg only: fires on what his side's thermal and APS read, seen or not, inside his reach. */

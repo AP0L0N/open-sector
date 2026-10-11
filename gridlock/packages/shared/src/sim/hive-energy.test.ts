@@ -4,8 +4,8 @@ import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
   FUSION_NODE_ENERGY,
   HIVE_CORE_ENERGY,
+  HIVE_SHORT_SPEED,
   HIVE_SWITCH_SECONDS,
-  LOW_POWER_MIN_SPEED,
   LASER_FENCE_ENERGY_PER_CELL,
   TICK_DT,
   TILE_SUBDIV,
@@ -18,11 +18,13 @@ import {
 } from "../catalog.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import { applyCommand } from "./commands.js";
+import { lowPowerSight, sightTilesForEntity } from "./elevation.js";
 import { destroyEntity, hasCore, hqOf, makeEntity, tileCenter } from "./geo.js";
 import { fenceEnergyToAdd, hiveEnergyOf, hiveSpeed, jobSpeed } from "./hive-energy.js";
 import { liveFenceLinks } from "./laser-fence.js";
 import { createMatch, step } from "./match.js";
 import { powerOf } from "./power.js";
+import { radarOnline } from "./radar.js";
 import { snapshotFor } from "./snapshot.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -101,20 +103,20 @@ describe("hive energy", () => {
     const state = field();
     at(state, "conversion", 30, 30);
     const scrap = state.players.get("B")!.scrap;
-    // 60 left after the Chamber: five Lancers (50 each) take the hive below zero, and all five come out.
-    for (let i = 0; i < 5; i++) assert.equal(applyCommand(state, "B", { type: "cmd.train", unit: "lancer" }).ok, true);
-    ticks(state, 8 * Math.ceil(catalog("lancer").buildSeconds / TICK_DT));
-    const lancers = [...state.entities.values()].filter((e) => e.type === "lancer" && e.ownerId === "B");
-    assert.equal(lancers.length, 5);
+    // 60 left after the Chamber: five Bombards (112.5 each) take the hive below zero, and all five come out.
+    for (let i = 0; i < 5; i++) assert.equal(applyCommand(state, "B", { type: "cmd.train", unit: "bombard" }).ok, true);
+    ticks(state, 8 * Math.ceil(catalog("bombard").buildSeconds / TICK_DT));
+    const bombards = [...state.entities.values()].filter((e) => e.type === "bombard" && e.ownerId === "B");
+    assert.equal(bombards.length, 5);
     assert.equal(state.players.get("B")!.scrap, scrap, "no scrap spent");
     assert.equal(applyCommand(state, "B", { type: "cmd.build", building: "spineturret" }).ok, true);
   });
 
-  it("builds slower below zero, in proportion", () => {
+  it("builds 70% slower below zero, however short", () => {
     assert.equal(hiveSpeed(200, 150), 1);
     assert.equal(hiveSpeed(200, 200), 1);
-    assert.equal(hiveSpeed(200, 400), 0.5);
-    assert.equal(hiveSpeed(200, 100_000), LOW_POWER_MIN_SPEED);
+    assert.equal(hiveSpeed(200, 201), HIVE_SHORT_SPEED);
+    assert.equal(hiveSpeed(200, 100_000), HIVE_SHORT_SPEED);
     const state = field();
     // Base structures never go offline: an Aerie keeps the hive at -500.
     at(state, "aerie", 40, 30);
@@ -122,7 +124,7 @@ describe("hive energy", () => {
     const { cap, used, offline } = hiveEnergyOf(state, "B");
     assert.equal(offline, 0);
     assert.ok(used > cap);
-    assert.equal(jobSpeed(state, "B"), cap / used);
+    assert.equal(jobSpeed(state, "B"), HIVE_SHORT_SPEED);
     const time = (slow: boolean): number => {
       const s = field();
       if (slow) at(s, "aerie", 40, 30);
@@ -138,36 +140,37 @@ describe("hive energy", () => {
 
   it("shuts down the hungriest first, one at a time, and only as many as it takes", () => {
     const state = field();
-    const node = at(state, "fusionnode", 40, 40);
-    const behemoth = at(state, "behemoth", 20, 20);
-    const ravagers = [0, 1, 2, 3].map((i) => at(state, "ravager", 24 + i * 2, 24));
-    const juggernaut = at(state, "juggernaut", 30, 20);
+    const nodes = [at(state, "fusionnode", 40, 40), at(state, "fusionnode", 44, 40)];
+    const siphon = at(state, "siphon", 20, 20);
+    const small = [at(state, "ravager", 24, 24), at(state, "ravager", 26, 24)];
+    const stalker = at(state, "stalker", 30, 20);
     ticks(state, 2);
-    // 700 holds 200 + 4 × 50 + 150 = 550.
-    assert.ok([behemoth, juggernaut, ...ravagers].every((u) => !u.shutdown));
-    destroyEntity(state, node);
+    // 1200 holds 500 + 2 × 90 + 120 = 800.
+    assert.ok([siphon, stalker, ...small].every((u) => !u.shutdown));
+    for (const n of nodes) destroyEntity(state, n);
     ticks(state, 1);
-    // 200 against 550: the Behemoth (200) goes first.
-    assert.ok(behemoth.shutdown && behemoth.hiveOffline);
-    assert.ok(!juggernaut.shutdown, "one at a time");
+    // 200 against 800: the Siphon (500) goes first.
+    assert.ok(siphon.shutdown && siphon.hiveOffline);
+    assert.ok(!stalker.shutdown, "one at a time");
     ticks(state, secondsToTicks(HIVE_SWITCH_SECONDS));
-    // Still 350 against 200: the Juggernaut (150) next, and that is enough.
-    assert.ok(juggernaut.shutdown && juggernaut.hiveOffline);
+    // Still 300 against 200: the Stalker (120) next, and that is enough.
+    assert.ok(stalker.shutdown && stalker.hiveOffline);
     ticks(state, secondsToTicks(HIVE_SWITCH_SECONDS) * 6);
-    assert.ok(ravagers.every((u) => !u.shutdown), "the Ravagers fit: they stay up");
-    assert.deepEqual(hiveEnergyOf(state, "B"), { cap: 200, used: 200, offline: 2 });
-    assert.equal(snapshotFor(state, "B").entities.find((e) => e.id === behemoth.id)?.shutdown, true);
+    assert.ok(small.every((u) => !u.shutdown), "the Ravagers fit: they stay up");
+    assert.deepEqual(hiveEnergyOf(state, "B"), { cap: 200, used: 180, offline: 2 });
+    assert.equal(snapshotFor(state, "B").entities.find((e) => e.id === siphon.id)?.shutdown, true);
     // An order to an offline unit goes nowhere.
-    const before = { x: behemoth.x, y: behemoth.y };
-    applyCommand(state, "B", { type: "cmd.move", ids: [behemoth.id], x: before.x + 200, y: before.y });
+    const before = { x: siphon.x, y: siphon.y };
+    applyCommand(state, "B", { type: "cmd.move", ids: [siphon.id], x: before.x + 200, y: before.y });
     ticks(state, 20);
-    assert.deepEqual({ x: behemoth.x, y: behemoth.y }, before);
-    // A new Fusion Node: they wake one at a time, the hungriest that fits first.
+    assert.deepEqual({ x: siphon.x, y: siphon.y }, before);
+    // New Fusion Nodes: they wake one at a time, the hungriest that fits first.
+    at(state, "fusionnode", 40, 40);
     at(state, "fusionnode", 44, 40);
     ticks(state, 1);
-    assert.ok(!behemoth.shutdown && juggernaut.shutdown);
+    assert.ok(!siphon.shutdown && stalker.shutdown);
     ticks(state, secondsToTicks(HIVE_SWITCH_SECONDS));
-    assert.ok(!juggernaut.shutdown && !juggernaut.hiveOffline);
+    assert.ok(!stalker.shutdown && !stalker.hiveOffline);
   });
 
   it("silences an offline defence", () => {
@@ -180,14 +183,46 @@ describe("hive energy", () => {
     assert.equal(spire.unpowered, true);
   });
 
+  it("darkens every structure while below zero: no glow, and a fifth less sight", () => {
+    const state = field();
+    const core = [...state.entities.values()].find((e) => e.ownerId === "B" && e.kind === "building" && e.hp > 0)!;
+    const full = sightTilesForEntity(state, core);
+    // 200 + 3 × 500 holds the Nexus (1260) with room to spare.
+    for (let i = 0; i < 3; i++) at(state, "fusionnode", 40 + i * 4, 36);
+    const nexus = at(state, "nexus", 44, 40);
+    ticks(state, 1);
+    assert.equal(radarOnline(state, "B"), true);
+    // Hold the switch off so the hive stays short.
+    state.players.get("B")!.hiveSwitchTick = state.tick + 1000;
+    const juggernauts = [0, 1, 2, 3, 4].map((i) => at(state, "juggernaut", 20 + i * 4, 20));
+    ticks(state, 1);
+    assert.ok(hiveEnergyOf(state, "B").used > hiveEnergyOf(state, "B").cap, "short");
+    assert.equal(core.hiveDark, true);
+    assert.equal(nexus.hiveDark, true);
+    assert.equal(radarOnline(state, "B"), false, "the radar is down");
+    assert.equal(snapshotFor(state, "B").you.radar, false);
+    assert.equal(core.unpowered, undefined, "dark is not silenced");
+    assert.equal(sightTilesForEntity(state, core), lowPowerSight(full, true));
+    assert.equal(snapshotFor(state, "B").entities.find((e) => e.id === core.id)?.hiveDark, true);
+    assert.ok(juggernauts.every((u) => !u.hiveDark), "units are not dark, only structures");
+    // Room again: the glow and the sight come back.
+    state.players.get("B")!.hiveSwitchTick = 0;
+    ticks(state, 1);
+    for (const u of juggernauts) destroyEntity(state, u);
+    ticks(state, 1);
+    assert.equal(core.hiveDark, undefined);
+    assert.equal(sightTilesForEntity(state, core), full);
+    assert.equal(radarOnline(state, "B"), true);
+  });
+
   it("charges a Laser Fence more the longer its link", () => {
     const state = field();
     at(state, "laserfence", 20, 30);
     const ts = state.tileSize;
     const near = fenceEnergyToAdd(state, "B", [{ x: tileCenter(Math.round(22 * TILE_SUBDIV), ts), y: tileCenter(Math.round(30 * TILE_SUBDIV), ts) }]);
     const far = fenceEnergyToAdd(state, "B", [{ x: tileCenter(Math.round(25 * TILE_SUBDIV), ts), y: tileCenter(Math.round(30 * TILE_SUBDIV), ts) }]);
-    assert.equal(near, 2 * LASER_FENCE_ENERGY_PER_CELL);
-    assert.equal(far, 5 * LASER_FENCE_ENERGY_PER_CELL);
+    assert.equal(near, Math.round(2 * LASER_FENCE_ENERGY_PER_CELL));
+    assert.equal(far, Math.round(5 * LASER_FENCE_ENERGY_PER_CELL));
     at(state, "laserfence", 25, 30);
     ticks(state, 1);
     assert.equal(hiveEnergyOf(state, "B").used, 2 * energyOf("laserfence") + far);
@@ -212,7 +247,7 @@ describe("hive energy", () => {
     assert.equal(state.players.get("B")!.scrap, scrap, "no scrap spent");
     assert.ok(behemoth.hiveOffline, "the Behemoth, the hungriest, goes dark");
     assert.ok(fence.every((f) => !f.hiveOffline));
-    assert.equal(hiveEnergyOf(state, "B").used, 2 * energyOf("laserfence") + 5 * LASER_FENCE_ENERGY_PER_CELL);
+    assert.equal(hiveEnergyOf(state, "B").used, 2 * energyOf("laserfence") + Math.round(5 * LASER_FENCE_ENERGY_PER_CELL));
   });
 });
 

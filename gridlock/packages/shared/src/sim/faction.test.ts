@@ -244,7 +244,11 @@ describe("a Xenite seat", () => {
     p.scrap = 50_000;
     assert.equal(applyCommand(state, "B", { type: "cmd.build", building: "conversion" }).ok, true);
     const central = makeEntity(state, "conversion", "B", tileCenter(40, ts), tileCenter(40, ts), { tileX: 40, tileY: 40 });
-    for (const unit of ["xenodrone", "simunit2", "lancer"] as const) {
+    assert.equal(applyCommand(state, "B", { type: "cmd.train", unit: "xenodrone" }).ok, true);
+    // Sim Unit II and the Lancer also want a Neural Nexus.
+    for (const unit of ["simunit2", "lancer"] as const) assert.equal(applyCommand(state, "B", { type: "cmd.train", unit }).ok, false, unit);
+    makeEntity(state, "nexus", "B", tileCenter(46, ts), tileCenter(40, ts), { tileX: 46, tileY: 40 });
+    for (const unit of ["simunit2", "lancer"] as const) {
       const r = applyCommand(state, "B", { type: "cmd.train", unit });
       assert.equal(r.ok, true, r.ok ? unit : r.message);
     }
