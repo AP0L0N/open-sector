@@ -2587,6 +2587,19 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       disabled: packs <= 0,
     });
   }
+  const assemblers = units.filter((e) => e.type === "assembler");
+  if (assemblers.length > 0) {
+    const set = assemblers.some((e) => e.rally);
+    out.push({
+      slot: "rally",
+      act: "rally",
+      label: "Rally here",
+      title: set
+        ? "Click the ground: every Thrall this Assembler builds walks there. Click the Assembler itself to clear the point, and new Thralls stay beside it."
+        : "Click the ground: every Thrall this Assembler builds walks there. Unset, new Thralls stay beside it.",
+      on: !!view?.rallyMode,
+    });
+  }
   const blinkers = units.filter((e) => isSimUnit(e.type) && !e.garrisonedIn && !e.dormant && !e.purge);
   if (blinkers.length > 0) {
     const charge = Math.min(...blinkers.map((e) => e.blink?.u ?? 1));
@@ -3003,6 +3016,7 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     view.setAttackMoveMode(false);
     view.setForceAttackMode(false);
     view.setMineLayMode(false);
+    view.setRallyMode(false);
     view.setRotateMode(false);
     view.setGuardMode(false);
     view.setPatrolMode(false);
@@ -3026,6 +3040,10 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   if (act === "jet-up" || act === "jet-land") {
     const ids = units.filter((e) => e.jet).map((e) => e.id);
     if (ids.length) ctx.net.send({ type: "cmd.jet", ids, action: act === "jet-up" ? "up" : "land" });
+    return;
+  }
+  if (act === "rally") {
+    if (units.some((e) => e.type === "assembler")) view.setRallyMode(!view.rallyMode);
     return;
   }
   if (act === "deploy-mines") {
@@ -3091,6 +3109,7 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     view.setAttackMoveMode(false);
     view.setForceAttackMode(false);
     view.setMineLayMode(false);
+    view.setRallyMode(false);
     view.setRotateMode(false);
     view.setGuardMode(false);
     view.setPatrolMode(false);

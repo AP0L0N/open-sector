@@ -1373,6 +1373,8 @@ export class MapView {
   mineLayMode = false;
   /** Blink: the next ground click sends the selected Sim Units' blink drives there. */
   blinkMode = false;
+  /** Rally here: the next ground click sets the selected Assemblers' rally point. */
+  rallyMode = false;
   /** Each burrowing Stalker's phase and when this client first drew it, for the sink animation. */
   private burrowSeen = new Map<number, { phase: string; at: number }>();
   /** Where a unit climbed out of its burrow, and when: the scar it leaves. */
@@ -1466,6 +1468,7 @@ export class MapView {
       this.placeMode = false;
       this.forceAttackMode = false;
       this.mineLayMode = false;
+      this.rallyMode = false;
       this.rotateMode = false;
       this.fieldPlace = null;
       this.constructPlace = null;
@@ -1493,6 +1496,7 @@ export class MapView {
       this.attackMoveMode = false;
       this.forceAttackMode = false;
       this.mineLayMode = false;
+      this.rallyMode = false;
       this.rotateMode = false;
       this.fieldPlace = null;
       this.constructPlace = null;
@@ -1508,6 +1512,7 @@ export class MapView {
     this.forceAttackMode = on;
     if (on) {
       this.mineLayMode = false;
+      this.rallyMode = false;
       this.placeMode = false;
       this.attackMoveMode = false;
       this.rotateMode = false;
@@ -1529,6 +1534,7 @@ export class MapView {
       this.attackMoveMode = false;
       this.forceAttackMode = false;
       this.mineLayMode = false;
+      this.rallyMode = false;
       this.rotateMode = false;
       this.fieldPlace = null;
       this.constructPlace = null;
@@ -1558,6 +1564,26 @@ export class MapView {
     this.onPlaceMode();
   }
 
+  setRallyMode(on: boolean): void {
+    if (this.rallyMode === on) return;
+    this.rallyMode = on;
+    if (on) {
+      this.blinkMode = false;
+      this.placeMode = false;
+      this.attackMoveMode = false;
+      this.forceAttackMode = false;
+      this.mineLayMode = false;
+      this.rotateMode = false;
+      this.fieldPlace = null;
+      this.constructPlace = null;
+      this.bridgePlace = null;
+      this.setGuardMode(false);
+      this.setPatrolMode(false);
+    }
+    this.onAttackMoveMode();
+    this.onPlaceMode();
+  }
+
   setRotateMode(on: boolean, light = false): void {
     if (this.rotateMode === on && (!on || this.rotateLight === light)) return;
     this.rotateMode = on;
@@ -1567,6 +1593,7 @@ export class MapView {
       this.attackMoveMode = false;
       this.forceAttackMode = false;
       this.mineLayMode = false;
+      this.rallyMode = false;
       this.fieldPlace = null;
       this.constructPlace = null;
       this.bridgePlace = null;
@@ -1585,6 +1612,7 @@ export class MapView {
       this.attackMoveMode = false;
       this.forceAttackMode = false;
       this.mineLayMode = false;
+      this.rallyMode = false;
       this.rotateMode = false;
       this.fieldPlace = null;
       this.constructPlace = null;
@@ -1613,6 +1641,7 @@ export class MapView {
       this.attackMoveMode = false;
       this.forceAttackMode = false;
       this.mineLayMode = false;
+      this.rallyMode = false;
       this.rotateMode = false;
       this.guardMode = false;
       this.setPatrolMode(false);
@@ -1640,6 +1669,7 @@ export class MapView {
       this.attackMoveMode = false;
       this.forceAttackMode = false;
       this.mineLayMode = false;
+      this.rallyMode = false;
       this.rotateMode = false;
       this.guardMode = false;
       this.setPatrolMode(false);
@@ -1663,6 +1693,7 @@ export class MapView {
       this.attackMoveMode = false;
       this.forceAttackMode = false;
       this.mineLayMode = false;
+      this.rallyMode = false;
       this.rotateMode = false;
       this.guardMode = false;
       this.setPatrolMode(false);
@@ -1981,6 +2012,7 @@ export class MapView {
     if (this.patrolMode && this.ownPatrolIds().length === 0) this.setPatrolMode(false);
     if (this.forceAttackMode && this.ownForceIds().length === 0) this.setForceAttackMode(false);
     if (this.mineLayMode && this.ownMineLayerIds().length === 0) this.setMineLayMode(false);
+    if (this.rallyMode && this.ownAssemblerIds().length === 0) this.setRallyMode(false);
     if (this.blinkMode && this.ownSimUnitIds().length === 0 && this.ownLungerIds().length === 0) this.setBlinkMode(false);
     if (this.rotateMode && (this.rotateLight ? this.ownShipLampIds() : this.ownRotateIds()).length === 0) {
       this.setRotateMode(false);
@@ -2964,6 +2996,7 @@ export class MapView {
     this.attackMoveMode = false;
     this.forceAttackMode = false;
     this.mineLayMode = false;
+    this.rallyMode = false;
     this.rotateMode = false;
     this.guardMode = false;
     this.guardDragging = false;
@@ -2997,6 +3030,7 @@ export class MapView {
     this.attackMoveMode = false;
     this.forceAttackMode = false;
     this.mineLayMode = false;
+    this.rallyMode = false;
     this.rotateMode = false;
     this.guardMode = false;
     this.guardDragging = false;
@@ -3107,10 +3141,11 @@ export class MapView {
           this.onPlaceMode();
           return;
         }
-        if (this.attackMoveMode || this.forceAttackMode || this.mineLayMode || this.blinkMode || this.rotateMode || this.guardMode || this.fieldPlace || this.constructPlace || this.bridgePlace) {
+        if (this.attackMoveMode || this.forceAttackMode || this.mineLayMode || this.rallyMode || this.blinkMode || this.rotateMode || this.guardMode || this.fieldPlace || this.constructPlace || this.bridgePlace) {
           this.setAttackMoveMode(false);
           this.setForceAttackMode(false);
           this.setMineLayMode(false);
+          this.setRallyMode(false);
       this.setBlinkMode(false);
           this.setRotateMode(false);
           this.setGuardMode(false);
@@ -3170,6 +3205,10 @@ export class MapView {
         }
         if (this.mineLayMode) {
           this.commitMineLay(mx, my);
+          return;
+        }
+        if (this.rallyMode) {
+          this.commitRally(mx, my);
           return;
         }
         if (this.forceAttackMode) {
@@ -3349,13 +3388,14 @@ export class MapView {
     }
     if (
       k === "escape" &&
-      (this.attackMoveMode || this.forceAttackMode || this.mineLayMode || this.blinkMode || this.rotateMode || this.guardMode || this.patrolMode)
+      (this.attackMoveMode || this.forceAttackMode || this.mineLayMode || this.rallyMode || this.blinkMode || this.rotateMode || this.guardMode || this.patrolMode)
     ) {
       e.preventDefault();
       e.stopPropagation();
       this.setAttackMoveMode(false);
       this.setForceAttackMode(false);
       this.setMineLayMode(false);
+      this.setRallyMode(false);
       this.setBlinkMode(false);
       this.setRotateMode(false);
       this.setGuardMode(false);
@@ -3424,6 +3464,7 @@ export class MapView {
       this.setAttackMoveMode(false);
       this.setForceAttackMode(false);
       this.setMineLayMode(false);
+      this.setRallyMode(false);
       this.setBlinkMode(false);
       this.setRotateMode(false);
       this.setGuardMode(false);
@@ -3476,6 +3517,7 @@ export class MapView {
         this.setAttackMoveMode(false);
         this.setForceAttackMode(false);
         this.setMineLayMode(false);
+        this.setRallyMode(false);
       this.setBlinkMode(false);
         this.setRotateMode(false);
       }
@@ -3501,6 +3543,7 @@ export class MapView {
     this.setAttackMoveMode(false);
     this.setForceAttackMode(false);
     this.setMineLayMode(false);
+    this.setRallyMode(false);
     this.setBlinkMode(false);
     this.setRotateMode(false);
     this.setGuardMode(false);
@@ -3815,6 +3858,27 @@ export class MapView {
       if (ent && ent.ownerId === you && ent.hp > 0 && !ent.wreck && (ent.minePacks ?? 0) > 0) out.push(id);
     }
     return out;
+  }
+
+  /** Own selected Assemblers. */
+  private ownAssemblerIds(): number[] {
+    const you = this.curr.youPlayerId;
+    const out: number[] = [];
+    for (const id of this.selected) {
+      const ent = this.currById.get(id);
+      if (ent && ent.ownerId === you && ent.hp > 0 && !ent.wreck && ent.type === "assembler") out.push(id);
+    }
+    return out;
+  }
+
+  private commitRally(px: number, py: number): void {
+    const ids = this.ownAssemblerIds();
+    this.setRallyMode(false);
+    if (ids.length === 0) return;
+    const w = this.screenToWorld(px, py);
+    this.pulseMoveClick(w.x, w.y);
+    // Not queued behind the Assembler's own orders: the rally point is set at once.
+    this.onCommand({ type: "cmd.rally", ids, x: w.x, y: w.y });
   }
 
   private ownSimUnitIds(): number[] {
@@ -6097,9 +6161,11 @@ export class MapView {
     ctx.restore();
   }
 
-  /** Line and flag from each selected producer to its rally point, plus a cursor label while only producers are selected. */
+  /** Line and flag from each selected producer or Assembler to its rally point, plus a cursor label while only producers are selected or Rally here is armed. */
   private drawRallyOverlay(): void {
-    const producers = this.selectedProducers();
+    const you = this.curr.youPlayerId;
+    const assemblers = this.curr.entities.filter((e) => this.selected.has(e.id) && e.ownerId === you && e.hp > 0 && !e.wreck && e.type === "assembler");
+    const producers = [...this.selectedProducers(), ...assemblers];
     if (producers.length === 0) return;
     const ctx = this.ctx;
     ctx.save();
@@ -6141,7 +6207,7 @@ export class MapView {
       return !!e && e.kind === "unit" && e.ownerId === this.curr.youPlayerId;
     });
     if (
-      onlyBuildings &&
+      (onlyBuildings || this.rallyMode) &&
       !this.aimingForceAttack() &&
       !this.overControl &&
       !this.hoverSpecial &&
@@ -10488,7 +10554,7 @@ export class MapView {
       (this.attackMoveMode ||
         this.patrolMode ||
         this.forceAttackMode ||
-        this.mineLayMode || this.blinkMode ||
+        this.mineLayMode || this.rallyMode || this.blinkMode ||
         this.rotateMode ||
         this.guardMode ||
         (this.ctrlHeld && this.ownForceIds().length > 0)) &&

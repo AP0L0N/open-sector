@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { BUILD_REQUIRES, ONE_AT_A_TIME, TECH_REQUIRES, TRAIN_QUEUE_CAP, canContinuousTrain, catalog, factionOf, secondsToTicks, TICK_DT, type TrainType } from "../catalog.js";
 import { applyCommand } from "./commands.js";
+import { assemblyTicks } from "./assembler.js";
 import { buildTechMissing } from "./build.js";
 import { createMatch, step } from "./match.js";
 import { paidForProgress } from "./production.js";
@@ -397,6 +398,35 @@ describe("rally point", () => {
     assert.ok(muster.rally);
     applyCommand(state, "A", { type: "cmd.rally", ids: [muster.id], x: muster.x, y: muster.y });
     assert.equal(muster.rally, undefined);
+  });
+
+  it("sends every Thrall an Assembler builds to its rally point, and clears it on the Assembler", () => {
+    const { state } = twoPlayerMatch();
+    seedCore(state);
+    const ts = state.tileSize;
+    // A Commander keeps the Thralls on the uplink; without one they shut down on the way.
+    makeEntity(state, "cyborgcommander", "A", tileCenter(6, ts), tileCenter(12, ts));
+    const forge = makeEntity(state, "assembler", "A", tileCenter(20, ts), tileCenter(20, ts));
+    const rx = tileCenter(34, ts);
+    const ry = tileCenter(26, ts);
+    const theirs = applyCommand(state, "B", { type: "cmd.rally", ids: [forge.id], x: rx, y: ry });
+    assert.equal(theirs.ok, false);
+    const r = applyCommand(state, "A", { type: "cmd.rally", ids: [forge.id], x: rx, y: ry });
+    assert.equal(r.ok, true, !r.ok ? r.message : "");
+    assert.deepEqual(snapshotFor(state, "A").entities.find((e) => e.id === forge.id)?.rally, { x: rx, y: ry });
+    ticks(state, assemblyTicks() + 2);
+    const thrall = [...state.entities.values()].find((e) => e.assembledBy === forge.id);
+    assert.ok(thrall);
+    assert.equal(thrall.order?.kind, "move");
+    ticks(state, 400);
+    // Later Thralls pack in round the same point and nudge it aside.
+    assert.ok(Math.hypot(thrall.x - rx, thrall.y - ry) < 48, `Thrall parked ${Math.hypot(thrall.x - rx, thrall.y - ry)} away`);
+    applyCommand(state, "A", { type: "cmd.rally", ids: [forge.id], x: forge.x, y: forge.y });
+    assert.equal(forge.rally, undefined);
+    ticks(state, assemblyTicks() + 2);
+    const next = [...state.entities.values()].filter((e) => e.assembledBy === forge.id && e !== thrall);
+    assert.ok(next.length > 0);
+    for (const t of next) assert.notEqual(t.order?.kind, "move");
   });
 
   it("ignores buildings that do not train units", () => {

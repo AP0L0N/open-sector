@@ -1,5 +1,6 @@
 import { AIRFIELD_PADS, BLOOM_GESTATOR, BLOOM_NEST, XENO_BARRACKS, XENO_FACTORY, airfieldOf, canContinuousTrain, catalog, dockOf, isDockType, factionOf, inFaction, isAirfieldType, isAircraftType, isCyborg, isInfantryType, isNavalType, isOneAtATime, secondsToTicks, staysAloft, techNeeds, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, type BuildingType, type TrainType } from "../catalog.js";
 import { airfieldPadWorld, freePad, padsSpoken, parkHeading } from "./air.js";
+import { isAssembler } from "./assembler.js";
 import { makeEntity, newAirState, ownedUnits, rallyPoint, worldToTile } from "./geo.js";
 import { openSpotNear, packRadius, packSlots } from "./formation.js";
 import { setPath } from "./path.js";
@@ -458,7 +459,7 @@ export function isProducer(e: Entity): boolean {
   return e.kind === "building" && (e.type === "muster" || e.type === "armory" || isDockType(e.type) || e.type === "cyborgcentral" || e.type === XENO_BARRACKS || e.type === "forge" || e.type === BLOOM_NEST || e.type === BLOOM_GESTATOR);
 }
 
-/** Sets the rally point on every owned producer in `ids`. A point on the building's own footprint clears it. */
+/** Sets the rally point on every owned producer (or Assembler) in `ids`. A point on the building's own footprint, or on the Assembler, clears it. */
 export function setRally(state: MatchState, playerId: string, ids: number[], x: number, y: number): string | null {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return "Bad rally point.";
   const ts = state.tileSize;
@@ -469,11 +470,16 @@ export function setRally(state: MatchState, playerId: string, ids: number[], x: 
   let n = 0;
   for (const id of ids) {
     const b = state.entities.get(id);
-    if (!b || b.ownerId !== playerId || b.hp <= 0 || !isProducer(b)) continue;
-    const onSelf = tx >= b.tileX && tx < b.tileX + b.tileW && ty >= b.tileY && ty < b.tileY + b.tileH;
+    if (!b || b.ownerId !== playerId || b.hp <= 0 || b.wreck) continue;
+    // The Assembler walks, so its rally is a point on the map; a click on the Assembler itself clears it.
+    const walking = isAssembler(b.type);
+    if (!walking && !isProducer(b)) continue;
+    const onSelf = walking
+      ? Math.hypot(px - b.x, py - b.y) <= b.radius
+      : tx >= b.tileX && tx < b.tileX + b.tileW && ty >= b.tileY && ty < b.tileY + b.tileH;
     if (onSelf) delete b.rally;
     else b.rally = { x: px, y: py };
     n++;
   }
-  return n === 0 ? "Select a Barracks, Smelter, Machine Shop, or Marine Base." : null;
+  return n === 0 ? "Select a Barracks, Smelter, Machine Shop, Marine Base, or Assembler." : null;
 }

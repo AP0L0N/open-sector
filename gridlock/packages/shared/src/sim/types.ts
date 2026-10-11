@@ -382,7 +382,7 @@ export interface Entity {
   /** Mauler smoke grenades left. 0 on other types. */
   smokeCharges: number;
   queue: TrainJob[];
-  /** Producer rally point. New units walk here on spawn. Unset means stay at the door. */
+  /** Producer (or Assembler) rally point. New units walk here on spawn. Unset means stay at the door. */
   rally?: Vec;
   /** Xenite Deployment: the drop zone it was set down on. It keeps within DEPLOYMENT_LEASH_TILES of it. */
   anchor?: Vec;

@@ -1,6 +1,7 @@
 import { ASSEMBLER_REGEN_SECONDS, ASSEMBLER_SPEEDUP, ASSEMBLER_THRALLS, TICK_DT, UNIT_CAP, catalog, secondsToTicks } from "../catalog.js";
 import { openSpotNear } from "./formation.js";
 import { makeEntity, ownedUnits, worldToTile } from "./geo.js";
+import { setPath } from "./path.js";
 import type { Entity, MatchState } from "./types.js";
 
 /**
@@ -11,6 +12,7 @@ import type { Entity, MatchState } from "./types.js";
  * whole Thrall's worth is back it starts building again. So it never holds more energy than its
  * living Thralls leave room for. Its Thralls are Thralls like any other: its side's, under the unit
  * cap, on the uplink. At the cap the Assembler holds the next one (and its energy) until there is room.
+ * With a rally point set ("Rally here"), each new Thrall walks to it.
  *
  * `energy` counts the Thralls it can build, fractional while it regrows (undefined = full).
  */
@@ -47,6 +49,13 @@ export function assembleThrall(state: MatchState, forge: Entity): Entity {
   u.tileX = worldToTile(spot.x, state.tileSize);
   u.tileY = worldToTile(spot.y, state.tileSize);
   u.assembledBy = forge.id;
+  if (forge.rally) {
+    // A rally point is set: the Thrall walks off to it, like one out of a Forge.
+    const to = openSpotNear(state, u, forge.rally.x, forge.rally.y);
+    u.order = { kind: "move", x: to.x, y: to.y };
+    u.state = "move";
+    setPath(state, u, to.x, to.y);
+  }
   return u;
 }
 

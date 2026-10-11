@@ -988,7 +988,7 @@ export type ClientMessage =
       /** Which construction cameo. Omitted: the base job, or the defence when the base lane is idle. */
       building?: BuildingType | YardFieldType;
     }
-  /** Rally point for owned producers in `ids`. A point on a building's own footprint clears its rally. */
+  /** Rally point for owned producers (and Assemblers) in `ids`. A point on a building's own footprint, or on the Assembler, clears its rally. */
   | { type: "cmd.rally"; ids: number[]; x: number; y: number }
   | { type: "cmd.sell"; id: number }
   /** Scrap own units and structures for no refund (Delete key). The Core and the Rig are refused. */
