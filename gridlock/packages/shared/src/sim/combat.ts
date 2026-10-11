@@ -4163,7 +4163,9 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
   // Dry tanks: the Pyro has nothing to go at them with until a truck refills him.
   if (e.type === "pyro" && e.clip <= 0) return undefined;
   // The knife reaches an arm; the man carrying it looks further and runs the target down.
-  const hunt = isJuggernaut(e.type) ? JUGGERNAUT_HUNT_TILES : SIMUNIT_HUNT_TILES;
+  // A Thrall runs down any enemy unit it can see; buildings stay within the Sim Unit's hunt.
+  const thrall = e.type === "thrall";
+  const hunt = isJuggernaut(e.type) ? JUGGERNAUT_HUNT_TILES : thrall ? sightTilesForEntity(state, e) : SIMUNIT_HUNT_TILES;
   const range = meleeNow(e) ? Math.max(weaponRangeWorld(state, e), hunt * state.tileSize) : weaponRangeWorld(state, e);
   // The CIWS takes units only, and a plane in the air before anything on the ground.
   const radar = radarLaidOf(e.type);
@@ -4187,6 +4189,7 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     if (d > Math.max(airRange2, bestD)) continue;
     // Only a force-attack aims at a bridge. Nothing aims at a heap of rubble.
     if (isBridge(o.type) || isRubble(o)) continue;
+    if (thrall && o.kind === "building" && d > (SIMUNIT_HUNT_TILES * state.tileSize) ** 2) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
     if (walkerSparesBuilding(state, e, o)) continue;
     if (sparesBuilding(state, e, o)) continue;
