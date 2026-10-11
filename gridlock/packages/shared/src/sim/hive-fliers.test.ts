@@ -10,6 +10,7 @@ import {
   HIVE_WASP_STANDOFF_TILES,
   SCOURGE_BOLT_RACK,
   SCOURGE_BOLT_TILES,
+  AIR_STRAFE_ALT,
   airCruiseAltOf,
   OVERSEER_PULSE_SECONDS,
   TICK_DT,
@@ -178,7 +179,12 @@ describe("Xenite fliers", () => {
     const lands: { x: number; y: number }[] = [];
     let bursts = 0;
     let firstBurst = -1;
+    const startAlt = w.air!.alt;
+    let lowest = Infinity;
+    let firedAlt = -1;
     for (let i = 0; i < 1500 && truck.hp > 0 && !truck.wreck; i++) {
+      lowest = Math.min(lowest, w.air!.alt);
+      if (bursts > 0 && firedAlt < 0) firedAlt = w.air!.alt;
       const before = w.energy ?? full;
       // The bolts land in the tick they are fired: catch them as they go out.
       const out = state.projectiles;
@@ -194,6 +200,8 @@ describe("Xenite fliers", () => {
       }
     }
     assert.ok(bursts >= 2, `bursts ${bursts}`);
+    assert.ok(lowest >= startAlt - 1e-6, `it never sinks to attack (${lowest.toFixed(2)} from ${startAlt.toFixed(2)})`);
+    assert.ok(firedAlt > AIR_STRAFE_ALT, `it fires from where it flies, not down low (${firedAlt.toFixed(2)})`);
     assert.ok(truck.wreck || truck.hp < truck.hpMax, "the bolts that come down on it hurt it");
     assert.equal(lands.length % WASP_BURST_BOLTS, 0, "whole bursts");
     assert.ok(lands.length >= WASP_BURST_BOLTS * 2);
