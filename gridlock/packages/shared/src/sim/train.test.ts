@@ -477,7 +477,7 @@ describe("research gate", () => {
     makeEntity(state, "armory", "A", tileCenter(20, ts), tileCenter(4, ts), { tileX: 20, tileY: 4 });
     seedMuster(state, 20, 10);
     const gated = (Object.keys(TECH_REQUIRES) as TrainType[]).filter((u) => factionOf(u) !== "bloom");
-    assert.deepEqual([...gated].sort(), ["apocalypse", "assembler", "battleship", "behemoth", "bv222", "cyborg", "cyborgcommander", "destroyer", "droneop", "he111", "hiveark", "horten", "jagdtiger", "juggernaut", "jumpjet", "lancer", "lurker", "mammoth", "nebelwerfer", "overseer", "scourge", "shade", "simunit2", "spitter", "stuka", "submarine", "thrall", "titan", "warden", "weaver", "xenodrone"]);
+    assert.deepEqual([...gated].sort(), ["apocalypse", "assembler", "battleship", "behemoth", "bv222", "cyborg", "cyborgcommander", "destroyer", "droneop", "he111", "hiveark", "horten", "jagdtiger", "juggernaut", "jumpjet", "lancer", "lurker", "mammoth", "mawcaster", "nebelwerfer", "overseer", "scourge", "shade", "simunit2", "spitter", "stuka", "submarine", "thrall", "titan", "warden", "weaver", "xenodrone"]);
     const cyborgs = new Set<TrainType>(["cyborg", "cyborgcommander", "simunit2", "xenodrone", "thrall", "lancer", "spitter", "weaver"]);
     // Ships ask for the Marine Base first, bombers for the Airfield; their gates are checked on their own.
     for (const unit of gated.filter((u) => producerType(u) !== "dock" && producerType(u) !== "airfield")) {
@@ -501,14 +501,17 @@ describe("research gate", () => {
 
     makeEntity(state, "cyborgcentral", "A", tileCenter(30, ts), tileCenter(14, ts), { tileX: 30, tileY: 14 });
     makeEntity(state, "conversion", "A", tileCenter(36, ts), tileCenter(14, ts), { tileX: 36, tileY: 14 });
-    // The Shade also wants a Neural Nexus.
+    // The Shade, Sim Unit II, the Lancer and the Weaver also want a Neural Nexus.
+    const nexusToo = new Set<TrainType>(["simunit2", "lancer", "weaver"]);
     assert.equal(techMissing(state, "A", "shade"), "nexus");
+    for (const unit of cyborgs) assert.equal(techMissing(state, "A", unit), nexusToo.has(unit) ? "nexus" : null, unit);
+    makeEntity(state, "nexus", "A", tileCenter(42, ts), tileCenter(14, ts), { tileX: 42, tileY: 14 });
     for (const unit of cyborgs) assert.equal(techMissing(state, "A", unit), null, unit);
 
     lab.hp = 0;
     assert.equal(techMissing(state, "A", "titan"), "research");
     assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "titan" }).ok, false);
-    // The Central and the Chamber alone keep every cyborg unlocked.
+    // The Central, the Chamber and the Nexus keep every cyborg unlocked without the lab.
     for (const unit of cyborgs) assert.equal(techMissing(state, "A", unit), null, unit);
   });
 
