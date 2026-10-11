@@ -15,11 +15,25 @@ export function shieldHeightElev(r: number): number {
   return (r * HEIGHT_PER_R) / ISO_ELEVATION;
 }
 
-/** Ground points along the wall's curve, SHIELD_PANELS + 1 of them. */
-export function shieldCurve(s: Pick<EnergyShieldView, "x" | "y" | "angle" | "half" | "r">): { x: number; y: number }[] {
+/**
+ * An Energy Wall's curtain stands as tall as a Pulse Spire: the top of its emitter's tail spines,
+ * art px over the ground (PS_Z + 3.2 in tools/sprites/render_xeno_guns.py), one screen px each at zoom 1.
+ */
+export const PULSE_SPIRE_TOP_PX = 28.4;
+
+/** Elevation units an Energy Wall's curtain rises. */
+export function curtainHeightElev(): number {
+  return PULSE_SPIRE_TOP_PX / ISO_ELEVATION;
+}
+
+/** Many more panels for an Energy Wall's long curtain, so it still bends smoothly. */
+export const CURTAIN_PANELS = 24;
+
+/** Ground points along the wall's curve, `panels` + 1 of them. */
+export function shieldCurve(s: Pick<EnergyShieldView, "x" | "y" | "angle" | "half" | "r">, panels = SHIELD_PANELS): { x: number; y: number }[] {
   const out: { x: number; y: number }[] = [];
-  for (let i = 0; i <= SHIELD_PANELS; i++) {
-    const a = s.angle - s.half + (2 * s.half * i) / SHIELD_PANELS;
+  for (let i = 0; i <= panels; i++) {
+    const a = s.angle - s.half + (2 * s.half * i) / panels;
     out.push({ x: s.x + Math.cos(a) * s.r, y: s.y + Math.sin(a) * s.r });
   }
   return out;
@@ -120,6 +134,9 @@ export function drawShieldPanel(
 /** A Siphon's dome rises this far for each world px of radius: lower than a wall, it spans much more. */
 const DOME_HEIGHT_PER_R = 0.45;
 
+/** Every alpha of a dome is scaled by this: 50% more see-through than it used to draw. */
+export const DOME_OPACITY = 0.5;
+
 /** Elevation units a dome's crown rises, from its radius. */
 export function domeHeightElev(r: number): number {
   return (r * DOME_HEIGHT_PER_R) / ISO_ELEVATION;
@@ -135,8 +152,10 @@ export function drawDome(
   rx: number,
   ry: number,
   lift: number,
-  glow: number,
+  shine: number,
 ): void {
+  // Half as bright as a wall at the same glow: a dome covers a lot of ground and should not shout.
+  const glow = shine * DOME_OPACITY;
   if (glow <= 0 || rx <= 0 || ry <= 0) return;
   const top = ry + lift;
   ctx.save();

@@ -885,6 +885,7 @@ function shieldViews(state: MatchState, youPlayerId: string, vis: Uint8Array): E
       by: w.forId != null && !w.dome ? w.fromId : undefined,
       // A dome rides on its holder: a Weaver's may sit on the friend it was put on.
       ...(w.dome ? { dome: true as const, fromId: w.forId ?? w.fromId } : {}),
+      ...(w.post ? { post: true as const, fromId: w.fromId } : {}),
     });
   }
   return out.length > 0 ? out : undefined;

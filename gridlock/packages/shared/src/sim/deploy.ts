@@ -9,6 +9,7 @@ import {
   isHqBuilding,
   isHqRig,
   packTarget,
+  scrapIsGround,
   specialOf,
   specialCooldownOf,
 } from "../catalog.js";
@@ -19,6 +20,7 @@ import {
   footprint,
   hqOf,
   occupyEntity,
+  tilesBlocked,
   tilesBlockedOrScrap,
   jetAloft,
   unitInWater,
@@ -36,6 +38,11 @@ export function canDeployAt(state: MatchState, tileX: number, tileY: number): bo
   return true;
 }
 
+/** Ground the HQ `core` cannot unfold onto. Trees are no bar; scrap is bare ground to the Xenite. */
+function coreGroundBlocked(state: MatchState, core: string, tx: number, ty: number, w: number, h: number): boolean {
+  return scrapIsGround(core) ? tilesBlocked(state, tx, ty, w, h, false) : tilesBlockedOrScrap(state, tx, ty, w, h, false);
+}
+
 function armSpecialCooldown(e: Entity): void {
   const action = specialOf(e.type);
   if (!action) return;
@@ -49,7 +56,7 @@ export function beginDeploy(state: MatchState, e: Entity): string | null {
     const core = catalog(deployTarget(e.type));
     const tx = e.tileX - Math.floor(core.tileW / 2);
     const ty = e.tileY - Math.floor(core.tileH / 2);
-    if (tilesBlockedOrScrap(state, tx, ty, core.tileW, core.tileH, false)) {
+    if (coreGroundBlocked(state, core.type, tx, ty, core.tileW, core.tileH)) {
       return `Need a clear ${core.tileW}×${core.tileH} to deploy.`;
     }
     e.state = "deploy";
@@ -156,7 +163,7 @@ function finishDeploy(state: MatchState, rig: Entity): void {
   const coreDef = catalog(coreType);
   const tx = rig.tileX - Math.floor(coreDef.tileW / 2);
   const ty = rig.tileY - Math.floor(coreDef.tileH / 2);
-  if (tilesBlockedOrScrap(state, tx, ty, coreDef.tileW, coreDef.tileH, false)) {
+  if (coreGroundBlocked(state, coreType, tx, ty, coreDef.tileW, coreDef.tileH)) {
     rig.state = "idle";
     rig.deployTime = 0;
     return;

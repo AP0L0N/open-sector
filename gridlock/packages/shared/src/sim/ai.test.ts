@@ -1538,6 +1538,18 @@ describe("Xenite CPU", () => {
     }
   });
 
+  it("roots an Energy Wall once the Neural Nexus stands, its curtain toward the enemy", () => {
+    const { state, aiId } = humanVsXeno("aggressive");
+    waitCore(state, aiId);
+    standBy(state, aiId, [...BASE, "nexus", "fusionnode", "fusionnode"]);
+    rootDefences(state, aiId, 6);
+    const wall = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "energywall");
+    assert.ok(wall, "an Energy Wall stands");
+    const hq = hiveOf(state, aiId);
+    const foe = foeCore(state, aiId);
+    assert.ok(Math.hypot(wall.x - foe.x, wall.y - foe.y) < Math.hypot(hq.x - foe.x, hq.y - foe.y), "on the side facing the enemy");
+  });
+
   it("lays a Laser Fence across the approach once the front Spine Turret stands, unless Aggressive", () => {
     for (const ai of ["balanced", "aggressive"] as const) {
       const { state, aiId } = humanVsXeno(ai);
@@ -1763,15 +1775,6 @@ describe("CPU unit tricks", () => {
     assert.equal(order?.kind, "move");
     const c = diamondCentre(state);
     assert.ok(Math.hypot(order!.x! - c.x, order!.y! - c.y) < 12 * state.tileSize, "over the middle while no wave is out");
-  });
-
-  it("turns Engage contacts on for its Cyborgs", () => {
-    const { state, aiId } = humanVsEasy();
-    waitCore(state, aiId);
-    const hq = coreOf(state, aiId);
-    const cy = put(state, "cyborg", aiId, { x: hq.x, y: hq.y + 14 * state.tileSize });
-    micro(state, aiId);
-    assert.equal(state.entities.get(cy.id)!.engageContacts, true);
   });
 
   it("diverts a badly hurt Cyborg Commander's laser into his field and walks him home, then takes it back", () => {

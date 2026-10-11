@@ -42,10 +42,10 @@ export function plasmaShots(e: Entity): number {
   return e.energyDrained ? 0 : (e.energy ?? cell.shots);
 }
 
-/** Share of `e`'s plasma cell charged, 0–1 to the hundredth. Undefined when its gun has no cell. */
+/** Share of `e`'s plasma cell charged, 0–1 to the hundredth. Undefined when its gun has no cell, or a Bombard dropped it. */
 export function plasmaCharge(e: Entity): number | undefined {
   const cell = plasmaCellOf(e.type);
-  if (!cell || e.hp <= 0 || e.wreck) return undefined;
+  if (!cell || e.hp <= 0 || e.wreck || e.fists) return undefined;
   return Math.round(((e.energy ?? cell.shots) / cell.shots) * 100) / 100;
 }
 

@@ -45,7 +45,6 @@ import {
   usesHiveEnergy,
   dockOf,
   costFor,
-  isCyborg,
   isDefenceStructure,
   MAMMOTH_MINE_RANGE_TILES,
   MAWCASTER_AIR_RANGE_TILES,
@@ -72,7 +71,9 @@ import {
   type TrainType,
   isHqRig,
   isSmelterType,
+  scrapIsGround,
   smelterOf,
+  energyWallOf,
 } from "../catalog.js";
 import { droneCall, subDepthCall, tickNeutralCrews } from "./ai-crew.js";
 import { aiProfile, type AiProfile } from "./ai-profile.js";
@@ -82,7 +83,7 @@ import { turnedBox } from "../building-rect.js";
 import { buildingSiteError, buildTechMissing } from "./build.js";
 import { applyCommand } from "./commands.js";
 import { canRepairTarget, canScrapWreck, gateSiteAt } from "./field.js";
-import { allies, footprintGap, hasCore, hqOf, inBuildRadius, isWater, nearestWalkable, scrapAt, tilesBlockedOrScrap, walkable } from "./geo.js";
+import { allies, footprintGap, hasCore, hqOf, inBuildRadius, isWater, nearestWalkable, scrapAt, tilesBlocked, tilesBlockedOrScrap, walkable } from "./geo.js";
 import { smelterRateOn, smelterSiteOk } from "./smelter.js";
 import { powerOf } from "./power.js";
 import { fenceLineEnergy, hiveEnergyOf } from "./hive-energy.js";
@@ -279,7 +280,7 @@ const GARRISONS: readonly BuildingType[] = ["bunker", "tower", "tobruk", "casema
 /** Defences the CPU mans. Guns included, so a dead crew is replaced. */
 const CREWED: readonly BuildingType[] = [...GARRISONS, "mgnest", "pak36", "pak43", "flak"];
 /** Turned toward the enemy when placed. A narrow arc is useless facing the yard. */
-const FACES_ENEMY: ReadonlySet<string> = new Set(["mgnest", "pak36", "pak43", "flak", "tobruk", "casemate", "hochstand", "leitturm"]);
+const FACES_ENEMY: ReadonlySet<string> = new Set(["mgnest", "pak36", "pak43", "flak", "tobruk", "casemate", "hochstand", "leitturm", "energywall"]);
 /** Long guns: they walk two ranks back and fire over the line. */
 const BACK_RANK: ReadonlySet<string> = new Set(["sniper", "mortarman", "nebelwerfer", "jagdtiger", "artillery", "shade", "mawcaster", "assembler", "longspine", "sporemaw", "bombard"]);
 /** Short reach and thick skin: the front rank beside the hulls. */
@@ -371,11 +372,12 @@ function thinkCpu(state: MatchState, p: SimPlayer): void {
 /**
  * Xenite base, on the yard's base lane: Fusion Node, Conversion Chamber, a second Fusion Node, the
  * Nanite Forge, a third Node, the Neural Nexus (it opens the Sim Unit II, Lancer, Weaver, Shade, the
- * big heavies, and the Pulse Spire), a fourth Node, then the Aerie. Campaigning, the Spawning Pool goes
- * up where water by the hive reaches the enemy or the middle, and more Chambers and Forges after it.
- * Spine Turrets and Pulse Spires take the defence lane (xenoDefences), the Laser Fence the line
- * lane (xenoFence). The hive pays no scrap: another Fusion Node goes up whenever the next building
- * or the next unit will not fit in the store, or the store runs low (HIVE_ENERGY_LOW).
+ * big heavies, the Pulse Spire, and the Energy Wall), a fourth Node, then the Aerie. Campaigning, the
+ * Spawning Pool goes up where water by the hive reaches the enemy or the middle, and more Chambers and
+ * Forges after it. Spine Turrets, Pulse Spires, and the Energy Wall take the defence lane
+ * (xenoDefences), the Laser Fence the line lane (xenoFence). The hive pays no scrap: another Fusion
+ * Node goes up whenever the next building or the next unit will not fit in the store, or the store
+ * runs low (HIVE_ENERGY_LOW).
  */
 const XENO_BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
   { type: "fusionnode", n: 1 },
@@ -585,19 +587,23 @@ function spireSites(state: MatchState, p: SimPlayer, hq: Entity): Site[] {
     ["pulsespire", "spire-left", 55, XENO_SPIRE_TILES],
   ]).slice(0, aiProfile(p.ai).hiveSpires);
 }
+/** An Energy Wall in front of the hive, between the Spires and the turrets, its curtain across the approach. */
+function wallSites(state: MatchState, p: SimPlayer, hq: Entity): Site[] {
+  return aroundHq(state, p, hq, [["energywall", "wall-front", 0, XENO_SPIRE_TILES + 4]]);
+}
 /** Spine Turrets stand this far from the hive's middle, in tiles; Pulse Spires a little inside them. */
 const XENO_SPINE_TILES = 28;
 const XENO_SPIRE_TILES = 20;
 
 /**
  * The Xenite defence lane: the Spine Turrets once the Conversion Chamber stands, then the Pulse
- * Spires (they wait on the Neural Nexus). Each waits for the energy it takes.
+ * Spires and the Energy Wall (they wait on the Neural Nexus). Each waits for the energy it takes.
  */
 function* xenoDefences(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): Generator<{ type: BuildingType; site?: Site }> {
   if (!ownsLive(state, p.playerId, "conversion")) return;
   const free = hiveFreeAfterQueue(state, p);
   const open = (site: Site): boolean => !siteHeld(state, p.playerId, site) && !siteFailed(state, plan, site);
-  for (const site of [...spineSites(state, p, hq), ...spireSites(state, p, hq)]) {
+  for (const site of [...spineSites(state, p, hq), ...spireSites(state, p, hq), ...wallSites(state, p, hq)]) {
     if (!open(site) || energyOf(site.type) > free) continue;
     yield { type: site.type, site };
   }
@@ -612,7 +618,7 @@ function xenoDefenceWant(state: MatchState, p: SimPlayer): number {
   const hq = hqOf(state, p.playerId);
   if (!hq) return 0;
   const plan = aiPlanOf(p);
-  for (const site of [...spineSites(state, p, hq), ...spireSites(state, p, hq)]) {
+  for (const site of [...spineSites(state, p, hq), ...spireSites(state, p, hq), ...wallSites(state, p, hq)]) {
     if (siteHeld(state, p.playerId, site) || siteFailed(state, plan, site)) continue;
     if (buildTechMissing(state, p.playerId, site.type).length > 0) continue;
     return energyOf(site.type);
@@ -821,7 +827,9 @@ function placeReadyBuilding(state: MatchState, p: SimPlayer, job: StructureJob |
   const type = job.type;
   const spot = findBuildTile(state, p.playerId, type);
   if (spot) {
-    applyCommand(state, p.playerId, { type: "cmd.place", building: type, tx: spot.tx, ty: spot.ty });
+    // An Energy Wall holds its curtain toward the enemy.
+    const facing = energyWallOf(type) ? bearingToEnemy(state, p.playerId, { x: spot.tx * state.tileSize, y: spot.ty * state.tileSize }) : undefined;
+    applyCommand(state, p.playerId, { type: "cmd.place", building: type, tx: spot.tx, ty: spot.ty, ...(facing != null ? { facing } : {}) });
   } else {
     // Trees, scrap, and the map edge can leave no room. Take the refund rather than block the lane.
     applyCommand(state, p.playerId, { type: "cmd.cancel", what: "structure", building: type });
@@ -2517,10 +2525,6 @@ function microUnits(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): 
         flyDrone(state, p, e, hq, stage);
         break;
     }
-    // Cyborgs fire on what their side's thermal and the Commander's radar pick up, seen or not.
-    if (isCyborg(e.type) && !e.engageContacts && !e.dormant && !e.shutdown) {
-      applyCommand(state, p.playerId, { type: "cmd.engagecontacts", ids: [e.id], on: true });
-    }
     // A hive escort whose fighter fell, or that broke out of the ground, walks on beside the wave.
     if (HIVE_ESCORTS.has(e.type) && !e.order && !e.burrow) rejoin(state, p, e, hq, stage);
     if (YARD_IDLERS.has(e.type) && !e.order && nearBuilding(state, e)) moveTo(state, p, e, stage());
@@ -3064,6 +3068,8 @@ export function findBuildTile(
   }
   const maxR = reach + radius + Math.max(def.tileW, def.tileH);
   const halfW = Math.floor(def.tileW / 2);
+  // Scrap is bare ground to the Xenite.
+  const scrapGround = scrapIsGround(type);
   const halfH = Math.floor(def.tileH / 2);
   // Keep the next Smelter's ground: a building packed against the scrap shuts its lane, and the
   // yard may have no other footprint on the field in range.
@@ -3084,7 +3090,7 @@ export function findBuildTile(
     }
     ring.sort((a, b) => b.inward - a.inward);
     for (const spot of ring) {
-      if (tilesBlockedOrScrap(state, spot.tx, spot.ty, def.tileW, def.tileH)) continue;
+      if (scrapGround ? tilesBlocked(state, spot.tx, spot.ty, def.tileW, def.tileH) : tilesBlockedOrScrap(state, spot.tx, spot.ty, def.tileW, def.tileH)) continue;
       if (!inBuildRadius(state, playerId, spot.tx, spot.ty, def.tileW, def.tileH, radius)) continue;
       if (!keepsLanes(state, spot.tx, spot.ty, def.tileW, def.tileH)) continue;
       if (keep && footprintGap(spot.tx, spot.ty, def.tileW, def.tileH, keep.tx, keep.ty, smelter.tileW, smelter.tileH) < CPU_BUILD_LANE_TILES) continue;

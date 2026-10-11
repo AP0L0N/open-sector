@@ -94,6 +94,7 @@ describe("factions in the catalog", () => {
         "behemoth",
         "bombard",
         "conversion",
+        "energywall",
         "forge",
         "fusionnode",
         "gnat",

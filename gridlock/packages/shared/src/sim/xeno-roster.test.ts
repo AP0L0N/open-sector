@@ -13,6 +13,7 @@ import {
   MAWCASTER_CELL,
   MAWCASTER_POD,
   MAWCASTER_SALVO,
+  BOMBARD_CELL,
   BOMBARD_FIST_HULL_MUL,
   BOMBARD_ROUND,
   BOMBARD_MIN_RANGE_TILES,
@@ -177,6 +178,33 @@ describe("Bombard", () => {
     assert.equal(s.rockets ?? rocketAmmoOf("bombard"), rocketAmmoOf("bombard"), "the hive refills the sac");
   });
 
+  it("each round drains its energy cell, which regrows slowly", () => {
+    assert.equal(plasmaCellOf("bombard"), BOMBARD_CELL);
+    assert.ok(BOMBARD_CELL.rechargeSeconds > BOMBARD_ROUND.reload, "the cell regrows slower than the cannon reloads");
+    assert.ok(BOMBARD_MIN_RANGE_TILES > BOMBARD_ROUND.splashTiles, "its least range clears its own splash");
+    const state = field();
+    uplink(state);
+    const s = at(state, "bombard", "B", 20, 30);
+    s.holdPosition = true;
+    const tank = still(at(state, "warden", "A", 30, 30));
+    tank.hp = tank.hpMax = 1e9;
+    still(at(state, "xenodrone", "B", 29, 31)); // spotter
+    assert.equal(snapshotFor(state, "B").entities.find((v) => v.id === s.id)?.energy, 1);
+    assert.equal(applyCommand(state, "B", { type: "cmd.attack", ids: [s.id], targetId: tank.id }).ok, true);
+    const seen = new Set<number>();
+    let low = Infinity;
+    for (let i = 0; i < secondsToTicks(BOMBARD_ROUND.reload * 6); i++) {
+      step(state, TICK_DT);
+      for (const p of state.projectiles) if (p.fromId === s.id && p.flight === "rocket") seen.add(p.id);
+      low = Math.min(low, s.energy ?? Infinity);
+    }
+    assert.ok(low < 1, `the cell ran down to ${low}`);
+    // A full cell plus what regrew: well short of one round every reload.
+    const most = BOMBARD_CELL.shots + Math.ceil((BOMBARD_ROUND.reload * 6) / BOMBARD_CELL.rechargeSeconds);
+    assert.ok(seen.size >= BOMBARD_CELL.shots && seen.size <= most, `${seen.size} rounds`);
+    assert.ok(seen.size < 6, "the cell, not the reload, sets the pace");
+  });
+
   it("will not fire inside its least range", () => {
     const state = field();
     uplink(state);
@@ -196,7 +224,7 @@ describe("Bombard drops its cannon", () => {
     const state = field();
     uplink(state);
     const s = at(state, "bombard", "B", 20, 30);
-    const foe = at(state, "rifleman", "A", 22, 30);
+    const foe = at(state, "rifleman", "A", 21, 30);
     foe.holdPosition = true;
     foe.hp = foe.hpMax = 1e9;
     foe.attackTarget = s.id;
@@ -205,7 +233,9 @@ describe("Bombard drops its cannon", () => {
     assert.equal(s.fists, true, "the cannon is down");
     assert.equal(infantryGunFor(s), FISTS);
     assert.equal(s.attackTarget, foe.id, "it squares up to the one that came in close");
-    assert.equal(snapshotFor(state, "B").entities.find((v) => v.id === s.id)?.fists, true);
+    const view = snapshotFor(state, "B").entities.find((v) => v.id === s.id);
+    assert.equal(view?.fists, true);
+    assert.equal(view?.energy, undefined, "no cannon, no energy bar");
     const before = foe.hp;
     ticks(state, secondsToTicks(4));
     assert.ok(foe.hp < before, "its fists land");

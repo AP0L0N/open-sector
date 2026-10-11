@@ -659,6 +659,7 @@ export type EntityType =
   | "spineturret"
   | "pulsespire"
   | "laserfence"
+  | "energywall"
   | "spawnpool"
   | "aerie"
   | "broodheart"
@@ -739,6 +740,7 @@ export type BuildingType =
   | "spineturret"
   | "pulsespire"
   | "laserfence"
+  | "energywall"
   | "spawnpool"
   | "aerie"
   | "lumenbulb"
@@ -929,6 +931,7 @@ export const BUILDING_TYPES: readonly BuildingType[] = [
   "spineturret",
   "pulsespire",
   "laserfence",
+  "energywall",
   "spawnpool",
   "aerie",
   "lumenbulb",
@@ -992,6 +995,7 @@ export const ROTATABLE_BUILDINGS: readonly BuildingType[] = [
   "flak",
   "spineturret",
   "pulsespire",
+  "energywall",
 ];
 /** One turn step for a rotatable building, the wall's 15°. */
 export const BUILDING_TURN_STEP = Math.PI / 12;
@@ -1108,6 +1112,7 @@ export const XENO_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([
   "spineturret",
   "pulsespire",
   "laserfence",
+  "energywall",
   "spawnpool",
   "aerie",
   "leech",
@@ -1195,6 +1200,10 @@ export const HIVE_SHORT_SPEED = 0.3;
 /** Does `faction` run on hive energy instead of scrap and power? */
 export function usesHiveEnergy(faction: Faction | undefined): boolean {
   return faction === "xeno";
+}
+/** Can `type` stand on Scrap and Diamond Scrap as on bare ground? The Xenite pay no scrap and build over it. */
+export function scrapIsGround(type: string): boolean {
+  return factionOf(type) === "xeno";
 }
 /** Hive energy `type` takes while it stands: 0 for everything but the Xenite's units, defences, and base. */
 export function energyOf(type: string): number {
@@ -1297,6 +1306,7 @@ export const BUILD_REQUIRES: Partial<Record<BuildingType, readonly BuildingType[
   ciws: ["research", "radar"],
   ram: ["research", "radar"],
   pulsespire: ["nexus"],
+  energywall: ["nexus"],
   bilelance: ["braincoral"],
 };
 
@@ -2179,11 +2189,38 @@ export interface EnergyDomeDef {
 }
 export const SIPHON_DOME: EnergyDomeDef = { energy: 800, radiusTiles: t(3), rechargeSeconds: 20, regenPerSecond: 12 };
 /** The Hive Ark's dome over its whole hull (ARK_HULL_RADIUS 40 px): far stronger, slower to come back. */
-export const ARK_DOME: EnergyDomeDef = { energy: 3000, radiusTiles: t(1.7), rechargeSeconds: 30, regenPerSecond: 30 };
+export const ARK_DOME: EnergyDomeDef = { energy: 30000, radiusTiles: t(1.7), rechargeSeconds: 30, regenPerSecond: 30 };
 const ENERGY_DOMES: Partial<Record<EntityType, EnergyDomeDef>> = {
   siphon: SIPHON_DOME,
   hiveark: ARK_DOME,
 };
+/**
+ * The Xenite Energy Wall (sim/energy-shield.ts): a low emitter core that holds a tall curtain of
+ * energy across its front, the Behemoth's wall but far wider. The curtain stands while the core is
+ * online, across the way the core was turned when it was placed.
+ * It stops every enemy round and beam that meets it and every enemy ground unit; lobbed rounds
+ * fall over it. Hits drain its points; it slowly regains them while it stands, and drained to
+ * nothing it is down until the core has recharged.
+ */
+export interface EnergyWallDef {
+  /** Points the curtain holds. */
+  hp: number;
+  /** Distance of the curve from the core, tiles. */
+  radiusTiles: number;
+  /** Half of the curve's span either side of the heading, degrees. */
+  halfDeg: number;
+  /** Points regained each second while it stands. */
+  regenPerSecond: number;
+  /** Seconds from the curtain going down until the core raises it again, at full points. */
+  rechargeSeconds: number;
+}
+export const ENERGY_WALL: EnergyWallDef = { hp: 1500, radiusTiles: t(3), halfDeg: 55, regenPerSecond: 10, rechargeSeconds: 25 };
+/** The core's solid height, elevation units: under a hull's gun (HULL_EYE_HEIGHT), so its own side fires over it. */
+export const ENERGY_WALL_COVER_HEIGHT = 0.5;
+/** The curtain this building holds, or undefined. */
+export function energyWallOf(type: EntityType): EnergyWallDef | undefined {
+  return type === "energywall" ? ENERGY_WALL : undefined;
+}
 /** The energy dome this type casts, or undefined. */
 export function energyDomeOf(type: EntityType): EnergyDomeDef | undefined {
   return ENERGY_DOMES[type];
@@ -4009,7 +4046,10 @@ export const MAWCASTER_CELL: PlasmaCellDef = { shots: 24, rechargeSeconds: 2 };
  * for good and fights on with its fists (Entity.fists), at the Thrall's reach and pace of blows.
  */
 export const BOMBARD_RANGE_TILES = t(19);
-export const BOMBARD_MIN_RANGE_TILES = t(5);
+/** Just past the round's own splash: it never bursts on the Bombard. */
+export const BOMBARD_MIN_RANGE_TILES = t(2);
+/** The cannon's energy cell: every round draws one shot, and each regrows slowly. */
+export const BOMBARD_CELL: PlasmaCellDef = { shots: 3, rechargeSeconds: 15 };
 export const BOMBARD_ROUND: RocketRackDef = {
   salvo: 1,
   interval: 0,
@@ -6405,7 +6445,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rockets: true,
     rocketAmmo: 5,
     rocketRack: BOMBARD_ROUND,
-    blurb: `A taken body on a heavy frame, hauling a long plasma cannon in both arms. It stands, braces, and throws one big plasma round on an arc from long reach (${BOMBARD_RANGE_TILES / TILE_SUBDIV} cells), then waits ${BOMBARD_ROUND.reload} seconds while the cannon charges. The round bursts wide among soldiers and tells on armor too. Force attack sends it anywhere in that reach, seen or not. It cannot lay the cannon on anything inside ${BOMBARD_MIN_RANGE_TILES / TILE_SUBDIV} cells and must stop and face the target first. Attacked from inside that ring, it drops the cannon where it stands and fights on with two armoured fists like a Thrall's; the cannon is lost for good and it never picks it up again. Its fists only dent a hull; it does not detonate. No stance orders. Near death its legs are torn off and it crawls on, still fighting. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
+    plasmaCell: BOMBARD_CELL,
+    blurb: `A taken body on a heavy frame, hauling a long plasma cannon in both arms. It stands, braces, and throws one big plasma round on an arc from long reach (${BOMBARD_RANGE_TILES / TILE_SUBDIV} cells), then waits ${BOMBARD_ROUND.reload} seconds while the cannon charges. Every round drains its energy cell; the cell holds ${BOMBARD_CELL.shots} rounds and regrows one every ${BOMBARD_CELL.rechargeSeconds} seconds. The round bursts wide among soldiers and tells on armor too. Force attack sends it anywhere in that reach, seen or not. It cannot lay the cannon on anything inside ${BOMBARD_MIN_RANGE_TILES / TILE_SUBDIV} cells and must stop and face the target first. Attacked from inside that ring, it drops the cannon where it stands and fights on with two armoured fists like a Thrall's; the cannon is lost for good and it never picks it up again. Its fists only dent a hull; it does not detonate. No stance orders. Near death its legs are torn off and it crawls on, still fighting. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
   },
   /** Xenite cyborg: unarmed support, shields friends under fire and mends hive units. */
   weaver: {
@@ -6782,7 +6823,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "A neural core in a cage of ribs under a crown of sensor spines: the hive thinks here. It unlocks the Behemoth and the Pulse Spire, and it lights the radar panel like a Radar Station: an enemy plane or drone nobody can see shows as a blinking contact on the panel. Takes a large share of the hive's energy.",
+    blurb: "A neural core in a cage of ribs under a crown of sensor spines: the hive thinks here. It unlocks the Behemoth, the Pulse Spire, and the Energy Wall, and it lights the radar panel like a Radar Station: an enemy plane or drone nobody can see shows as a blinking contact on the panel. Takes a large share of the hive's energy.",
   },
   /** Xenite anti-infantry gun: crewless, runs on base power. */
   spineturret: {
@@ -6879,6 +6920,33 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     poweredGun: true,
     capturable: false,
     blurb: `A tall spire with a long emitter and a ring of green fire. Nobody works it: it turns all the way round, slowly, and throws a piercing energy pulse through a Tiger's front plate from farther than a Pak 36 reaches. Tanks first. Each pulse draws on an energy cell that holds 8 and regrows one every 6 seconds. Takes hive energy while it stands; offline, it falls silent. Needs a Neural Nexus. Cannot move.`,
+  },
+  /** Xenite curtain emitter: a low core holding a wide energy wall across its front (sim/energy-shield.ts). */
+  energywall: {
+    type: "energywall",
+    kind: "building",
+    name: "Energy Wall",
+    letter: "e",
+    cost: 0,
+    energy: 200,
+    buildSeconds: 14,
+    hp: 600,
+    power: 0,
+    tileW: t(1),
+    tileH: t(1),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    // Squat: your own side's soldiers and hulls shoot over the core.
+    coverHeight: ENERGY_WALL_COVER_HEIGHT,
+    capturable: false,
+    blurb: `A squat emitter core with a fan of field vanes. It holds a curtain of green energy ${ENERGY_WALL.radiusTiles / TILE_SUBDIV} cells out across its front, far wider than a Behemoth's wall and as tall as a Pulse Spire. Enemy rounds and beams stop on it and enemy soldiers and hulls cannot walk through; shells and bombs lobbed from above fall over it. Your own side walks and shoots through, and over the low core. Each hit drains the curtain (${ENERGY_WALL.hp} points); it slowly mends while it stands, and once drained it is down for ${ENERGY_WALL.rechargeSeconds} seconds. Turn it before placing: it holds that way for good. Takes hive energy while it stands; offline, the curtain falls. Needs a Neural Nexus. Cannot move.`,
   },
   /** Xenite shipyard: grows the Leech and the Lurker. Stands on open water like a Marine Base. */
   spawnpool: {
@@ -9085,6 +9153,8 @@ export function isDefenceStructure(type: string): boolean {
   if (isYardField(type)) return true;
   // The Laser Fence has no gun: its beams are its weapon.
   if (type === "laserfence") return true;
+  // Nor has the Energy Wall: its curtain is.
+  if (type === "energywall") return true;
   return isBuildingType(type) && (catalog(type).rangeTiles > 0 || isGarrisonable(type));
 }
 
