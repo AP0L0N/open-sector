@@ -22,6 +22,8 @@ import {
   TICK_DT,
   TITAN_LAMP_SWEEP_DEG,
   TITAN_LAMP_SWEEP_PERIOD_SECONDS,
+  TITAN_LAMP_FIX_SECONDS,
+  secondsToTicks,
 } from "../catalog.js";
 import type { EntityType } from "../protocol.js";
 import { patrolLegIndex, stepPatrolLeg } from "./patrol.js";
@@ -306,9 +308,25 @@ export function aimSpotlightPatrol(e: Entity): void {
  * Titan's lamp sweeps either side of the nose on its own until Rotate light
  * holds it, and moving off lets it go again.
  */
+/** A Titan's smashed lamp comes back on by itself TITAN_LAMP_FIX_SECONDS after it went dark. */
+function mendTitanLamp(state: MatchState, e: Entity): void {
+  if (!hasCrit(e, "lamp") || e.hp <= 0 || e.wreck) {
+    e.lampFixAt = undefined;
+    return;
+  }
+  if (e.lampFixAt == null) {
+    e.lampFixAt = state.tick + secondsToTicks(TITAN_LAMP_FIX_SECONDS);
+    return;
+  }
+  if (state.tick < e.lampFixAt) return;
+  e.crits = e.crits.filter((c) => c !== "lamp");
+  e.lampFixAt = undefined;
+}
+
 export function tickSpotlights(state: MatchState, dt: number): void {
   const max = ((SPOTLIGHT_TURN_DEG_PER_SEC * Math.PI) / 180) * dt;
   for (const e of state.entities.values()) {
+    if (e.type === "titan") mendTitanLamp(state, e);
     // A dark tower lamp holds where it stood. A Rotate waits for the power to come back.
     if (!spotlightLit(e)) continue;
     if (e.kind === "unit") {

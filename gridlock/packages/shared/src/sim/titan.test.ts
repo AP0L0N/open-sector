@@ -19,11 +19,13 @@ import {
   TITAN_BRACED_HP_MUL,
   TITAN_POD_ARC_DEG,
   TITAN_WADE_SPEED,
+  TITAN_LAMP_FIX_SECONDS,
+  addCrit,
   TRAIN_TYPES,
 } from "../catalog.js";
 import { TILE_EMPTY, TILE_WATER } from "../maps.js";
 import { applyCommand } from "./commands.js";
-import { moveSpeedMul } from "./crits.js";
+import { moveSpeedMul, rollCrits } from "./crits.js";
 import { makeEntity, playerTeam, tileCenter, unitInWater, walkable } from "./geo.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { createMatch, step } from "./match.js";
@@ -645,5 +647,34 @@ describe("titan", () => {
     const titan = makeEntity(state, "titan", a, tileCenter(85, ts), tileCenter(y, ts));
     assert.equal(applyCommand(state, a, { type: "cmd.deploy", id: titan.id }).ok, false);
     assert.equal(titan.braced, undefined);
+  });
+});
+
+describe("titan and juggernaut crits", () => {
+  it("never take a broken engine, whatever hits them", () => {
+    const { state } = twoPlayerMatch();
+    const ts = state.tileSize;
+    for (const type of ["titan", "juggernaut"] as const) {
+      const e = makeEntity(state, type, "A", tileCenter(80, ts), tileCenter(40, ts));
+      for (let i = 0; i < 50; i++) rollCrits(e, "rear", "pen", 10, () => 0);
+      addCrit(e, "engine");
+      assert.equal(e.crits.includes("engine"), false, type);
+    }
+    const tiger = makeEntity(state, "warden", "A", tileCenter(84, ts), tileCenter(40, ts));
+    rollCrits(tiger, "rear", "pen", 10, () => 0);
+    assert.equal(tiger.crits.includes("engine"), true, "other hulls still lose theirs");
+  });
+
+  it("a titan's smashed lamp comes back on by itself", () => {
+    const { state } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const titan = makeEntity(state, "titan", "A", tileCenter(80, ts), tileCenter(40, ts));
+    addCrit(titan, "lamp");
+    const fix = Math.ceil(TITAN_LAMP_FIX_SECONDS / TICK_DT);
+    ticks(state, fix - 5);
+    assert.equal(titan.crits.includes("lamp"), true, "still dark before the time is up");
+    ticks(state, 10);
+    assert.equal(titan.crits.includes("lamp"), false);
+    assert.equal(titan.lampFixAt, undefined);
   });
 });
