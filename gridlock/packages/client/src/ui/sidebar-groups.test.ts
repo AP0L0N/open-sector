@@ -30,7 +30,7 @@ describe("sidebarGroupOf", () => {
   it("gives the Xenite their base, defences, cyborgs, and heavy assimilators, and nothing of the Alliance's", () => {
     const g = groupEntries("xeno");
     assert.deepEqual(g.structures.map((e) => e.type).sort(), ["aerie", "conversion", "forge", "fusionnode", "nexus", "spawnpool"]);
-    assert.deepEqual(g.defences.map((e) => e.type).sort(), ["laserfence", "pulsespire", "spineturret"]);
+    assert.deepEqual(g.defences.map((e) => e.type).sort(), ["energywall", "laserfence", "pulsespire", "spineturret"]);
     assert.deepEqual(g.infantry.map((e) => e.type).sort(), ["bombard", "lancer", "shade", "simunit2", "thrall", "weaver", "xenodrone"]);
     assert.deepEqual(g.tanks.map((e) => e.type).sort(), ["assembler", "behemoth", "juggernaut", "mawcaster", "ravager", "siphon", "stalker"]);
     assert.deepEqual(g.naval.map((e) => e.type).sort(), ["hiveark", "leech", "lurker"]);
@@ -96,7 +96,7 @@ describe("sidebarGroupOf", () => {
   });
 
   it("charges the Xenite no scrap: their structures are free, their units and defences take hive energy", () => {
-    for (const x of ["fusionnode", "conversion", "forge", "aerie", "spawnpool", "nexus", "spineturret", "pulsespire", "laserfence"] as const) {
+    for (const x of ["fusionnode", "conversion", "forge", "aerie", "spawnpool", "nexus", "spineturret", "pulsespire", "energywall", "laserfence"] as const) {
       assert.equal(catalog(x).cost, 0, x);
       assert.equal(catalog(x).power, 0, x);
     }

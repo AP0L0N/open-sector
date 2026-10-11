@@ -2326,7 +2326,7 @@ const buildingUrls = import.meta.glob("../assets/buildings/*.png", { eager: true
  * The WW2 forts and crewed guns (tools/sprites/render_ww2_*.py): each <type>.png with its pad
  * metrics in <type>.json beside it, picked up by name.
  */
-const FORT_TYPES: readonly EntityType[] = ["tobruk", "casemate", "hochstand", "leitturm", "spotlight", "mgnest", "pak36", "pak43", "flak", "spineturret", "pulsespire", "laserfence", "thornspitter", "bilelance", "puffcap", "eyestalk", "husk"];
+const FORT_TYPES: readonly EntityType[] = ["tobruk", "casemate", "hochstand", "leitturm", "spotlight", "mgnest", "pak36", "pak43", "flak", "spineturret", "pulsespire", "energywall", "laserfence", "thornspitter", "bilelance", "puffcap", "eyestalk", "husk"];
 for (const type of FORT_TYPES) {
   const info = padManifests[`../assets/buildings/${type}.json`];
   const url = buildingUrls[`../assets/buildings/${type}.png`];

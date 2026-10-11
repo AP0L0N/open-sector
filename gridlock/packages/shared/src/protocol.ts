@@ -19,7 +19,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 153;
+export const PROTOCOL_VERSION = 155;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -756,8 +756,10 @@ export interface EnergyShieldView {
   hit?: true;
   /** The Weaver that threw it in front of a friend (sim/weaver.ts); unset for a unit's own wall. */
   by?: number;
-  /** A Siphon's or Hive Ark's dome round the unit `fromId`. */
+  /** A Siphon's or Hive Ark's dome round the unit `fromId`, or an Energy Wall's curtain from the core `fromId`. */
   dome?: true;
+  /** An Energy Wall's curtain: drawn as tall as a Pulse Spire, not by its radius. */
+  post?: true;
   fromId?: number;
 }
 

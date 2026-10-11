@@ -55,7 +55,9 @@ import {
   type TrainType,
   isHqRig,
   isSmelterType,
+  scrapIsGround,
   smelterOf,
+  energyWallOf,
 } from "../catalog.js";
 import { droneCall, subDepthCall, tickNeutralCrews } from "./ai-crew.js";
 import { aiProfile, type AiProfile } from "./ai-profile.js";
@@ -65,7 +67,7 @@ import { turnedBox } from "../building-rect.js";
 import { buildingSiteError, buildTechMissing } from "./build.js";
 import { applyCommand } from "./commands.js";
 import { canRepairTarget, canScrapWreck, gateSiteAt } from "./field.js";
-import { allies, footprintGap, hasCore, hqOf, inBuildRadius, isWater, nearestWalkable, scrapAt, tilesBlockedOrScrap, walkable } from "./geo.js";
+import { allies, footprintGap, hasCore, hqOf, inBuildRadius, isWater, nearestWalkable, scrapAt, tilesBlocked, tilesBlockedOrScrap, walkable } from "./geo.js";
 import { smelterRateOn, smelterSiteOk } from "./smelter.js";
 import { powerOf } from "./power.js";
 import { hiveEnergyOf } from "./hive-energy.js";
@@ -343,7 +345,7 @@ function thinkCpu(state: MatchState, p: SimPlayer): void {
 
 /**
  * Xenite base: Fusion Node, Conversion Chamber, a second Fusion Node, the Nanite Forge, a pair of
- * Spine Turrets, and later the Neural Nexus and its Pulse Spires. The hive pays no scrap: it raises
+ * Spine Turrets, and later the Neural Nexus, its Pulse Spires, and an Energy Wall. The hive pays no scrap: it raises
  * another Fusion Node whenever its energy runs low (HIVE_ENERGY_LOW).
  */
 const XENO_BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
@@ -355,6 +357,7 @@ const XENO_BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
   { type: "fusionnode", n: 3 },
   { type: "nexus", n: 1 },
   { type: "pulsespire", n: 2 },
+  { type: "energywall", n: 1 },
 ];
 /** The Xenite foot soldiers, from the Conversion Chamber. */
 export const XENO_ARMY: readonly { unit: TrainType; want: number }[] = [
@@ -547,7 +550,9 @@ function placeReadyBuilding(state: MatchState, p: SimPlayer, job: StructureJob |
   const type = job.type;
   const spot = findBuildTile(state, p.playerId, type);
   if (spot) {
-    applyCommand(state, p.playerId, { type: "cmd.place", building: type, tx: spot.tx, ty: spot.ty });
+    // An Energy Wall holds its curtain toward the enemy.
+    const facing = energyWallOf(type) ? bearingToEnemy(state, p.playerId, { x: spot.tx * state.tileSize, y: spot.ty * state.tileSize }) : undefined;
+    applyCommand(state, p.playerId, { type: "cmd.place", building: type, tx: spot.tx, ty: spot.ty, ...(facing != null ? { facing } : {}) });
   } else {
     // Trees, scrap, and the map edge can leave no room. Take the refund rather than block the lane.
     applyCommand(state, p.playerId, { type: "cmd.cancel", what: "structure", building: type });
@@ -2534,6 +2539,8 @@ export function findBuildTile(
   const radius = buildRadiusOf(type);
   const maxR = radius + Math.max(def.tileW, def.tileH);
   const halfW = Math.floor(def.tileW / 2);
+  // Scrap is bare ground to the Xenite.
+  const scrapGround = scrapIsGround(type);
   const halfH = Math.floor(def.tileH / 2);
   // Keep the next Smelter's ground: a building packed against the scrap shuts its lane, and the
   // yard may have no other footprint on the field in range.
@@ -2554,7 +2561,7 @@ export function findBuildTile(
     }
     ring.sort((a, b) => b.inward - a.inward);
     for (const spot of ring) {
-      if (tilesBlockedOrScrap(state, spot.tx, spot.ty, def.tileW, def.tileH)) continue;
+      if (scrapGround ? tilesBlocked(state, spot.tx, spot.ty, def.tileW, def.tileH) : tilesBlockedOrScrap(state, spot.tx, spot.ty, def.tileW, def.tileH)) continue;
       if (!inBuildRadius(state, playerId, spot.tx, spot.ty, def.tileW, def.tileH, radius)) continue;
       if (!keepsLanes(state, spot.tx, spot.ty, def.tileW, def.tileH)) continue;
       if (keep && footprintGap(spot.tx, spot.ty, def.tileW, def.tileH, keep.tx, keep.ty, smelter.tileW, smelter.tileH) < CPU_BUILD_LANE_TILES) continue;

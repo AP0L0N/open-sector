@@ -36,6 +36,8 @@ import {
   radarLaidOf,
   aimsOwnGun,
   hasSpotlight,
+  ENERGY_WALL,
+  energyWallOf,
   lampPools,
   lampUnderway,
   TITAN_LAMP_POOL_AHEAD_TILES,
@@ -167,7 +169,18 @@ import {
   SIMUNIT_BLINK_RANGE_TILES,
   isSimUnit,
 } from "@gridlock/shared";
-import { WEAVE_THREAD_MS, domeHeightElev, drawDome, drawShieldPanel, drawWeaveThread, shieldCurve, shieldGlow, shieldHeightElev } from "./energy-shield.js";
+import {
+  CURTAIN_PANELS,
+  WEAVE_THREAD_MS,
+  curtainHeightElev,
+  domeHeightElev,
+  drawDome,
+  drawShieldPanel,
+  drawWeaveThread,
+  shieldCurve,
+  shieldGlow,
+  shieldHeightElev,
+} from "./energy-shield.js";
 import { drawNuke, drawNukeFlash, drawNukeScorch, NUKE_FX_MS, NUKE_SCORCH_MS } from "./nuke-fx.js";
 import { drawTitanThrust } from "./titan-jet-fx.js";
 import {
@@ -793,6 +806,7 @@ const EXTRUDE: Record<EntityType, number> = {
   conversion: 52,
   spineturret: 14,
   pulsespire: 30,
+  energywall: 8,
   laserfence: 20,
   armory: 54,
   muster: 38,
@@ -1181,6 +1195,7 @@ export class MapView {
   /** Last heading each lamp showed, kept while it is dark so it does not snap. */
   private spotRest = new Map<number, number>();
   private spotFrameAt = 0;
+
   /** Where each tower's searchlight lens landed this frame, for its glow at night. */
   private lensAt = new Map<number, SearchlightPose>();
   /** Every tile counts as known ground on a map without complete fog of war. */
@@ -5639,6 +5654,22 @@ export class MapView {
    * A building lamp's beam on the ground, dashed: the cone a selected lamp lights, or the one a
    * placement ghost will light. `fill` washes the cone faintly, for the ghost.
    */
+  /** Where an Energy Wall being placed will raise its curtain: a faint curtain at full height. */
+  private drawCurtainGhost(wx: number, wy: number, facing: number): void {
+    const rise = curtainHeightElev();
+    const curve = shieldCurve({ x: wx, y: wy, angle: facing, half: (ENERGY_WALL.halfDeg * Math.PI) / 180, r: ENERGY_WALL.radiusTiles * this.ts() }, CURTAIN_PANELS);
+    const pts = curve.map((g) => {
+      const elev = this.elevAt(g.x, g.y);
+      const base = this.toScreen(g.x, g.y, elev);
+      return { base, lift: base.y - this.toScreen(g.x, g.y, elev + rise).y };
+    });
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i]!;
+      const b = pts[i + 1]!;
+      drawShieldPanel(this.ctx, a.base, b.base, (a.lift + b.lift) / 2, 0.45);
+    }
+  }
+
   private drawBeamOutline(wx: number, wy: number, facing: number, fill: boolean): void {
     const ctx = this.ctx;
     const reach = SPOTLIGHT_REACH_TILES * this.ts();
@@ -7483,8 +7514,8 @@ export class MapView {
           // The gun sheet shares the unturned pad's canvas: a turned pad still lays it out on that.
           const pad = this.unturnedPad(e, elev) ?? { x: south.x, y: south.y, w: footprintW };
           const base = unturnedBuildingSprite(e.type) ?? spr;
-          // A pole lamp's man and training column turn with the lamp, not a gun.
-          const aim = gun?.lampZ != null ? this.lampShownFacing(e) : (e.turretFacing ?? e.facing);
+          // A pole lamp's man and training column turn with the lamp, not a gun; an Energy Wall's emitter faces its curtain.
+          const aim = gun?.lampZ != null ? this.lampShownFacing(e) : energyWallOf(e.type) ? e.facing : (e.turretFacing ?? e.facing);
           if (e.type === "ciws") this.drawCiwsGun(base, pad.x, pad.y, pad.w, 1, aim, ghost ? undefined : e);
           else if (e.type === "ram") this.drawCiwsGun(base, pad.x, pad.y, pad.w, 1, aim, undefined, RAM_TURRET_SHEET);
           else if (gun) {
@@ -9782,11 +9813,13 @@ export class MapView {
         this.collectDome(items, w, h, s, now);
         continue;
       }
+      // An Energy Wall's curtain stands as tall as a Pulse Spire.
+      const margin = s.post ? 120 + s.r * 2.5 : 120;
       const mid = this.toScreen(s.x, s.y);
-      if (mid.x < -120 || mid.y < -120 || mid.x > w + 120 || mid.y > h + 120) continue;
+      if (mid.x < -margin || mid.y < -margin || mid.x > w + margin || mid.y > h + margin) continue;
       const glow = shieldGlow(s, now, s.id);
-      const rise = shieldHeightElev(s.r);
-      const pts = shieldCurve(s).map((g) => {
+      const rise = s.post ? curtainHeightElev() : shieldHeightElev(s.r);
+      const pts = shieldCurve(s, s.post ? CURTAIN_PANELS : undefined).map((g) => {
         const elev = this.elevAt(g.x, g.y);
         const base = this.toScreen(g.x, g.y, elev);
         return { g, base, lift: base.y - this.toScreen(g.x, g.y, elev + rise).y };
@@ -9804,6 +9837,7 @@ export class MapView {
       }
       this.collectWeaveThread(items, s, pts, now);
     }
+
     if (this.shieldBorn.size > 0) {
       const up = new Set(walls.map((s) => s.id));
       for (const id of this.shieldBorn.keys()) if (!up.has(id)) this.shieldBorn.delete(id);
@@ -10719,6 +10753,8 @@ export class MapView {
         }
         this.drawMountArc(type, site.x, site.y, facing, elev, 0.8);
       }
+      // An Energy Wall shows the curtain it will hold, turned with the ghost.
+      if (energyWallOf(type)) this.drawCurtainGhost(site.x, site.y, facing);
       ctx.strokeStyle = top;
       ctx.lineWidth = 2;
       if (corners) {

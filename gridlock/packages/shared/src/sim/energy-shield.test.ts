@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
-import { TICK_DT, catalog, energyDomeOf, energyShieldOf, isCivilianType, secondsToTicks } from "../catalog.js";
+import { ENERGY_WALL, TICK_DT, catalog, energyDomeOf, energyShieldOf, isCivilianType, secondsToTicks } from "../catalog.js";
+import { allyInLine } from "./lineoffire.js";
+import { tickSpotlights } from "./night.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { tickProjectiles } from "./combat.js";
@@ -390,5 +392,105 @@ describe("pulses and lasers on a hive shield", () => {
 describe("Juggernaut", () => {
   it("has ten times the old 4200 hit points", () => {
     assert.equal(catalog("juggernaut").hp, 42000);
+  });
+});
+
+describe("Energy Wall", () => {
+  /** A B Energy Wall facing east. */
+  function wallPost(): { state: MatchState; post: Entity } {
+    const state = field();
+    const ts = state.tileSize;
+    const post = makeEntity(state, "energywall", "B", tileCenter(100, ts), tileCenter(120, ts), { facing: 0 });
+    return { state, post };
+  }
+
+  it("holds its curtain with nothing to fight, wide across the way it faces", () => {
+    const { state, post } = wallPost();
+    tickEnergyShields(state, TICK_DT);
+    const w = state.energyShields?.find((s) => s.fromId === post.id);
+    assert.ok(w?.post, "curtain up");
+    assert.equal(w.angle, 0);
+    assert.equal(w.hp, ENERGY_WALL.hp);
+    const span = w.r * w.half * 2;
+    const behemoth = energyShieldOf("behemoth")!;
+    assert.ok(span > behemoth.arcPx * ((behemoth.halfDeg * Math.PI) / 180) * 2 * 1.5, "far wider than a Behemoth's wall");
+    for (let i = 0; i < secondsToTicks(30); i++) tickEnergyShields(state, TICK_DT);
+    assert.equal(state.energyShields!.filter((s) => s.fromId === post.id).length, 1, "it stays up");
+  });
+
+  it("stops enemy rounds and drains; its own rounds go through and over the low core", () => {
+    const { state, post } = wallPost();
+    tickEnergyShields(state, TICK_DT);
+    const w = state.energyShields![0]!;
+    const foe = round(state, "A", post.x + w.r + 4, post.y, -1200, 60);
+    tickProjectiles(state, TICK_DT);
+    assert.ok(!state.projectiles.includes(foe));
+    assert.equal(w.hp, w.hpMax - 60);
+    const own = round(state, "B", post.x + w.r - 4, post.y, 1200, 60);
+    tickProjectiles(state, TICK_DT);
+    assert.ok(state.projectiles.includes(own));
+    // A Stalker behind the core has a clear line past it to a tank out front.
+    const ts = state.tileSize;
+    const stalker = makeEntity(state, "stalker", "B", post.x - 3 * ts, post.y);
+    const tiger = makeEntity(state, "ss3", "A", post.x + 40 * ts, post.y);
+    assert.equal(allyInLine(state, stalker, stalker.x, stalker.y, tiger), undefined);
+  });
+
+  it("drained, it is down until the core recharges, then up at full; it mends while it stands", () => {
+    const { state, post } = wallPost();
+    tickEnergyShields(state, TICK_DT);
+    const w = state.energyShields![0]!;
+    w.hp = 100;
+    tickEnergyShields(state, 1);
+    assert.equal(w.hp, 100 + ENERGY_WALL.regenPerSecond);
+    w.hp = 0;
+    tickEnergyShields(state, TICK_DT);
+    assert.equal(state.energyShields!.length, 0);
+    state.tick += secondsToTicks(ENERGY_WALL.rechargeSeconds) - 1;
+    tickEnergyShields(state, TICK_DT);
+    assert.equal(state.energyShields!.length, 0, "still recharging");
+    state.tick += 1;
+    tickEnergyShields(state, TICK_DT);
+    assert.equal(state.energyShields![0]!.hp, ENERGY_WALL.hp);
+    assert.equal(domeCharge(state, post), 1);
+  });
+
+  it("offline, the curtain falls and keeps its points for when it comes back", () => {
+    const { state, post } = wallPost();
+    tickEnergyShields(state, TICK_DT);
+    state.energyShields![0]!.hp = 700;
+    post.unpowered = true;
+    tickEnergyShields(state, TICK_DT);
+    assert.equal(state.energyShields!.length, 0);
+    post.unpowered = false;
+    tickEnergyShields(state, TICK_DT);
+    assert.equal(state.energyShields![0]!.hp, 700);
+  });
+
+  it("holds the way it was placed: it takes no Rotate or Patrol", () => {
+    const state = field();
+    const ts = state.tileSize;
+    const post = makeEntity(state, "energywall", "B", tileCenter(100, ts), tileCenter(120, ts), { facing: Math.PI / 2 });
+    tickEnergyShields(state, TICK_DT);
+    const w = state.energyShields![0]!;
+    assert.equal(w.angle, Math.PI / 2, "faces south, as placed");
+    assert.equal(applyCommand(state, "B", { type: "cmd.rotate", ids: [post.id], x: post.x + 100, y: post.y }).ok, false);
+    const north = { x: post.x, y: post.y - 100 };
+    const east = { x: post.x + 100, y: post.y };
+    assert.equal(applyCommand(state, "B", { type: "cmd.patrol", ids: [post.id], points: [north, east] }).ok, false);
+    for (let i = 0; i < secondsToTicks(5); i++) {
+      tickSpotlights(state, TICK_DT);
+      tickEnergyShields(state, TICK_DT);
+    }
+    assert.equal(w.angle, Math.PI / 2, "still south");
+  });
+
+  it("the snapshot draws it as a curtain; the core sends no lamp heading", () => {
+    const { state, post } = wallPost();
+    tickEnergyShields(state, TICK_DT);
+    const snap = snapshotFor(state, "B");
+    assert.equal(snap.shields?.[0]?.post, true);
+    assert.equal(snap.shields?.[0]?.angle, 0);
+    assert.equal(snap.entities.find((e) => e.id === post.id)?.spotFacing, undefined);
   });
 });

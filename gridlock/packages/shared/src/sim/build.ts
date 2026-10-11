@@ -22,6 +22,7 @@ import {
   isHqBuilding,
   isSmelterType,
   HQ_OF,
+  scrapIsGround,
 } from "../catalog.js";
 import { NOT_YOUR_FACTION } from "./train.js";
 import {
@@ -371,8 +372,9 @@ export function buildingSiteError(
     }
     return null;
   }
-  // Trees under it are no bar: raiseBuilding fells them.
-  if (tileListBlocked(state, tiles, false) || tiles.some((t) => scrapAt(state, t.x, t.y) > 0)) return "Cannot place there.";
+  // Trees under it are no bar: raiseBuilding fells them. Scrap is bare ground to the Xenite.
+  if (tileListBlocked(state, tiles, false)) return "Cannot place there.";
+  if (!scrapIsGround(type) && tiles.some((t) => scrapAt(state, t.x, t.y) > 0)) return "Cannot place there.";
   return null;
 }
 

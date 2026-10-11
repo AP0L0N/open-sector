@@ -15,6 +15,7 @@ Same file set and JSON schema as render_ww2_guns.py, so the client draws them as
 
   spineturret  t(1)  anti-infantry: a squat chitin bulb on clawed roots, a twin needle gatling head
   pulsespire   t(1)  anti-armour: a tall tapered spire, a long emitter barrel through green energy rings
+  energywall   t(1)  curtain emitter: a squat ribbed core, a low fan of field vanes and a lens toward the curtain
 
 Look and materials: render_xeno_base.py (the Hive Core / Fusion Node / Assimilator kit: gunmetal and
 chitin, cyan-green emissive glow, the same concrete pad), on render_ww2_guns.py's rows, canvas and
@@ -234,12 +235,57 @@ def laserfence_gun(L: LM, crew: int) -> None:
         L.cyl((0.6 * c, 0.6 * s, LF_TOP + 0.6), (2.0 * c, 2.0 * s, LF_TOP + 3.4), 0.5, 0.08, "spine", n=5)
 
 
+# ---------------------------------------------------------------- Energy Wall, t(1) x t(1)
+
+EW_TOP = 5.6  # the squat core's collar, where the emitter turns
+EW_Z = 7.6  # the emitter lens
+EW_VANE_TOP = 10.2  # tips of the field vanes: low enough that its own side shoots over it
+
+
+def energywall_base(ground: bool = True) -> ra.Mesh:
+    bb.RIB_C = (C, C)
+    m = ra.Mesh()
+    L = LM(m, cx=C, cy=C)
+    if ground:
+        slab(L)
+    # A wide, low octagonal footing with a glow seam, gripped by four short clawed roots.
+    L.cyl((0, 0, 1.0), (0, 0, 2.4), 10.0, 9.2, "steel_dark", n=8)
+    L.cyl((0, 0, 2.4), (0, 0, 2.9), 9.0, 9.0, "glow", n=8, caps=False)
+    for k in range(4):
+        claw_root(L, 2 * math.pi * k / 4 + math.pi / 4, 7.0, 2.6, 10.4, 13.2, 1.2)
+    # The squat ribbed generator dome and the collar the emitter turns on.
+    lball(L, (0, 0, 2.9), 7.2, "ribbed", rings=6, n=24, squash=0.36)
+    L.cyl((0, 0, 2.9), (0, 0, 3.6), 7.3, 7.3, "glow", n=24, caps=False)
+    L.cyl((0, 0, EW_TOP - 0.6), (0, 0, EW_TOP), 3.6, 3.4, "steel_dark", n=16)
+    return m
+
+
+def energywall_gun(L: LM, crew: int) -> None:
+    z = EW_Z
+    # Turntable and a low yoke under the lens.
+    L.cyl((0, 0, EW_TOP), (0, 0, EW_TOP + 0.7), 3.4, 3.2, "steel_dark", n=16)
+    lball(L, (0.4, 0, EW_TOP + 0.9), 2.4, "steel", rings=5, n=14, squash=0.7)
+    # A fan of field vanes curving round the front, each tipped with glow: the curtain's spread.
+    for k in range(5):
+        a = math.radians(-56 + 28 * k)
+        c, s = math.cos(a), math.sin(a)
+        foot = (2.4 * c, 2.4 * s, EW_TOP + 0.5)
+        tip = (6.4 * c, 6.4 * s, EW_VANE_TOP - (0.9 if k in (0, 4) else 0.0))
+        L.cyl(foot, tip, 1.0, 0.5, "spine", n=6)
+        lball(L, tip, 0.8, "glow", rings=4, n=8)
+    # The emitter lens, facing the curtain.
+    L.cyl((1.6, 0, z), (3.0, 0, z), 1.5, 1.4, "steel_dark", n=12)
+    L.cyl((3.0, 0, z), (3.5, 0, z), 1.2, 1.2, "core", n=12, part=False)
+
+
 # ---------------------------------------------------------------- render
 
 GUNS = {
     # The `crew` count is the number of recoil frames: crewCols = rest + one per barrel.
     "spineturret": wg.Gun("spineturret", 32.0, (4, 4), 18.0, 10.0, 2, spineturret_base, spineturret_gun, ST_Z, ST_MUZZLE, cameo_col=0),
     "pulsespire": wg.Gun("pulsespire", 32.0, (4, 4), 26.0, 12.0, 1, pulsespire_base, pulsespire_gun, PS_Z, PS_MUZZLE, cameo_col=0),
+    # No recoil: one column, the emitter laid on the curtain's heading.
+    "energywall": wg.Gun("energywall", 32.0, (4, 4), 18.0, 10.0, 0, energywall_base, energywall_gun, EW_Z, 3.5, cameo_col=0),
     # Not turned before placing: the client links the posts' beams at beamZ (low, high).
     "laserfence": wg.Gun(
         "laserfence", 16.0, (2, 2), 22.0, 14.0, 0, laserfence_base, laserfence_gun, LF_TOP, 1.0, extra={"beamZ": [LF_LOW, LF_HIGH]}
