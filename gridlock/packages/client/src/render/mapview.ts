@@ -1143,6 +1143,8 @@ export class MapView {
   private camY = 0;
   /** CSS pixels per iso pixel. Opens at MAP_ZOOM_START; the wheel zooms in and out from here. */
   private zoom = MAP_ZOOM_START;
+  /** Sidebar readout of `zoom`, written on every wheel step. */
+  private zoomLabel: HTMLElement | null;
   private keys = new Set<string>();
   private panning = false;
   private lastMX = 0;
@@ -1707,13 +1709,15 @@ export class MapView {
     this.onPlaceMode();
   }
 
-  constructor(canvas: HTMLCanvasElement, mini: HTMLCanvasElement, match: MatchSnapshot) {
+  constructor(canvas: HTMLCanvasElement, mini: HTMLCanvasElement, match: MatchSnapshot, zoomLabel: HTMLElement | null = null) {
     const ctx = canvas.getContext("2d");
     const mctx = mini.getContext("2d");
     if (!ctx || !mctx) throw new Error("canvas");
     this.canvas = canvas;
     this.mini = mini;
     this.ctx = ctx;
+    this.zoomLabel = zoomLabel;
+    this.showZoom();
     this.mctx = mctx;
     this.curr = match;
     this.currById = new Map(match.entities.map((e) => [e.id, e]));
@@ -3304,6 +3308,10 @@ export class MapView {
     return { x: (e.clientX - rect.left) / z, y: (e.clientY - rect.top) / z };
   }
 
+  private showZoom(): void {
+    if (this.zoomLabel) this.zoomLabel.textContent = `ZOOM ${Math.round(this.zoom * 100)}%`;
+  }
+
   private onWheel = (e: WheelEvent): void => {
     e.preventDefault();
     if (this.box) return;
@@ -3325,6 +3333,7 @@ export class MapView {
     if (next === this.zoom) return;
     const moved = zoomCamAt(this.camX, this.camY, this.zoom, next, cssX, cssY);
     this.zoom = moved.zoom;
+    this.showZoom();
     this.camX = moved.camX;
     this.camY = moved.camY;
     this.mouseX = cssX / this.zoom;

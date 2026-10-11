@@ -1,15 +1,16 @@
 /** Zoom the battlefield opens at. 1 is the iso pixel = CSS pixel scale. */
 export const MAP_ZOOM_START = 1.25;
-/** Close enough that a soldier fills a readable patch of the screen. */
-export const MAP_ZOOM_MAX = 6;
 /** Maps a pixel wheel delta onto a multiplicative zoom step. */
 export const MAP_ZOOM_WHEEL = 0.00125;
 /** One wheel notch in CSS pixels. */
 const MAP_ZOOM_TICK_PX = 100;
-/** Zoom-out allowed from the start zoom, in wheel notches. */
-const MAP_ZOOM_OUT_TICKS = 3;
-/** Floor: three notches out from the start zoom, no further. */
+/** Zoom steps allowed each way from the start zoom, in wheel notches. */
+const MAP_ZOOM_OUT_TICKS = 2;
+const MAP_ZOOM_IN_TICKS = 2;
+/** Floor: two notches out from the start zoom, no further. */
 export const MAP_ZOOM_MIN = MAP_ZOOM_START * Math.exp(-MAP_ZOOM_OUT_TICKS * MAP_ZOOM_TICK_PX * MAP_ZOOM_WHEEL);
+/** Ceiling: two notches in from the start zoom, no further. */
+export const MAP_ZOOM_MAX = MAP_ZOOM_START * Math.exp(MAP_ZOOM_IN_TICKS * MAP_ZOOM_TICK_PX * MAP_ZOOM_WHEEL);
 
 export function clampMapZoom(z: number): number {
   if (!Number.isFinite(z)) return 1;
