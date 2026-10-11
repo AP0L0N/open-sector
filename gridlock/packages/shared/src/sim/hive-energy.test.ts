@@ -96,7 +96,7 @@ describe("hive energy", () => {
     assert.equal(energyOf("hivecore"), 0);
     assert.equal(energyOf("fusionnode"), 0);
     ticks(state, 1);
-    assert.deepEqual(snapshotFor(state, "B").you.energy, { cap: 700, used: want, offline: 0 });
+    assert.deepEqual(snapshotFor(state, "B").you.energy, { cap: HIVE_CORE_ENERGY + FUSION_NODE_ENERGY, used: want, offline: 0 });
   });
 
   it("gets a unit's energy back while it is shut down on order, and pays it again on power up", () => {
@@ -157,24 +157,25 @@ describe("hive energy", () => {
 
   it("shuts down the hungriest first, one at a time, and only as many as it takes", () => {
     const state = field();
-    const nodes = [at(state, "fusionnode", 40, 40), at(state, "fusionnode", 44, 40)];
+    const nodes = [at(state, "fusionnode", 40, 40), at(state, "fusionnode", 44, 40), at(state, "fusionnode", 48, 40), at(state, "fusionnode", 52, 40)];
+    const maw = at(state, "mawcaster", 16, 20);
     const siphon = at(state, "siphon", 20, 20);
     const small = [at(state, "ravager", 24, 24), at(state, "ravager", 26, 24)];
     const stalker = at(state, "stalker", 30, 20);
     ticks(state, 2);
-    // 1200 holds 500 + 2 × 90 + 120 = 800.
-    assert.ok([siphon, stalker, ...small].every((u) => !u.shutdown));
+    // 1300 holds 550 + 450 + 2 × 60 + 90 = 1210.
+    assert.ok([maw, siphon, stalker, ...small].every((u) => !u.shutdown));
     for (const n of nodes) destroyEntity(state, n);
     ticks(state, 1);
-    // 200 against 800: the Siphon (500) goes first.
-    assert.ok(siphon.shutdown && siphon.hiveOffline);
-    assert.ok(!stalker.shutdown, "one at a time");
+    // 300 against 1210: the Mawcaster (550) goes first.
+    assert.ok(maw.shutdown && maw.hiveOffline);
+    assert.ok(!siphon.shutdown, "one at a time");
     ticks(state, secondsToTicks(HIVE_SWITCH_SECONDS));
-    // Still 300 against 200: the Stalker (120) next, and that is enough.
-    assert.ok(stalker.shutdown && stalker.hiveOffline);
+    // Still 660 against 300: the Siphon (450) next, and that is enough.
+    assert.ok(siphon.shutdown && siphon.hiveOffline);
     ticks(state, secondsToTicks(HIVE_SWITCH_SECONDS) * 6);
-    assert.ok(small.every((u) => !u.shutdown), "the Ravagers fit: they stay up");
-    assert.deepEqual(hiveEnergyOf(state, "B"), { cap: 200, used: 180, offline: 2 });
+    assert.ok([stalker, ...small].every((u) => !u.shutdown), "the Stalker and the Ravagers fit: they stay up");
+    assert.deepEqual(hiveEnergyOf(state, "B"), { cap: 300, used: 210, offline: 2 });
     assert.equal(snapshotFor(state, "B").entities.find((e) => e.id === siphon.id)?.shutdown, true);
     // An order to an offline unit goes nowhere.
     const before = { x: siphon.x, y: siphon.y };
@@ -185,9 +186,14 @@ describe("hive energy", () => {
     at(state, "fusionnode", 40, 40);
     at(state, "fusionnode", 44, 40);
     ticks(state, 1);
-    assert.ok(!siphon.shutdown && stalker.shutdown);
-    ticks(state, secondsToTicks(HIVE_SWITCH_SECONDS));
-    assert.ok(!stalker.shutdown && !stalker.hiveOffline);
+    // 800 holds 210 + 550: the Mawcaster wakes; the Siphon (450) still does not fit.
+    assert.ok(!maw.shutdown && siphon.shutdown);
+    ticks(state, secondsToTicks(HIVE_SWITCH_SECONDS) * 2);
+    assert.ok(siphon.shutdown, "no room for the Siphon yet");
+    at(state, "fusionnode", 48, 40);
+    at(state, "fusionnode", 52, 40);
+    ticks(state, secondsToTicks(HIVE_SWITCH_SECONDS) + 1);
+    assert.ok(!siphon.shutdown && !siphon.hiveOffline);
   });
 
   it("silences an offline defence", () => {
@@ -204,8 +210,8 @@ describe("hive energy", () => {
     const state = field();
     const core = [...state.entities.values()].find((e) => e.ownerId === "B" && e.kind === "building" && e.hp > 0)!;
     const full = sightTilesForEntity(state, core);
-    // 200 + 3 × 500 holds the Nexus (1260) with room to spare.
-    for (let i = 0; i < 3; i++) at(state, "fusionnode", 40 + i * 4, 36);
+    // 300 + 4 × 250 holds the Nexus (1260).
+    for (let i = 0; i < 4; i++) at(state, "fusionnode", 40 + i * 4, 36);
     const nexus = at(state, "nexus", 44, 40);
     ticks(state, 1);
     assert.equal(radarOnline(state, "B"), true);

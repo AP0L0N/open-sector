@@ -1445,7 +1445,7 @@ describe("Xenite CPU", () => {
 
   function standBy(state: MatchState, aiId: string, types: Entity["type"][]): void {
     const hq = hiveOf(state, aiId);
-    const spots: [number, number][] = [[-12, 0], [16, 0], [0, 16], [0, -14], [16, 16], [-12, 16], [-12, -14], [16, -14]];
+    const spots: [number, number][] = [[-12, 0], [16, 0], [0, 16], [0, -14], [16, 16], [-12, 16], [-12, -14], [16, -14], [32, 0], [32, 16], [32, -14], [0, 32], [16, 32], [-12, 32], [-24, 0], [-24, 16]];
     types.forEach((type, i) => {
       const [dx, dy] = spots[i]!;
       makeEntity(state, type, aiId, hq.x + dx * 8, hq.y + dy * 8, { tileX: hq.tileX + dx, tileY: hq.tileY + dy });
@@ -1523,7 +1523,7 @@ describe("Xenite CPU", () => {
     const hq = hiveOf(state, aiId);
     const foe = foeCore(state, aiId);
     assert.ok(Math.hypot(spine.x - foe.x, spine.y - foe.y) < Math.hypot(hq.x - foe.x, hq.y - foe.y), "on the side facing the enemy");
-    standBy(state, aiId, ["fusionnode"]);
+    standBy(state, aiId, ["fusionnode", "fusionnode", "fusionnode"]);
     assert.equal(nextStructure(state, aiId), "nexus", "the base lane is not stuck behind the turret");
   });
 
@@ -1541,7 +1541,7 @@ describe("Xenite CPU", () => {
   it("roots an Energy Wall once the Neural Nexus stands, its curtain toward the enemy", () => {
     const { state, aiId } = humanVsXeno("aggressive");
     waitCore(state, aiId);
-    standBy(state, aiId, [...BASE, "nexus", "fusionnode", "fusionnode"]);
+    standBy(state, aiId, [...BASE, "nexus", "fusionnode", "fusionnode", "fusionnode", "fusionnode", "fusionnode", "fusionnode", "fusionnode", "fusionnode"]);
     rootDefences(state, aiId, 6);
     const wall = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "energywall");
     assert.ok(wall, "an Energy Wall stands");

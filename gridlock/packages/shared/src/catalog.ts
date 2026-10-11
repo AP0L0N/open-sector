@@ -1197,10 +1197,10 @@ const SHELVED_TYPES: ReadonlySet<EntityType> = new Set<EntityType>(["assimilator
  * structure takes its catalog `energy` while it stands. Below zero the hive builds slower, and its
  * units and defences go offline one by one, the hungriest first, until it is back at zero.
  */
-export const HIVE_CORE_ENERGY = 200;
-export const FUSION_NODE_ENERGY = 500;
+export const HIVE_CORE_ENERGY = 300;
+export const FUSION_NODE_ENERGY = 250;
 /** Hive energy one standing Fusion Core adds to the store: four Fusion Nodes' worth. */
-export const FUSION_CORE_ENERGY = 2000;
+export const FUSION_CORE_ENERGY = 1000;
 /** Below zero, one more unit or defence goes offline this often; with room again, one wakes this often. */
 export const HIVE_SWITCH_SECONDS = 0.5;
 /** Below zero the hive's yard and factories build at this pace, however short it is: 70% slower. */
@@ -2214,7 +2214,7 @@ export interface EnergyDomeDef {
 }
 export const SIPHON_DOME: EnergyDomeDef = { energy: 800, radiusTiles: t(3), rechargeSeconds: 20, regenPerSecond: 12 };
 /** The Hive Ark's dome over its whole hull (ARK_HULL_RADIUS 40 px): far stronger, slower to come back. */
-export const ARK_DOME: EnergyDomeDef = { energy: 30000, radiusTiles: t(1.7), rechargeSeconds: 30, regenPerSecond: 30 };
+export const ARK_DOME: EnergyDomeDef = { energy: 4000, radiusTiles: t(1.7), rechargeSeconds: 30, regenPerSecond: 20 };
 const ENERGY_DOMES: Partial<Record<EntityType, EnergyDomeDef>> = {
   siphon: SIPHON_DOME,
   hiveark: ARK_DOME,
@@ -4072,7 +4072,7 @@ export const MAWCASTER_CELL: PlasmaCellDef = { shots: 24, rechargeSeconds: 2 };
  * anything inside BOMBARD_MIN_RANGE_TILES. Attacked from inside that ring, it drops the cannon
  * for good and fights on with its fists (Entity.fists), at the Thrall's reach and pace of blows.
  */
-export const BOMBARD_RANGE_TILES = t(19);
+export const BOMBARD_RANGE_TILES = t(21);
 /** Just past the round's own splash: it never bursts on the Bombard. */
 export const BOMBARD_MIN_RANGE_TILES = t(2);
 /** The cannon's energy cell: every round draws one shot, and each regrows slowly. */
@@ -4768,7 +4768,7 @@ export const ARK_PLASMA_BALL: LobShellDef = {
   flightFar: 5.4,
   apexNear: 90,
   apexFar: 160,
-  armorChip: 0.3,
+  armorChip: 0.08,
   trackChance: 0.4,
 };
 /** Seconds one cannon takes to charge its next ball after it fires. */
@@ -4937,7 +4937,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Fusion Node",
     letter: "F",
     cost: 0,
-    buildSeconds: 12,
+    buildSeconds: 30,
     hp: 650,
     power: 0,
     tileW: t(2),
@@ -6349,7 +6349,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Sim Unit II",
     letter: "I",
     cost: 0,
-    energy: 150,
+    energy: 110,
     buildSeconds: 14,
     hp: 220,
     power: 0,
@@ -6375,7 +6375,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Drone",
     letter: "o",
     cost: 0,
-    energy: 62.5,
+    energy: 60,
     buildSeconds: 10,
     hp: 150,
     power: 0,
@@ -6401,7 +6401,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Thrall",
     letter: "a",
     cost: 0,
-    energy: 20,
+    energy: 30,
     buildSeconds: 6,
     hp: 200,
     power: 0,
@@ -6427,7 +6427,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Lancer",
     letter: "j",
     cost: 0,
-    energy: 125,
+    energy: 110,
     buildSeconds: 14,
     hp: 240,
     power: 0,
@@ -6454,7 +6454,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Bombard",
     letter: "i",
     cost: 0,
-    energy: 112.5,
+    energy: 90,
     buildSeconds: 13,
     hp: 200,
     power: 0,
@@ -6482,7 +6482,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Weaver",
     letter: "w",
     cost: 0,
-    energy: 87.5,
+    energy: 100,
     buildSeconds: 11,
     hp: 160,
     power: 0,
@@ -6507,7 +6507,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Shade",
     letter: "h",
     cost: 0,
-    energy: 100,
+    energy: 125,
     buildSeconds: 12,
     hp: 110,
     power: 0,
@@ -6535,7 +6535,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Stalker",
     letter: "y",
     cost: 0,
-    energy: 120,
+    energy: 90,
     buildSeconds: 15,
     hp: 135,
     power: 0,
@@ -6571,7 +6571,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Ravager",
     letter: "v",
     cost: 0,
-    energy: 90,
+    energy: 60,
     buildSeconds: 13,
     hp: 115,
     power: 0,
@@ -6608,7 +6608,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Behemoth",
     letter: "b",
     cost: 0,
-    energy: 1500,
+    energy: 1400,
     buildSeconds: 26,
     hp: 240,
     power: 0,
@@ -6647,7 +6647,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Juggernaut",
     letter: "z",
     cost: 0,
-    energy: 2000,
+    energy: 1800,
     buildSeconds: 24,
     hp: 42000,
     power: 0,
@@ -6683,7 +6683,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Siphon",
     letter: "s",
     cost: 0,
-    energy: 500,
+    energy: 450,
     buildSeconds: 16,
     hp: 140,
     power: 0,
@@ -6748,7 +6748,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Mawcaster",
     letter: "c",
     cost: 0,
-    energy: 800,
+    energy: 550,
     buildSeconds: 18,
     hp: 100,
     power: 0,
@@ -6811,7 +6811,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Nanite Forge",
     letter: "N",
     cost: 0,
-    energy: 315,
+    energy: 220,
     buildSeconds: 20,
     hp: 1000,
     power: 0,
@@ -6859,7 +6859,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Fusion Core",
     letter: "C",
     cost: 0,
-    buildSeconds: 8 * 12,
+    buildSeconds: 120,
     hp: 1200,
     power: 0,
     tileW: t(3),
@@ -6882,7 +6882,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Spine Turret",
     letter: "s",
     cost: 0,
-    energy: 120,
+    energy: 150,
     buildSeconds: 9,
     hp: 500,
     power: 0,
@@ -6941,7 +6941,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Pulse Spire",
     letter: "q",
     cost: 0,
-    energy: 300,
+    energy: 450,
     buildSeconds: 14,
     hp: 800,
     power: 0,
@@ -7005,7 +7005,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Spawning Pool",
     letter: "W",
     cost: 0,
-    energy: 560,
+    energy: 320,
     buildSeconds: 20,
     hp: 1000,
     power: 0,
@@ -7056,7 +7056,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     cost: 0,
     energy: 160,
     buildSeconds: 10,
-    hp: 75,
+    hp: 70,
     power: 0,
     tileW: 1,
     tileH: 1,
@@ -7090,7 +7090,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Lurker",
     letter: "k",
     cost: 0,
-    energy: 800,
+    energy: 350,
     buildSeconds: 16,
     hp: 160,
     power: 0,
@@ -7127,7 +7127,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Hive Ark",
     letter: "a",
     cost: 0,
-    energy: 2500,
+    energy: 2200,
     buildSeconds: 34,
     hp: 7500,
     power: 0,
@@ -7161,7 +7161,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Wasp",
     letter: "w",
     cost: 0,
-    energy: 210,
+    energy: 220,
     buildSeconds: 22,
     hp: 90,
     power: 0,
@@ -7192,7 +7192,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Scourge",
     letter: "g",
     cost: 0,
-    energy: 320,
+    energy: 450,
     buildSeconds: 20,
     hp: 115,
     power: 0,
@@ -7223,7 +7223,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Overseer",
     letter: "z",
     cost: 0,
-    energy: 260,
+    energy: 300,
     buildSeconds: 22,
     hp: 130,
     power: 0,
@@ -7252,7 +7252,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Gnat",
     letter: "q",
     cost: 0,
-    energy: 90,
+    energy: 100,
     buildSeconds: 6,
     hp: 22,
     power: 0,

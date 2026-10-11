@@ -25,11 +25,11 @@ function put(state: MatchState, type: Parameters<typeof makeEntity>[1], owner: s
 }
 
 describe("Fusion Core", () => {
-  it("takes as long to raise as eight Fusion Nodes and stores 2000 hive energy while it stands", () => {
-    assert.equal(catalog("fusioncore").buildSeconds, 8 * catalog("fusionnode").buildSeconds);
-    assert.equal(FUSION_CORE_ENERGY, 2000);
+  it("takes as long to raise as four Fusion Nodes and stores 1000 hive energy while it stands", () => {
+    assert.equal(catalog("fusioncore").buildSeconds, 4 * catalog("fusionnode").buildSeconds);
+    assert.equal(FUSION_CORE_ENERGY, 1000);
     assert.equal(FUSION_CORE_ENERGY, 4 * FUSION_NODE_ENERGY);
-    assert.equal(energySupplyOf("fusioncore"), 2000);
+    assert.equal(energySupplyOf("fusioncore"), 1000);
     assert.equal(catalog("fusioncore").cost, 0, "the Xenite pay no scrap");
     assert.equal(catalog("fusioncore").energy ?? 0, 0, "it is a supplier, not a drain");
   });
