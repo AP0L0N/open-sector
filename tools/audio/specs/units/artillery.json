@@ -49,7 +49,7 @@
   },
   "sfx": {
     "fire": {
-      "prompt": "Distant, thunderous boom of a World War 2 105mm field howitzer firing in an open field, the blast shaking the ground and echoing off the hills for seconds.",
+      "prompt": "Distant, thunderous boom of a modern 155mm field howitzer firing in an open field, the blast shaking the ground and echoing off the hills for seconds.",
       "duration": 5.0,
       "variants": 3,
       "influence": 0.6,

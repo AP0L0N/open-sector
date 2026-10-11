@@ -15,9 +15,9 @@ Example:
       --src blender/tanks/tiger \\
       --hull-subdir husk --turret-subdir turret \\
       --id tiger --cell 128 --contact-y 0.92 --padding 4 \\
-      --out-hull gridlock/packages/client/src/assets/units/tiger-hull.png \\
-      --out-turret gridlock/packages/client/src/assets/units/tiger-turret.png \\
-      --out-cameo gridlock/packages/client/src/assets/units/tiger-cameo.png
+      --out-hull gridlock/packages/client/src/assets/units/warden-hull.png \\
+      --out-turret gridlock/packages/client/src/assets/units/warden-turret.png \\
+      --out-cameo gridlock/packages/client/src/assets/units/warden-cameo.png
 """
 
 from __future__ import annotations
@@ -162,7 +162,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--cell", type=int, default=128)
     p.add_argument("--contact-y", type=float, default=0.92)
     p.add_argument("--padding", type=int, default=4)
-    p.add_argument("--id", default="tiger")
+    p.add_argument("--id", default="warden")
     p.add_argument("--out-hull", type=Path, required=True)
     p.add_argument("--out-turret", type=Path, required=True)
     p.add_argument("--out-cameo", type=Path, default=None)

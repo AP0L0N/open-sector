@@ -50,7 +50,7 @@
   },
   "sfx": {
     "move": {
-      "prompt": "Light WWII military truck engine starting and revving, gears crunching, pulling away on dirt road, close, no music, no voice",
+      "prompt": "Modern military truck engine starting and revving, gears crunching, pulling away on dirt road, close, no music, no voice",
       "duration": 2.0,
       "variants": 1,
       "influence": 0.6

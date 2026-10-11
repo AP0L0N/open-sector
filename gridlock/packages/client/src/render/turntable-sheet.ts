@@ -18,17 +18,17 @@ const TIGER_OPTS: TurntableSheetOpts = {
   cameoSize: 128,
 };
 
-const hullGlob = import.meta.glob("../assets/units/tiger/hull/*.png", {
+const hullGlob = import.meta.glob("../assets/units/warden/hull/*.png", {
   eager: true,
   import: "default",
 }) as Record<string, string>;
 
-const turretGlob = import.meta.glob("../assets/units/tiger/turret/*.png", {
+const turretGlob = import.meta.glob("../assets/units/warden/turret/*.png", {
   eager: true,
   import: "default",
 }) as Record<string, string>;
 
-const tigerGunGlob = import.meta.glob("../assets/units/tiger/gun/*.png", {
+const tigerGunGlob = import.meta.glob("../assets/units/warden/gun/*.png", {
   eager: true,
   import: "default",
 }) as Record<string, string>;
@@ -436,7 +436,7 @@ async function composeAligned(
   return { sheetUrls, cameoUrl };
 }
 
-function applyCameo(url: string, cssVar = "--tiger-cameo"): void {
+function applyCameo(url: string, cssVar = "--warden-cameo"): void {
   document.documentElement.style.setProperty(cssVar, `url("${url}")`);
 }
 

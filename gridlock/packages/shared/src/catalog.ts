@@ -2046,7 +2046,7 @@ export const BEHEMOTH_PULSE_MODES: readonly {
   {
     id: "high",
     name: "High Pulse",
-    blurb: "Full-power bolts: one a barrel, then the long reload. Goes through a Tiger's front plate; hits hardest up close.",
+    blurb: "Full-power bolts: one a barrel, then the long reload. Goes through a Warden's front plate; hits hardest up close.",
     damageMul: 1,
     cooldownMul: 1,
     energy: 1,
@@ -3938,7 +3938,7 @@ export const TITAN_NUKE = {
 export const DECK_MG: InfantryGun = {
   id: "deckmg",
   name: "Deck MG",
-  blurb: "Heavy machine gun in a shielded tub on the LST's deck. Long belts, reaches past a rifle, chews through light plate, and tracks aircraft.",
+  blurb: "Heavy machine gun in a shielded tub on the Landing Ship's deck. Long belts, reaches past a rifle, chews through light plate, and tracks aircraft.",
   damage: 11,
   penetration: 14,
   caliber: 12,
@@ -4222,7 +4222,7 @@ export const SHELLS: Record<ShellType, ShellDef> = {
   smoke: {
     id: "smoke",
     name: "Smoke",
-    blurb: "Not carried. Screen a Tiger with an Apocalypse.",
+    blurb: "Not carried. Screen a Warden with an Apocalypse.",
     damage: 0,
     penetration: 0,
     caliber: 75,
@@ -4238,7 +4238,7 @@ export const STUG_SHELLS: Record<ShellType, ShellDef> = {
   ap: {
     id: "ap",
     name: "AP",
-    blurb: "Pzgr. 39 APCBC. Kills mediums from the front; glances off a Tiger glacis. Use a flank or HEAT on heavies.",
+    blurb: "Armor-piercing sabot. Kills mediums from the front; glances off a Warden glacis. Use a flank or HEAT on heavies.",
     damage: 48,
     penetration: 72,
     caliber: 75,
@@ -4256,7 +4256,7 @@ export const STUG_SHELLS: Record<ShellType, ShellDef> = {
   heat: {
     id: "heat",
     name: "HEAT",
-    blurb: "Gr. 38 HL/C. About 100 mm any range. The round for a Tiger front when you cannot get a side shot.",
+    blurb: "Shaped-charge HEAT. About 100 mm any range. The round for a Warden front when you cannot get a side shot.",
     damage: 56,
     penetration: 100,
     caliber: 75,
@@ -4265,7 +4265,7 @@ export const STUG_SHELLS: Record<ShellType, ShellDef> = {
   smoke: {
     id: "smoke",
     name: "Smoke",
-    blurb: "Not carried. Screen a StuG with an Apocalypse.",
+    blurb: "Not carried. Screen a Vanguard with an Apocalypse.",
     damage: 0,
     penetration: 0,
     caliber: 75,
@@ -4278,7 +4278,7 @@ export const PAK36_SHELLS: Record<ShellType, ShellDef> = {
   ap: {
     id: "ap",
     name: "AP",
-    blurb: "3.7cm Pzgr. 39. Holes light hulls anywhere and a Tiger's side or rear. Glances off any heavy front.",
+    blurb: "37mm armor-piercing. Holes light hulls anywhere and a Warden's side or rear. Glances off any heavy front.",
     damage: 40,
     penetration: 48,
     caliber: 37,
@@ -4310,7 +4310,7 @@ export const PULSE_SPIRE_SHELLS: Record<ShellType, ShellDef> = {
   ap: {
     id: "ap",
     name: "Pulse",
-    blurb: "Armor-piercing pulse. Goes through a Tiger's front plate; a Jagdtiger's front holds.",
+    blurb: "Armor-piercing pulse. Goes through a Warden's front plate; a Breaker's front holds.",
     damage: 70,
     penetration: 130,
     caliber: 75,
@@ -4350,7 +4350,7 @@ export const JAGDTIGER_SHELLS: Record<ShellType, ShellDef> = {
   ap: {
     id: "ap",
     name: "AP",
-    blurb: "128mm armor-piercing. Goes through any front plate on the field. One hit usually kills a Tiger from any side.",
+    blurb: "128mm armor-piercing. Goes through any front plate on the field. One hit usually kills a Warden from any side.",
     damage: 90,
     penetration: 200,
     caliber: 128,
@@ -4377,7 +4377,7 @@ export const JAGDTIGER_SHELLS: Record<ShellType, ShellDef> = {
   smoke: {
     id: "smoke",
     name: "Smoke",
-    blurb: "Not carried. Screen a Jagdtiger with an Apocalypse.",
+    blurb: "Not carried. Screen a Breaker with an Apocalypse.",
     damage: 0,
     penetration: 0,
     caliber: 128,
@@ -4393,7 +4393,7 @@ export const APOCALYPSE_SHELLS: Record<ShellType, ShellDef> = {
   ap: {
     id: "ap",
     name: "AP",
-    blurb: "Armor-piercing. The second barrel follows a moment later. Goes through a Tiger's front plate.",
+    blurb: "Armor-piercing. The second barrel follows a moment later. Goes through a Warden's front plate.",
     damage: 60,
     penetration: 125,
     caliber: 105,
@@ -5035,7 +5035,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `Concrete strip with four revetted hardstands beside it. Trains dive bombers, fighters, and the BV 222 transport and keeps up to ${AIRFIELD_PADS}. Planes land here to refuel, rearm, and patch up.`,
+    blurb: `Concrete strip with four revetted hardstands beside it. Trains dive bombers, fighters, and the Pelican transport and keeps up to ${AIRFIELD_PADS}. Planes land here to refuel, rearm, and patch up.`,
   },
   dock: {
     type: "dock",
@@ -5080,7 +5080,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Tiger, Apocalypse, Jagdtiger, Titan, Nebelwerfer, Drone Op, Submarine, and Destroyer, and with a Radar Station the Battle Ship.",
+    blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Warden, Apocalypse, Breaker, Titan, Hailstorm, Drone Op, Submarine, and Destroyer, and with a Radar Station the Battle Ship.",
   },
   cyborgcentral: {
     type: "cyborgcentral",
@@ -5255,7 +5255,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rockets: true,
     rocketAmmo: RAM_ROCKET_AMMO,
     rocketRack: RAM_ROCKET,
-    blurb: `Radar-laid rocket launcher on a concrete pad. Fires on its own at any enemy unit it can hurt, planes and paratroopers under canopies first, in barrages of ${RAM_SALVO} short, accurate rockets, out to its full reach in fog or in the dark, and sends an interceptor at incoming rockets that bursts nine in ten of them in the air. Shorter reach than a Nebelwerfer, longer than a CIWS. Max range reaches half as far again, but out there the rockets scatter wide. Leaves tanks and buildings alone. The ${RAM_ROCKET_AMMO}-rocket rack does not refill by itself — bring a supply truck.`,
+    blurb: `Radar-laid rocket launcher on a concrete pad. Fires on its own at any enemy unit it can hurt, planes and paratroopers under canopies first, in barrages of ${RAM_SALVO} short, accurate rockets, out to its full reach in fog or in the dark, and sends an interceptor at incoming rockets that bursts nine in ten of them in the air. Shorter reach than a Hailstorm, longer than a CIWS. Max range reaches half as far again, but out there the rockets scatter wide. Leaves tanks and buildings alone. The ${RAM_ROCKET_AMMO}-rocket rack does not refill by itself — bring a supply truck.`,
   },
   tobruk: {
     type: "tobruk",
@@ -5503,7 +5503,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     garrisonSightBonus: 0,
     garrisonTypes: BUNKER_TYPES,
     capturable: false,
-    blurb: `Light 37mm anti-tank gun behind a low shield, worked by one man, who comes with it. Fires armor-piercing shells like a StuG's: holes a light hull anywhere and a Tiger in the side or rear, never its front. Tanks first. Traverses only ${PAK36_ARC_DEG}° either side of the way it was turned — set it facing the road. ${PAK36_RACK} shells by the gun; a supply truck brings more. Rifle fire on it finds the gunner: with nobody at it, it falls silent until another soldier takes his place. Cannot move.`,
+    blurb: `Light 37mm anti-tank gun behind a low shield, worked by one man, who comes with it. Fires armor-piercing shells like a Vanguard's: holes a light hull anywhere and a Warden in the side or rear, never its front. Tanks first. Traverses only ${PAK36_ARC_DEG}° either side of the way it was turned — set it facing the road. ${PAK36_RACK} shells by the gun; a supply truck brings more. Rifle fire on it finds the gunner: with nobody at it, it falls silent until another soldier takes his place. Cannot move.`,
   },
   pak43: {
     type: "pak43",
@@ -5791,7 +5791,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     capturable: false,
-    blurb: "Timber trestle bridge, one tank wide. Draw it like a wall, from where it should start: the deck keeps that ground's level all the way across, over water or dry ground, and the engineer lays it bay by bay. Built high off a bank, small boats sail under it; the Transport LST and the Battle Ship never do. Anyone can cross. Only a force-attack aims at it; a few shells drop one bay into the water while the rest stands. The wreckage stays and an engineer can rebuild it.",
+    blurb: "Timber trestle bridge, one tank wide. Draw it like a wall, from where it should start: the deck keeps that ground's level all the way across, over water or dry ground, and the engineer lays it bay by bay. Built high off a bank, small boats sail under it; the Landing Ship and the Battle Ship never do. Anyone can cross. Only a force-attack aims at it; a few shells drop one bay into the water while the rest stands. The wreckage stays and an engineer can rebuild it.",
   },
   bigbridge: {
     type: "bigbridge",
@@ -5814,7 +5814,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     capturable: false,
-    blurb: "Masonry arch bridge on stone piers, two tanks wide. Draw it like a wall, from where it should start: the deck keeps that ground's level all the way across, over water or dry ground, and the engineer raises it span by span. Built high off a bank, small boats sail under it; the Transport LST and the Battle Ship never do. Anyone can cross. Only a force-attack aims at it, and it takes a long shelling to drop one span into the water while the rest stands. The wreckage stays and an engineer can rebuild it.",
+    blurb: "Masonry arch bridge on stone piers, two tanks wide. Draw it like a wall, from where it should start: the deck keeps that ground's level all the way across, over water or dry ground, and the engineer raises it span by span. Built high off a bank, small boats sail under it; the Landing Ship and the Battle Ship never do. Anyone can cross. Only a force-attack aims at it, and it takes a long shelling to drop one span into the water while the rest stands. The wreckage stays and an engineer can rebuild it.",
   },
   rifleman: {
     type: "rifleman",
@@ -6068,7 +6068,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
   warden: {
     type: "warden",
     kind: "unit",
-    name: "Tiger",
+    name: "Warden",
     letter: "W",
     cost: 500,
     buildSeconds: 12,
@@ -6137,13 +6137,13 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     mgAmmo: APOCALYPSE_CIWS_BELT,
     leavesWreck: true,
     wreckHp: 55,
-    blurb: `Super-heavy tank. Two 105mm guns on one turret fire one after the other, a short gap and then a long reload, through a Tiger's front plate. Thick plate on every face, a slow hull and a slow turret. It rolls flat an enemy StuG, Walker, supply truck, Nebelwerfer, or field gun in its path, and leaves no wreck. It drives straight through woods, felling every tree it brushes; it runs down a Cyborg, but the Cyborg Commander is too big to go under. A small radar-laid 20mm CIWS on the turret roof lays itself, apart from the main guns: incoming missiles first, and it bursts some of them, then planes, infantry, and sometimes a Walker or a truck. A secondary mount, it sprays wider than a pad CIWS and overheats after a little over a second on the trigger. The ${APOCALYPSE_CIWS_BELT}-round belt refills only from a supply truck.`,
+    blurb: `Super-heavy tank. Two 105mm guns on one turret fire one after the other, a short gap and then a long reload, through a Warden's front plate. Thick plate on every face, a slow hull and a slow turret. It rolls flat an enemy Vanguard, Walker, supply truck, Hailstorm, or field gun in its path, and leaves no wreck. It drives straight through woods, felling every tree it brushes; it runs down a Cyborg, but the Cyborg Commander is too big to go under. A small radar-laid 20mm CIWS on the turret roof lays itself, apart from the main guns: incoming missiles first, and it bursts some of them, then planes, infantry, and sometimes a Walker or a truck. A secondary mount, it sprays wider than a pad CIWS and overheats after a little over a second on the trigger. The ${APOCALYPSE_CIWS_BELT}-round belt refills only from a supply truck.`,
   },
   /** Spec: gridlock/packages/client/src/assets/units/ss3/stug-iii-ausf-g-late-saukopf.md */
   ss3: {
     type: "ss3",
     kind: "unit",
-    name: "StuG III",
+    name: "Vanguard",
     letter: "G",
     cost: 300,
     buildSeconds: 10,
@@ -6181,7 +6181,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
   jagdtiger: {
     type: "jagdtiger",
     kind: "unit",
-    name: "Jagdtiger",
+    name: "Breaker",
     letter: "d",
     cost: 3000,
     buildSeconds: 18,
@@ -6213,13 +6213,13 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     leavesWreck: true,
     wreckHp: 50,
     hasScout: true,
-    blurb: "Heavy tank destroyer. No turret: the 128mm sits in a fixed casemate and swings only a little either side of the nose, so the slow hull must turn to aim. The thickest front plate on the field, heavy sides, a thin rear. Its armor-piercing shell goes through any front plate and usually kills a Tiger in one hit, from the longest reach of any tank gun. A long reload between shots, and no HEAT or smoke on the rack.",
+    blurb: "Heavy tank destroyer. No turret: the 128mm sits in a fixed casemate and swings only a little either side of the nose, so the slow hull must turn to aim. The thickest front plate on the field, heavy sides, a thin rear. Its armor-piercing shell goes through any front plate and usually kills a Warden in one hit, from the longest reach of any tank gun. A long reload between shots, and no HEAT or smoke on the rack.",
   },
   /** Flame tank: two CIWS mounts on the deck, a flame projector fixed in the bow. */
   feuerwirbel: {
     type: "feuerwirbel",
     kind: "unit",
-    name: "Feuerwirbel",
+    name: "Firestorm",
     letter: "F",
     cost: 450,
     buildSeconds: 12,
@@ -6254,7 +6254,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     leavesWreck: true,
     wreckHp: 30,
     hasScout: true,
-    blurb: `Flame tank. Two CIWS mounts on the deck, fore and aft, each a gatling of ${FEUERWIRBEL_MOUNT_SHOTS_PER_TICK * 10} rounds a second on the fastest traverse on the field. Each picks its own target: with two or more enemies in reach they never share one. They look for anything in the air first, then cut down soldiers, and sometimes bite a Walker or a truck. Tank plate turns them, and they do not bring a building down. Each overheats after a little under three seconds on the trigger. A flame projector fixed in the bow fires on its own at soldiers and soft vehicles inside a short reach, but only where the nose points; the driver turns the hull onto a target close enough to burn. The jet burns every soldier in its path, friends too, so it holds while one stands in the line. The ${FEUERWIRBEL_BELT}-round belt and ${HULL_FLAMER_BURSTS} bursts of fuel refill only from a supply truck. Lighter plate than a Tiger.`,
+    blurb: `Flame tank. Two CIWS mounts on the deck, fore and aft, each a gatling of ${FEUERWIRBEL_MOUNT_SHOTS_PER_TICK * 10} rounds a second on the fastest traverse on the field. Each picks its own target: with two or more enemies in reach they never share one. They look for anything in the air first, then cut down soldiers, and sometimes bite a Walker or a truck. Tank plate turns them, and they do not bring a building down. Each overheats after a little under three seconds on the trigger. A flame projector fixed in the bow fires on its own at soldiers and soft vehicles inside a short reach, but only where the nose points; the driver turns the hull onto a target close enough to burn. The jet burns every soldier in its path, friends too, so it holds while one stands in the line. The ${FEUERWIRBEL_BELT}-round belt and ${HULL_FLAMER_BURSTS} bursts of fuel refill only from a supply truck. Lighter plate than a Warden.`,
   },
   walker: {
     type: "walker",
@@ -6560,7 +6560,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     defaultShell: "ap",
     leavesWreck: true,
     wreckHp: 35,
-    blurb: `Heavy assimilator on four long legs, a domed turret on its back. The disruptor throws a piercing plasma bolt about as hard as a Tiger's shell, or a scattering burst for soldiers, from a little less reach. Thinner in front than a Tiger, but its legs turn it quicker. No tracks to lose. Cloak bends the light round it for ${STALKER_CLOAK_SECONDS} seconds: no enemy sees it or can pick it, and it walks unseen. Cloaked, it fires only at what you name, and that shot drops the cloak; then it needs ${STALKER_CLOAK_COOLDOWN_SECONDS} seconds before it can cloak again. Each bolt draws on an energy cell that holds 4 and regrows one every 12 seconds: a short burst, then it waits on the cell.`,
+    blurb: `Heavy assimilator on four long legs, a domed turret on its back. The disruptor throws a piercing plasma bolt about as hard as a Warden's shell, or a scattering burst for soldiers, from a little less reach. Thinner in front than a Warden, but its legs turn it quicker. No tracks to lose. Cloak bends the light round it for ${STALKER_CLOAK_SECONDS} seconds: no enemy sees it or can pick it, and it walks unseen. Cloaked, it fires only at what you name, and that shot drops the cloak; then it needs ${STALKER_CLOAK_COOLDOWN_SECONDS} seconds before it can cloak again. Each bolt draws on an energy cell that holds 4 and regrows one every 12 seconds: a short burst, then it waits on the cell.`,
   },
   /** Xenite heavy assimilator: fast raptor hull, spine gatling turret, nanite flamer in the jaw. */
   ravager: {
@@ -6636,7 +6636,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     shellResist: BEHEMOTH_SHELL_RESIST,
     leavesWreck: true,
     wreckHp: 60,
-    blurb: `The largest of the heavy assimilators: a carapace on six legs with twin plasma disruptors on one turret. They fire one after the other, a short gap and then a long reload, through a Tiger's front plate, from farther than any tank but the Jagdtiger. A bolt hits hardest up close: ${BEHEMOTH_PULSE_NEAR_MUL}× at the muzzle, falling to ${BEHEMOTH_PULSE_FAR_MUL}× at full range. High Pulse fires full bolts; Light Pulse is rapid fire: a bolt more than once a second at an eighth of the damage, cheap enough on the cell never to run it dry. The layered carapace sheds part of every shell that hits it (it takes ${Math.round(BEHEMOTH_SHELL_RESIST * 100)}% of the damage). Slow on its legs and slow on the turret, it walks straight through woods, felling every tree it brushes. Lunge throws it up and forward up to ${BEHEMOTH_LUNGE_RANGE_TILES / TILE_SUBDIV} cells; where it lands, ${BEHEMOTH_RING_SWEEPS} green laser sweeps lash out round it, burning enemy soldiers and setting the ground alight. The legs need ${BEHEMOTH_LUNGE_RECHARGE_SECONDS} seconds before the next. With the legs charged it lunges by itself at an enemy unit it is fighting ${BEHEMOTH_AUTO_LUNGE_MIN_TILES / TILE_SUBDIV} cells off or more, unless told to hold position. In a fight it throws a curved energy wall across its front, ${BEHEMOTH_SHIELD.hp} points strong: the wall stays where it went up, stops every enemy round and beam that meets it, and no enemy walks through it, while the Behemoth walks and fires through as if it were not there. It stands ${BEHEMOTH_SHIELD.seconds} seconds unless shot down; ${BEHEMOTH_SHIELD.rechargeSeconds} seconds after it falls, the next. Each barrel's bolt draws on an energy cell that holds 6 and regrows one every 9 seconds. Needs a Neural Nexus.`,
+    blurb: `The largest of the heavy assimilators: a carapace on six legs with twin plasma disruptors on one turret. They fire one after the other, a short gap and then a long reload, through a Warden's front plate, from farther than any tank but the Breaker. A bolt hits hardest up close: ${BEHEMOTH_PULSE_NEAR_MUL}× at the muzzle, falling to ${BEHEMOTH_PULSE_FAR_MUL}× at full range. High Pulse fires full bolts; Light Pulse is rapid fire: a bolt more than once a second at an eighth of the damage, cheap enough on the cell never to run it dry. The layered carapace sheds part of every shell that hits it (it takes ${Math.round(BEHEMOTH_SHELL_RESIST * 100)}% of the damage). Slow on its legs and slow on the turret, it walks straight through woods, felling every tree it brushes. Lunge throws it up and forward up to ${BEHEMOTH_LUNGE_RANGE_TILES / TILE_SUBDIV} cells; where it lands, ${BEHEMOTH_RING_SWEEPS} green laser sweeps lash out round it, burning enemy soldiers and setting the ground alight. The legs need ${BEHEMOTH_LUNGE_RECHARGE_SECONDS} seconds before the next. With the legs charged it lunges by itself at an enemy unit it is fighting ${BEHEMOTH_AUTO_LUNGE_MIN_TILES / TILE_SUBDIV} cells off or more, unless told to hold position. In a fight it throws a curved energy wall across its front, ${BEHEMOTH_SHIELD.hp} points strong: the wall stays where it went up, stops every enemy round and beam that meets it, and no enemy walks through it, while the Behemoth walks and fires through as if it were not there. It stands ${BEHEMOTH_SHIELD.seconds} seconds unless shot down; ${BEHEMOTH_SHIELD.rechargeSeconds} seconds after it falls, the next. Each barrel's bolt draws on an energy cell that holds 6 and regrows one every 9 seconds. Needs a Neural Nexus.`,
   },
   /** Xenite heavy assimilator: a giant on two legs with a two-handed hammer. Melee only. */
   juggernaut: {
@@ -6776,7 +6776,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rocketRack: MAWCASTER_POD,
     airRack: MAWCASTER_AIR_BALL,
     plasmaCell: MAWCASTER_CELL,
-    blurb: `Plasma artillery on four legs. Ground attacks: the maw throws ${MAWCASTER_SALVO} plasma balls a salvo on a high arc over your own troops, from nearly the Nebelwerfer's reach. Force attack sends them anywhere in that reach, seen or not. It will not fire inside ${MAWCASTER_MIN_RANGE_TILES / TILE_SUBDIV} cells, and must stop and swing the maw onto the target first. The balls scatter wide at full reach: a salvo blankets an area and shreds soldiers in the open; armor only dents. Now and then one leaves burning bile on the ground. Air attacks: it leaves the ground alone and spits smaller balls, ${MAWCASTER_AIR_SALVO} at a time and quick, straight at planes, Jump Jets, and low drones within ${MAWCASTER_AIR_RANGE_TILES / TILE_SUBDIV} cells; each bursts at the flier's height. Every ball draws on an energy cell that holds ${MAWCASTER_CELL.shots} and regrows one every ${MAWCASTER_CELL.rechargeSeconds} seconds. Thin hide and short eyes — keep it behind the line.`,
+    blurb: `Plasma artillery on four legs. Ground attacks: the maw throws ${MAWCASTER_SALVO} plasma balls a salvo on a high arc over your own troops, from nearly the Hailstorm's reach. Force attack sends them anywhere in that reach, seen or not. It will not fire inside ${MAWCASTER_MIN_RANGE_TILES / TILE_SUBDIV} cells, and must stop and swing the maw onto the target first. The balls scatter wide at full reach: a salvo blankets an area and shreds soldiers in the open; armor only dents. Now and then one leaves burning bile on the ground. Air attacks: it leaves the ground alone and spits smaller balls, ${MAWCASTER_AIR_SALVO} at a time and quick, straight at planes, Jump Jets, and low drones within ${MAWCASTER_AIR_RANGE_TILES / TILE_SUBDIV} cells; each bursts at the flier's height. Every ball draws on an energy cell that holds ${MAWCASTER_CELL.shots} and regrows one every ${MAWCASTER_CELL.rechargeSeconds} seconds. Thin hide and short eyes — keep it behind the line.`,
   },
   /** Xenite infantry: the hive's barracks, and the synapse link its foot soldiers run on. */
   conversion: {
@@ -6967,7 +6967,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     armorFirst: true,
     poweredGun: true,
     capturable: false,
-    blurb: `A tall spire with a long emitter and a ring of green fire. Nobody works it: it turns all the way round, slowly, and throws a piercing energy pulse through a Tiger's front plate from farther than a Pak 36 reaches. Tanks first. Each pulse draws on an energy cell that holds 8 and regrows one every 6 seconds. Takes hive energy while it stands; offline, it falls silent. Needs a Neural Nexus. Cannot move.`,
+    blurb: `A tall spire with a long emitter and a ring of green fire. Nobody works it: it turns all the way round, slowly, and throws a piercing energy pulse through a Warden's front plate from farther than a Pak 36 reaches. Tanks first. Each pulse draws on an energy cell that holds 8 and regrows one every 6 seconds. Takes hive energy while it stands; offline, it falls silent. Needs a Neural Nexus. Cannot move.`,
   },
   /** Xenite curtain emitter: a low core holding a wide energy wall across its front (sim/energy-shield.ts). */
   energywall: {
@@ -7268,7 +7268,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     aircraft: true,
     recon: true,
     wreckHp: 6,
-    blurb: `A spy fly the size of a man on buzzing wings, grown in the Aerie in a few seconds for a sliver of hive energy. No weapon: one great sensor eye. It flies as high as the Horten VII and sees almost as far from up there, ${(t(11) + HORTEN_FLYING_SIGHT_BONUS) / TILE_SUBDIV} tiles around it. Only anti-air guns and a fighter that climbs after it can reach it, but its shell is paper: one burst brings it down. It never lands and never tires. Send it at a point or a unit and it flies straight over and hangs there, following a unit it can see; on guard or patrol it keeps watching the area.`,
+    blurb: `A spy fly the size of a man on buzzing wings, grown in the Aerie in a few seconds for a sliver of hive energy. No weapon: one great sensor eye. It flies as high as the Wraith and sees almost as far from up there, ${(t(11) + HORTEN_FLYING_SIGHT_BONUS) / TILE_SUBDIV} tiles around it. Only anti-air guns and a fighter that climbs after it can reach it, but its shell is paper: one burst brings it down. It never lands and never tires. Send it at a point or a unit and it flies straight over and hangs there, following a unit it can see; on guard or patrol it keeps watching the area.`,
   },
   // ── The Bloom ───────────────────────────────────────────────────────────────────────────
   /** Bloom HQ on the move: a fat seed-pod on root legs. */
@@ -7546,7 +7546,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     armorFirst: true,
     poweredGun: true,
     capturable: false,
-    blurb: "A tall curled stalk planted like a scorpion's tail, an acid gland at its tip. Nobody works it: it swings round and spits a bolt of acid that eats through a Tiger's front plate. Tanks first. The gland refills by itself. Short on power, it falls silent. Needs a Brain Coral. Cannot move.",
+    blurb: "A tall curled stalk planted like a scorpion's tail, an acid gland at its tip. Nobody works it: it swings round and spits a bolt of acid that eats through a Warden's front plate. Tanks first. The gland refills by itself. Short on power, it falls silent. Needs a Brain Coral. Cannot move.",
   },
   /** Bloom anti-air: a mushroom that bursts spore clouds among planes. */
   puffcap: {
@@ -7866,7 +7866,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     caliber: 0,
     spreadDeg: 0,
     bite: true,
-    blurb: "A rhino-beetle the size of a tank, with a plated head shield and two great tusks. No gun: it charges and gores what it reaches. One thrust kills a soldier; a hull's plate gives under the tusks, a wall more slowly. Its head shield is as thick as a Tiger's front, its flanks are not. Dead, it melts into the mud and leaves no wreck.",
+    blurb: "A rhino-beetle the size of a tank, with a plated head shield and two great tusks. No gun: it charges and gores what it reaches. One thrust kills a soldier; a hull's plate gives under the tusks, a wall more slowly. Its head shield is as thick as a Warden's front, its flanks are not. Dead, it melts into the mud and leaves no wreck.",
   },
   /** Bloom main battle beast: a mantis torso on a six-legged abdomen. */
   mantis: {
@@ -7898,7 +7898,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: 3,
     ammo: { ap: 12, he: 6 },
     defaultShell: "ap",
-    blurb: "An upright mantis torso on a six-legged abdomen, an acid gland cannon between its raptor arms. The torso turns on its own like a turret. It spits a piercing bolt about as hard as a Tiger's shell, or a splash of acid for soldiers. Thinner than a Tiger, quicker on its legs, and it heals between fights. Dead, it melts into the mud and leaves no wreck.",
+    blurb: "An upright mantis torso on a six-legged abdomen, an acid gland cannon between its raptor arms. The torso turns on its own like a turret. It spits a piercing bolt about as hard as a Warden's shell, or a splash of acid for soldiers. Thinner than a Warden, quicker on its legs, and it heals between fights. Dead, it melts into the mud and leaves no wreck.",
   },
   /** Bloom acid worm: sprays acid from its ring mouth and burrows. */
   bileworm: {
@@ -7963,7 +7963,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rockets: true,
     rocketAmmo: NEBELWERFER_ROCKET_AMMO,
     rocketRack: NEBELWERFER_ROCKET,
-    blurb: "A toad-like beast with a vast sac on its back. It squats, turns to face the target, and vents a volley of spore bombs high over the line: the longest reach on the field, as far as the Nebelwerfer. They scatter wide at full reach and shred soldiers in the open; plate only dents. It will not fire close in. The sac refills by itself. Thin skin, short eyes: keep it behind the line.",
+    blurb: "A toad-like beast with a vast sac on its back. It squats, turns to face the target, and vents a volley of spore bombs high over the line: the longest reach on the field, as far as the Hailstorm. They scatter wide at full reach and shred soldiers in the open; plate only dents. It will not fire close in. The sac refills by itself. Thin skin, short eyes: keep it behind the line.",
   },
   /** Bloom heavy: eight legs, a sac cannon, and a brood of Spawnlings. */
   matriarch: {
@@ -7996,7 +7996,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     shells: APOCALYPSE_SHELLS,
     ammo: { ap: 14, he: 8 },
     defaultShell: "ap",
-    blurb: `The Bloom's queen of the field: eight legs, a sagging abdomen heavy with eggs, and a sac cannon on her back that throws acid through a Tiger's front plate. As she walks she lays a Spawnling every ${MATRIARCH_LAY_SECONDS} seconds, up to ${MATRIARCH_BROOD} of her own alive at once. Slow, huge, and she heals between fights. Needs a Brain Coral.`,
+    blurb: `The Bloom's queen of the field: eight legs, a sagging abdomen heavy with eggs, and a sac cannon on her back that throws acid through a Warden's front plate. As she walks she lays a Spawnling every ${MATRIARCH_LAY_SECONDS} seconds, up to ${MATRIARCH_BROOD} of her own alive at once. Slow, huge, and she heals between fights. Needs a Brain Coral.`,
   },
   /** Bloom cheap naval stinger: a floating jellyfish. */
   driftjelly: {
@@ -8126,7 +8126,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     caliber: 128,
     spreadDeg: 2.5,
     naval: true,
-    blurb: "A turtle-whale as long as a destroyer, its mossy shell plated like a bunker. A gland cannon rises from the shell and throws a bolt of acid far out over the water and onto the shore, through a Tiger's front plate. Slow to turn. It heals between fights like every Bloom body. Needs a Brain Coral. Water only. Dead, it sinks and leaves no hulk.",
+    blurb: "A turtle-whale as long as a destroyer, its mossy shell plated like a bunker. A gland cannon rises from the shell and throws a bolt of acid far out over the water and onto the shore, through a Warden's front plate. Slow to turn. It heals between fights like every Bloom body. Needs a Brain Coral. Water only. Dead, it sinks and leaves no hulk.",
   },
   /** Bloom transport: a floating raft of flesh with a pouch hold. */
   broodbarge: {
@@ -8192,7 +8192,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     aircraft: true,
     recon: true,
     wreckHp: 6,
-    blurb: `A huge pale moth whose wing eye-spots really are eyes. No weapon. It flies as high as the Horten VII and watches ${(t(11) + HORTEN_FLYING_SIGHT_BONUS) / TILE_SUBDIV} tiles around it. Only anti-air and a climbing fighter reach it, and one burst brings it down. It holds ${HORTEN_FUEL_SECONDS} seconds of flight, then comes home to its nest to feed.`,
+    blurb: `A huge pale moth whose wing eye-spots really are eyes. No weapon. It flies as high as the Wraith and watches ${(t(11) + HORTEN_FLYING_SIGHT_BONUS) / TILE_SUBDIV} tiles around it. Only anti-air and a climbing fighter reach it, and one burst brings it down. It holds ${HORTEN_FUEL_SECONDS} seconds of flight, then comes home to its nest to feed.`,
   },
   /** Bloom fighter: bladed membrane wings and quill guns. */
   razorwing: {
@@ -8249,7 +8249,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: STUKA_MG.spreadDeg,
     aircraft: true,
     wreckHp: 26,
-    blurb: "A floating gas bladder on small flapping fins, a glowing acid bomb sac dangling under it and quill pores for soft targets. It drops the sac on every pass and grows another, so it never goes home to rearm. Slower than a Stuka and thicker-skinned. Only rifles, machine guns, and anti-air reach it in the air. It comes home to its nest to feed and heal.",
+    blurb: "A floating gas bladder on small flapping fins, a glowing acid bomb sac dangling under it and quill pores for soft targets. It drops the sac on every pass and grows another, so it never goes home to rearm. Slower than a Striker and thicker-skinned. Only rifles, machine guns, and anti-air reach it in the air. It comes home to its nest to feed and heal.",
   },
   /** Bloom hover: a sky-jelly that drips acid on what it hangs over. */
   drifter: {
@@ -8346,7 +8346,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rocketAmmo: TITAN_ROCKET_AMMO,
     bracedHpMul: TITAN_BRACED_HP_MUL,
     shellResist: TITAN_SHELL_RESIST,
-    blurb: "Heavy assault walker, built to take a beating: tank shells do it half harm, and no single shell kills it outright. The Tiger's gun on a traversing torso, loaded with armor-piercing shot only, and a four-rocket pod on the shoulders that ripples its salvo one rocket after another. The pods are fixed to the torso: they fire only the way the torso faces, so the Titan turns to bring them to bear as it turns for its gun, and they take any target on that bearing. Sixteen rockets in the rack; a supply truck refills them. Rockets scatter wide at full reach and draw in as the target closes. They shred infantry, dent tanks, usually break a track from the side or rear, and can burst beside a plane in the air. Switch the pods off to save them. Wades through water with only its torso showing: the main gun stays silent there, the rockets still fire. Deploy plants the outriggers: it cannot move, and its hit points grow by three-quarters until it packs up. It strides straight through woods, felling every tree it brushes. A big lamp on the torso lights the ground far ahead at night; Rotate light swings only the lamp. Leg jets lift it for a short hop over anything, and the lamp tips down to light one wide pool of ground ahead of it: aloft the gun is stowed and only the pods fire, and only anti-air weapons reach it; the burners take a long while to recover. Its reactor makes it a bomb: destroyed, it goes up in a small nuclear blast that wrecks everything close by, friend or foe. Shot down in the air, it drops straight down and goes up on the ground. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
+    blurb: "Heavy assault walker, built to take a beating: tank shells do it half harm, and no single shell kills it outright. The Warden's gun on a traversing torso, loaded with armor-piercing shot only, and a four-rocket pod on the shoulders that ripples its salvo one rocket after another. The pods are fixed to the torso: they fire only the way the torso faces, so the Titan turns to bring them to bear as it turns for its gun, and they take any target on that bearing. Sixteen rockets in the rack; a supply truck refills them. Rockets scatter wide at full reach and draw in as the target closes. They shred infantry, dent tanks, usually break a track from the side or rear, and can burst beside a plane in the air. Switch the pods off to save them. Wades through water with only its torso showing: the main gun stays silent there, the rockets still fire. Deploy plants the outriggers: it cannot move, and its hit points grow by three-quarters until it packs up. It strides straight through woods, felling every tree it brushes. A big lamp on the torso lights the ground far ahead at night; Rotate light swings only the lamp. Leg jets lift it for a short hop over anything, and the lamp tips down to light one wide pool of ground ahead of it: aloft the gun is stowed and only the pods fire, and only anti-air weapons reach it; the burners take a long while to recover. Its reactor makes it a bomb: destroyed, it goes up in a small nuclear blast that wrecks everything close by, friend or foe. Shot down in the air, it drops straight down and goes up on the ground. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
   },
   mammoth: {
     type: "mammoth",
@@ -8390,12 +8390,12 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     garrisonFullArms: true,
     garrisonTypes: BUNKER_TYPES,
     garrisonDiesWithHost: true,
-    blurb: `Armored battle platform on four legs. Very slow, very thick plate on every face, and in water it is thirty percent slower, sunk to the waist so only the body shows. Its own weapon is a twin machine gun under the cab that swings only a little either side of the nose, and falls silent in water. It carries ${MAMMOTH_GARRISON_CAP} of the infantry a Bunker takes, and every one of them fires out of the slits along its flanks, even while it wades. Force attack on the hull aims every soldier inside who can reach that point; they stay aboard. Nothing reaches them while the hull holds — but if it is destroyed, everyone inside dies with it. Nothing throws a track. A hit in the rear can still wreck the engine and stop it. At night a lamp on the nose and one on each flank light the ground out to its daylight sight. The flank lamps drift slowly through a small arc. A launcher on the rear deck holds ${MAMMOTH_MINE_PACKS} packs of mines: Deploy mines, then click the ground inside the ring it shows, and it lobs a canister that bursts into a field of ${CLUSTER_MINES} mines — the same field a BV 222 drops, live under friend and foe alike. Click farther out and it walks until the point is in reach. A supply truck or a crate refills the packs.`,
+    blurb: `Armored battle platform on four legs. Very slow, very thick plate on every face, and in water it is thirty percent slower, sunk to the waist so only the body shows. Its own weapon is a twin machine gun under the cab that swings only a little either side of the nose, and falls silent in water. It carries ${MAMMOTH_GARRISON_CAP} of the infantry a Bunker takes, and every one of them fires out of the slits along its flanks, even while it wades. Force attack on the hull aims every soldier inside who can reach that point; they stay aboard. Nothing reaches them while the hull holds — but if it is destroyed, everyone inside dies with it. Nothing throws a track. A hit in the rear can still wreck the engine and stop it. At night a lamp on the nose and one on each flank light the ground out to its daylight sight. The flank lamps drift slowly through a small arc. A launcher on the rear deck holds ${MAMMOTH_MINE_PACKS} packs of mines: Deploy mines, then click the ground inside the ring it shows, and it lobs a canister that bursts into a field of ${CLUSTER_MINES} mines — the same field a Pelican drops, live under friend and foe alike. Click farther out and it walks until the point is in reach. A supply truck or a crate refills the packs.`,
   },
   nebelwerfer: {
     type: "nebelwerfer",
     kind: "unit",
-    name: "Nebelwerfer",
+    name: "Hailstorm",
     letter: "n",
     cost: 2000,
     buildSeconds: 20,
@@ -8647,7 +8647,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     naval: true,
     leavesWreck: true,
     wreckHp: 100,
-    blurb: `Fast battleship, after the Iowa class. Water only. Two triple 16-inch turrets on the foredeck; every barrel loads and fires on its own, so a turret lets its guns go one by one in no set order. The shell is the field gun's, fired flat and fast: it lands almost as soon as it leaves and reaches as far as Artillery, but it will not fire inside ${BATTLESHIP_MIN_RANGE_TILES / TILE_SUBDIV} tiles. The turrets cannot fire astern through the superstructure. Two radar-laid 20mm CIWS mounts, one on the superstructure and one on the stern, lay themselves apart from the main guns: incoming missiles first, then planes, infantry, and light vehicles. Order an attack or force-attack on an aircraft and the CIWS take it while the main guns hold; they reach farther for a plane than for anything on the water or ashore. Each barrel holds ${BATTLESHIP_BARREL_AMMO} shells and each CIWS a ${BATTLESHIP_CIWS_BELT}-round belt; they fill again slowly beside a Marine Base. Either end serves as the bow: it swings whichever end is nearer the course onto it and makes way ahead or astern at the same speed. A big searchlight on the bridge lights the water far out at night; Rotate light swings it, and it turns with the ship. Torpedoes and heavy shells are the danger. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.`,
+    blurb: `Heavy gun battleship. Water only. Two triple 16-inch turrets on the foredeck; every barrel loads and fires on its own, so a turret lets its guns go one by one in no set order. The shell is the field gun's, fired flat and fast: it lands almost as soon as it leaves and reaches as far as Artillery, but it will not fire inside ${BATTLESHIP_MIN_RANGE_TILES / TILE_SUBDIV} tiles. The turrets cannot fire astern through the superstructure. Two radar-laid 20mm CIWS mounts, one on the superstructure and one on the stern, lay themselves apart from the main guns: incoming missiles first, then planes, infantry, and light vehicles. Order an attack or force-attack on an aircraft and the CIWS take it while the main guns hold; they reach farther for a plane than for anything on the water or ashore. Each barrel holds ${BATTLESHIP_BARREL_AMMO} shells and each CIWS a ${BATTLESHIP_CIWS_BELT}-round belt; they fill again slowly beside a Marine Base. Either end serves as the bow: it swings whichever end is nearer the course onto it and makes way ahead or astern at the same speed. A big searchlight on the bridge lights the water far out at night; Rotate light swings it, and it turns with the ship. Torpedoes and heavy shells are the danger. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.`,
   },
   /** Destroyer: twin 40mm, hull sonar, an ASW helicopter, and a mine rail. Water only. */
   destroyer: {
@@ -8682,13 +8682,13 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     sonar: true,
     leavesWreck: true,
     wreckHp: 40,
-    blurb: `Destroyer. Water only. A twin 40mm on the foredeck fires fast but reaches only ${DESTROYER_RANGE_TILES / TILE_SUBDIV} tiles. Its hull sonar hears every enemy submarine within ${SONAR_RANGE_TILES / TILE_SUBDIV} tiles, submerged or surfaced, and calls each new contact. It is the only thing that finds a submarine below: a boat it hears is in your sight, fog or not, and any gun that reaches it can lay on it. On a contact its ASW helicopter takes off by itself, flies at the heard position, and drops ${ASW_TORPEDOES} torpedoes in a fan toward it from up to ${ASW_DROP_TILES / TILE_SUBDIV} tiles out; each runs its full length, like the He 111's, and finds a submarine down or up. The helicopter then flies home, lands on the fantail, and takes ${ASW_REARM_SECONDS} seconds to load again. Rifles, machine guns, and anti-air reach it in the air; lost, the ship gets a new one after ${ASW_REPLACE_SECONDS} seconds. Lay Mine puts one of its ${WATER_MINES} contact mines over the stern: it lives after ${WATER_MINE_ARM_SECONDS} seconds and goes off under any hull, swimmer, or submarine that meets it, yours too. You and your allies see your mines; the enemy does not. Beside a Marine Base the rail fills again, one mine every ${WATER_MINE_REARM_SECONDS} seconds. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.`,
+    blurb: `Destroyer. Water only. A twin 40mm on the foredeck fires fast but reaches only ${DESTROYER_RANGE_TILES / TILE_SUBDIV} tiles. Its hull sonar hears every enemy submarine within ${SONAR_RANGE_TILES / TILE_SUBDIV} tiles, submerged or surfaced, and calls each new contact. It is the only thing that finds a submarine below: a boat it hears is in your sight, fog or not, and any gun that reaches it can lay on it. On a contact its ASW helicopter takes off by itself, flies at the heard position, and drops ${ASW_TORPEDOES} torpedoes in a fan toward it from up to ${ASW_DROP_TILES / TILE_SUBDIV} tiles out; each runs its full length, like the Albatross's, and finds a submarine down or up. The helicopter then flies home, lands on the fantail, and takes ${ASW_REARM_SECONDS} seconds to load again. Rifles, machine guns, and anti-air reach it in the air; lost, the ship gets a new one after ${ASW_REPLACE_SECONDS} seconds. Lay Mine puts one of its ${WATER_MINES} contact mines over the stern: it lives after ${WATER_MINE_ARM_SECONDS} seconds and goes off under any hull, swimmer, or submarine that meets it, yours too. You and your allies see your mines; the enemy does not. Beside a Marine Base the rail fills again, one mine every ${WATER_MINE_REARM_SECONDS} seconds. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.`,
   },
   /** Tank landing ship after the RCN's LST(2)s: a bow ramp and a tank deck for 40 slots. Water only. */
   lst: {
     type: "lst",
     kind: "unit",
-    name: "Transport LST",
+    name: "Landing Ship",
     letter: "L",
     cost: 2200,
     buildSeconds: 26,
@@ -8724,13 +8724,13 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     garrisonSightBonus: 0,
     garrisonFullArms: true,
     garrisonDiesWithHost: true,
-    blurb: `Tank landing ship, after the Royal Canadian Navy's LSTs. Water only, slow, and plated like a fortress. Its tank deck holds ${LST_BAY_SLOTS} slots of infantry and vehicles: a soldier takes one, a Cyborg two, a Walker three, a field gun or a supply truck four, a StuG six, a Tiger eight, a Jagdtiger or a Titan ten, an Apocalypse twelve, and a Mammoth sixteen. Put the bow on the shore: units board up the bow ramp, and Unload sends them all down it onto the beach. Two deck machine guns in shielded tubs, one on the forecastle and one on the bridge wing, are manned by the first two soldiers aboard who can shoot; nobody else aboard fires. The tubs guard their gunners like a Bunker's slits — they are far harder to kill there — and when one falls the next soldier aboard takes the gun. Everything else aboard is out of reach while the hull holds; if it is sunk, everyone aboard goes down with it. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.`,
+    blurb: `Amphibious landing ship. Water only, slow, and plated like a fortress. Its tank deck holds ${LST_BAY_SLOTS} slots of infantry and vehicles: a soldier takes one, a Cyborg two, a Walker three, a field gun or a supply truck four, a Vanguard six, a Warden eight, a Breaker or a Titan ten, an Apocalypse twelve, and a Mammoth sixteen. Put the bow on the shore: units board up the bow ramp, and Unload sends them all down it onto the beach. Two deck machine guns in shielded tubs, one on the forecastle and one on the bridge wing, are manned by the first two soldiers aboard who can shoot; nobody else aboard fires. The tubs guard their gunners like a Bunker's slits — they are far harder to kill there — and when one falls the next soldier aboard takes the gun. Everything else aboard is out of reach while the hull holds; if it is sunk, everyone aboard goes down with it. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.`,
   },
   /** Ju 87 B dive bomber. Lives on an Airfield pad. */
   stuka: {
     type: "stuka",
     kind: "unit",
-    name: "Stuka",
+    name: "Striker",
     letter: "J",
     cost: 2000,
     buildSeconds: 20,
@@ -8752,13 +8752,13 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: STUKA_MG.spreadDeg,
     aircraft: true,
     wreckHp: 23,
-    blurb: "Dive bomber. One SC 250 per sortie, two wing MGs for soft targets. Flies over everything; only rifles, machine guns, the Walker, and the Titan's rockets can reach it in the air. Lands at its Airfield to refuel and rearm. On guard it comes back to the same area once the bomb, the belts, and the tank are full. It has no tracks to lose. A hit that wrecks the engine brings it down at once: it falls trailing smoke and crashes as a wreck.",
+    blurb: "Dive bomber. One heavy bomb per sortie, two wing MGs for soft targets. Flies over everything; only rifles, machine guns, the Walker, and the Titan's rockets can reach it in the air. Lands at its Airfield to refuel and rearm. On guard it comes back to the same area once the bomb, the belts, and the tank are full. It has no tracks to lose. A hit that wrecks the engine brings it down at once: it falls trailing smoke and crashes as a wreck.",
   },
   /** Fw 190 fighter. Lives on an Airfield pad. */
   fw190: {
     type: "fw190",
     kind: "unit",
-    name: "Fw 190",
+    name: "Kestrel",
     letter: "f",
     cost: 800,
     buildSeconds: 22,
@@ -8780,13 +8780,13 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: FW190_CANNON.spreadDeg,
     aircraft: true,
     wreckHp: 20,
-    blurb: `Fighter. Two 30 mm cannon, one under each wing, and no bomb. ${FW190_BARRAGES} barrages a sortie: on each pass it lines up on the target and lays two straight lines of rounds through it, one from each wing, then comes round for the next. Fired from above, the rounds come down through a tank's thin roof, so even the heaviest hull bleeds. It chases enemy planes out of the sky the same way. Flies faster and turns tighter than the Stuka. Lands at its Airfield to refuel and rearm. On guard it comes back to the same area once all ${FW190_BARRAGES} barrages and the tank are full. It has no tracks to lose. A hit that wrecks the engine brings it down at once: it falls trailing smoke and crashes as a wreck.`,
+    blurb: `Fighter. Two 30 mm cannon, one under each wing, and no bomb. ${FW190_BARRAGES} barrages a sortie: on each pass it lines up on the target and lays two straight lines of rounds through it, one from each wing, then comes round for the next. Fired from above, the rounds come down through a tank's thin roof, so even the heaviest hull bleeds. It chases enemy planes out of the sky the same way. Flies faster and turns tighter than the Striker. Lands at its Airfield to refuel and rearm. On guard it comes back to the same area once all ${FW190_BARRAGES} barrages and the tank are full. It has no tracks to lose. A hit that wrecks the engine brings it down at once: it falls trailing smoke and crashes as a wreck.`,
   },
   /** BV 222 transport flying boat. Lives on an Airfield pad. */
   bv222: {
     type: "bv222",
     kind: "unit",
-    name: "BV 222",
+    name: "Pelican",
     letter: "v",
     cost: 3500,
     buildSeconds: 30,
@@ -8811,7 +8811,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
   he111: {
     type: "he111",
     kind: "unit",
-    name: "He 111",
+    name: "Albatross",
     letter: "e",
     cost: 2400,
     buildSeconds: 26,
@@ -8840,7 +8840,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
   horten: {
     type: "horten",
     kind: "unit",
-    name: "Horten VII",
+    name: "Wraith",
     letter: "y",
     cost: 2200,
     buildSeconds: 24,

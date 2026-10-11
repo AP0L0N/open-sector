@@ -2,16 +2,16 @@
   "key": "warden",
   "out": "units/warden",
   "voice": {
-    "name": "Open Sector - Tiger",
+    "name": "Open Sector - Warden",
     "description": "Veteran male tank commander in his late forties, deep warm baritone with a faint gravelly Central European flavor, proud and utterly unflappable, speaks slowly and with dry confidence over a crackly tank intercom radio, the calm of a man who has survived a hundred battles and expects to survive this one.",
-    "sample": "Tiger, at your command. Front plate is thick, the gun is long, and the crew is steady. Point me at the enemy and I will do the rest. No hurry, gentlemen. They are not going anywhere.",
+    "sample": "Warden, at your command. Front plate is thick, the gun is long, and the crew is steady. Point me at the enemy and I will do the rest. No hurry, gentlemen. They are not going anywhere.",
     "stability": 0.55,
     "similarity": 0.8,
     "style": 0.4
   },
   "lines": {
     "select": [
-      "Tiger here.",
+      "Warden here.",
       "Steady as ever.",
       "The big cat listens.",
       "Commander speaking.",
@@ -31,7 +31,7 @@
       "[laughs] Too easy."
     ],
     "ready": [
-      "Tiger, ready. Let them come."
+      "Warden, ready. Let them come."
     ],
     "hit": [
       "Bounced. As expected.",
@@ -44,14 +44,14 @@
   },
   "sfx": {
     "fire": {
-      "prompt": "Distant, powerful boom of a World War 2 Tiger tank firing its main cannon in an open field.",
+      "prompt": "Distant, powerful boom of a modern main battle tank firing its main cannon in an open field.",
       "duration": 5.0,
       "variants": 3,
       "influence": 0.6,
       "lufs": -9
     },
     "move": {
-      "prompt": "Heavy WWII tank engine revving up and steel tracks starting to clank and grind forward, short one-shot, close, no music, no voice",
+      "prompt": "Heavy modern tank turbine engine revving up and tracks starting to grind forward, short one-shot, close, no music, no voice",
       "duration": 2.5,
       "variants": 1,
       "influence": 0.6

@@ -81,7 +81,7 @@ function transportOver(state: MatchState, owner: string, x: number, y: number): 
   return plane;
 }
 
-/** A BV 222 trained on the Airfield, parked on its hardstand. */
+/** A Pelican trained on the Airfield, parked on its hardstand. */
 function trainedTransport(state: MatchState): { plane: Entity; field: Entity } {
   seedCore(state);
   const field = seedAirfield(state);
@@ -98,14 +98,14 @@ function riflemanAt(state: MatchState, owner: string, x: number, y: number): Ent
   return makeEntity(state, "rifleman", owner, x, y);
 }
 
-describe("BV 222", () => {
+describe("Pelican", () => {
   it("is an unarmed transport trained at the Airfield", () => {
     assert.ok(TRAIN_TYPES.includes("bv222"));
     assert.ok(isAircraftType("bv222"));
     assert.ok(isTransportType("bv222"));
-    assert.equal(catalog("bv222").name, "BV 222");
+    assert.equal(catalog("bv222").name, "Pelican");
     assert.equal(catalog("bv222").damage, 0);
-    assert.ok(catalog("bv222").moveTilesPerSec < catalog("stuka").moveTilesPerSec, "slower than the Stuka");
+    assert.ok(catalog("bv222").moveTilesPerSec < catalog("stuka").moveTilesPerSec, "slower than the Striker");
   });
 
   it("comes off the line with a mine canister in the bay", () => {

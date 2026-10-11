@@ -105,8 +105,8 @@ describe("special actions", () => {
 });
 
 describe("warden ammo", () => {
-  it("is the Tiger tank in the catalog", () => {
-    assert.equal(catalog("warden").name, "Tiger");
+  it("is the Warden tank in the catalog", () => {
+    assert.equal(catalog("warden").name, "Warden");
     assert.equal(catalog("warden").letter, "W");
   });
 
@@ -115,8 +115,8 @@ describe("warden ammo", () => {
     const ammo = w.ammo ?? {};
     const total = (ammo.ap ?? 0) + (ammo.he ?? 0) + (ammo.heat ?? 0) + (ammo.smoke ?? 0);
     assert.ok(total >= 16 && total <= 28, `total=${total}`);
-    assert.equal(carriesShell("warden", "smoke"), false, "the Tiger carries no smoke");
-    assert.equal(carriesShell("warden", "heat"), false, "the Tiger carries no HEAT");
+    assert.equal(carriesShell("warden", "smoke"), false, "the Warden carries no smoke");
+    assert.equal(carriesShell("warden", "heat"), false, "the Warden carries no HEAT");
     assert.equal(w.defaultShell, "ap");
     assert.equal(w.leavesWreck, true);
   });
@@ -361,10 +361,10 @@ describe("weapon reach", () => {
 });
 
 describe("ss3 casemate", () => {
-  it("is the StuG III: cheaper than the Tiger, no turret, ±10° gun arc", () => {
+  it("is the Vanguard: cheaper than the Warden, no turret, ±10° gun arc", () => {
     const g = catalog("ss3");
     const w = catalog("warden");
-    assert.equal(g.name, "StuG III");
+    assert.equal(g.name, "Vanguard");
     assert.equal(g.letter, "G");
     assert.equal(hasTurret("ss3"), false);
     assert.equal(hasTurret("warden"), true);
@@ -390,7 +390,7 @@ describe("ss3 casemate", () => {
     assert.ok((g.blurb ?? "").length > 24);
   });
 
-  it("carries only AP, and its AP cannot frontally pen a Tiger", () => {
+  it("carries only AP, and its AP cannot frontally pen a Warden", () => {
     const g = catalog("ss3");
     assert.equal(carriesShell("ss3", "ap"), true);
     assert.equal(carriesShell("ss3", "smoke"), false);

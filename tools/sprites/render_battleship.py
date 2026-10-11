@@ -1,23 +1,25 @@
 #!/usr/bin/env python3
-"""Battle Ship: a fast battleship after the Iowa class (USS Wisconsin, BB-64, 1944).
+"""Battle Ship: a modern heavy gun ship, two triple turrets forward.
 
 Same numpy rasterizer, camera (orthographic, 30° down, 2:1 ground), light, and
-outline as render_naval.py. Measure 22 paint: navy blue topsides up to the
-sheer line, haze gray above, teak decks, deck-blue superstructure decks.
+outline as render_naval.py. Modern paint: navy below the sheer line, haze gray
+above, dark gray decks.
 
 The ship is four layers that share one camera, scale, and anchor, so the
 client can lay them over each other (render/battleship.ts):
 
   hull    long flush-decked hull cut at the waterline over its wake, the two
-          forward barbettes (B superfiring over A), and the fantail with its
-          catapults, crane, and the stern CIWS pedestal. No turrets.
-  super   the island: conning tower, bridge and fire-control tower with its
-          director, foremast, two raked funnels, mainmast, aft director, the
-          twin 5"/38 mounts down both sides, and the tower the middle CIWS
-          stands on. Drawn on its own so a turret can pass in front of it or
-          behind it.
-  turret  one triple 16"/50 turret on its own pivot (the model origin), roof
-          in the gray team tint. Both forward turrets use it.
+          forward faceted barbettes (B superfiring over A), a forward cell
+          block, and the fantail with its helicopter pad and the stern CIWS
+          pedestal. No turrets.
+  super   the island: the faceted bridge tower and fire-control tower with its
+          director (the searchlight's base), an enclosed pyramid foremast with
+          radar panels, two boxed exhaust stacks, an enclosed mainmast, the aft
+          director, vertical launch cell blocks down both sides, remote weapon
+          stations in tubs, and the tower the middle CIWS stands on. Drawn on
+          its own so a turret can pass in front of it or behind it.
+  turret  one triple heavy turret, an angular wedge, on its own pivot (the
+          model origin), roof in the gray team tint. Both forward turrets use it.
   ciws    one radar-laid 20mm mount on its own pivot. Both mounts use it.
 
 Model units are 10 m. +x bow, +y port, +z up; waterline at z = 0; the origin
@@ -45,11 +47,11 @@ from render_procedural import MAT, Mesh, hex_rgb, render_turntable
 
 MAT.update(
     {
-        # Measure 22: navy blue below the sheer line, haze gray above.
+        # Navy blue below the sheer line, haze gray above, dark gray decks.
         "navy": (hex_rgb("#3e4a57"), 0.06, 1.0),
         "haze": (hex_rgb("#8a949a"), 0.08, 1.0),
-        "teak": (hex_rgb("#a48c66"), 0.03, 1.0),
-        "deckblue": (hex_rgb("#4d5862"), 0.04, 1.0),
+        "deckgray": (hex_rgb("#5f6664"), 0.04, 1.0),
+        "sensor": (hex_rgb("#1f3a40"), 0.55, 1.0),
     }
 )
 
@@ -144,98 +146,119 @@ def build_hull() -> Mesh:
 
     def mat(r: int, s: int) -> str:
         if s in (0, 1):
-            return "teak"
+            return "deckgray"
         if s in (4, 5, 6, 7):
             return "navy"
         return "haze"
 
     m.loft(rings, mat)
-    # Barbettes. B stands tall enough to fire over A.
+    # Barbettes. B stands tall enough to fire over A. Faceted, not round.
     for at, z in zip(TURRET_AT, TURRET_Z):
         x = at * HALF_LENGTH
-        cyl(m, (x, 0.0, (deck_z(x) + z) / 2 - 0.05), 2, 0.78, z - deck_z(x) + 0.1, "haze", 20)
+        prism(m, [(x + 0.8, -0.55), (x + 0.5, -0.8), (x - 0.5, -0.8), (x - 0.8, -0.55), (x - 0.8, 0.55), (x - 0.5, 0.8), (x + 0.5, 0.8), (x + 0.8, 0.55)], deck_z(x) - 0.05,
+              [(x + 0.75, -0.5), (x + 0.45, -0.75), (x - 0.45, -0.75), (x - 0.75, -0.5), (x - 0.75, 0.5), (x - 0.45, 0.75), (x + 0.45, 0.75), (x + 0.75, 0.5)], z + 0.05, "haze", "haze")
     # Breakwater ahead of A.
     bx = 9.6
     prism(m, [(bx, 0.0), (bx - 0.35, 1.1), (bx - 0.5, 1.1), (bx - 0.15, 0.0), (bx - 0.5, -1.1), (bx - 0.35, -1.1)], deck_z(bx), [(bx, 0.0), (bx - 0.35, 1.1), (bx - 0.5, 1.1), (bx - 0.15, 0.0), (bx - 0.5, -1.1), (bx - 0.35, -1.1)], deck_z(bx) + 0.12, "haze", "haze")
-    # Anchor windlass and chain on the forecastle.
+    # Anchor windlass on the forecastle, and a forward cell block of launch tubes between it and A.
     for y in (-0.35, 0.35):
         cyl(m, (11.5, y, deck_z(11.5) + 0.07), 2, 0.12, 0.14, "metal", 8)
-    # Stern CIWS pedestal: a small deckhouse the mount stands on.
+    m.box((10.0, -0.6, deck_z(10.0)), (11.0, 0.6, deck_z(10.0) + 0.1), "haze")
+    for i in range(3):
+        for j in range(3):
+            m.box((10.1 + i * 0.3, -0.5 + j * 0.37, deck_z(10.0) + 0.1), (10.32 + i * 0.3, -0.25 + j * 0.37, deck_z(10.0) + 0.12), "metal")
+    # Stern CIWS pedestal: a small faceted deckhouse the mount stands on.
     sx = CIWS_AT[1] * HALF_LENGTH
-    prism(m, [(sx + 0.6, -0.55), (sx + 0.6, 0.55), (sx - 0.6, 0.55), (sx - 0.6, -0.55)], deck_z(sx) - 0.02, [(sx + 0.5, -0.5), (sx + 0.5, 0.5), (sx - 0.5, 0.5), (sx - 0.5, -0.5)], CIWS_Z[1], "haze", "deckblue")
-    # Fantail: two catapults angled out, and the crane at the stern.
-    for side in (-1, 1):
-        x0, x1 = -11.4, -12.9
-        m.box((x1, side * 0.75 - 0.08, deck_z(-12.2) + 0.02), (x0, side * 0.75 + 0.08, deck_z(-12.2) + 0.12), "metal")
-    cyl(m, (-13.1, 0.0, deck_z(-13.1) + 0.35), 2, 0.09, 0.7, "metal", 8)
-    tube(m, -13.1, -12.0, 0.0, deck_z(-13.1) + 0.68, 0.05, 0.03, "metal", 6)
+    prism(m, [(sx + 0.6, -0.55), (sx + 0.6, 0.55), (sx - 0.6, 0.55), (sx - 0.6, -0.55)], deck_z(sx) - 0.02, [(sx + 0.5, -0.5), (sx + 0.5, 0.5), (sx - 0.5, 0.5), (sx - 0.5, -0.5)], CIWS_Z[1], "haze", "deckgray")
+    # Fantail: a flat helicopter pad with a pale landing ring behind the stern mount.
+    m.box((-13.0, -0.62, deck_z(-12.2) - 0.02), (-11.3, 0.62, deck_z(-12.2) + 0.04), "deckgray")
+    n = 20
+    cx, cz = -12.15, deck_z(-12.2) + 0.05
+    inner = [m.v((cx + 0.38 * math.cos(2 * math.pi * k / n), 0.38 * math.sin(2 * math.pi * k / n), cz)) for k in range(n)]
+    outer = [m.v((cx + 0.48 * math.cos(2 * math.pi * k / n), 0.48 * math.sin(2 * math.pi * k / n), cz)) for k in range(n)]
+    for k in range(n):
+        j = (k + 1) % n
+        m.quad(inner[k], outer[k], outer[j], inner[j], "white")
     return m
+
+
+def facet_mast(m: Mesh, x: float, z0: float, z1: float, hw: float, hl: float, top: float) -> None:
+    """Enclosed pyramid mast: a tapering faceted tower with a flat radar panel on each face."""
+    prism(m, [(x + hl, -hw), (x + hl, hw), (x - hl, hw), (x - hl, -hw)], z0, [(x + hl * top, -hw * top), (x + hl * top, hw * top), (x - hl * top, hw * top), (x - hl * top, -hw * top)], z1, "haze", "metal")
+    zm0, zm1 = z0 + (z1 - z0) * 0.3, z0 + (z1 - z0) * 0.7
+    k = 1 - (zm1 - z0) / (z1 - z0) * (1 - top) + 0.02
+    m.box((x + hl * k, -hw * 0.6, zm0), (x + hl * k + 0.05, hw * 0.6, zm1), "sensor")
+    m.box((x - hl * k - 0.05, -hw * 0.6, zm0), (x - hl * k, hw * 0.6, zm1), "sensor")
+    for side in (-1, 1):
+        y0, y1 = sorted((side * hw * k, side * (hw * k + 0.05)))
+        m.box((x - hl * 0.6, y0, zm0), (x + hl * 0.6, y1, zm1), "sensor")
 
 
 def build_super() -> Mesh:
     m = Mesh()
     d = 0.74
     lvl1 = 1.36
-    # 01 level deckhouse along the middle of the ship.
-    prism(m, [(3.6, -1.2), (3.6, 1.2), (-6.2, 1.2), (-6.2, -1.2)], d, [(3.6, -1.2), (3.6, 1.2), (-6.2, 1.2), (-6.2, -1.2)], lvl1, "haze", "deckblue")
-    # Forward superstructure: two more levels, then the bridge.
-    prism(m, [(3.1, -0.95), (3.1, 0.95), (-0.3, 0.95), (-0.3, -0.95)], lvl1, [(3.0, -0.92), (3.0, 0.92), (-0.3, 0.92), (-0.3, -0.92)], 1.95, "haze", "deckblue")
-    prism(m, [(2.7, -0.78), (2.7, 0.78), (0.2, 0.78), (0.2, -0.78)], 1.95, [(2.6, -0.75), (2.6, 0.75), (0.2, 0.75), (0.2, -0.75)], 2.45, "haze", "deckblue")
-    m.box((2.6, -0.62, 2.22), (2.66, 0.62, 2.36), "glass")
-    # Armored conning tower ahead of the bridge.
-    cyl(m, (3.05, 0.0, 2.0), 2, 0.48, 1.3, "haze", 16)
-    m.box((3.1, -0.42, 2.48), (3.5, 0.42, 2.56), "glass")
-    # The tall fire-control tower, a lookout level, and its director on top.
-    prism(m, [(1.9, -0.5), (1.9, 0.5), (0.6, 0.5), (0.6, -0.5)], 2.45, [(1.8, -0.42), (1.8, 0.42), (0.7, 0.42), (0.7, -0.42)], 3.75, "haze", "deckblue")
-    prism(m, [(1.95, -0.6), (1.95, 0.6), (0.55, 0.6), (0.55, -0.6)], 3.2, [(1.95, -0.6), (1.95, 0.6), (0.55, 0.6), (0.55, -0.6)], 3.32, "haze", "deckblue")
+    # 01 level deckhouse along the middle of the ship, sides tumbled in.
+    prism(m, [(3.6, -1.2), (3.6, 1.2), (-6.2, 1.2), (-6.2, -1.2)], d, [(3.5, -1.1), (3.5, 1.1), (-6.1, 1.1), (-6.1, -1.1)], lvl1, "haze", "deckgray")
+    # Forward superstructure: two faceted levels, then the bridge with a slit window.
+    prism(m, [(3.1, -0.95), (3.1, 0.95), (-0.3, 0.95), (-0.3, -0.95)], lvl1, [(2.9, -0.82), (2.9, 0.82), (-0.3, 0.82), (-0.3, -0.82)], 1.95, "haze", "deckgray")
+    prism(m, [(2.7, -0.78), (2.7, 0.78), (0.2, 0.78), (0.2, -0.78)], 1.95, [(2.5, -0.66), (2.5, 0.66), (0.2, 0.66), (0.2, -0.66)], 2.45, "haze", "deckgray")
+    m.box((2.48, -0.55, 2.22), (2.6, 0.55, 2.36), "glass")
+    # Forward RWS / small gun house ahead of the bridge, on the 02 level.
+    m.box((2.95, -0.3, 1.95), (3.35, 0.3, 2.25), "haze")
+    tube(m, 3.35, 3.9, 0.0, 2.12, 0.04, 0.035, "metal", 6)
+    # The fire-control tower: faceted, a lookout level, and the director on top (the searchlight's base).
+    prism(m, [(1.9, -0.5), (1.9, 0.5), (0.6, 0.5), (0.6, -0.5)], 2.45, [(1.8, -0.4), (1.8, 0.4), (0.7, 0.4), (0.7, -0.4)], 3.75, "haze", "deckgray")
+    prism(m, [(1.95, -0.6), (1.95, 0.6), (0.55, 0.6), (0.55, -0.6)], 3.2, [(1.95, -0.6), (1.95, 0.6), (0.55, 0.6), (0.55, -0.6)], 3.32, "haze", "deckgray")
     m.box((1.85, -0.5, 3.0), (1.92, 0.5, 3.12), "glass")
     m.box((0.75, -0.5, 3.75), (1.75, 0.5, 4.12), "haze", "team")
-    m.box((1.05, -0.95, 3.88), (1.35, 0.95, 4.0), "metal")
-    # Foremast with the radar yard.
-    cyl(m, (0.45, 0.0, 4.4), 2, 0.07, 2.4, "metal", 6)
-    m.box((0.38, -0.75, 5.0), (0.52, 0.75, 5.1), "metal")
-    m.box((0.36, -0.38, 5.25), (0.54, 0.38, 5.5), "metal")
-    # The tower the middle CIWS stands on, between the bridge and the forward funnel.
+    m.box((1.72, -0.3, 3.85), (1.78, 0.3, 4.05), "sensor")
+    # Enclosed foremast with its radar panels, and a short pole above it.
+    facet_mast(m, 0.45, 2.45, 5.1, 0.45, 0.38, 0.45)
+    cyl(m, (0.45, 0.0, 5.5), 2, 0.05, 0.8, "metal", 6)
+    m.box((0.4, -0.5, 5.7), (0.5, 0.5, 5.78), "metal")
+    # The tower the middle CIWS stands on, between the bridge and the forward stack.
     cx = CIWS_AT[0] * HALF_LENGTH
-    prism(m, [(cx + 0.5, -0.55), (cx + 0.5, 0.55), (cx - 0.5, 0.55), (cx - 0.5, -0.55)], lvl1, [(cx + 0.45, -0.5), (cx + 0.45, 0.5), (cx - 0.45, 0.5), (cx - 0.45, -0.5)], CIWS_Z[0], "haze", "deckblue")
-    # Two raked funnels.
-    funnel(m, -1.8, lvl1 - 0.02, 3.65, 0.68, 0.5, 0.1)
-    funnel(m, -3.7, lvl1 - 0.02, 3.4, 0.62, 0.48, 0.1)
-    # Mainmast abaft the second funnel.
-    cyl(m, (-4.55, 0.0, 2.85), 2, 0.07, 3.0, "metal", 6)
-    m.box((-4.62, -0.6, 3.95), (-4.48, 0.6, 4.04), "metal")
-    # Aft superstructure and director.
-    prism(m, [(-4.6, -0.85), (-4.6, 0.85), (-6.1, 0.85), (-6.1, -0.85)], lvl1, [(-4.6, -0.8), (-4.6, 0.8), (-6.0, 0.8), (-6.0, -0.8)], 1.9, "haze", "deckblue")
+    prism(m, [(cx + 0.5, -0.55), (cx + 0.5, 0.55), (cx - 0.5, 0.55), (cx - 0.5, -0.55)], lvl1, [(cx + 0.42, -0.47), (cx + 0.42, 0.47), (cx - 0.42, 0.47), (cx - 0.42, -0.47)], CIWS_Z[0], "haze", "deckgray")
+    # Two boxed exhaust stacks, raked aft, dark tops.
+    for fx, zt in ((-1.8, 3.55), (-3.7, 3.3)):
+        prism(m, [(fx + 0.6, -0.5), (fx + 0.6, 0.5), (fx - 0.6, 0.5), (fx - 0.6, -0.5)], lvl1 - 0.02, [(fx + 0.2, -0.4), (fx + 0.2, 0.4), (fx - 0.75, 0.4), (fx - 0.75, -0.4)], zt, "haze", "tire")
+    # Enclosed mainmast abaft the second stack.
+    facet_mast(m, -4.6, lvl1, 3.9, 0.4, 0.32, 0.45)
+    # Aft superstructure and the aft director.
+    prism(m, [(-4.6, -0.85), (-4.6, 0.85), (-6.1, 0.85), (-6.1, -0.85)], lvl1, [(-4.6, -0.75), (-4.6, 0.75), (-6.0, 0.75), (-6.0, -0.75)], 1.9, "haze", "deckgray")
     m.box((-5.75, -0.42, 1.9), (-4.95, 0.42, 2.32), "haze", "team")
-    # Twin 5"/38 mounts down both sides on the 01 level, barrels out.
-    for x in (2.3, 0.9, -2.7, -4.6):
+    # Vertical launch cell blocks down both sides on the 01 level, flat with hatch grids.
+    for x in (2.3, -2.9):
         for side in (-1, 1):
             y = side * 0.98
-            prism(m, [(x + 0.3, y - 0.22), (x + 0.3, y + 0.22), (x - 0.3, y + 0.22), (x - 0.3, y - 0.22)], lvl1, [(x + 0.18, y - 0.18), (x + 0.18, y + 0.18), (x - 0.28, y + 0.18), (x - 0.28, y - 0.18)], lvl1 + 0.3, "haze", "haze")
-            for oy in (-0.09, 0.09):
-                tube(m, x + 0.15, x + 0.75, y + oy, lvl1 + 0.16, 0.035, 0.03, "metal", 6)
-    # Quad 40mm tubs, fore and aft of the island.
+            y0, y1 = sorted((y - 0.3, y + 0.3))
+            m.box((x - 0.9, y0, lvl1), (x + 0.9, y1, lvl1 + 0.14), "haze")
+            for i in range(4):
+                m.box((x - 0.8 + i * 0.42, y0 + 0.08, lvl1 + 0.14), (x - 0.5 + i * 0.42, y1 - 0.08, lvl1 + 0.16), "metal")
+    # Remote weapon stations in tubs, fore and aft of the island.
     for x, y in ((3.9, 0.9), (3.9, -0.9), (-6.6, 0.9), (-6.6, -0.9)):
-        cyl(m, (x, y, d + 0.18), 2, 0.3, 0.36, "haze", 12)
-        for oy in (-0.08, 0.08):
-            tube(m, x, x + 0.45, y + oy, d + 0.4, 0.025, 0.025, "metal", 5)
+        cyl(m, (x, y, d + 0.16), 2, 0.3, 0.32, "haze", 12)
+        m.box((x - 0.15, y - 0.12, d + 0.32), (x + 0.12, y + 0.12, d + 0.55), "metal")
+        tube(m, x + 0.12, x + 0.5, y, d + 0.46, 0.025, 0.025, "metal", 5)
     return m
 
 
 def build_turret() -> Mesh:
-    """Triple 16"/50. Pivot at the origin, base on z = 0, barrels along +x."""
+    """Triple heavy gun turret: an angular stealth wedge. Pivot at the origin, base on z = 0, barrels along +x."""
     m = Mesh()
-    plan = [(0.88, -0.72), (0.88, 0.72), (-1.05, 0.82), (-1.05, -0.82)]
-    roof = [(0.55, -0.7), (0.55, 0.7), (-1.0, 0.8), (-1.0, -0.8)]
+    plan = [(1.0, -0.45), (0.6, -0.78), (-1.05, -0.82), (-1.05, 0.82), (0.6, 0.78), (1.0, 0.45)]
+    roof = [(0.65, -0.3), (0.35, -0.6), (-0.95, -0.66), (-0.95, 0.66), (0.35, 0.6), (0.65, 0.3)]
     prism(m, plan, 0.0, roof, 0.56, "haze", "team")
-    # Rangefinder ears at the back.
-    for side in (-1, 1):
-        y0, y1 = sorted((side * 0.76, side * 0.98))
-        m.box((-0.95, y0, 0.3), (-0.7, y1, 0.44), "haze")
-    # Three barrels with their blast bags.
+    # Flat mantlet plate across the wedge nose.
+    m.box((0.7, -0.5, 0.14), (0.92, 0.5, 0.46), "metal")
+    # Sensor head at the back of the roof.
+    m.box((-0.9, -0.2, 0.56), (-0.5, 0.2, 0.74), "haze")
+    m.box((-0.5, -0.14, 0.6), (-0.46, 0.14, 0.7), "sensor")
+    # Three barrels with their sleeves.
     for y in (-0.28, 0.0, 0.28):
-        tube(m, 0.7, 0.95, y, 0.3, 0.12, 0.12, "metal", 8)
-        tube(m, 0.95, 3.0, y, 0.3, 0.08, 0.062, "metal", 8)
+        tube(m, 0.75, 1.1, y, 0.3, 0.11, 0.11, "metal", 8)
+        tube(m, 1.1, 3.0, y, 0.3, 0.08, 0.06, "metal", 8)
     return m
 
 
@@ -243,7 +266,7 @@ def build_ciws() -> Mesh:
     """Radar-laid 20mm on its pedestal, drawn a size up so it reads. Pivot at the origin, gun along +x."""
     m = Mesh()
     cyl(m, (0.0, 0.0, 0.12), 2, 0.34, 0.24, "haze", 12)
-    m.box((-0.3, -0.3, 0.24), (0.25, 0.3, 0.5), "haze")
+    prism(m, [(0.3, -0.3), (0.3, 0.3), (-0.3, 0.3), (-0.3, -0.3)], 0.24, [(0.25, -0.25), (0.25, 0.25), (-0.3, 0.25), (-0.3, -0.25)], 0.5, "haze", "haze")
     # Radome.
     cyl(m, (-0.05, 0.0, 0.72), 2, 0.26, 0.44, "white", 14)
     cyl(m, (-0.05, 0.0, 0.96), 2, 0.2, 0.06, "white", 14)

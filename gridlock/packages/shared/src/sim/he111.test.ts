@@ -77,7 +77,7 @@ function spawn(state: MatchState, type: Parameters<typeof makeEntity>[1], owner:
   return makeEntity(state, type, owner, p.x, p.y);
 }
 
-/** An He 111 in the air over (tx, ty), heading east. */
+/** An Albatross in the air over (tx, ty), heading east. */
 function planeOver(state: MatchState, owner: string, tx: number, ty: number): Entity {
   const p = at(state, tx, ty);
   const plane = makeEntity(state, "he111", owner, p.x, p.y);
@@ -106,12 +106,12 @@ function untilDrop(state: MatchState, plane: Entity, max = 600): { x: number; y:
   return null;
 }
 
-describe("He 111", () => {
+describe("Albatross", () => {
   it("is an aircraft trained at the Airfield that carries one torpedo and no guns", () => {
     assert.ok(TRAIN_TYPES.includes("he111"));
     assert.ok(isAircraftType("he111"));
     assert.ok(dropsTorpedo("he111"));
-    assert.equal(catalog("he111").name, "He 111");
+    assert.equal(catalog("he111").name, "Albatross");
     assert.deepEqual(airLoadoutOf("he111"), { bombs: 1, rounds: 0 });
   });
 

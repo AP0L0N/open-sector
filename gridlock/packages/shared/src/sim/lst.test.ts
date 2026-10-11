@@ -85,12 +85,12 @@ function board(state: MatchState, ship: Entity, ...units: Entity[]): void {
   for (const u of units) assert.equal(u.garrisonedIn, ship.id, `${u.type} boarded`);
 }
 
-describe("Transport LST", () => {
+describe("Landing Ship", () => {
   it("is a Marine Base ship with a 40-slot tank deck", () => {
     assert.ok(TRAIN_TYPES.includes("lst"));
     assert.equal(producerType("lst"), "dock");
     assert.equal(isNavalType("lst"), true);
-    assert.equal(catalog("lst").name, "Transport LST");
+    assert.equal(catalog("lst").name, "Landing Ship");
     assert.equal(catalog("lst").garrisonCap, LST_BAY_SLOTS);
     assert.equal(LST_BAY_SLOTS, 40);
     assert.ok(catalog("lst").armorFront >= catalog("destroyer").armorFront * 3, "heavily plated");

@@ -70,12 +70,12 @@ function flyingSight(type: (typeof TRAIN_TYPES)[number]): number {
   return catalog(type).sightTiles + liveSightExtra({ type, air: { alt: AIR_CRUISE_ALT } });
 }
 
-describe("Horten VII", () => {
+describe("Wraith", () => {
   it("is an unarmed recon plane trained at the Airfield behind Research and Radar", () => {
     assert.ok(TRAIN_TYPES.includes("horten"));
     assert.ok(isAircraftType("horten"));
     assert.ok(isReconType("horten"));
-    assert.equal(catalog("horten").name, "Horten VII");
+    assert.equal(catalog("horten").name, "Wraith");
     assert.equal(catalog("horten").rangeTiles, 0);
     assert.deepEqual(airLoadoutOf("horten"), { bombs: 0, rounds: 0 });
     assert.deepEqual([...techNeeds("horten")], ["research", "radar"]);

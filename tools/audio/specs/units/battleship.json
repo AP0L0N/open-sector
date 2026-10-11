@@ -44,7 +44,7 @@
   },
   "sfx": {
     "fire": {
-      "prompt": "Colossal broadside of a World War 2 battleship firing its 16-inch guns at sea, a deafening thunder-clap of three huge cannons with a long rolling echo over the water.",
+      "prompt": "Colossal broadside of a modern battleship firing its 16-inch guns at sea, a deafening thunder-clap of three huge cannons with a long rolling echo over the water.",
       "duration": 6.0,
       "variants": 3,
       "influence": 0.6,

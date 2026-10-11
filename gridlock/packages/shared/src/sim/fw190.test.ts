@@ -71,13 +71,13 @@ function planeOver(state: MatchState, type: "stuka" | "fw190", owner: string, x:
   return plane;
 }
 
-describe("Fw 190", () => {
+describe("Kestrel", () => {
   it("is an aircraft trained at the Airfield", () => {
     assert.ok(TRAIN_TYPES.includes("fw190"));
     assert.ok(isAircraftType("fw190"));
-    assert.equal(catalog("fw190").name, "Fw 190");
-    assert.ok(catalog("fw190").moveTilesPerSec > catalog("stuka").moveTilesPerSec, "faster than the Stuka");
-    assert.ok(catalog("fw190").turnDegPerSec > catalog("stuka").turnDegPerSec, "turns tighter than the Stuka");
+    assert.equal(catalog("fw190").name, "Kestrel");
+    assert.ok(catalog("fw190").moveTilesPerSec > catalog("stuka").moveTilesPerSec, "faster than the Striker");
+    assert.ok(catalog("fw190").turnDegPerSec > catalog("stuka").turnDegPerSec, "turns tighter than the Striker");
   });
 
   it("rolls onto a hardstand with its cannon loaded and no bomb", () => {
@@ -114,7 +114,7 @@ describe("Fw 190", () => {
     const fighter = planeOver(state, "fw190", "A", 100 * ts, 100 * ts);
     assert.equal(applyCommand(state, "A", { type: "cmd.attack", ids: [fighter.id], targetId: foe.id }).ok, true);
     const t = until(state, 1400, () => foe.wreck);
-    assert.ok(t >= 0, `the Stuka should go down (hp ${foe.hp}/${foe.hpMax}, rounds ${fighter.air?.rounds})`);
+    assert.ok(t >= 0, `the Striker should go down (hp ${foe.hp}/${foe.hpMax}, rounds ${fighter.air?.rounds})`);
     assert.equal(foe.air, undefined);
     assert.ok((fighter.air?.rounds ?? FW190_BARRAGES) < FW190_BARRAGES);
   });
@@ -275,7 +275,7 @@ describe("Fw 190", () => {
     assert.equal(state.entities.has(foe.id), false, "the soldier standing on the point dies");
   });
 
-  it("a Stuka still does not take a plane in the air", () => {
+  it("a Striker still does not take a plane in the air", () => {
     const state = twoPlayerMatch();
     const ts = state.tileSize;
     const foe = planeOver(state, "fw190", "B", 110 * ts, 100 * ts);

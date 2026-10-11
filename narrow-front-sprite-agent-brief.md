@@ -115,7 +115,7 @@ Every still or sheet must follow this:
 Filename + manifest (the compositor writes this):
 
 ```
-id: tiger_hull
+id: warden_hull
 cell: 128
 cols: 1
 rows: 16
@@ -180,10 +180,10 @@ Match `UnitSpriteDef.frameSize` in `gridlock/packages/client/src/render/sprites.
 | Infantry death | 96 | 4 | 0.82 | `trooper-die.png`, `gunner-die.png` |
 | Infantry swim | 96 | 8 | 0.68 | `<id>-swim.png` from `derive_swim.py`; Rifleman `infantry-swim.png` |
 | Hatch head | 48 | 1 | 1.0 | `scout-head.png` |
-| Medium vehicle / tank | 128 | 1 | ~0.92 | `tiger/hull/0001.png` … `0016.png`, `hauler-hull.png` + `hauler-cart.png` |
+| Medium vehicle / tank | 128 | 1 | ~0.92 | `warden/hull/0001.png` … `0016.png`, `hauler-hull.png` + `hauler-cart.png` |
 | Heavy vehicle | 192 | 1 | ~0.90 | `rig-move.png` |
 | Giant (Juggernaut) | 192 | 8 (throw 4, wreck 1) | 0.82 (wreck 0.62) | `juggernaut-walk.png`, `juggernaut-swing.png`, `wrecks/juggernaut.png` |
-| Aircraft | 128 | 1 | 0.80 | `stuka/hull/0001.png` … `0016.png` (256 source, composed to 128 at runtime like the Tiger; the wingspan sets the scale, padding 2). The map lifts the sprite by altitude and draws a separate ground shadow |
+| Aircraft | 128 | 1 | 0.80 | `stuka/hull/0001.png` … `0016.png` (256 source, composed to 128 at runtime like the Warden; the wingspan sets the scale, padding 2). The map lifts the sprite by altitude and draws a separate ground shadow |
 | Cameo | 72 (tank 128) | 1 | — | `trooper-cameo.png`, `gunner-cameo.png` |
 | Wreck | the live unit's cell | 1 | the live unit's | `wrecks/warden.png`, `wrecks/stuka.png` |
 
@@ -323,7 +323,7 @@ Do not hand-slice sheets. If the grid is crooked, fix the source image and re-ru
 
 ### 7. Wire
 
-Only if this is a **new** unit. Replacing art for Rifleman (`trooper-*.png`), Gunner (`gunner-*.png`), tiger, hauler, rig, or scout keeps the existing `UnitSpriteDef` (`dirs: 16`, `frames`, `frameSize`). New units need a def, an import, and `spriteFor`. Run GitNexus `impact` on `spriteFor` and `isInfantryType` before editing them. Both sit on the draw path and the infantry checks. Adding a branch is fine; say so if the risk comes back HIGH or CRITICAL.
+Only if this is a **new** unit. Replacing art for Rifleman (`trooper-*.png`), Gunner (`gunner-*.png`), warden, hauler, rig, or scout keeps the existing `UnitSpriteDef` (`dirs: 16`, `frames`, `frameSize`). New units need a def, an import, and `spriteFor`. Run GitNexus `impact` on `spriteFor` and `isInfantryType` before editing them. Both sit on the draw path and the infantry checks. Adding a branch is fine; say so if the risk comes back HIGH or CRITICAL.
 
 ### 8. Verify
 
@@ -334,7 +334,7 @@ Ship only after all of these pass:
 3. A labeled contact of **column 0 of all 16 rows** (S through SSE) shows the gun pointing the way the label says. Read the pictures. Do not sign off from the manifest alone.
 4. Adjacent rows do not pop in outline, costume, or camera.
 5. Magenta is gone in the shipped PNG (alpha). No rune, swastika, death's head, or national cross survived the turn.
-6. Tiger: hull ring empty; turret composites on the ring at east **and** south; turret still aims independently in-game.
+6. Warden: hull ring empty; turret composites on the ring at east **and** south; turret still aims independently in-game.
 7. Rifleman: walk loops, crouch and crawl switch, rifle-fire and handgun show only on those actions. Gunner: crawl is prone, fire is that same pose with a flash on the muzzle, death does not stand up.
 8. Look at it in-game turning through a circle.
 
@@ -500,7 +500,7 @@ Batch order for the next infantry: east lock → stand turntable → crouch → 
 
 ## Roster language
 
-Use original names. Examples: Rifleman (files `trooper-*.png`), Gunner, Mauler (hauler), Tiger, Rig, Core, Dynamo, Muster, Armory.
+Use original names. Examples: Rifleman (files `trooper-*.png`), Gunner, Mauler (hauler), Warden, Rig, Core, Dynamo, Muster, Armory.
 
 For each unit deliver:
 - Role in one line (what the player reads at zoomed-out size)
@@ -555,6 +555,6 @@ A sprite is done when:
 - All 16 rows match in scale, outline, palette, and contact
 - Magenta is clean (keyed to alpha in the shipped PNG)
 - A programmer can slice it from the manifest without guessing (`dirs: 16`)
-- Special behavior still works: Tiger turret independent of hull, Rifleman walk / crouch / crawl / rifle / handgun / death, Gunner crawl-to-fire and death, scout head on the cupola
+- Special behavior still works: Warden turret independent of hull, Rifleman walk / crouch / crawl / rifle / handgun / death, Gunner crawl-to-fire and death, scout head on the cupola
 
 A pretty picture that fails those is a failed asset.
