@@ -103,11 +103,11 @@ describe("hive energy", () => {
     const state = field();
     at(state, "conversion", 30, 30);
     const scrap = state.players.get("B")!.scrap;
-    // 60 left after the Chamber: five Lancers (50 each) take the hive below zero, and all five come out.
-    for (let i = 0; i < 5; i++) assert.equal(applyCommand(state, "B", { type: "cmd.train", unit: "lancer" }).ok, true);
-    ticks(state, 8 * Math.ceil(catalog("lancer").buildSeconds / TICK_DT));
-    const lancers = [...state.entities.values()].filter((e) => e.type === "lancer" && e.ownerId === "B");
-    assert.equal(lancers.length, 5);
+    // 60 left after the Chamber: five Spitters (35 each) take the hive below zero, and all five come out.
+    for (let i = 0; i < 5; i++) assert.equal(applyCommand(state, "B", { type: "cmd.train", unit: "spitter" }).ok, true);
+    ticks(state, 8 * Math.ceil(catalog("spitter").buildSeconds / TICK_DT));
+    const spitters = [...state.entities.values()].filter((e) => e.type === "spitter" && e.ownerId === "B");
+    assert.equal(spitters.length, 5);
     assert.equal(state.players.get("B")!.scrap, scrap, "no scrap spent");
     assert.equal(applyCommand(state, "B", { type: "cmd.build", building: "spineturret" }).ok, true);
   });
