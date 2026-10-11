@@ -8,6 +8,7 @@ import {
   DISCONNECT_GRACE_MS,
   TICK_MS,
   applyCommand,
+  applySkirmishSetup,
   canCreateRoom,
   createMatch,
   createRoom,
@@ -124,7 +125,7 @@ export class Hub {
         this.onHello(session, msg.name);
         break;
       case "room.create":
-        this.onCreate(session, msg.mapId, msg.maxSlots, msg.mode);
+        this.onCreate(session, msg.mapId, msg.maxSlots, msg.mode, msg.setup);
         break;
       case "room.join":
         this.onJoin(session, msg.code);
@@ -246,6 +247,7 @@ export class Hub {
     mapId: string,
     maxSlots: number,
     mode?: RoomMode,
+    setup?: unknown,
   ): void {
     const cap = canCreateRoom(this.rooms.size);
     if (!cap.ok) return this.err(session, cap.code, cap.message);
@@ -265,6 +267,7 @@ export class Hub {
       mode,
     });
     if (!created.ok) return this.err(session, created.code, created.message);
+    if (setup !== undefined) applySkirmishSetup(created.value, setup);
     this.rooms.set(id, created.value);
     this.members.set(id, new Set([session.playerId]));
     session.roomId = id;
