@@ -2185,7 +2185,7 @@ export interface EnergyDomeDef {
 }
 export const SIPHON_DOME: EnergyDomeDef = { energy: 800, radiusTiles: t(3), rechargeSeconds: 20, regenPerSecond: 12 };
 /** The Hive Ark's dome over its whole hull (ARK_HULL_RADIUS 40 px): far stronger, slower to come back. */
-export const ARK_DOME: EnergyDomeDef = { energy: 3000, radiusTiles: t(1.7), rechargeSeconds: 30, regenPerSecond: 30 };
+export const ARK_DOME: EnergyDomeDef = { energy: 30000, radiusTiles: t(1.7), rechargeSeconds: 30, regenPerSecond: 30 };
 const ENERGY_DOMES: Partial<Record<EntityType, EnergyDomeDef>> = {
   siphon: SIPHON_DOME,
   hiveark: ARK_DOME,
