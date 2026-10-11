@@ -136,6 +136,7 @@ import {
 import { buzzDeny } from "./audio.js";
 import { announce, selectionVoice, setAnnouncerFaction } from "./game-audio.js";
 import { el } from "./dom.js";
+import { bindCameoCards, fmtNum, setCameoCardState } from "./cameo-card.js";
 import { renderOptionsPane } from "./pause.js";
 import { garrisonRoster, type GarrisonSeat } from "./garrison-roster.js";
 import { commandHotkey, commandIconSvg, groupCommands, hasCommandIcon } from "./command-bar.js";
@@ -275,6 +276,7 @@ export function mountBattlefield(
     panels.append(grid);
   }
   side.append(el("h3", { text: "Production" }), tabs, heading, panels);
+  bindCameoCards(side, wrap, () => hudFaction);
   bindPress(tabs, "[data-group]", (tab) => {
     sidebarGroup = tab.dataset.group as SidebarGroup;
     paintGroupTabs();
@@ -486,13 +488,17 @@ function hiveCameo(id: string, type: BuildingType | TrainType | YardFieldType, b
   const c = catalog(type);
   const supply = energySupplyOf(type);
   const take = energyOf(type);
-  const price = supply > 0 ? `+${supply} EN` : take > 0 ? `${take} EN${type === "laserfence" ? " + link" : ""}` : "FREE";
+  const price = supply > 0 ? `+${fmtNum(supply)} EN` : take > 0 ? `${fmtNum(take)} EN${type === "laserfence" ? " + link" : ""}` : "FREE";
   const b = building ? cameoButton(id, c.name, 0, 0, true) : cameoButton(id, c.name, 0, 0, false, true);
-  const meta = b.querySelector(".cameo-meta");
-  if (meta) meta.textContent = price;
+  const cost = b.querySelector(".cameo-cost");
+  if (cost) {
+    cost.textContent = price;
+    cost.classList.add(supply > 0 ? "is-supply" : "is-energy");
+  }
   const deny = b.querySelector(".cameo-deny");
   if (deny) deny.textContent = "NO ENERGY";
-  if (canQueueStructure(type)) b.title = "Left: build, again to queue more  ·  Right: pause, again to remove one";
+  if (canQueueStructure(type)) b.dataset.cardHint = "Left: build, again to queue more  ·  Right: pause, again to remove one";
+  b.dataset.baseHint = b.dataset.cardHint ?? "";
   return b;
 }
 
@@ -505,14 +511,18 @@ function cameoButton(
   train = false,
 ): HTMLButtonElement {
   const b = el("button", { class: "cameo", attrs: { type: "button", id } });
-  const powerTxt = power > 0 ? `+${power}` : power < 0 ? `${power}` : "";
+  // The rich card on hover reads its type from here (see cameo-card.ts).
+  b.dataset.cardType = id.replace(/^(build|train)-/, "");
+  const powerTxt = power > 0 ? `+${power}` : power < 0 ? `−${-power}` : "";
   const ready = showReady ? `<span class="cameo-ready">READY</span>` : "";
   const hold = train || showReady
     ? `<span class="cameo-hold hidden" title="Pause production"></span><span class="cameo-paused">PAUSED</span><span class="cameo-count hidden">0</span>${train ? `<span class="cameo-loop">LOOP</span>` : ""}`
     : "";
-  if (train) b.title = "Left: train  ·  Pause icon: hold  ·  Right: pause, again to cancel one";
-  if (showReady) b.title = "Left: build  ·  Right: pause, again to cancel";
-  b.innerHTML = `<span class="cameo-name">${name}</span><span class="cameo-meta">${cost}${powerTxt ? " · " + powerTxt : ""}</span><span class="pip"></span><span class="cameo-deny">NO SCRAP</span>${ready}${hold}`;
+  if (train) b.dataset.cardHint = "Left: train  ·  Pause icon: hold  ·  Right: pause, again to cancel one";
+  if (showReady) b.dataset.cardHint = "Left: build  ·  Right: pause, again to cancel";
+  b.dataset.baseHint = b.dataset.cardHint ?? "";
+  const pow = powerTxt ? `<span class="cameo-pow ${power > 0 ? "is-plus" : "is-minus"}">${powerTxt}</span>` : "";
+  b.innerHTML = `<span class="cameo-name">${name}</span><span class="cameo-meta"><span class="cameo-cost">${cost > 0 ? fmtNum(cost) : "FREE"}</span>${pow}</span><span class="pip"></span><span class="cameo-deny">NO SCRAP</span>${ready}${hold}`;
   return b;
 }
 
@@ -762,11 +772,11 @@ export function paintBattleHud(ctx: Ctx): void {
     const techNeed = job ? [] : buildTechNeed(m, type);
     btn.disabled = !coreUp || (!!lane && !job) || techNeed.length > 0;
     btn.classList.toggle("needs-tech", techNeed.length > 0);
-    btn.dataset.baseTitle ??= btn.title;
-    btn.title =
-      techNeed.length > 0
-        ? `${catalog(type).name} — needs a ${techNeed.map((t) => catalog(t).name).join(" and a ")}.`
-        : btn.dataset.baseTitle;
+    setCameoCardState(
+      btn,
+      techNeed.length > 0 ? `Needs a ${techNeed.map((t) => catalog(t).name).join(" and a ")}.` : !coreUp ? `Needs your ${catalog(HQ_OF[hudFaction].core).name}.` : "",
+      btn.dataset.baseHint ?? "",
+    );
     const pip = btn.querySelector(".pip") as HTMLElement | null;
     if (pip && job) {
       pip.style.width = `${Math.round((job.progressTicks / job.totalTicks) * 100)}%`;
@@ -817,21 +827,25 @@ export function paintBattleHud(ctx: Ctx): void {
     btn.classList.toggle("needs-tech", techMissing);
     btn.classList.toggle("one-held", held != null);
     btn.classList.toggle("is-continuous", looping);
-    btn.dataset.baseTitle ??= btn.title;
-    const name = catalog(unit).name;
-    btn.title = padsFull
-      ? `${name} — every hardstand is taken. Build another Airfield.`
-      : techMissing
-        ? `${name} — needs a ${catalog(tech).name}.`
-        : held === "alive"
-          ? `${name} — only one at a time. Yours is still in the field.`
-          : held === "queued"
-            ? `${name} — only one at a time. One is already in the queue.`
-            : looping
-              ? `${name} — building continuously. Right-click pauses; again stops and cancels it.`
-              : canContinuousTrain(unit) && unitJobs.length === 0
-                ? `${name} — Left: train. Right: build continuously.`
-                : btn.dataset.baseTitle;
+    const note = !hasProducer
+      ? `Needs a ${catalog(want).name}.`
+      : padsFull
+        ? "Every hardstand is taken. Build another Airfield."
+        : techMissing
+          ? `Needs a ${catalog(tech).name}.`
+          : held === "alive"
+            ? "Only one at a time. Yours is still in the field."
+            : held === "queued"
+              ? "Only one at a time. One is already in the queue."
+              : looping
+                ? "Building continuously."
+                : "";
+    const hint = looping
+      ? "Right-click pauses; again stops and cancels it."
+      : canContinuousTrain(unit) && unitJobs.length === 0
+        ? "Left: train  ·  Right: build continuously"
+        : btn.dataset.baseHint ?? "";
+    setCameoCardState(btn, note, hint);
     btn.classList.toggle("unaffordable", training && outOfFunds(m));
     btn.classList.toggle("slow-power", m.you.lowPower && training);
     btn.classList.toggle("is-training", unitJobs.length > 0);
