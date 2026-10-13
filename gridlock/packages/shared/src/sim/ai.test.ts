@@ -30,7 +30,7 @@ import { HEIGHT_BASE } from "../catalog.js";
 import { hasCore, hqOf, inBuildRadius, isWater, makeEntity, scrapAt } from "./geo.js";
 import { createMatch, stepMatch } from "./match.js";
 import { smelterRateOn } from "./smelter.js";
-import { canSeeEntity } from "./vision.js";
+import { canSeeEntity, holdSightKeys } from "./vision.js";
 import { producerType } from "./train.js";
 import type { AiPlan, Entity, MatchState, Vec } from "./types.js";
 
@@ -1948,5 +1948,29 @@ describe("CPU unit tricks", () => {
     const research = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "research" && e.hp > 0);
     assert.ok(!research || cpu.scrap > 200, "the Research Facility went for scrap");
     assert.ok([...state.entities.values()].some((e) => e.ownerId === aiId && e.type === "muster" && e.hp > 0), "the Barracks stays");
+  });
+});
+
+describe("CPU site memo", () => {
+  it("keeps a Smelter site through units coming and going, and walks again when a building goes up", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    const hq = coreOf(state, aiId);
+    holdSightKeys(true);
+    try {
+      const first = findSmelterTile(state, aiId);
+      assert.ok(first, "the yard has a field");
+      makeEntity(state, "rifleman", aiId, hq.x + 40, hq.y + 40);
+      state.tick += 1;
+      assert.equal(findSmelterTile(state, aiId), first, "a new unit does not move the site: the memo holds");
+      const def = catalog("smelter");
+      makeEntity(state, "dynamo", aiId, (first.tx + def.tileW / 2) * state.tileSize, (first.ty + def.tileH / 2) * state.tileSize);
+      state.tick += 1;
+      const again = findSmelterTile(state, aiId);
+      assert.notEqual(again, first, "a building on the site: the walk runs again");
+      assert.ok(!again || again.tx !== first.tx || again.ty !== first.ty, "and the taken ground is not the answer");
+    } finally {
+      holdSightKeys(false);
+    }
   });
 });

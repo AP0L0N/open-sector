@@ -63,6 +63,7 @@ import {
   type MapDef,
 } from "../maps.js";
 import { nextRand } from "./rng.js";
+import { sightKeysHeld } from "./vision.js";
 import { newShipState } from "./battleship.js";
 import { newArkState } from "./hive-ark.js";
 import { newTwinCiws } from "./twin-ciws.js";
@@ -561,6 +562,38 @@ export function inBuildRadius(state: MatchState, ownerId: string, tx: number, ty
   }
   return false;
 }
+
+/**
+ * A hash of what decides where a building may stand: every building's footprint and whether it
+ * stands or lies ruined, the count of hulks, and the dug ground. Two ticks with the same key
+ * answer a site search the same way. One roster walk per tick while a tick runs; a test that
+ * moves things by hand and asks outside a tick gets a fresh walk.
+ */
+export function groundKey(state: MatchState): number {
+  const old = groundKeys.get(state);
+  if (old && sightKeysHeld() && old.tick === state.tick) return old.key;
+  let h = 0x811c9dc5;
+  const mix = (v: number): void => {
+    h ^= v & 0xffff;
+    h = Math.imul(h, 0x01000193) >>> 0;
+    h ^= (v >>> 16) & 0xffff;
+    h = Math.imul(h, 0x01000193) >>> 0;
+  };
+  let wrecks = 0;
+  for (const e of state.entities.values()) {
+    if (e.wreck) wrecks++;
+    if (e.kind !== "building") continue;
+    mix(e.id);
+    mix((e.hp > 0 ? 1 : 0) | (e.ruined ? 2 : 0));
+    mix(e.tileX * 0x10000 + e.tileY);
+  }
+  mix(wrecks);
+  mix(state.digRev);
+  groundKeys.set(state, { tick: state.tick, key: h });
+  return h;
+}
+
+const groundKeys = new WeakMap<MatchState, { tick: number; key: number }>();
 
 /** The anchors `inBuildRadius` would walk for `ownerId`: standing allied base buildings. */
 export function buildAnchorsOf(state: MatchState, ownerId: string): Entity[] {

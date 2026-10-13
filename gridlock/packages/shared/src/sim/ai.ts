@@ -86,7 +86,7 @@ import { turnedBox } from "../building-rect.js";
 import { buildingSiteError, buildTechMissing } from "./build.js";
 import { applyCommand } from "./commands.js";
 import { canRepairTarget, canScrapWreck, gateSiteAt } from "./field.js";
-import { allies, buildAnchorsOf, footprintGap, hasCore, hqOf, inBuildRadius, inBuildRadiusOf, isWater, nearestWalkable, scrapAt, tilesBlocked, tilesBlockedOrScrap, walkable } from "./geo.js";
+import { allies, buildAnchorsOf, footprintGap, groundKey, hasCore, hqOf, inBuildRadius, inBuildRadiusOf, isWater, nearestWalkable, scrapAt, tilesBlocked, tilesBlockedOrScrap, walkable } from "./geo.js";
 import { smelterRateOn, smelterSiteOk } from "./smelter.js";
 import { powerOf } from "./power.js";
 import { fenceLineEnergy, hiveEnergyOf } from "./hive-energy.js";
@@ -2051,6 +2051,8 @@ interface Sea {
   outDock: Map<string, { tx: number; ty: number } | null>;
   /** Tick the site answers above were last thrown away. */
   sitesAt: number;
+  /** `groundKey` when the bodies were last walked: the same key means the same water. */
+  ground: number;
 }
 
 const seaCache = new WeakMap<MatchState, Sea>();
@@ -2070,6 +2072,18 @@ function sameBody(a: Int32Array, b: Int32Array): boolean {
 function seaOf(state: MatchState): Sea {
   const old = seaCache.get(state);
   if (old && state.tick >= old.tick && state.tick - old.tick < CPU_MICRO_EVERY_TICKS) return old;
+  const ground = groundKey(state);
+  // Nothing that blocks a hull has moved since the last walk: the bodies are the same without walking them.
+  if (old && sightKeysHeld() && old.ground === ground && state.tick >= old.tick) {
+    old.tick = state.tick;
+    if (state.tick - old.sitesAt >= CPU_SITE_CACHE_TICKS) {
+      old.strike = new Map();
+      old.dock = new Map();
+      old.outDock = new Map();
+      old.sitesAt = state.tick;
+    }
+    return old;
+  }
   const w = state.width;
   const h = state.height;
   const body = new Int32Array(w * h);
@@ -2105,6 +2119,7 @@ function seaOf(state: MatchState): Sea {
   // and site is a walk over the whole map, so they are kept until the water changes or they go stale.
   if (old && sameBody(old.body, body)) {
     old.tick = state.tick;
+    old.ground = ground;
     if (state.tick - old.sitesAt >= CPU_SITE_CACHE_TICKS) {
       old.strike = new Map();
       old.dock = new Map();
@@ -2154,7 +2169,7 @@ function seaOf(state: MatchState): Sea {
     }
     ring = next;
   }
-  const sea: Sea = { tick: state.tick, body, size, depth, deepest, strike: new Map(), dock: new Map(), outDock: new Map(), sitesAt: state.tick };
+  const sea: Sea = { tick: state.tick, body, size, depth, deepest, strike: new Map(), dock: new Map(), outDock: new Map(), sitesAt: state.tick, ground };
   seaCache.set(state, sea);
   return sea;
 }
@@ -3172,19 +3187,21 @@ export function findBuildTile(
  * The scrap field nearest the HQ that is still in build range: the footprint with the
  * most scrap under it, nearest first. Null when no field within reach can take a Smelter.
  */
-/** A site answer, good while the scrap, the roster and the clock all stand where they were. */
+/** A site answer, good while the scrap, the ground (`groundKey`) and the clock all stand where they were. */
 interface SiteMemo {
   tick: number;
   scrapRev: number;
-  roster: number;
+  ground: number;
   spot: { tx: number; ty: number } | null;
 }
 
 const siteMemos = new WeakMap<MatchState, Map<string, SiteMemo>>();
 
 /**
- * A Smelter site is a walk over every tile of the map. Asked again within a strategy pass with the
- * scrap field and the roster unchanged, the last answer stands.
+ * A Smelter site is a walk over every scrap tile of the map against every building. Asked again
+ * with the scrap field and the buildings unchanged, the last answer stands for CPU_SITE_CACHE_TICKS:
+ * units coming and going do not move a site, so a battle no longer forces the walk every pass.
+ * Outside a running tick (a test asking by hand) the answer is always fresh.
  */
 function siteMemo(state: MatchState, key: string, find: () => { tx: number; ty: number } | null): { tx: number; ty: number } | null {
   let memos = siteMemos.get(state);
@@ -3195,15 +3212,16 @@ function siteMemo(state: MatchState, key: string, find: () => { tx: number; ty: 
   const old = memos.get(key);
   if (
     old &&
+    sightKeysHeld() &&
     old.scrapRev === state.scrapRev &&
-    old.roster === state.entities.size &&
     state.tick >= old.tick &&
-    state.tick - old.tick < CPU_MICRO_EVERY_TICKS
+    state.tick - old.tick < CPU_SITE_CACHE_TICKS &&
+    old.ground === groundKey(state)
   ) {
     return old.spot;
   }
   const spot = find();
-  memos.set(key, { tick: state.tick, scrapRev: state.scrapRev, roster: state.entities.size, spot });
+  memos.set(key, { tick: state.tick, scrapRev: state.scrapRev, ground: groundKey(state), spot });
   return spot;
 }
 
