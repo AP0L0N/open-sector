@@ -10,6 +10,7 @@ import {
   TILE_SIZE,
   TRACK_ARRIVE_SLOP,
 } from "../catalog.js";
+import { REPATH_DRIFT_TILES, REPATH_STALE_TICKS } from "../catalog.js";
 import { adjacentToBuilding, hqOf, rallyPoint, unitInWater, waterSilenced, worldToTile } from "./geo.js";
 import { wantsCapture, pathToCapture } from "./capture.js";
 import { moveWithCollision, pathAroundParked, stepGiveWay, tickMakeWay, tickShuffle } from "./collision.js";
@@ -214,14 +215,14 @@ function tickMovementBodies(state: MatchState, dt: number): void {
             e.waypoints = [];
             continue;
           }
-          if (e.waypoints.length === 0 || (state.tick + e.id) % 5 === 0) pathToCapture(state, e, t);
+          if (routeStale(state, e)) pathToCapture(state, e, t);
         } else {
           if ((inWeaponReach(state, e, t) && !waterSilenced(state, e)) || e.holdPosition) {
             e.waypoints = [];
             continue;
           }
-          if (e.waypoints.length === 0 || (state.tick + e.id) % 5 === 0) {
-            setPath(state, e, t.x, t.y);
+          if (chaseRepath(state, e, t.x, t.y)) {
+            setPath(state, e, t.x, t.y, { urgent: e.waypoints.length === 0 });
           }
         }
       }
@@ -242,8 +243,8 @@ function tickMovementBodies(state: MatchState, dt: number): void {
         e.tileY = worldToTile(e.y, state.tileSize);
         continue;
       }
-      if (e.waypoints.length === 0 || (state.tick + e.id) % 5 === 0) {
-        setPath(state, e, e.order.x, e.order.y);
+      if (routeStale(state, e)) {
+        setPath(state, e, e.order.x, e.order.y, { urgent: e.waypoints.length === 0 });
       }
     }
     if (e.order?.kind === "attackmove" && e.attackTarget != null && !aside) {
@@ -383,9 +384,8 @@ function steerPatrol(state: MatchState, e: Entity): boolean {
       // In the water the gun is silent. Stay on the route instead of wading closer.
       // A unit told to hold its ground keeps walking the route and lets the target come to it.
       if (!e.holdPosition && !(waterSilenced(state, e) && dist <= range)) {
-        const goal = e.waypoints[e.waypoints.length - 1];
-        if (!goal || Math.hypot(goal.x - t.x, goal.y - t.y) > state.tileSize || (state.tick + e.id) % 5 === 0) {
-          setPath(state, e, t.x, t.y);
+        if (chaseRepath(state, e, t.x, t.y)) {
+          setPath(state, e, t.x, t.y, { urgent: e.waypoints.length === 0 });
         }
         return false;
       }
@@ -618,11 +618,30 @@ function tickEscort(state: MatchState, e: Entity): boolean {
     e.waypoints = [];
     return true;
   }
-  if (e.waypoints.length === 0 || (state.tick + e.id) % 5 === 0) {
-    const dest = escortAnchor(e, t);
-    setPath(state, e, dest.x, dest.y);
+  const dest = escortAnchor(e, t);
+  if (chaseRepath(state, e, dest.x, dest.y)) {
+    setPath(state, e, dest.x, dest.y, { urgent: e.waypoints.length === 0 });
   }
   return false;
+}
+
+/**
+ * Whether a unit after a moving mark needs a new route: it has none, the mark has walked
+ * REPATH_DRIFT_TILES from where the route was aimed, or the route is REPATH_STALE_TICKS old.
+ * Inside that the route in hand still leads to the mark, and a search every few ticks for each
+ * of a hundred chasers was most of a tick on a big map.
+ */
+function chaseRepath(state: MatchState, e: Entity, x: number, y: number): boolean {
+  if (routeStale(state, e)) return true;
+  const g = e.pathGoal!;
+  return Math.hypot(g.x - x, g.y - y) > REPATH_DRIFT_TILES * state.tileSize;
+}
+
+/** No route, or one older than REPATH_STALE_TICKS: a mark that does not move still gets a fresh route now and then. */
+function routeStale(state: MatchState, e: Entity): boolean {
+  if (e.waypoints.length === 0) return true;
+  const g = e.pathGoal;
+  return !g || state.tick - g.tick >= REPATH_STALE_TICKS;
 }
 
 function tickGuardFacing(e: Entity, dt: number): void {

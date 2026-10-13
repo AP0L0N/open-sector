@@ -684,11 +684,12 @@ export function pathAroundParked(state: MatchState, e: Entity, toX: number, toY:
   }
   let ok = false;
   try {
-    ok = setPath(state, e, toX, toY);
+    // Fresh: the stamps are this unit's view of the ground, so its route is shared with no one.
+    ok = setPath(state, e, toX, toY, { urgent: true, fresh: true });
   } finally {
     for (const i of stamped) state.occupy[i] = 0;
   }
-  return ok || setPath(state, e, toX, toY);
+  return ok || setPath(state, e, toX, toY, { urgent: true });
 }
 
 /** How far around a stuck unit parked units count as obstacles, in sim tiles. */

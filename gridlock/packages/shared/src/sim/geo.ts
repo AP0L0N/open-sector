@@ -584,7 +584,7 @@ export function groundKey(state: MatchState): number {
     if (e.wreck) wrecks++;
     if (e.kind !== "building") continue;
     mix(e.id);
-    mix((e.hp > 0 ? 1 : 0) | (e.ruined ? 2 : 0));
+    mix((e.hp > 0 ? 1 : 0) | (e.ruined ? 2 : 0) | (e.gate?.locked ? 4 : 0));
     mix(e.tileX * 0x10000 + e.tileY);
   }
   mix(wrecks);

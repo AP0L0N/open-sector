@@ -1,8 +1,63 @@
-import { isNavalType, PATH_RETRY_TICKS, WATER_PATH_COST, type EntityType } from "../catalog.js";
+import { isNavalType, PATH_BUDGET_EXPANSIONS, PATH_MAX_EXPANSIONS, PATH_RETRY_TICKS, WATER_PATH_COST, type EntityType } from "../catalog.js";
 import { inBounds, isWater, nearestWalkable, tileCenter, walkable, worldToTile } from "./geo.js";
 import { climbableDelta, minSlopeCostMul, slopeCostMul, tileHeight } from "./elevation.js";
 import { laneOverBridges } from "./bridge-lane.js";
+import { pathClass, REGION_CELL, sameRegion } from "./region.js";
+import { sightKeysHeld } from "./vision.js";
 import type { Entity, MatchState, Vec } from "./types.js";
+
+/** A* expansions spent so far in the step that is running. Reset when another step (or match) asks. */
+const budget = { state: null as MatchState | null, tick: -1, spent: 0 };
+function budgetOf(state: MatchState): typeof budget {
+  if (budget.state !== state || budget.tick !== state.tick) {
+    budget.state = state;
+    budget.tick = state.tick;
+    budget.spent = 0;
+  }
+  return budget;
+}
+
+/** Charge expansions to the running step's search budget, as a search would. For tests of the budget. */
+export function chargePathBudget(state: MatchState, expansions: number): void {
+  budgetOf(state).spent += expansions;
+}
+
+/**
+ * Routes found this step, by goal tile and walking class. A patrol group steering at one spot or
+ * fifty chasers after one mark ask for the same route from a few tiles apart: the next asker walks
+ * a straight line onto the found route instead of searching again.
+ */
+const shared = { state: null as MatchState | null, tick: -1, routes: new Map<string, { x: number; y: number }[]>() };
+function sharedRoutes(state: MatchState): Map<string, { x: number; y: number }[]> {
+  if (shared.state !== state || shared.tick !== state.tick) {
+    shared.state = state;
+    shared.tick = state.tick;
+    shared.routes.clear();
+  }
+  return shared.routes;
+}
+
+/** `route` joined from (sx, sy) by a clear straight line onto one of its first tiles, or null when none is clear. */
+function joinRoute(
+  state: MatchState,
+  sx: number,
+  sy: number,
+  route: { x: number; y: number }[],
+  type: EntityType | undefined,
+): { x: number; y: number }[] | null {
+  const afloat = !!type && isNavalType(type);
+  const onRoute = new Set<number>();
+  for (const t of route) onRoute.add(key(t.x, t.y));
+  const waterOk = (x: number, y: number): boolean => afloat || onRoute.has(key(x, y));
+  const tries = Math.min(4, route.length);
+  for (let j = 0; j < tries; j++) {
+    const t = route[j]!;
+    if (t.x === sx && t.y === sy) return route.slice(j + 1);
+    const line = walkTileLine(state, sx, sy, t.x, t.y, type, sx, sy, waterOk);
+    if (line) return line.concat(route.slice(j + 1));
+  }
+  return null;
+}
 
 const ORTHO = 10;
 const DIAG = 14;
@@ -61,6 +116,7 @@ export function pathToWorld(
   toX: number,
   toY: number,
   type?: EntityType,
+  fresh = false,
 ): Vec[] {
   const ts = state.tileSize;
   const sx = worldToTile(fromX, ts);
@@ -69,7 +125,35 @@ export function pathToWorld(
   const gy = worldToTile(toY, ts);
   const goal = nearestWalkable(state, gx, gy, type);
   if (!goal) return [];
-  const tiles = astar(state, sx, sy, goal.x, goal.y, type);
+  if (!sameRegion(state, sx, sy, goal.x, goal.y, type)) {
+    pathStats.unreachable++;
+    return [];
+  }
+  // Shared only while a tick runs: a test that walls the map between two searches wants both fresh.
+  const routes = fresh || !sightKeysHeld() ? null : sharedRoutes(state);
+  // By goal cell, not tile: chasers after marks a few tiles apart join one route and walk the last tiles straight.
+  const cols = Math.ceil(state.width / REGION_CELL);
+  const routeKey = `${((goal.y / REGION_CELL) | 0) * cols + ((goal.x / REGION_CELL) | 0)}:${pathClass(type)}`;
+  let tiles: { x: number; y: number }[] | null = null;
+  const known = routes && !(sx === goal.x && sy === goal.y) ? routes.get(routeKey) : undefined;
+  if (known) {
+    const joined = joinRoute(state, sx, sy, known, type);
+    if (joined) {
+      const end = known[known.length - 1]!;
+      if (end.x === goal.x && end.y === goal.y) tiles = joined;
+      else {
+        const afloat = !!type && isNavalType(type);
+        const tail = walkTileLine(state, end.x, end.y, goal.x, goal.y, type, sx, sy, () => afloat);
+        if (tail) tiles = joined.concat(tail);
+      }
+      if (tiles && tiles.length === 0) tiles = null;
+      if (tiles) pathStats.cached++;
+    }
+  }
+  if (!tiles) {
+    tiles = astar(state, sx, sy, goal.x, goal.y, type);
+    if (routes && tiles.length > 0) routes.set(routeKey, tiles);
+  }
   if (tiles.length === 0) {
     if (sx === goal.x && sy === goal.y) return [{ x: toX, y: toY }];
     return [];
@@ -86,7 +170,14 @@ export function pathToWorld(
   return laneOverBridges(state, fromX, fromY, pullString(state, fromX, fromY, pts, type, sx, sy, tiles), type);
 }
 
-export function setPath(state: MatchState, e: Entity, toX: number, toY: number): boolean {
+export interface SetPathOptions {
+  /** A unit with a route in hand that asks again is not urgent: past the step's search budget it keeps its route and asks next step. */
+  urgent?: boolean;
+  /** Search afresh and share nothing: the asker has stamped ground that only it should see. */
+  fresh?: boolean;
+}
+
+export function setPath(state: MatchState, e: Entity, toX: number, toY: number, opts?: SetPathOptions): boolean {
   const tx = worldToTile(toX, state.tileSize);
   const ty = worldToTile(toY, state.tileSize);
   // Asked again for a goal that had no path moments ago: the answer stands until the retry.
@@ -95,7 +186,11 @@ export function setPath(state: MatchState, e: Entity, toX: number, toY: number):
     e.waypoints = [];
     return false;
   }
-  const pts = pathToWorld(state, e.x, e.y, toX, toY, e.type);
+  if (!opts?.urgent && !opts?.fresh && e.waypoints.length > 0 && budgetOf(state).spent >= PATH_BUDGET_EXPANSIONS) {
+    pathStats.deferred++;
+    return true;
+  }
+  const pts = pathToWorld(state, e.x, e.y, toX, toY, e.type, opts?.fresh === true);
   e.waypoints = pts;
   e.pathGoal = { x: toX, y: toY, tick: state.tick };
   if (pts.length > 0) {
@@ -269,7 +364,7 @@ function astarGrid(
   stamp[start] = gen;
   best[start] = 0;
   let found = -1;
-  const cap = n * 4;
+  const cap = Math.min(n * 4, PATH_MAX_EXPANSIONS);
   let it = 0;
   for (; it < cap && open.size > 0; it++) {
     openPop();
@@ -307,6 +402,7 @@ function astarGrid(
     }
   }
   pathStats.expansions += it;
+  budgetOf(state).spent += it;
   if (found < 0) return [];
   const path: { x: number; y: number }[] = [{ x: gx, y: gy }];
   let at = found;

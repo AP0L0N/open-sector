@@ -522,6 +522,19 @@ export const FOV_ISLAND_LIMIT = 12;
  * map, and a chase with no path asks every tick.
  */
 export const PATH_RETRY_TICKS = 30;
+/**
+ * A chase re-plans its route when the mark has walked this many tiles from where the route was
+ * aimed, or when the route is REPATH_STALE_TICKS old. Inside that the old route still leads to it.
+ */
+export const REPATH_DRIFT_TILES = 3;
+export const REPATH_STALE_TICKS = 30;
+/**
+ * A* nodes a step may expand before a unit that still has a route waits a tick for its new one.
+ * Searches for a unit with no route at all always run. One expansion is about 40 ns.
+ */
+export const PATH_BUDGET_EXPANSIONS = 150_000;
+/** Nodes one search may expand. A goal the coarse regions call reachable but a maze hides past this is given up. */
+export const PATH_MAX_EXPANSIONS = 250_000;
 /** Tree tiles a sight ray may pass before the grove closes. One authoring cell. */
 export const TREE_LOS_THROUGH = TILE_SUBDIV;
 /**

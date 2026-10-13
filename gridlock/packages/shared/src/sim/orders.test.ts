@@ -7,6 +7,7 @@ import { makeEntity, tileCenter } from "./geo.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { createMatch, step } from "./match.js";
 import { reversing } from "./orders.js";
+import { REPATH_DRIFT_TILES } from "../catalog.js";
 import type { MatchState } from "./types.js";
 
 function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
@@ -379,5 +380,26 @@ describe("arrival facing", () => {
     assert.ok(sawRotate);
     assert.ok(Math.hypot(man.x - second, man.y - destY) < ts, `x=${man.x}`);
     assert.ok(angAbs(man.facing, 0) < 0.4, `should face the second leg facing=${man.facing}`);
+  });
+});
+
+describe("chase repath", () => {
+  it("keeps its route while the mark drifts less than REPATH_DRIFT_TILES, and re-plans past it", () => {
+    const { state, a, b } = twoPlayerMatch();
+    const ts = state.tileSize;
+    for (let y = 4; y <= 44; y++) for (let x = 4; x <= 44; x++) { const i = y * state.width + x; state.terrain[i] = TILE_EMPTY; state.blocked[i] = 0; state.occupy[i] = 0; state.heights[i] = 0; }
+    const hunter = makeEntity(state, "rifleman", a, tileCenter(6, ts), tileCenter(24, ts));
+    const mark = makeEntity(state, "rifleman", b, tileCenter(40, ts), tileCenter(24, ts));
+    assert.equal(applyCommand(state, a, { type: "cmd.attack", ids: [hunter.id], targetId: mark.id }).ok, true);
+    step(state);
+    const first = hunter.pathGoal;
+    assert.ok(first, "the chase planned a route");
+    mark.x += (REPATH_DRIFT_TILES - 1) * ts;
+    step(state);
+    assert.equal(hunter.pathGoal, first, "a mark a little off the aim keeps the route");
+    mark.x += 2 * ts;
+    step(state);
+    assert.notEqual(hunter.pathGoal, first, "past the drift the route is planned again");
+    assert.ok(Math.abs(hunter.pathGoal!.x - mark.x) < ts, "and aimed at where the mark is now");
   });
 });

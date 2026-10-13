@@ -6,7 +6,9 @@ import { applyCommand } from "./commands.js";
 import { makeEntity, tileCenter, walkable, worldToTile } from "./geo.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { createMatch, step } from "./match.js";
-import { astar, pathToWorld } from "./path.js";
+import { astar, chargePathBudget, pathStats, pathToWorld, setPath } from "./path.js";
+import { PATH_BUDGET_EXPANSIONS } from "../catalog.js";
+import { holdSightKeys } from "./vision.js";
 import type { MatchState } from "./types.js";
 
 function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
@@ -188,5 +190,63 @@ describe("pathToWorld smoothing", () => {
     assert.ok(rolling, "Tiger should start rolling toward dest");
     assert.equal(kinks, 0, `heading kinks after roll started: ${kinks}`);
     assert.ok(tank.x > destX - ts * 3, `Tiger x=${tank.x} dest=${destX}`);
+  });
+});
+
+describe("path search economy", () => {
+  it("refuses a goal in a pocket of ground no route reaches, without searching", () => {
+    const { state, a } = twoPlayerMatch();
+    clearPad(state, 2, 2, 40, 40);
+    // Cells are 4 tiles: a 4x4 pocket at 20..23 inside a ring of walled cells 16..27.
+    for (let y = 16; y <= 27; y++) for (let x = 16; x <= 27; x++) if (x < 20 || x > 23 || y < 20 || y > 23) wall(state, x, y);
+    const ts = state.tileSize;
+    const before = { searches: pathStats.searches, unreachable: pathStats.unreachable };
+    const pts = pathToWorld(state, tileCenter(5, ts), tileCenter(5, ts), tileCenter(21, ts), tileCenter(21, ts), "rifleman");
+    assert.equal(pts.length, 0, "no route into the pocket");
+    assert.equal(pathStats.unreachable, before.unreachable + 1, "the regions refused it");
+    assert.equal(pathStats.searches, before.searches, "and A* never ran");
+    const inside = pathToWorld(state, tileCenter(20, ts), tileCenter(20, ts), tileCenter(23, ts), tileCenter(23, ts), "rifleman");
+    assert.ok(inside.length > 0, "inside the pocket a route still exists");
+    void a;
+  });
+
+  it("lets a second asker for the same goal join the route found this tick", () => {
+    const { state } = twoPlayerMatch();
+    clearPad(state, 2, 2, 40, 40);
+    for (let y = 10; y <= 30; y++) wall(state, 20, y);
+    const ts = state.tileSize;
+    holdSightKeys(true);
+    try {
+      const before = { cached: pathStats.cached, searches: pathStats.searches };
+      const first = pathToWorld(state, tileCenter(10, ts), tileCenter(20, ts), tileCenter(30, ts), tileCenter(20, ts), "rifleman");
+      assert.ok(first.length > 1, "the first walks round the wall");
+      assert.equal(pathStats.searches, before.searches + 1);
+      const second = pathToWorld(state, tileCenter(10, ts), tileCenter(22, ts), tileCenter(30, ts), tileCenter(20, ts), "rifleman");
+      assert.equal(pathStats.cached, before.cached + 1, "the second joined the first route");
+      assert.equal(pathStats.searches, before.searches + 1, "without a search of its own");
+      const end = second[second.length - 1]!;
+      assert.equal(Math.round(end.x / ts - 0.5), 30);
+      assert.equal(Math.round(end.y / ts - 0.5), 20);
+    } finally {
+      holdSightKeys(false);
+    }
+  });
+
+  it("keeps a route in hand past the step's search budget and serves a unit with none", () => {
+    const { state, a } = twoPlayerMatch();
+    clearPad(state, 2, 2, 40, 40);
+    const ts = state.tileSize;
+    const e = makeEntity(state, "rifleman", a, tileCenter(5, ts), tileCenter(5, ts));
+    assert.ok(setPath(state, e, tileCenter(12, ts), tileCenter(5, ts)), "a first route");
+    const held = e.waypoints;
+    chargePathBudget(state, PATH_BUDGET_EXPANSIONS);
+    const before = pathStats.deferred;
+    assert.ok(setPath(state, e, tileCenter(5, ts), tileCenter(12, ts)), "still true: the old route stands");
+    assert.equal(e.waypoints, held, "the route in hand was kept");
+    assert.equal(pathStats.deferred, before + 1);
+    e.waypoints = [];
+    assert.ok(setPath(state, e, tileCenter(5, ts), tileCenter(12, ts)), "a unit with no route is served past the budget");
+    assert.ok(e.waypoints.length > 0);
+    assert.ok(setPath(state, e, tileCenter(12, ts), tileCenter(12, ts), { urgent: true }), "and so is an urgent ask");
   });
 });
