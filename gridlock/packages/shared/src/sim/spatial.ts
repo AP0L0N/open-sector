@@ -28,7 +28,8 @@ export type SpatialGrid = {
   cell: number;
   cols: number;
   rows: number;
-  buckets: number[][];
+  /** The bodies filed in each cell. Refs, not ids: a query hands them out without a lookup. */
+  buckets: Entity[][];
   byId: Map<number, Entity>;
   /** Flat cell indexes this id was inserted into. */
   cellsOf: Map<number, number[]>;
@@ -110,10 +111,11 @@ export function syncSpatial(state: MatchState): SpatialGrid {
 
 function remove(grid: SpatialGrid, id: number): void {
   const prev = grid.cellsOf.get(id);
-  if (prev) {
+  const e = grid.byId.get(id);
+  if (prev && e) {
     for (let i = 0; i < prev.length; i++) {
       const bucket = grid.buckets[prev[i]!]!;
-      const at = bucket.indexOf(id);
+      const at = bucket.indexOf(e);
       if (at >= 0) bucket.splice(at, 1);
     }
   }
@@ -135,7 +137,7 @@ export function buildSpatial(state: MatchState): SpatialGrid {
   const cell = CELL_TILES * state.tileSize;
   const cols = Math.max(1, Math.ceil((state.width * state.tileSize) / cell));
   const rows = Math.max(1, Math.ceil((state.height * state.tileSize) / cell));
-  const buckets: number[][] = new Array(cols * rows);
+  const buckets: Entity[][] = new Array(cols * rows);
   for (let i = 0; i < buckets.length; i++) buckets[i] = [];
   const grid: SpatialGrid = {
     cell,
@@ -213,10 +215,8 @@ export function queryCapsules(
     const bucket = grid.buckets[cells[k]!];
     if (!bucket) continue;
     for (let j = 0; j < bucket.length; j++) {
-      const id = bucket[j]!;
-      if (!mark(id)) continue;
-      const e = grid.byId.get(id);
-      if (e) out.push(e);
+      const e = bucket[j]!;
+      if (mark(e.id)) out.push(e);
     }
   }
   out.sort(byId);
@@ -383,7 +383,7 @@ function insert(grid: SpatialGrid, e: Entity): void {
     const row = cy * grid.cols;
     for (let cx = ax0; cx <= ax1; cx++) {
       const i = row + cx;
-      grid.buckets[i]!.push(e.id);
+      grid.buckets[i]!.push(e);
       cells.push(i);
       if (bit) grid.cellOwners[i] = (grid.cellOwners[i] ?? 0) | bit;
     }
@@ -394,10 +394,8 @@ function takeBucket(grid: SpatialGrid, i: number): void {
   const bucket = grid.buckets[i];
   if (!bucket) return;
   for (let k = 0; k < bucket.length; k++) {
-    const id = bucket[k]!;
-    if (!mark(id)) continue;
-    const e = grid.byId.get(id);
-    if (e) buf.push(e);
+    const e = bucket[k]!;
+    if (mark(e.id)) buf.push(e);
   }
 }
 

@@ -9169,8 +9169,11 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
   },
 };
 
+/** The entries behind a Map: a read of a 150-key object literal is a dictionary probe either way, and the Map's is the quicker one for a call made millions of times a match. */
+const ENTRY_MAP: ReadonlyMap<string, CatalogEntry> = new Map(Object.entries(ENTRIES));
+
 export function catalog(type: EntityType): CatalogEntry {
-  return ENTRIES[type];
+  return ENTRY_MAP.get(type) ?? ENTRIES[type];
 }
 
 /**

@@ -1454,11 +1454,17 @@ function patrolContact(state: MatchState, e: Entity, o: Entity): boolean {
 function focusPatrolGroup(state: MatchState, members: Entity[], grid: SpatialGrid): void {
   const fighters = members.filter(patrolCanFight);
   const rows = new Map<number, { enemy: Entity; who: Entity[]; dist: number }>();
+  // A group walks one route; its fighters with one weapon reach see one pool. Asked once per look, not once per man.
+  const pools = new Map<readonly { x: number; y: number }[], Map<string, Entity[]>>();
   for (const e of fighters) {
     const route = e.order!.route!;
     const loop = e.order?.loop === true;
     const range = weaponRangeWorld(state, e);
-    const pool = range > 0 ? queryCapsules(grid, route, range + e.radius, loop, state, e.ownerId) : [];
+    let byReach = pools.get(route);
+    if (!byReach) pools.set(route, (byReach = new Map()));
+    const poolKey = `${range + e.radius}:${loop ? 1 : 0}:${e.ownerId}`;
+    let pool = byReach.get(poolKey);
+    if (!pool) byReach.set(poolKey, (pool = range > 0 ? queryCapsules(grid, route, range + e.radius, loop, state, e.ownerId) : []));
     for (const o of pool) {
       if (!patrolContact(state, e, o)) continue;
       let row = rows.get(o.id);

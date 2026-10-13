@@ -723,13 +723,21 @@ export function tickCollision(state: MatchState, dt = TICK_DT): void {
   );
   const grid = syncSpatial(state);
   const members = new Set(units.map((e) => e.id));
-  const touch = (a: Entity): readonly Entity[] => queryCircle(grid, a.x, a.y, a.radius + grid.maxRadius).slice();
+  // Each body's neighbours are asked for once, with room for what the three separation passes
+  // can shift them, instead of four grid walks a body a tick.
+  const reach = grid.maxRadius + SEPARATION_SLACK;
+  const near: Entity[][] = new Array(units.length);
+  for (let i = 0; i < units.length; i++) {
+    const a = units[i]!;
+    near[i] = isActiveUnit(a) || a.hp > 0 ? queryCircle(grid, a.x, a.y, a.radius + reach).slice() : [];
+  }
   for (const a of units) {
     if (isActiveUnit(a)) crushTreesUnder(state, a);
   }
-  for (const a of units) {
+  for (let i = 0; i < units.length; i++) {
+    const a = units[i]!;
     if (!isActiveUnit(a)) continue;
-    for (const b of touch(a)) {
+    for (const b of near[i]!) {
       if (a.id === b.id || !members.has(b.id) || !isActiveUnit(b)) continue;
       const need = a.radius + b.radius;
       const dx = a.x - b.x;
@@ -757,20 +765,18 @@ export function tickCollision(state: MatchState, dt = TICK_DT): void {
     for (let i = 0; i < units.length; i++) {
       const a = units[i]!;
       if (a.hp <= 0) continue;
-      for (const b of touch(a)) {
+      for (const b of near[i]!) {
         // Map order is entity id, so the old inner loop only met a later id.
         if (b.id <= a.id || !members.has(b.id) || b.hp <= 0) continue;
-        const ax = a.x;
-        const ay = a.y;
-        const bx = b.x;
-        const by = b.y;
         separatePair(state, a, b);
-        if (a.x !== ax || a.y !== ay) relocate(grid, a);
-        if (b.x !== bx || b.y !== by) relocate(grid, b);
       }
     }
   }
+  // The next phase brings the grid up to date for the bodies the passes moved.
 }
+
+/** World px a body may be shoved in one tick's separation passes, kept inside each body's neighbour list. */
+const SEPARATION_SLACK = 8;
 
 function separatePair(state: MatchState, a: Entity, b: Entity): void {
   const need = a.radius + b.radius;
