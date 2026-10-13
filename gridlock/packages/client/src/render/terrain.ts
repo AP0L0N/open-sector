@@ -61,6 +61,8 @@ import { SCRAP_SOFT_REACH, diamondGlintAt, scrapDressAt, scrapField, scrapGround
 import { hillshadeFactor } from "./relief.js";
 import { elevShadeFactor, hash2 } from "./terrain-light.js";
 import { groundGlReady, paintGlGround } from "./terrain-light-gl.js";
+import { blurField } from "./fog-field.js";
+import { heightsKey } from "./height-mesh.js";
 
 const WALL_H = 20;
 const TREE_H = 14;
@@ -77,21 +79,56 @@ const SCRAP_STAMP_SPREAD = 1.1;
 export type ScrapCell = { x: number; y: number };
 
 /** Opaque rounded pond, in atlas pixels. Used to keep shell holes under the water. */
+/** Opaque pond mask in atlas px: `scale` atlas px per mask px (the bank is worked out at a quarter of the atlas). */
 export type WaterMask = {
   canvas: HTMLCanvasElement;
   x: number;
   y: number;
+  scale: number;
 };
 
+/** Atlas px on a side of one baked chunk. Big enough that a view touches a handful, small enough to stay on the GPU. */
+export const ATLAS_CHUNK = 1024;
+/** Baked chunks kept: a 1600x900 view at zoom 1 touches about six; zoomed out, more. */
+const CHUNKS_KEPT = 36;
+
+/** A lake's rounded bank, worked out once per heights and shared by every chunk it touches. */
+type ShoreLake = {
+  /** `heightsKey` the bank was worked out for. */
+  key: number;
+  /** Tile indices of the body. */
+  body: readonly number[];
+  /** Bounds in atlas px, padded for the blur. */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** Rounded pond mask at SHORE_SCALE of the atlas, opaque white on water. */
+  soft: HTMLCanvasElement;
+};
+
+/**
+ * The ground of one map, baked into ATLAS_CHUNK-sized canvases as the view reaches them.
+ * A 576x576 map's whole ground would be a 9000x4600 canvas that no browser keeps on the GPU;
+ * the view needs a few chunks of it at a time.
+ */
 export type TerrainBake = {
-  canvas: HTMLCanvasElement;
   originX: number;
   originY: number;
   width: number;
   height: number;
+  chunkCols: number;
+  chunkRows: number;
+  /** Baked chunks by `cy * chunkCols + cx`. */
+  chunks: Map<number, HTMLCanvasElement>;
+  /** Chunk keys by last use, most recent last. */
+  lru: number[];
   scrap: Set<number>;
-  /** One mask per body of water. Empty on a dry map. */
+  yard: ScrapField;
+  /** One mask per lake whose bank has been worked out. Empty on a dry map. */
   water: WaterMask[];
+  /** Lakes by water body index. */
+  shores: Map<number, ShoreLake>;
 };
 
 export type MiniBake = {
@@ -799,94 +836,154 @@ function rectsOverlap(
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
+/** The bank is worked out at this scale of the atlas; the blur and the pond read the same, at a sixteenth of the pixels. */
+const SHORE_SCALE = 0.25;
+/** Box-blur radius at SHORE_SCALE: two passes of 3 give a sigma near the old 10 px Gaussian's at a quarter. */
+const SHORE_BLUR_Q = 3;
+
+/** Atlas-px bounds of a body of water, padded for the blur, or null when it is too small to draw. */
+function lakeBounds(map: MapDef, body: readonly number[], bake: TerrainBake): { x: number; y: number; w: number; h: number } | null {
+  const pad = (SHORE_BLUR + 4) * 3;
+  const mw = map.width;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const i of body) {
+    const tx = i % mw;
+    const ty = (i / mw) | 0;
+    const d = tileDiamond(tx, ty, map.tileSize);
+    const lift = isoLift(
+      Math.max(cornerZ(map, tx, ty), cornerZ(map, tx + 1, ty), cornerZ(map, tx + 1, ty + 1), cornerZ(map, tx, ty + 1)),
+    );
+    for (const p of [d.n, d.e, d.s, d.w]) {
+      const q = bakePt(p, bake.originX, bake.originY);
+      minX = Math.min(minX, q.x);
+      maxX = Math.max(maxX, q.x);
+      minY = Math.min(minY, q.y - lift);
+      maxY = Math.max(maxY, q.y);
+    }
+  }
+  const x0 = Math.max(0, Math.floor(minX - pad));
+  const y0 = Math.max(0, Math.floor(minY - pad));
+  const x1 = Math.min(bake.width, Math.ceil(maxX + pad));
+  const y1 = Math.min(bake.height, Math.ceil(maxY + pad));
+  if (x1 - x0 < 2 || y1 - y0 < 2) return null;
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
 /**
- * Soft bank painted over the diamond water so the shore reads as a curve.
- * Each returned mask is the opaque pond (alpha 255 on water). The tinted
- * pond painted into the atlas is slightly translucent, so the mask — not
- * that tint — is what covers a crater.
+ * The rounded bank of one lake: its diamonds at a quarter scale, box-blurred and cut at half,
+ * so the shore reads as a curve. Kept on the bake until the heights change.
  */
-function paintSmoothShores(
+function shoreLake(bake: TerrainBake, map: MapDef, index: number, body: readonly number[]): ShoreLake | null {
+  const key = heightsKey(map.heights);
+  const old = bake.shores.get(index);
+  if (old && old.key === key) return old;
+  const b = lakeBounds(map, body, bake);
+  if (!b) return null;
+  const qw = Math.max(1, Math.ceil(b.w * SHORE_SCALE));
+  const qh = Math.max(1, Math.ceil(b.h * SHORE_SCALE));
+  const soft = document.createElement("canvas");
+  soft.width = qw;
+  soft.height = qh;
+  const sctx = soft.getContext("2d", { willReadFrequently: true });
+  if (!sctx) return null;
+  sctx.scale(SHORE_SCALE, SHORE_SCALE);
+  const ox = bake.originX + b.x;
+  const oy = bake.originY + b.y;
+  const mw = map.width;
+  for (const i of body) fillElevatedTile(sctx, map, i % mw, (i / mw) | 0, "#ffffff", ox, oy, false, 1.2);
+  sctx.setTransform(1, 0, 0, 1, 0, 0);
+  const pix = sctx.getImageData(0, 0, qw, qh);
+  const d = pix.data;
+  const a = new Float32Array(qw * qh);
+  for (let i = 0; i < a.length; i++) a[i] = (d[i * 4 + 3] ?? 0) / 255;
+  blurField(a, qw, qh, SHORE_BLUR_Q);
+  for (let i = 0; i < a.length; i++) {
+    const on = a[i]! > 0.5 ? 255 : 0;
+    const o = i * 4;
+    d[o] = on;
+    d[o + 1] = on;
+    d[o + 2] = on;
+    d[o + 3] = on;
+  }
+  sctx.putImageData(pix, 0, 0);
+  const lake: ShoreLake = { key, body, ...b, soft };
+  bake.shores.set(index, lake);
+  const mask: WaterMask = { canvas: soft, x: b.x, y: b.y, scale: 1 / SHORE_SCALE };
+  const at = bake.water.findIndex((m) => m.canvas === old?.soft);
+  if (at >= 0) bake.water[at] = mask;
+  else bake.water.push(mask);
+  return lake;
+}
+
+/** Lakes whose bank overlaps any of `rects` (atlas px) are worked out again on their next paint. */
+function forgetShores(bake: TerrainBake, rects: readonly Rect[]): void {
+  for (const [index, lake] of bake.shores) {
+    if (rects.some((r) => rectsOverlap(r, lake))) bake.shores.delete(index);
+  }
+}
+
+/**
+ * Soft bank painted over the diamond water of one chunk so the shore reads as a curve: grass
+ * over the diamond tips outside the rounded pond, a brown rim round it, and the tinted pond.
+ * `clip` is in the chunk's px; `originX/Y` is the chunk's origin in iso px. `tiles` are the
+ * tiles that reach the chunk, of which the water ones draw the hard diamonds the tips come from.
+ */
+function paintShores(
   ctx: CanvasRenderingContext2D,
   map: MapDef,
+  bake: TerrainBake,
   originX: number,
   originY: number,
-  clip?: { x: number; y: number; w: number; h: number },
-): WaterMask[] {
-  const masks: WaterMask[] = [];
-  const atlasW = ctx.canvas.width;
-  const atlasH = ctx.canvas.height;
-  if (atlasW < 2 || atlasH < 2) return masks;
-  const pad = (SHORE_BLUR + 4) * 3;
-  const elev = map.heights;
+  clip: Rect,
+  tiles: readonly number[],
+): void {
+  const dx = originX - bake.originX;
+  const dy = originY - bake.originY;
+  const clipA = { x: clip.x + dx, y: clip.y + dy, w: clip.w, h: clip.h };
+  const bodies = waterBodies(map);
   const mw = map.width;
-  const mh = map.height;
-  for (const body of waterBodies(map)) {
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    for (const i of body) {
-      const tx = i % mw;
-      const ty = (i / mw) | 0;
-      const d = tileDiamond(tx, ty, map.tileSize);
-      const lift = isoLift(
-        Math.max(
-          cornerZ(map, tx, ty),
-          cornerZ(map, tx + 1, ty),
-          cornerZ(map, tx + 1, ty + 1),
-          cornerZ(map, tx, ty + 1),
-        ),
-      );
-      for (const p of [d.n, d.e, d.s, d.w]) {
-        const q = bakePt(p, originX, originY);
-        minX = Math.min(minX, q.x);
-        maxX = Math.max(maxX, q.x);
-        minY = Math.min(minY, q.y - lift);
-        maxY = Math.max(maxY, q.y);
-      }
-    }
-    const x0 = Math.max(0, Math.floor(minX - pad));
-    const y0 = Math.max(0, Math.floor(minY - pad));
-    const x1 = Math.min(atlasW, Math.ceil(maxX + pad));
-    const y1 = Math.min(atlasH, Math.ceil(maxY + pad));
-    const bw = x1 - x0;
-    const bh = y1 - y0;
+  let wet: number[] | null = null;
+  for (let bi = 0; bi < bodies.length; bi++) {
+    const body = bodies[bi]!;
+    const lake = shoreLake(bake, map, bi, body);
+    if (!lake) continue;
+    // The rim reaches 3 px past the pond; a margin keeps a chunk edge from cutting it.
+    const m = 6;
+    const lx0 = Math.max(lake.x, clipA.x - m);
+    const ly0 = Math.max(lake.y, clipA.y - m);
+    const lx1 = Math.min(lake.x + lake.w, clipA.x + clipA.w + m);
+    const ly1 = Math.min(lake.y + lake.h, clipA.y + clipA.h + m);
+    const bw = Math.ceil(lx1 - lx0);
+    const bh = Math.ceil(ly1 - ly0);
     if (bw < 2 || bh < 2) continue;
-    const bounds = { x: x0, y: y0, w: bw, h: bh };
-    if (clip && !rectsOverlap(bounds, clip)) continue;
-
-    const mask = document.createElement("canvas");
-    mask.width = bw;
-    mask.height = bh;
-    const mctx = mask.getContext("2d");
-    if (!mctx) continue;
-    const ox = originX + x0;
-    const oy = originY + y0;
-    for (const i of body) {
-      fillElevatedTile(mctx, map, i % mw, (i / mw) | 0, "#ffffff", ox, oy, false, 1.2);
-    }
+    const L = { x: Math.floor(lx0), y: Math.floor(ly0), w: bw, h: bh };
 
     const soft = document.createElement("canvas");
     soft.width = bw;
     soft.height = bh;
     const sctx = soft.getContext("2d");
     if (!sctx) continue;
-    sctx.filter = `blur(${SHORE_BLUR}px)`;
-    sctx.drawImage(mask, 0, 0);
-    sctx.filter = "none";
-    const pix = sctx.getImageData(0, 0, bw, bh);
-    const data = pix.data;
-    for (let i = 0; i < data.length; i += 4) {
-      const on = (data[i + 3] ?? 0) > 128;
-      data[i] = on ? 255 : 0;
-      data[i + 1] = on ? 255 : 0;
-      data[i + 2] = on ? 255 : 0;
-      data[i + 3] = on ? 255 : 0;
-    }
-    sctx.putImageData(pix, 0, 0);
-    masks.push({ canvas: soft, x: x0, y: y0 });
+    sctx.imageSmoothingEnabled = true;
+    sctx.imageSmoothingQuality = "low";
+    sctx.drawImage(lake.soft, (L.x - lake.x) * SHORE_SCALE, (L.y - lake.y) * SHORE_SCALE, bw * SHORE_SCALE, bh * SHORE_SCALE, 0, 0, bw, bh);
 
-    // Points of the diamond stair that fall outside the rounded bank.
+    const mask = document.createElement("canvas");
+    mask.width = bw;
+    mask.height = bh;
+    const mctx = mask.getContext("2d");
+    if (!mctx) continue;
+    if (!wet) {
+      wet = [];
+      for (const i of tiles) if (map.tiles[i] === TILE_WATER) wet.push(i);
+    }
+    const inBody = new Set(body);
+    const mox = bake.originX + L.x;
+    const moy = bake.originY + L.y;
+    for (const i of wet) if (inBody.has(i)) fillElevatedTile(mctx, map, i % mw, (i / mw) | 0, "#ffffff", mox, moy, false, 1.2);
+
     const tips = document.createElement("canvas");
     tips.width = bw;
     tips.height = bh;
@@ -906,7 +1003,7 @@ function paintSmoothShores(
     rim.height = bh;
     const rctx = rim.getContext("2d");
     if (!rctx) continue;
-    for (const [dx, dy] of [
+    for (const [ox, oy] of [
       [3, 0],
       [-3, 0],
       [0, 3],
@@ -916,7 +1013,7 @@ function paintSmoothShores(
       [2, -2],
       [-2, -2],
     ] as const) {
-      rctx.drawImage(soft, dx, dy);
+      rctx.drawImage(soft, ox, oy);
     }
     rctx.globalCompositeOperation = "source-in";
     rctx.fillStyle = "#6b5a42";
@@ -941,17 +1038,14 @@ function paintSmoothShores(
     }
 
     ctx.save();
-    if (clip) {
-      ctx.beginPath();
-      ctx.rect(clip.x, clip.y, clip.w, clip.h);
-      ctx.clip();
-    }
-    ctx.drawImage(tips, x0, y0);
-    ctx.drawImage(rim, x0, y0);
-    ctx.drawImage(pond, x0, y0);
+    ctx.beginPath();
+    ctx.rect(clip.x, clip.y, clip.w, clip.h);
+    ctx.clip();
+    ctx.drawImage(tips, L.x - dx, L.y - dy);
+    ctx.drawImage(rim, L.x - dx, L.y - dy);
+    ctx.drawImage(pond, L.x - dx, L.y - dy);
     ctx.restore();
   }
-  return masks;
 }
 
 function paintTileStamp(
@@ -961,7 +1055,7 @@ function paintTileStamp(
   yard: ScrapField,
   originX: number,
   originY: number,
-  shoreClip?: { x: number; y: number; w: number; h: number },
+  shore?: { bake: TerrainBake; clip: Rect },
 ): void {
   const w = map.width;
   const gl = groundGlReady();
@@ -973,7 +1067,7 @@ function paintTileStamp(
     const { path, rect } = stampedGround(map, indices, originX, originY);
     paintGlGround(ctx, map, yard.set, originX, originY, rect, path);
   }
-  if (shoreClip) paintSmoothShores(ctx, map, originX, originY, shoreClip);
+  if (shore) paintShores(ctx, map, shore.bake, originX, originY, shore.clip, indices);
   for (const i of indices) {
     paintTileProps(ctx, map, i % w, (i / w) | 0, yard, originX, originY);
   }
@@ -990,37 +1084,106 @@ function forEachTile(map: MapDef, fn: (x: number, y: number) => void): void {
   }
 }
 
-function makeAtlasCanvas(map: MapDef): {
-  canvas: HTMLCanvasElement;
-  ctx: CanvasRenderingContext2D;
-  originX: number;
-  originY: number;
-  width: number;
-  height: number;
-} {
+type Rect = { x: number; y: number; w: number; h: number };
+
+/** The map's ground, sized and ready; no chunk is painted until the view reaches it. */
+export function bakeTerrain(map: MapDef, scrap: Iterable<ScrapCell>): TerrainBake {
   const size = atlasSize(map);
+  const width = Math.max(1, size.width);
+  const height = Math.max(1, size.height);
+  const packed = packScrap(scrap, map.width);
+  return {
+    originX: size.originX,
+    originY: size.originY,
+    width,
+    height,
+    chunkCols: Math.ceil(width / ATLAS_CHUNK),
+    chunkRows: Math.ceil(height / ATLAS_CHUNK),
+    chunks: new Map(),
+    lru: [],
+    scrap: packed,
+    yard: scrapField(packed, map.width, map.height),
+    water: [],
+    shores: new Map(),
+  };
+}
+
+function chunkOrigin(bake: TerrainBake, k: number): { cx: number; cy: number; px: number; py: number } {
+  const cx = k % bake.chunkCols;
+  const cy = (k - cx) / bake.chunkCols;
+  return { cx, cy, px: cx * ATLAS_CHUNK, py: cy * ATLAS_CHUNK };
+}
+
+function touchChunk(bake: TerrainBake, k: number): void {
+  const at = bake.lru.indexOf(k);
+  if (at >= 0) bake.lru.splice(at, 1);
+  bake.lru.push(k);
+}
+
+/** Drop the longest-unused chunks past CHUNKS_KEPT, never one of `keep`. */
+function evictChunks(bake: TerrainBake, keep: ReadonlySet<number>): void {
+  while (bake.chunks.size > CHUNKS_KEPT) {
+    const k = bake.lru.find((x) => !keep.has(x));
+    if (k == null) return;
+    bake.chunks.delete(k);
+    bake.lru.splice(bake.lru.indexOf(k), 1);
+  }
+}
+
+/** The chunk, painted now if the view has not reached it before. */
+function chunkCanvas(bake: TerrainBake, map: MapDef, k: number): HTMLCanvasElement {
+  const hit = bake.chunks.get(k);
+  if (hit) {
+    touchChunk(bake, k);
+    return hit;
+  }
+  const { px, py } = chunkOrigin(bake, k);
+  const cw = Math.min(ATLAS_CHUNK, bake.width - px);
+  const ch = Math.min(ATLAS_CHUNK, bake.height - py);
   const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, size.width);
-  canvas.height = Math.max(1, size.height);
+  canvas.width = Math.max(1, cw);
+  canvas.height = Math.max(1, ch);
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("canvas");
   ctx.imageSmoothingEnabled = false;
-  return { canvas, ctx, ...size };
+  const ox = bake.originX + px;
+  const oy = bake.originY + py;
+  const rect = { x: 0, y: 0, w: cw, h: ch };
+  paintTileStamp(ctx, map, tilesReaching(map, [rect], ox, oy), bake.yard, ox, oy, { bake, clip: rect });
+  bake.chunks.set(k, canvas);
+  touchChunk(bake, k);
+  return canvas;
 }
 
-export function bakeTerrain(map: MapDef, scrap: Iterable<ScrapCell>): TerrainBake {
-  const { canvas, ctx, originX, originY, width, height } = makeAtlasCanvas(map);
-  const packed = packScrap(scrap, map.width);
-  const yard = scrapField(packed, map.width, map.height);
-  const gl = groundGlReady();
-  forEachTile(map, (x, y) => paintGround(ctx, map, x, y, scrapGround(yard, y * map.width + x), originX, originY, gl));
-  if (gl) paintGlGround(ctx, map, packed, originX, originY, { x: 0, y: 0, w: width, h: height });
-  const water = paintSmoothShores(ctx, map, originX, originY);
-  forEachTile(map, (x, y) => paintTileProps(ctx, map, x, y, yard, originX, originY));
-  return { canvas, originX, originY, width, height, scrap: packed, water };
+/** Keys of the chunks under an atlas-px rect, row by row. */
+function chunkKeysIn(bake: TerrainBake, r: Rect): number[] {
+  const x0 = Math.max(0, Math.floor(r.x / ATLAS_CHUNK));
+  const y0 = Math.max(0, Math.floor(r.y / ATLAS_CHUNK));
+  const x1 = Math.min(bake.chunkCols - 1, Math.floor((r.x + r.w) / ATLAS_CHUNK));
+  const y1 = Math.min(bake.chunkRows - 1, Math.floor((r.y + r.h) / ATLAS_CHUNK));
+  const out: number[] = [];
+  for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) out.push(cy * bake.chunkCols + cx);
+  return out;
 }
 
-type Rect = { x: number; y: number; w: number; h: number };
+/**
+ * Every chunk under `rect` (atlas px; the whole ground when null), baked as needed, handed to
+ * `draw` with its atlas-px corner. For a preview or the builder's own blit, which draw under
+ * their own transform.
+ */
+export function forTerrainChunks(
+  bake: TerrainBake,
+  map: MapDef,
+  rect: Rect | null,
+  draw: (canvas: HTMLCanvasElement, px: number, py: number) => void,
+): void {
+  const keys = chunkKeysIn(bake, rect ?? { x: 0, y: 0, w: bake.width, h: bake.height });
+  for (const k of keys) {
+    const { px, py } = chunkOrigin(bake, k);
+    draw(chunkCanvas(bake, map, k), px, py);
+  }
+  evictChunks(bake, new Set(keys));
+}
 
 function tileStampBounds(map: MapDef, tx: number, ty: number, originX: number, originY: number, spread: number): Rect {
   const ts = map.tileSize;
@@ -1141,44 +1304,54 @@ export function restampTiles(
   spread = STAMP_SPREAD,
 ): void {
   if (indices.length === 0) return;
-  const ctx = bake.canvas.getContext("2d");
-  if (!ctx) return;
   const packed = packScrap(scrapCells, map.width);
+  bake.scrap = packed;
+  bake.yard = scrapField(packed, map.width, map.height);
   const w = map.width;
   const rects = mergeRects(
     indices.map((i) => tileStampBounds(map, i % w, (i / w) | 0, bake.originX, bake.originY, spread)),
   );
-  const clip = new Path2D();
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const b of rects) {
-    ctx.clearRect(b.x, b.y, b.w, b.h);
-    clip.rect(b.x, b.y, b.w, b.h);
-    minX = Math.min(minX, b.x);
-    minY = Math.min(minY, b.y);
-    maxX = Math.max(maxX, b.x + b.w);
-    maxY = Math.max(maxY, b.y + b.h);
+  const shore = shoreTouches(map, indices);
+  // Sunk or raised ground moves a bank: those lakes are worked out again when a chunk next paints them.
+  if (shore) forgetShores(bake, rects);
+  // Chunks the view has not reached are painted whole when it does; only baked ones are repainted.
+  for (const [k, canvas] of bake.chunks) {
+    const { px, py } = chunkOrigin(bake, k);
+    const here = { x: 0, y: 0, w: canvas.width, h: canvas.height };
+    const local = rects.map((r) => ({ x: r.x - px, y: r.y - py, w: r.w, h: r.h })).filter((r) => rectsOverlap(r, here));
+    if (local.length === 0) continue;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) continue;
+    const clip = new Path2D();
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const b of local) {
+      ctx.clearRect(b.x, b.y, b.w, b.h);
+      clip.rect(b.x, b.y, b.w, b.h);
+      minX = Math.min(minX, b.x);
+      minY = Math.min(minY, b.y);
+      maxX = Math.max(maxX, b.x + b.w);
+      maxY = Math.max(maxY, b.y + b.h);
+    }
+    const ox = bake.originX + px;
+    const oy = bake.originY + py;
+    // Repaint only inside what was cleared, from every tile that reaches it, so
+    // nothing outside is painted twice and nothing inside is left transparent.
+    ctx.save();
+    ctx.clip(clip);
+    paintTileStamp(
+      ctx,
+      map,
+      tilesReaching(map, local, ox, oy),
+      bake.yard,
+      ox,
+      oy,
+      shore ? { bake, clip: { x: minX, y: minY, w: Math.max(1, maxX - minX), h: Math.max(1, maxY - minY) } } : undefined,
+    );
+    ctx.restore();
   }
-  const shoreClip = shoreTouches(map, indices)
-    ? { x: minX, y: minY, w: Math.max(1, maxX - minX), h: Math.max(1, maxY - minY) }
-    : undefined;
-  // Repaint only inside what was cleared, from every tile that reaches it, so
-  // nothing outside is painted twice and nothing inside is left transparent.
-  ctx.save();
-  ctx.clip(clip);
-  paintTileStamp(
-    ctx,
-    map,
-    tilesReaching(map, rects, bake.originX, bake.originY),
-    scrapField(packed, map.width, map.height),
-    bake.originX,
-    bake.originY,
-    shoreClip,
-  );
-  ctx.restore();
-  bake.scrap = packed;
 }
 
 export function restampMini(
@@ -1247,15 +1420,30 @@ export function updateScrap(bake: TerrainBake, map: MapDef, scrapCells: Iterable
   restampTiles(bake, map, expandIndices(map, dirty, SCRAP_SOFT_REACH), scrapCells, SCRAP_STAMP_SPREAD);
 }
 
+/** The ground under the view, from the chunks it touches; a chunk the view reaches for the first time is painted now. */
 export function blitTerrain(
   ctx: CanvasRenderingContext2D,
   bake: TerrainBake,
+  map: MapDef,
   camX: number,
   camY: number,
   viewW: number,
   viewH: number,
 ): void {
-  ctx.drawImage(bake.canvas, camX - bake.originX, camY - bake.originY, viewW, viewH, 0, 0, viewW, viewH);
+  const vx = camX - bake.originX;
+  const vy = camY - bake.originY;
+  const keys = chunkKeysIn(bake, { x: vx, y: vy, w: viewW, h: viewH });
+  for (const k of keys) {
+    const canvas = chunkCanvas(bake, map, k);
+    const { px, py } = chunkOrigin(bake, k);
+    const sx = Math.max(0, vx - px);
+    const sy = Math.max(0, vy - py);
+    const ex = Math.min(canvas.width, vx + viewW - px);
+    const ey = Math.min(canvas.height, vy + viewH - py);
+    if (ex <= sx || ey <= sy) continue;
+    ctx.drawImage(canvas, sx, sy, ex - sx, ey - sy, px + sx - vx, py + sy - vy, ex - sx, ey - sy);
+  }
+  evictChunks(bake, new Set(keys));
 }
 
 export function blitAtlas(
@@ -1282,9 +1470,15 @@ export function terrainFor(map: MapDef, scrap: Iterable<ScrapCell>): TerrainBake
   return bake;
 }
 
+const rgbMemo = new Map<string, [number, number, number]>();
 function parseRgb(hex: string): [number, number, number] {
-  const n = parseInt(hex.startsWith("#") ? hex.slice(1) : hex, 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  let v = rgbMemo.get(hex);
+  if (!v) {
+    const n = parseInt(hex.startsWith("#") ? hex.slice(1) : hex, 16);
+    v = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    rgbMemo.set(hex, v);
+  }
+  return v;
 }
 
 function miniFill(map: MapDef, tx: number, ty: number, scrap: boolean): string {

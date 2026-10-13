@@ -189,9 +189,10 @@ export class BuildingVeil {
       main.drawImage(this.layer, dx0, dy0, dw, dh, dx0, dy0, dw, dh);
       main.restore();
     }
+    // Only the drawn rect is cleared; a whole-viewport clear per veiled piece was most of a frame on a wall line.
     lctx.save();
     lctx.setTransform(1, 0, 0, 1, 0, 0);
-    lctx.clearRect(0, 0, this.layer.width, this.layer.height);
+    if (dw > 0 && dh > 0) lctx.clearRect(dx0 - 16, dy0 - 16, dw + 32, dh + 32);
     lctx.restore();
   }
 }

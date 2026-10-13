@@ -8,7 +8,7 @@ import {
   type MapDef,
   type Slot,
 } from "@gridlock/shared";
-import { scrapFromMapTiles, terrainFor } from "../render/terrain.js";
+import { forTerrainChunks, scrapFromMapTiles, terrainFor } from "../render/terrain.js";
 
 /** Readable ink on a player swatch. */
 function inkOn(hex: string): string {
@@ -43,7 +43,7 @@ export function drawMapPreview(canvas: HTMLCanvasElement, map: MapDef, slots: re
   const oy = (h - bake.height * scale) / 2;
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "low";
-  ctx.drawImage(bake.canvas, ox, oy, bake.width * scale, bake.height * scale);
+  forTerrainChunks(bake, map, null, (chunk, px, py) => ctx.drawImage(chunk, ox + px * scale, oy + py * scale, chunk.width * scale, chunk.height * scale));
   const to = (p: { x: number; y: number }): { x: number; y: number } => ({
     x: (p.x - bake.originX) * scale + ox,
     y: (p.y - bake.originY) * scale + oy,

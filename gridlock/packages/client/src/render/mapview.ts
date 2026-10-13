@@ -645,7 +645,7 @@ import { canGuardUnit, planeBoardCandidate, resolveHoverAction, type HoverAction
 import { planColor, withQueue } from "./order-queue.js";
 import { guardHeightTag, guardReach, type GuardUnit } from "./guard-reach.js";
 import { BuildingVeil, columnPolygon, uniformVeil, veilCells } from "./building-fog.js";
-import { FOG_RGB, FOG_VEIL_ALPHA, FogField, SHROUD_ALPHA, SHROUD_RGB } from "./fog-field.js";
+import { FOG_BLUR_TILES, FOG_RGB, FOG_VEIL_ALPHA, FogField, SHROUD_ALPHA, SHROUD_RGB, maskDiffBox, type TileBox } from "./fog-field.js";
 import { FogFlat, FogGl } from "./fog-gl.js";
 import {
   NIGHT_RGB,
@@ -1211,6 +1211,11 @@ export class MapView {
   private miniFogCtx: CanvasRenderingContext2D | null = null;
   private miniFogData: ImageData | null = null;
   private ghosts = new Map<number, EntityView>();
+  /** Tiles under a standing or remembered structure this frame: props, lamps and clutter under one stay hidden. */
+  private built = new Set<number>();
+  private lampsFrame = -1;
+  private lampsMemo: { lamp: MapLamp; wx: number; wy: number }[] = [];
+  private snapCount = 0;
   /** Wall-clock ms when a wreck was first drawn; drives hull-fire burnout. */
   private wreckBornAt = new Map<number, number>();
   /** Wall-clock ms when a fallen house was first drawn as a ruin; drives its fires. */
@@ -1721,6 +1726,7 @@ export class MapView {
     this.mctx = mctx;
     this.curr = match;
     this.currById = new Map(match.entities.map((e) => [e.id, e]));
+    if (++this.snapCount % 50 === 0) this.pruneStale();
     this.snapAt = performance.now();
     warmBattle();
     this.syncAtlases();
@@ -1746,6 +1752,7 @@ export class MapView {
     this.prevCrateById = new Map((this.prev.crates ?? []).map((c) => [c.id, c]));
     this.curr = match;
     this.currById = new Map(match.entities.map((e) => [e.id, e]));
+    if (++this.snapCount % 50 === 0) this.pruneStale();
     this.hoverHit = null;
     this.snapAt = performance.now();
     const now = this.snapAt;
@@ -2881,17 +2888,24 @@ export class MapView {
       vis = visionMaskFromSnapshot(match, map.width, map.height, map.tileSize);
     }
     const first = this.vis == null;
-    this.fogField?.set(vis, performance.now(), first);
+    // Only the tiles that changed since the last mask are blurred, relit on the minimap and marked explored.
+    const box = first ? null : maskDiffBox(this.vis!, vis, map.width);
+    const all = { x0: 0, y0: 0, x1: map.width - 1, y1: map.height - 1 };
+    const d = box ?? all;
+    this.fogField?.set(vis, performance.now(), first, first ? null : box);
     this.vis = vis;
     let grew = false;
-    for (let i = 0; i < n; i++) {
-      if (vis[i] && !this.explored[i]) {
-        this.explored[i] = 1;
-        grew = true;
+    for (let y = d.y0; y <= d.y1; y++) {
+      for (let x = d.x0; x <= d.x1; x++) {
+        const i = y * map.width + x;
+        if (vis[i] && !this.explored[i]) {
+          this.explored[i] = 1;
+          grew = true;
+        }
       }
     }
-    if (this.shroudField && grew) this.shroudField.set(this.explored, performance.now(), first);
-    this.rebuildMiniFog(map, n);
+    if (this.shroudField && grew) this.shroudField.set(this.explored, performance.now(), first, first ? null : box);
+    this.rebuildMiniFog(map, n, first ? all : d);
     this.syncGhosts(match, vis);
   }
 
@@ -2909,22 +2923,32 @@ export class MapView {
     }
   }
 
-  private rebuildMiniFog(map: { width: number; height: number }, n: number): void {
+  private rebuildMiniFog(map: { width: number; height: number }, n: number, box: TileBox): void {
     const ctx = this.miniFogCtx;
     const data = this.miniFogData;
     if (!ctx || !data || data.width !== map.width || data.height !== map.height) return;
+    void n;
     const pix = data.data;
     const sight = this.fogField?.next;
     const shroud = this.shroudField ? this.explored : null;
-    for (let i = 0; i < n; i++) {
-      const o = i * 4;
-      const black = shroud != null && !shroud[i];
-      pix[o] = black ? 0 : FOG_RGB[0];
-      pix[o + 1] = black ? 0 : FOG_RGB[1];
-      pix[o + 2] = black ? 0 : FOG_RGB[2];
-      pix[o + 3] = black ? 255 : Math.round(150 * (1 - (sight?.[i] ?? 0)));
+    // The blur reaches past the changed tiles; relight that much round the box.
+    const reach = FOG_BLUR_TILES * 2;
+    const x0 = Math.max(0, box.x0 - reach);
+    const y0 = Math.max(0, box.y0 - reach);
+    const x1 = Math.min(map.width - 1, box.x1 + reach);
+    const y1 = Math.min(map.height - 1, box.y1 + reach);
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const i = y * map.width + x;
+        const o = i * 4;
+        const black = shroud != null && !shroud[i];
+        pix[o] = black ? 0 : FOG_RGB[0];
+        pix[o + 1] = black ? 0 : FOG_RGB[1];
+        pix[o + 2] = black ? 0 : FOG_RGB[2];
+        pix[o + 3] = black ? 255 : Math.round(150 * (1 - (sight?.[i] ?? 0)));
+      }
     }
-    ctx.putImageData(data, 0, 0);
+    ctx.putImageData(data, 0, 0, x0, y0, x1 - x0 + 1, y1 - y0 + 1);
   }
 
   private lit(tx: number, ty: number): boolean {
@@ -4947,6 +4971,7 @@ export class MapView {
         width: this.canvas.width,
         height: this.canvas.height,
         now,
+        lift: isoLift(this.maxElev),
         ...look,
       });
       const ctx = this.ctx;
@@ -4984,6 +5009,7 @@ export class MapView {
         width: this.canvas.width,
         height: this.canvas.height,
         now,
+        lift: isoLift(this.maxElev),
         ...look,
       });
       const ctx = this.ctx;
@@ -5006,7 +5032,7 @@ export class MapView {
     const bake = this.terrain;
     ctx.imageSmoothingEnabled = false;
     if (bake) {
-      blitTerrain(ctx, bake, this.camX, this.camY, w, h);
+      blitTerrain(ctx, bake, this.map(), this.camX, this.camY, w, h);
       this.drawGroundFog();
     }
     ctx.imageSmoothingEnabled = true;
@@ -5023,10 +5049,23 @@ export class MapView {
     const items: DrawItem[] = [];
     const castShadows: IsoPt[][] = [];
     const yardWear: IsoPt[][] = [];
+    const mapW = this.map().width;
+    this.built.clear();
+    for (const e of drawList) {
+      if (e.kind !== "building") continue;
+      for (let y = e.tileY; y < e.tileY + e.tileH; y++) {
+        for (let x = e.tileX; x < e.tileX + e.tileW; x++) this.built.add(y * mapW + x);
+      }
+    }
     for (const e of drawList) {
       // Houses and map defences on ground you have never seen stay under the black.
       if (e.kind === "building" && !this.knownRect(e)) continue;
       const ghost = !liveIds.has(e.id);
+      // Off the view, nothing of it draws: no item, no sort, no veil layer. Every house on a
+      // builder map is in the snapshot; the view sees a few of them.
+      if (e.kind !== "building") {
+        if (ghost || e.garrisonedIn || !this.unitNearView(e, w, h)) continue;
+      } else if (!isBridge(e.type) && !this.buildingNearView(e, w, h)) continue;
       // The Airfield is flat ground; its decal would sit in its own shadow.
       if (e.kind === "building" && !isFieldStructure(e.type) && !isBridge(e.type) && !buildingGroundFor(e.type)) {
         this.pushCastShadow(castShadows, this.buildingShadow(e), w, h);
@@ -5501,14 +5540,15 @@ export class MapView {
     const map = this.map();
     const lamps = map.lamps;
     if (!lamps?.length) return [];
+    if (this.lampsFrame === this.poseFrame) return this.lampsMemo;
     const ts = map.tileSize;
-    const over = (lamp: MapLamp, e: EntityView): boolean =>
-      e.kind === "building" && lamp.x >= e.tileX && lamp.x < e.tileX + e.tileW && lamp.y >= e.tileY && lamp.y < e.tileY + e.tileH;
     const out: { lamp: MapLamp; wx: number; wy: number }[] = [];
     for (const lamp of lamps) {
-      if (this.curr.entities.some((e) => over(lamp, e)) || !this.known(lamp.x, lamp.y)) continue;
+      if (this.built.has(lamp.y * map.width + lamp.x) || !this.known(lamp.x, lamp.y)) continue;
       out.push({ lamp, wx: (lamp.x + 0.5) * ts, wy: (lamp.y + 0.5) * ts });
     }
+    this.lampsFrame = this.poseFrame;
+    this.lampsMemo = out;
     return out;
   }
 
@@ -5534,7 +5574,7 @@ export class MapView {
       if (now - at > CLUTTER_BREAK_MS) this.clutterBreaks.delete(i);
     }
     list.forEach((c, i) => {
-      if (this.curr.entities.some((e) => e.kind === "building" && c.x >= e.tileX && c.x < e.tileX + e.tileW && c.y >= e.tileY && c.y < e.tileY + e.tileH)) return;
+      if (this.built.has(c.y * map.width + c.x)) return;
       const wx = (c.x + 0.5) * ts;
       const wy = (c.y + 0.5) * ts;
       const p = this.toScreen(wx, wy);
@@ -7368,15 +7408,7 @@ export class MapView {
     const { w: vw, h: vh } = this.viewSize();
     const now = performance.now();
     // A structure raised on dressed ground hides the prop under it.
-    const built = new Set<number>();
-    const cover = (e: EntityView): void => {
-      if (e.kind !== "building") return;
-      for (let y = e.tileY; y < e.tileY + e.tileH; y++) {
-        for (let x = e.tileX; x < e.tileX + e.tileW; x++) built.add(y * w + x);
-      }
-    };
-    for (const e of this.curr.entities) cover(e);
-    for (const e of this.ghosts.values()) cover(e);
+    const built = this.built;
     const blastR = TITAN_NUKE.radiusTiles * ts;
     for (const it of decorFor(map).standing) {
       if (built.has(it.ty * w + it.tx) || !this.known(it.tx, it.ty)) continue;
@@ -8284,6 +8316,26 @@ export class MapView {
       this.wreckBornAt.set(id, born);
     }
     return (performance.now() - born) * (this.curr.gameSpeed || 1);
+  }
+
+  /** Drop what is kept per entity for ids no longer in the match, so a long fight does not hold every fallen hull's history. */
+  private pruneStale(): void {
+    const live = this.currById;
+    const maps = [this.juggBlows, this.juggThrows, this.juggRamHits, this.spotRest, this.rigTread, this.ruinBornAt] as Map<number, unknown>[];
+    for (const m of maps) {
+      for (const id of m.keys()) if (!live.has(id)) m.delete(id);
+    }
+    for (const key of this.ruinSmokeAt.keys()) if (!live.has(key >> 4)) this.ruinSmokeAt.delete(key);
+  }
+
+  /** Loose cull for a structure: its footprint centre within a margin of the view wide enough for its walls and sprite. */
+  private buildingNearView(e: EntityView, w: number, h: number): boolean {
+    const ts = this.ts();
+    const tw = Math.max(1, e.tileW);
+    const th = Math.max(1, e.tileH);
+    const s = this.toScreen((e.tileX + tw / 2) * ts, (e.tileY + th / 2) * ts);
+    const m = (tw + th) * ISO_TILE_W * this.zoom + 400;
+    return s.x >= -m && s.y >= -m && s.x <= w + m && s.y <= h + m;
   }
 
   /** Loose cull: sprite, bars, and labels all sit within a couple of sprite sizes. */

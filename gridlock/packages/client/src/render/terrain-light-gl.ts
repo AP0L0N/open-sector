@@ -1,6 +1,6 @@
-import type { MapDef } from "@gridlock/shared";
+import { isoLift, maxHeightOf, type MapDef } from "@gridlock/shared";
 import { compileProgram, dataTexture, freeVao, glContext, meshVao, noiseTexture, type MeshVao } from "./gl.js";
-import { heightMesh, heightsKey } from "./height-mesh.js";
+import { forMeshRuns, heightMesh, heightsKey, type HeightMesh } from "./height-mesh.js";
 import { DIRT_TEX, GRASS_TEXS, ROCK_TEX, SAND_TEX, STONES_TEX, SWAMP_TEX, TALL_GRASS_TEX } from "./sprites.js";
 import { materialBytes, vertexTones } from "./terrain-light.js";
 
@@ -158,7 +158,12 @@ type State = {
   matA: WebGLTexture | null;
   matB: WebGLTexture | null;
   matC: WebGLTexture | null;
+  /** What the material textures were built from: a chunk bake with the same map, heights and scrap keeps them. */
+  matMap: MapDef | null;
+  matHeights: number;
+  matScrap: ReadonlySet<number> | null;
   mesh: MeshVao | null;
+  runs: Pick<HeightMesh, "diagStart" | "w" | "h"> | null;
   meshKey: string;
   maxSide: number;
 };
@@ -206,7 +211,11 @@ function init(): State | null {
     matA: null,
     matB: null,
     matC: null,
+    matMap: null,
+    matHeights: -1,
+    matScrap: null,
     mesh: null,
+    runs: null,
     meshKey: "",
     maxSide: Math.max(256, Math.min(4096, dims[0] ?? 4096, dims[1] ?? 4096, maxRb)),
   };
@@ -244,7 +253,9 @@ function ensureMesh(s: State, map: MapDef): void {
   const key = `${map.id}:${map.width}x${map.height}:${heightsKey(map.heights)}`;
   if (s.meshKey === key && s.mesh) return;
   freeVao(s.gl, s.mesh);
-  s.mesh = meshVao(s.gl, s.prog, heightMesh(map), vertexTones(map));
+  const mesh = heightMesh(map);
+  s.mesh = meshVao(s.gl, s.prog, mesh, vertexTones(map));
+  s.runs = { diagStart: mesh.diagStart, w: mesh.w, h: mesh.h };
   s.meshKey = key;
 }
 
@@ -269,10 +280,16 @@ export function paintGlGround(
   const gl = s.gl;
   ensureMesh(s, map);
   if (!s.mesh) return false;
-  const mats = materialBytes(map, scrap);
-  s.matA = dataTexture(gl, s.matA, map.width, map.height, mats.a, 4);
-  s.matB = dataTexture(gl, s.matB, map.width, map.height, mats.b, 4);
-  s.matC = dataTexture(gl, s.matC, map.width, map.height, mats.c, 4);
+  const hk = heightsKey(map.heights);
+  if (s.matMap !== map || s.matHeights !== hk || s.matScrap !== scrap || !s.matA) {
+    const mats = materialBytes(map, scrap);
+    s.matA = dataTexture(gl, s.matA, map.width, map.height, mats.a, 4);
+    s.matB = dataTexture(gl, s.matB, map.width, map.height, mats.b, 4);
+    s.matC = dataTexture(gl, s.matC, map.width, map.height, mats.c, 4);
+    s.matMap = map;
+    s.matHeights = hk;
+    s.matScrap = scrap;
+  }
   const g0 = imageTexture(s, GRASS_TEXS[0]!, [59, 71, 44]);
   const g1 = imageTexture(s, GRASS_TEXS[1] ?? GRASS_TEXS[0]!, [87, 84, 53]);
   const g2 = imageTexture(s, GRASS_TEXS[2] ?? GRASS_TEXS[0]!, [42, 58, 37]);
@@ -327,7 +344,14 @@ export function paintGlGround(
       gl.uniform2f(s.loc.uChunk!, cx, cy);
       gl.uniform2f(s.loc.uSize!, cw, ch);
       gl.bindVertexArray(s.mesh.vao);
-      gl.drawElements(gl.TRIANGLES, s.mesh.count, gl.UNSIGNED_INT, 0);
+      if (s.runs) {
+        const lift = isoLift(maxHeightOf(map));
+        forMeshRuns(s.runs, originX + cx, originY + cy, originX + cx + cw, originY + cy + ch, lift, (first, count) => {
+          gl.drawElements(gl.TRIANGLES, count, gl.UNSIGNED_INT, first * 4);
+        });
+      } else {
+        gl.drawElements(gl.TRIANGLES, s.mesh.count, gl.UNSIGNED_INT, 0);
+      }
       gl.bindVertexArray(null);
       ctx.drawImage(s.canvas, 0, 0, cw, ch, cx, cy, cw, ch);
     }

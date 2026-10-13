@@ -1,7 +1,7 @@
 import { ISO_TILE_H, ISO_TILE_W, type MapDef } from "@gridlock/shared";
 import { FOG_RGB, FOG_VEIL_ALPHA, fieldBytes, type FogField } from "./fog-field.js";
 import { compileProgram, dataTexture, freeVao, glContext, meshVao, noiseTexture, type MeshVao } from "./gl.js";
-import { heightMesh, heightsKey } from "./height-mesh.js";
+import { forMeshRuns, heightMesh, heightsKey, type HeightMesh } from "./height-mesh.js";
 
 const VS = `#version 300 es
 in vec2 aPos;
@@ -50,6 +50,8 @@ export type FogView = {
   /** Veil alpha and colour; the day veil when missing. */
   alpha?: number;
   rgb?: readonly [number, number, number];
+  /** Tallest hill lift on the map, iso px: ground that far up the screen still lands in the view. */
+  lift?: number;
 };
 
 /** Ground veil laid on the lifted height mesh, so it follows the hills. */
@@ -61,6 +63,7 @@ export class FogGl {
   private prevTex: WebGLTexture | null = null;
   private nextTex: WebGLTexture | null = null;
   private mesh: MeshVao | null = null;
+  private runs: Pick<HeightMesh, "diagStart" | "w" | "h"> | null = null;
   private mapKey = "";
   private mapW = 1;
   private mapH = 1;
@@ -90,7 +93,9 @@ export class FogGl {
     const key = `${map.id}:${map.width}x${map.height}:${heightsKey(map.heights)}`;
     if (key === this.mapKey) return;
     freeVao(this.gl, this.mesh);
-    this.mesh = meshVao(this.gl, this.prog, heightMesh(map));
+    const mesh = heightMesh(map);
+    this.mesh = meshVao(this.gl, this.prog, mesh);
+    this.runs = { diagStart: mesh.diagStart, w: mesh.w, h: mesh.h };
     this.mapKey = key;
     this.mapW = map.width;
     this.mapH = map.height;
@@ -132,7 +137,15 @@ export class FogGl {
     gl.uniform1f(this.loc.uAlpha!, view.alpha ?? FOG_VEIL_ALPHA);
     gl.uniform3f(this.loc.uColor!, rgb[0] / 255, rgb[1] / 255, rgb[2] / 255);
     gl.bindVertexArray(this.mesh.vao);
-    gl.drawElements(gl.TRIANGLES, this.mesh.count, gl.UNSIGNED_INT, 0);
+    if (this.runs) {
+      const x1 = view.camX + view.width / view.scale;
+      const y1 = view.camY + view.height / view.scale;
+      forMeshRuns(this.runs, view.camX, view.camY, x1, y1, view.lift ?? 0, (first, count) => {
+        gl.drawElements(gl.TRIANGLES, count, gl.UNSIGNED_INT, first * 4);
+      });
+    } else {
+      gl.drawElements(gl.TRIANGLES, this.mesh.count, gl.UNSIGNED_INT, 0);
+    }
     gl.bindVertexArray(null);
   }
 }

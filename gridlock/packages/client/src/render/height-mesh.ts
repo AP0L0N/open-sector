@@ -10,6 +10,10 @@ export type HeightMesh = {
   uv: Float32Array;
   /** Two triangles per tile, ordered back (low tx+ty) to front like the 2D bake. */
   index: Uint32Array;
+  /** First index of each diagonal tx+ty, plus one past the last: diagonal `s` is `index[diagStart[s] .. diagStart[s+1])`. */
+  diagStart: Uint32Array;
+  w: number;
+  h: number;
 };
 
 const heightSerials = new WeakMap<object, number>();
@@ -48,8 +52,10 @@ export function heightMesh(map: Pick<MapDef, "width" | "height" | "heights"> & {
   const w = map.width;
   const h = map.height;
   const index = new Uint32Array(w * h * 6);
+  const diagStart = new Uint32Array(w + h);
   let k = 0;
   for (let sum = 0; sum <= w + h - 2; sum++) {
+    diagStart[sum] = k;
     const x0 = Math.max(0, sum - (h - 1));
     const x1 = Math.min(w - 1, sum);
     for (let tx = x0; tx <= x1; tx++) {
@@ -66,7 +72,39 @@ export function heightMesh(map: Pick<MapDef, "width" | "height" | "heights"> & {
       index[k++] = west;
     }
   }
-  return { cols, rows, pos, uv, index };
+  diagStart[w + h - 1] = k;
+  return { cols, rows, pos, uv, index, diagStart, w, h };
+}
+
+/**
+ * The index runs of the mesh under an iso-px window, one per diagonal: `fn(first, count)` in
+ * indices. A tile on diagonal s spans iso y `[s, s + 2] * ISO_TILE_H / 2` less its lift (up to
+ * `lift`), and iso x `[2 tx - s - 1, 2 tx - s + 1] * ISO_TILE_W / 2`, so both the diagonal band
+ * and the run within each diagonal come straight from the window. A 576x576 map's 663k
+ * triangles come down to the few tens of thousands a view can see.
+ */
+export function forMeshRuns(
+  mesh: Pick<HeightMesh, "diagStart" | "w" | "h">,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  lift: number,
+  fn: (first: number, count: number) => void,
+): void {
+  const { w, h, diagStart } = mesh;
+  const hy = ISO_TILE_H / 2;
+  const hx = ISO_TILE_W / 2;
+  const sMin = Math.max(0, Math.floor(y0 / hy) - 2);
+  const sMax = Math.min(w + h - 2, Math.ceil((y1 + lift) / hy));
+  for (let s = sMin; s <= sMax; s++) {
+    const tx0 = Math.max(0, s - (h - 1));
+    const tx1 = Math.min(w - 1, s);
+    const a = Math.max(tx0, Math.floor((x0 / hx + s - 1) / 2));
+    const b = Math.min(tx1, Math.ceil((x1 / hx + s + 1) / 2));
+    if (b < a) continue;
+    fn(diagStart[s]! + (a - tx0) * 6, (b - a + 1) * 6);
+  }
 }
 
 /** Tileable value noise, seeded so every client draws the same fog grain. */

@@ -75,6 +75,28 @@ export function fadeT(changedAt: number, now: number, ms = FOG_FADE_MS): number 
   return t * t * (3 - 2 * t);
 }
 
+/** A box of tiles, `x0..x1` and `y0..y1` inclusive. */
+export type TileBox = { x0: number; y0: number; x1: number; y1: number };
+
+/** The box round every tile where `a` and `b` differ, or null when none does. */
+export function maskDiffBox(a: ArrayLike<number>, b: ArrayLike<number>, w: number): TileBox | null {
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  const n = a.length;
+  for (let i = 0; i < n; i++) {
+    if ((a[i] ? 1 : 0) === (b[i] ? 1 : 0)) continue;
+    const x = i % w;
+    const y = (i - x) / w;
+    if (x < x0) x0 = x;
+    if (x > x1) x1 = x;
+    if (y < y0) y0 = y;
+    if (y > y1) y1 = y;
+  }
+  return x1 < x0 ? null : { x0, y0, x1, y1 };
+}
+
 /** Soft sight field the ground veil and the building veil both read, so they agree. */
 export class FogField {
   readonly w: number;
@@ -84,23 +106,60 @@ export class FogField {
   changedAt = -Infinity;
   /** Bumps on every `set`; GL uploads key off it. */
   version = 0;
+  /** The mask `next` was blurred from, so the next one can be compared and only the change re-blurred. */
+  private mask: Uint8Array;
 
   constructor(w: number, h: number) {
     this.w = w;
     this.h = h;
     this.prev = new Float32Array(w * h);
     this.next = new Float32Array(w * h);
+    this.mask = new Uint8Array(w * h);
   }
 
-  /** New sight mask. A fade that is still running continues from where it is. */
-  set(mask: ArrayLike<number>, now: number, instant = false): void {
+  /**
+   * New sight mask. A fade that is still running continues from where it is. Only the tiles
+   * that changed (`box`, found by comparing when left out) and the blur's reach round them are
+   * blurred again: a few hundred tiles a snapshot, not the whole map.
+   */
+  set(mask: ArrayLike<number>, now: number, instant = false, box?: TileBox | null): void {
+    const w = this.w;
+    const h = this.h;
+    const n = w * h;
+    const dirty = box === undefined ? maskDiffBox(this.mask, mask, w) : box;
+    if (!dirty && this.version > 0) return;
     const t = fadeT(this.changedAt, now);
     const from = this.prev;
     const to = this.next;
-    const mid = new Float32Array(this.w * this.h);
-    for (let i = 0; i < mid.length; i++) mid[i] = from[i]! + (to[i]! - from[i]!) * t;
-    this.next = blurVision(mask, this.w, this.h);
-    this.prev = instant ? this.next : mid;
+    // Where the fade stands now becomes where the next one starts from.
+    if (t >= 1) from.set(to);
+    else for (let i = 0; i < n; i++) from[i] = from[i]! + (to[i]! - from[i]!) * t;
+    for (let i = 0; i < n; i++) this.mask[i] = mask[i] ? 1 : 0;
+    const reach = FOG_BLUR_TILES * 2;
+    const d = dirty ?? { x0: 0, y0: 0, x1: w - 1, y1: h - 1 };
+    // The crop holds the blur's reach round the box, so its clamped edges only fall where the map's do.
+    const cx0 = Math.max(0, d.x0 - reach * 2);
+    const cy0 = Math.max(0, d.y0 - reach * 2);
+    const cx1 = Math.min(w - 1, d.x1 + reach * 2);
+    const cy1 = Math.min(h - 1, d.y1 + reach * 2);
+    const cw = cx1 - cx0 + 1;
+    const ch = cy1 - cy0 + 1;
+    const crop = new Float32Array(cw * ch);
+    for (let y = 0; y < ch; y++) {
+      const row = (cy0 + y) * w + cx0;
+      for (let x = 0; x < cw; x++) crop[y * cw + x] = this.mask[row + x]!;
+    }
+    blurField(crop, cw, ch, FOG_BLUR_TILES);
+    const bx0 = Math.max(0, d.x0 - reach);
+    const by0 = Math.max(0, d.y0 - reach);
+    const bx1 = Math.min(w - 1, d.x1 + reach);
+    const by1 = Math.min(h - 1, d.y1 + reach);
+    for (let y = by0; y <= by1; y++) {
+      const row = y * w;
+      const crow = (y - cy0) * cw - cx0;
+      for (let x = bx0; x <= bx1; x++) to[row + x] = crop[crow + x]!;
+    }
+    if (instant) from.set(to);
     this.changedAt = now;
     this.version++;
   }

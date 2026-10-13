@@ -7,8 +7,12 @@
 
 export type PxRect = { x: number; y: number; w: number; h: number };
 
-/** Opaque pond mask in the same pixel space as the canvas being drawn on. */
-export type WaterCover = { canvas: HTMLCanvasElement; x: number; y: number };
+/** Opaque pond mask in the same pixel space as the canvas being drawn on; `scale` canvas px per mask px (1 when left out). */
+export type WaterCover = { canvas: HTMLCanvasElement; x: number; y: number; scale?: number };
+
+function maskScale(m: WaterCover): number {
+  return m.scale ?? 1;
+}
 
 export function rectsOverlap(a: PxRect, b: PxRect): boolean {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
@@ -59,7 +63,7 @@ export function screenWaterCovers(
 ): WaterCover[] {
   const dx = originX - camX;
   const dy = originY - camY;
-  return bodies.map((b) => ({ canvas: b.canvas, x: b.x + dx, y: b.y + dy }));
+  return bodies.map((b) => ({ canvas: b.canvas, x: b.x + dx, y: b.y + dy, scale: b.scale }));
 }
 
 /** Intersection of a mask with the scratch, in mask pixels and scratch pixels. */
@@ -92,7 +96,9 @@ export function coverWithWater(
   masks: readonly WaterCover[],
   paint: (ctx: CanvasRenderingContext2D) => void,
 ): void {
-  const hit = masks.filter((m) => rectsOverlap(dest, { x: m.x, y: m.y, w: m.canvas.width, h: m.canvas.height }));
+  const hit = masks.filter((m) =>
+    rectsOverlap(dest, { x: m.x, y: m.y, w: m.canvas.width * maskScale(m), h: m.canvas.height * maskScale(m) }),
+  );
   if (hit.length === 0) {
     paint(ctx);
     return;
@@ -136,9 +142,12 @@ export function coverWithWater(
   sc.globalAlpha = 1;
   sc.imageSmoothingEnabled = false;
   for (const m of hit) {
-    const punch = maskPunchRect(m.x, m.y, m.canvas.width, m.canvas.height, left, top, sw, sh);
+    const k = maskScale(m);
+    const punch = maskPunchRect(m.x, m.y, m.canvas.width * k, m.canvas.height * k, left, top, sw, sh);
     if (!punch) continue;
-    sc.drawImage(m.canvas, punch.sx, punch.sy, punch.sw, punch.sh, left + punch.dx, top + punch.dy, punch.sw, punch.sh);
+    // A mask worked out at a quarter scale is read smoothed, so the punched edge is a curve, not steps.
+    sc.imageSmoothingEnabled = k !== 1;
+    sc.drawImage(m.canvas, punch.sx / k, punch.sy / k, punch.sw / k, punch.sh / k, left + punch.dx, top + punch.dy, punch.sw, punch.sh);
   }
   sc.setTransform(1, 0, 0, 1, 0, 0);
   sc.globalCompositeOperation = "source-over";

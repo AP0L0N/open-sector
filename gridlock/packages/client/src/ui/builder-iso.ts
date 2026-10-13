@@ -69,6 +69,7 @@ import {
 } from "../render/sprites.js";
 import {
   bakeTerrain,
+  forTerrainChunks,
   forgetTerrain,
   restampTiles,
   treePropKind,
@@ -875,7 +876,10 @@ export function isoDraw(
   const z = cam.zoom;
   c.setTransform(dpr * z, 0, 0, dpr * z, -cam.camX * dpr * z, -cam.camY * dpr * z);
   c.imageSmoothingEnabled = z < 1;
-  if (bake) c.drawImage(bake.canvas, bake.originX, bake.originY);
+  if (bake) {
+    const seen = { x: cam.camX - bake.originX, y: cam.camY - bake.originY, w: w / z, h: h / z };
+    forTerrainChunks(bake, liveMap(s), seen, (chunk, px, py) => c.drawImage(chunk, bake.originX + px, bake.originY + py));
+  }
   c.imageSmoothingEnabled = true;
   c.imageSmoothingQuality = "low";
 
