@@ -50,10 +50,15 @@ export function smelterCrowded(
  * Open ground with enough scrap under it, clear of other Smelters: where a Smelter may be placed.
  * A standing tree is no bar. Raising the building fells it, the same as any other structure.
  */
-export function smelterSiteOk(state: MatchState, tx: number, ty: number): boolean {
+export function smelterSiteOk(
+  state: MatchState,
+  tx: number,
+  ty: number,
+  smelters: Parameters<typeof smelterCrowded>[0] = state.entities.values(),
+): boolean {
   const def = catalog("smelter");
   if (tilesBlocked(state, tx, ty, def.tileW, def.tileH, false)) return false;
-  if (smelterCrowded(state.entities.values(), tx, ty)) return false;
+  if (smelterCrowded(smelters, tx, ty)) return false;
   return smelterOnScrap(state, tx, ty);
 }
 

@@ -562,6 +562,33 @@ export function inBuildRadius(state: MatchState, ownerId: string, tx: number, ty
   return false;
 }
 
+/** The anchors `inBuildRadius` would walk for `ownerId`: standing allied base buildings. */
+export function buildAnchorsOf(state: MatchState, ownerId: string): Entity[] {
+  const out: Entity[] = [];
+  for (const e of state.entities.values()) {
+    if (e.kind !== "building" || e.hp <= 0) continue;
+    if (!anchorsBuildRange(e.type)) continue;
+    if (!allies(state, ownerId, e.ownerId)) continue;
+    out.push(e);
+  }
+  return out;
+}
+
+/** `inBuildRadius` over a prebuilt anchor list, for a search that asks it once per candidate tile. */
+export function inBuildRadiusOf(
+  anchors: readonly Pick<Entity, "tileX" | "tileY" | "tileW" | "tileH">[],
+  tx: number,
+  ty: number,
+  w: number,
+  h: number,
+  radius: number,
+): boolean {
+  for (const e of anchors) {
+    if (footprintGap(tx, ty, w, h, e.tileX, e.tileY, e.tileW, e.tileH) <= radius) return true;
+  }
+  return false;
+}
+
 /**
  * A 1×1 tile within LINE_BUILD_RADIUS of a base building that `isAlly` admits: where a Defences-tab line may go.
  * Field structures and guns are not anchors, so a wall or a tower in the field cannot extend the yard.

@@ -13,12 +13,16 @@
 import fs from "node:fs";
 import { createRoom, joinRoom, hostSlot, startMatch, updateSelf } from "../lobby.js";
 import { loadCustomMap } from "../custom-maps.js";
-import { createMatch, stepMatch } from "./match.js";
+import { createMatch, stepMatch, phaseMs, setPhaseTiming } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
 import { applyCommand } from "./commands.js";
 import { hqOf, makeEntity } from "./geo.js";
 import { sweepStats } from "./sight-sweep.js";
 import { memoStats } from "./vision.js";
+import { pathStats } from "./path.js";
+import { benchPhases, benchHash } from "./bench-report.js";
+
+setPhaseTiming(process.env.PHASES === "1");
 
 const file = process.env.FILE ?? "/home/apolon/projects/open-sector/gridlock/data/maps/c-9u3jzf0dh6.json";
 const n = Number(process.env.N ?? 20);
@@ -70,9 +74,13 @@ for (let t = 1; t <= ticks; t++) {
   simMs += b - a; snapMs += c - b; worst = Math.max(worst, c - a); if (c - a >= 50) over++;
   if (t % every === 0) {
     let units = 0; for (const e of state.entities.values()) if (e.kind === "unit" && e.hp > 0) units++;
-    console.log(`tick ${t} units ${units} | sim ${(simMs / every).toFixed(2)} ms (cpu ${(cpuUs / 1000 / every).toFixed(2)} ms) snapshots(2) ${(snapMs / every).toFixed(2)} ms worst ${worst.toFixed(1)} over50 ${over} | sweeps/tick ${(sweepStats.sweeps / every).toFixed(1)} tiles/sweep ${(sweepStats.tiles / Math.max(1, sweepStats.sweeps)).toFixed(0)} memo ${JSON.stringify(memoStats)}`);
+    console.log(`tick ${t} units ${units} | sim ${(simMs / every).toFixed(2)} ms (cpu ${(cpuUs / 1000 / every).toFixed(2)} ms) snapshots(2) ${(snapMs / every).toFixed(2)} ms worst ${worst.toFixed(1)} over50 ${over} | sweeps/tick ${(sweepStats.sweeps / every).toFixed(1)} tiles/sweep ${(sweepStats.tiles / Math.max(1, sweepStats.sweeps)).toFixed(0)} memo ${JSON.stringify(memoStats)} path ${JSON.stringify(pathStats)}`);
+    if (process.env.PHASES === "1") console.log(benchPhases(phaseMs, every));
     simMs = snapMs = worst = 0; over = 0; cpuUs = 0;
     for (const k of Object.keys(sweepStats)) (sweepStats as Record<string, number>)[k] = 0;
     for (const k of Object.keys(memoStats)) (memoStats as Record<string, number>)[k] = 0;
+    for (const k of Object.keys(pathStats)) (pathStats as Record<string, number>)[k] = 0;
+    for (const k of Object.keys(phaseMs)) delete phaseMs[k];
   }
 }
+if (process.env.HASH === "1") console.log(`hash ${benchHash(state)}`);

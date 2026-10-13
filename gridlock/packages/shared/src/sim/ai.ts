@@ -86,13 +86,13 @@ import { turnedBox } from "../building-rect.js";
 import { buildingSiteError, buildTechMissing } from "./build.js";
 import { applyCommand } from "./commands.js";
 import { canRepairTarget, canScrapWreck, gateSiteAt } from "./field.js";
-import { allies, footprintGap, hasCore, hqOf, inBuildRadius, isWater, nearestWalkable, scrapAt, tilesBlocked, tilesBlockedOrScrap, walkable } from "./geo.js";
+import { allies, buildAnchorsOf, footprintGap, hasCore, hqOf, inBuildRadius, inBuildRadiusOf, isWater, nearestWalkable, scrapAt, tilesBlocked, tilesBlockedOrScrap, walkable } from "./geo.js";
 import { smelterRateOn, smelterSiteOk } from "./smelter.js";
 import { powerOf } from "./power.js";
 import { fenceLineEnergy, hiveEnergyOf } from "./hive-energy.js";
 import { purgeDenied } from "./simunit.js";
 import { needsSupply } from "./supply.js";
-import { canSeeEntity } from "./vision.js";
+import { canSeeEntity, sightKeysHeld } from "./vision.js";
 import type { AiFleet, AiForce, AiPlan, Entity, MatchState, SimPlayer, StructureJob, Vec } from "./types.js";
 
 /** Attack timing, wave sizes, army scale, and Smelter count come from the CPU's type: see ai-profile.ts. */
@@ -2853,22 +2853,27 @@ function findOutlyingSmelterTileNow(state: MatchState, playerId: string, hq: Ent
   const oy = hq.y / state.tileSize;
   // A builder map can be twice the Scrap Yard's size, its starts each beside a single field.
   const reach = Math.max(CPU_EXPAND_TILES, Math.max(state.width, state.height) * CPU_EXPAND_MAP_SHARE);
+  const site = siteLists(state);
+  const mids = scrapIndexOf(state).plain;
+  const hx = def.tileW >> 1;
+  const hy = def.tileH >> 1;
   let best: { tx: number; ty: number } | null = null;
   let bestD = Infinity;
-  for (let ty = 0; ty + def.tileH <= state.height; ty++) {
-    for (let tx = 0; tx + def.tileW <= state.width; tx++) {
-      // Cheap gate first: the middle of the footprint has to be plain scrap.
-      const mid = scrapAt(state, tx + (def.tileW >> 1), ty + (def.tileH >> 1));
-      if (mid <= 0 || mid >= DIAMOND_SCRAP_TILE_YIELD) continue;
-      const cx = tx + def.tileW / 2;
-      const cy = ty + def.tileH / 2;
-      const d = Math.hypot(cx - ox, cy - oy);
-      if (d > reach || d >= bestD) continue;
-      if (foes.some((f) => Math.hypot(cx - f.x, cy - f.y) <= d)) continue;
-      if (!smelterSiteOk(state, tx, ty) || !keepsLanes(state, tx, ty, def.tileW, def.tileH)) continue;
-      best = { tx, ty };
-      bestD = d;
-    }
+  // Only footprints whose middle is plain scrap, in the row order of a whole-map walk.
+  for (let i = 0; i < mids.length; i++) {
+    const m = mids[i]!;
+    const mx = m % state.width;
+    const tx = mx - hx;
+    const ty = (m - mx) / state.width - hy;
+    if (tx < 0 || ty < 0 || tx + def.tileW > state.width || ty + def.tileH > state.height) continue;
+    const cx = tx + def.tileW / 2;
+    const cy = ty + def.tileH / 2;
+    const d = Math.hypot(cx - ox, cy - oy);
+    if (d > reach || d >= bestD) continue;
+    if (foes.some((f) => Math.hypot(cx - f.x, cy - f.y) <= d)) continue;
+    if (!keepsLanesOf(site.lanes, tx, ty, def.tileW, def.tileH) || !smelterSiteOk(state, tx, ty, site.smelters)) continue;
+    best = { tx, ty };
+    bestD = d;
   }
   return best;
 }
@@ -2885,6 +2890,7 @@ function stagingFinder(state: MatchState, hq: Entity): Staging {
     const inwardX = Math.sign(state.width / 2 - ox) || 1;
     const inwardY = Math.sign(state.height / 2 - oy) || 1;
     const maxR = Math.max(state.width, state.height);
+    const lanes = siteLists(state).lanes;
     for (let r = CPU_BUILD_LANE_TILES; r < maxR && !spot; r += 2) {
       for (let k = 0; k <= r && !spot; k += 2) {
         for (const [dx, dy] of [
@@ -2893,7 +2899,7 @@ function stagingFinder(state: MatchState, hq: Entity): Staging {
         ] as const) {
           const tx = ox + dx * inwardX;
           const ty = oy + dy * inwardY;
-          if (!walkable(state, tx, ty, "warden") || !keepsLanes(state, tx, ty, 1, 1)) continue;
+          if (!walkable(state, tx, ty, "warden") || !keepsLanesOf(lanes, tx, ty, 1, 1)) continue;
           spot = { x: (tx + 0.5) * state.tileSize, y: (ty + 0.5) * state.tileSize };
           break;
         }
@@ -3136,6 +3142,8 @@ export function findBuildTile(
   const smelter = catalog("smelter");
   const owner = state.players.get(playerId);
   const keep = countType(state, playerId, smelterOf(owner?.faction ?? "alliance")) < aiProfile(owner?.ai).wantSmelters ? findSmelterTile(state, playerId) : null;
+  const anchors = buildAnchorsOf(state, playerId);
+  const lanes = siteLists(state).lanes;
   for (let r = 1; r <= maxR; r++) {
     const ring: { tx: number; ty: number; inward: number }[] = [];
     for (let dy = -r; dy <= r; dy++) {
@@ -3151,8 +3159,8 @@ export function findBuildTile(
     ring.sort((a, b) => b.inward - a.inward);
     for (const spot of ring) {
       if (scrapGround ? tilesBlocked(state, spot.tx, spot.ty, def.tileW, def.tileH) : tilesBlockedOrScrap(state, spot.tx, spot.ty, def.tileW, def.tileH)) continue;
-      if (!inBuildRadius(state, playerId, spot.tx, spot.ty, def.tileW, def.tileH, radius)) continue;
-      if (!keepsLanes(state, spot.tx, spot.ty, def.tileW, def.tileH)) continue;
+      if (!inBuildRadiusOf(anchors, spot.tx, spot.ty, def.tileW, def.tileH, radius)) continue;
+      if (!keepsLanesOf(lanes, spot.tx, spot.ty, def.tileW, def.tileH)) continue;
       if (keep && footprintGap(spot.tx, spot.ty, def.tileW, def.tileH, keep.tx, keep.ty, smelter.tileW, smelter.tileH) < CPU_BUILD_LANE_TILES) continue;
       return { tx: spot.tx, ty: spot.ty };
     }
@@ -3209,22 +3217,101 @@ function findSmelterTileNow(state: MatchState, playerId: string): { tx: number; 
   if (!hq) return null;
   const ox = hq.tileX + hq.tileW / 2;
   const oy = hq.tileY + hq.tileH / 2;
+  const anchors = buildAnchorsOf(state, playerId);
+  if (anchors.length === 0) return null;
+  // No footprint can lie in build range when it is farther than the radius from every anchor's box.
+  let ax0 = Infinity;
+  let ay0 = Infinity;
+  let ax1 = -Infinity;
+  let ay1 = -Infinity;
+  for (const a of anchors) {
+    ax0 = Math.min(ax0, a.tileX);
+    ay0 = Math.min(ay0, a.tileY);
+    ax1 = Math.max(ax1, a.tileX + a.tileW);
+    ay1 = Math.max(ay1, a.tileY + a.tileH);
+  }
+  const site = siteLists(state);
+  const mids = scrapIndexOf(state).any;
+  const hx = def.tileW >> 1;
+  const hy = def.tileH >> 1;
   let best: { tx: number; ty: number } | null = null;
   let bestD = Infinity;
-  for (let ty = 0; ty + def.tileH <= state.height; ty++) {
-    for (let tx = 0; tx + def.tileW <= state.width; tx++) {
-      // Cheap gate first: the middle of the footprint has to be scrap at all.
-      if (scrapAt(state, tx + (def.tileW >> 1), ty + (def.tileH >> 1)) <= 0) continue;
-      const d = Math.hypot(tx + def.tileW / 2 - ox, ty + def.tileH / 2 - oy);
-      if (d >= bestD) continue;
-      if (!smelterSiteOk(state, tx, ty)) continue;
-      if (!inBuildRadius(state, playerId, tx, ty, def.tileW, def.tileH, BUILD_RADIUS)) continue;
-      if (!keepsLanes(state, tx, ty, def.tileW, def.tileH)) continue;
-      best = { tx, ty };
-      bestD = d;
-    }
+  // Only footprints whose middle is scrap at all, in the row order of a whole-map walk.
+  for (let i = 0; i < mids.length; i++) {
+    const m = mids[i]!;
+    const mx = m % state.width;
+    const tx = mx - hx;
+    const ty = (m - mx) / state.width - hy;
+    if (tx < 0 || ty < 0 || tx + def.tileW > state.width || ty + def.tileH > state.height) continue;
+    const d = Math.hypot(tx + def.tileW / 2 - ox, ty + def.tileH / 2 - oy);
+    if (d >= bestD) continue;
+    if (tx > ax1 + BUILD_RADIUS || tx + def.tileW < ax0 - BUILD_RADIUS || ty > ay1 + BUILD_RADIUS || ty + def.tileH < ay0 - BUILD_RADIUS) continue;
+    if (!inBuildRadiusOf(anchors, tx, ty, def.tileW, def.tileH, BUILD_RADIUS)) continue;
+    if (!keepsLanesOf(site.lanes, tx, ty, def.tileW, def.tileH)) continue;
+    if (!smelterSiteOk(state, tx, ty, site.smelters)) continue;
+    best = { tx, ty };
+    bestD = d;
   }
   return best;
+}
+
+/**
+ * Tile indices whose scrap is worth a Smelter's middle: every scrap tile, and the plain (non-diamond)
+ * ones. Scrap never moves in a match, so the list is kept while a tick runs (`sightKeysHeld`); a test
+ * that paints scrap by hand and asks outside a tick gets a fresh walk, like the sight keys.
+ */
+interface ScrapIndex {
+  rev: number;
+  len: number;
+  tick: number;
+  any: Int32Array;
+  plain: Int32Array;
+}
+
+const scrapIndexes = new WeakMap<MatchState, ScrapIndex>();
+
+function scrapIndexOf(state: MatchState): ScrapIndex {
+  const old = scrapIndexes.get(state);
+  if (
+    old &&
+    sightKeysHeld() &&
+    old.rev === state.scrapRev &&
+    old.len === state.scrapYield.length &&
+    state.tick >= old.tick &&
+    state.tick - old.tick < CPU_SITE_CACHE_TICKS
+  ) {
+    return old;
+  }
+  const any: number[] = [];
+  const plain: number[] = [];
+  for (let i = 0; i < state.scrapYield.length; i++) {
+    const v = state.scrapYield[i] ?? 0;
+    if (v <= 0) continue;
+    any.push(i);
+    if (v < DIAMOND_SCRAP_TILE_YIELD) plain.push(i);
+  }
+  const made = { rev: state.scrapRev, len: state.scrapYield.length, tick: state.tick, any: Int32Array.from(any), plain: Int32Array.from(plain) };
+  scrapIndexes.set(state, made);
+  return made;
+}
+
+/** The standing buildings a site search checks against, gathered once per search instead of once per candidate tile. */
+interface SiteLists {
+  /** Standing non-field buildings a vehicle lane is kept from. */
+  lanes: Entity[];
+  /** Standing Smelters, anyone's. */
+  smelters: Entity[];
+}
+
+function siteLists(state: MatchState): SiteLists {
+  const lanes: Entity[] = [];
+  const smelters: Entity[] = [];
+  for (const b of state.entities.values()) {
+    if (b.kind !== "building" || b.hp <= 0) continue;
+    if (!isFieldStructure(b.type)) lanes.push(b);
+    if (isSmelterType(b.type) && !b.wreck) smelters.push(b);
+  }
+  return { lanes, smelters };
 }
 
 /**
@@ -3232,8 +3319,11 @@ function findSmelterTileNow(state: MatchState, playerId: string): { tx: number; 
  * a big footprint like the Airfield walls off the doors and nothing gets out.
  */
 function keepsLanes(state: MatchState, tx: number, ty: number, w: number, h: number): boolean {
-  for (const b of state.entities.values()) {
-    if (b.kind !== "building" || b.hp <= 0 || isFieldStructure(b.type)) continue;
+  return keepsLanesOf(siteLists(state).lanes, tx, ty, w, h);
+}
+
+function keepsLanesOf(lanes: readonly Entity[], tx: number, ty: number, w: number, h: number): boolean {
+  for (const b of lanes) {
     if (footprintGap(tx, ty, w, h, b.tileX, b.tileY, b.tileW, b.tileH) < CPU_BUILD_LANE_TILES) return false;
   }
   return true;

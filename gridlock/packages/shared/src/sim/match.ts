@@ -347,6 +347,24 @@ function standMapUnits(
   }
 }
 
+/** Per-phase wall time of `stepHeld`, in ms, summed until a bench resets it. Off unless `setPhaseTiming(true)`. */
+export const phaseMs: Record<string, number> = {};
+let phaseTiming = false;
+let lapAt = 0;
+export function setPhaseTiming(on: boolean): void {
+  phaseTiming = on;
+}
+function lapStart(): void {
+  if (phaseTiming) lapAt = performance.now();
+}
+/** Charge the time since the last lap to `name`. A plain return when timing is off. */
+function lap(name: string): void {
+  if (!phaseTiming) return;
+  const t = performance.now();
+  phaseMs[name] = (phaseMs[name] ?? 0) + (t - lapAt);
+  lapAt = t;
+}
+
 export function step(state: MatchState, dt = TICK_DT): void {
   if (state.ended) return;
   holdSightKeys(true);
@@ -360,91 +378,92 @@ export function step(state: MatchState, dt = TICK_DT): void {
 function stepHeld(state: MatchState, dt: number): void {
   state.tick += 1;
   state.phaseRev++;
+  lapStart();
   state.impacts = [];
   state.blinks = [];
   state.launches = [];
-  restampForts(state);
-  restampBridges(state);
+  restampForts(state); lap("restampForts");
+  restampBridges(state); lap("restampBridges");
   // Only rounds aimed at a bridge hurt it; every other knock this step is undone below.
-  const bridgeHp = guardBridges(state);
-  tickPower(state);
-  tickHiveEnergy(state);
-  tickCyborgLink(state);
-  tickSmoke(state, dt);
-  tickSpotlights(state, dt);
-  tickStance(state);
-  tickBipod(state);
-  tickDeploy(state, dt);
-  tickGarrison(state);
-  tickHeal(state, dt);
-  tickRegrowth(state, dt);
-  tickForceFields(state, dt);
-  tickGarrisonCare(state, dt);
-  tickSupply(state, dt);
-  tickShipRearm(state, dt);
-  tickHiveAmmo(state);
-  tickArtillery(state, dt);
-  tickPlaneBoarding(state);
-  tickMineLaunchers(state, dt);
-  tickSimUnits(state);
-  tickJuggernauts(state);
-  tickThralls(state);
-  tickWeavers(state);
-  tickAssemblers(state);
-  tickLunges(state);
-  tickBurrows(state);
-  tickCloaks(state);
-  tickMatriarchs(state, dt);
-  tickOrderQueue(state);
-  tickPatrol(state);
-  groundLstBows(state);
-  const shieldLines = shieldWatch(state);
-  tickMovement(state, dt);
+  const bridgeHp = guardBridges(state); lap("guardBridges");
+  tickPower(state); lap("tickPower");
+  tickHiveEnergy(state); lap("tickHiveEnergy");
+  tickCyborgLink(state); lap("tickCyborgLink");
+  tickSmoke(state, dt); lap("tickSmoke");
+  tickSpotlights(state, dt); lap("tickSpotlights");
+  tickStance(state); lap("tickStance");
+  tickBipod(state); lap("tickBipod");
+  tickDeploy(state, dt); lap("tickDeploy");
+  tickGarrison(state); lap("tickGarrison");
+  tickHeal(state, dt); lap("tickHeal");
+  tickRegrowth(state, dt); lap("tickRegrowth");
+  tickForceFields(state, dt); lap("tickForceFields");
+  tickGarrisonCare(state, dt); lap("tickGarrisonCare");
+  tickSupply(state, dt); lap("tickSupply");
+  tickShipRearm(state, dt); lap("tickShipRearm");
+  tickHiveAmmo(state); lap("tickHiveAmmo");
+  tickArtillery(state, dt); lap("tickArtillery");
+  tickPlaneBoarding(state); lap("tickPlaneBoarding");
+  tickMineLaunchers(state, dt); lap("tickMineLaunchers");
+  tickSimUnits(state); lap("tickSimUnits");
+  tickJuggernauts(state); lap("tickJuggernauts");
+  tickThralls(state); lap("tickThralls");
+  tickWeavers(state); lap("tickWeavers");
+  tickAssemblers(state); lap("tickAssemblers");
+  tickLunges(state); lap("tickLunges");
+  tickBurrows(state); lap("tickBurrows");
+  tickCloaks(state); lap("tickCloaks");
+  tickMatriarchs(state, dt); lap("tickMatriarchs");
+  tickOrderQueue(state); lap("tickOrderQueue");
+  tickPatrol(state); lap("tickPatrol");
+  groundLstBows(state); lap("groundLstBows");
+  const shieldLines = shieldWatch(state); lap("shieldWatch");
+  tickMovement(state, dt); lap("tickMovement");
   state.phaseRev++;
   // After movement, before collision, so a charging walker detonates on
   // infantry he is overlapping instead of crushing them and walking on.
-  tickWalkerCharge(state);
-  tickAir(state, dt);
-  syncPlaneRiders(state);
-  tickChutes(state, dt);
-  tickDrones(state, dt);
-  tickSubmarines(state, dt);
-  tickDestroyers(state, dt);
-  tickHiveArks(state, dt);
-  tickJets(state, dt);
+  tickWalkerCharge(state); lap("tickWalkerCharge");
+  tickAir(state, dt); lap("tickAir");
+  syncPlaneRiders(state); lap("syncPlaneRiders");
+  tickChutes(state, dt); lap("tickChutes");
+  tickDrones(state, dt); lap("tickDrones");
+  tickSubmarines(state, dt); lap("tickSubmarines");
+  tickDestroyers(state, dt); lap("tickDestroyers");
+  tickHiveArks(state, dt); lap("tickHiveArks");
+  tickJets(state, dt); lap("tickJets");
   state.phaseRev++;
-  tickCollision(state, dt);
+  tickCollision(state, dt); lap("tickCollision");
   // No enemy walks through a hive energy wall, whatever moved him this tick.
-  holdShieldLines(state, shieldLines);
-  syncTowedGuns(state);
-  tickThermal(state);
+  holdShieldLines(state, shieldLines); lap("holdShieldLines");
+  syncTowedGuns(state); lap("syncTowedGuns");
+  tickThermal(state); lap("tickThermal");
   state.phaseRev++;
-  tickMines(state, dt);
-  tickCrates(state, dt);
-  tickField(state, dt);
-  tickConstructs(state, dt);
-  tickBridges(state, dt);
-  tickSmelters(state, dt);
-  tickBuild(state, dt);
-  tickTrain(state, dt);
+  tickMines(state, dt); lap("tickMines");
+  tickCrates(state, dt); lap("tickCrates");
+  tickField(state, dt); lap("tickField");
+  tickConstructs(state, dt); lap("tickConstructs");
+  tickBridges(state, dt); lap("tickBridges");
+  tickSmelters(state, dt); lap("tickSmelters");
+  tickBuild(state, dt); lap("tickBuild");
+  tickTrain(state, dt); lap("tickTrain");
   state.phaseRev++;
-  tickEnergyShields(state, dt);
-  tickWeaverDomes(state);
-  tickWeaverShields(state);
-  tickBombards(state);
-  tickShades(state);
-  tickCombat(state, dt);
-  tickLasers(state);
-  tickLaserFences(state, dt);
+  tickEnergyShields(state, dt); lap("tickEnergyShields");
+  tickWeaverDomes(state); lap("tickWeaverDomes");
+  tickWeaverShields(state); lap("tickWeaverShields");
+  tickBombards(state); lap("tickBombards");
+  tickShades(state); lap("tickShades");
+  tickCombat(state, dt); lap("tickCombat");
+  tickLasers(state); lap("tickLasers");
+  tickLaserFences(state, dt); lap("tickLaserFences");
   state.phaseRev++;
-  tickProjectiles(state, dt);
-  syncTorpedoes(state);
-  tickFires(state, dt);
-  tickCapture(state, dt);
-  settleBridges(state, bridgeHp);
-  reapDead(state);
-  reapLostHqs(state);
-  checkWin(state);
+  tickProjectiles(state, dt); lap("tickProjectiles");
+  syncTorpedoes(state); lap("syncTorpedoes");
+  tickFires(state, dt); lap("tickFires");
+  tickCapture(state, dt); lap("tickCapture");
+  settleBridges(state, bridgeHp); lap("settleBridges");
+  reapDead(state); lap("reapDead");
+  reapLostHqs(state); lap("reapLostHqs");
+  checkWin(state); lap("checkWin");
   state.phaseRev++;
 }
 
@@ -468,7 +487,9 @@ export function stepMatch(state: MatchState, dt = TICK_DT): void {
     state.launches = launches;
     state.blinks = blinks;
     state.phaseRev++;
+    lapStart();
     tickAi(state);
+    lap("tickAi");
   } finally {
     holdSightKeys(false);
   }

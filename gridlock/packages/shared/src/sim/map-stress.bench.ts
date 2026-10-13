@@ -10,10 +10,14 @@
 import fs from "node:fs";
 import { createRoom, hostSlot, startMatch, updateSelf } from "../lobby.js";
 import { loadCustomMap } from "../custom-maps.js";
-import { createMatch, stepMatch } from "./match.js";
+import { createMatch, stepMatch, phaseMs, setPhaseTiming } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
 import { sweepStats } from "./sight-sweep.js";
 import { memoStats } from "./vision.js";
+import { pathStats } from "./path.js";
+import { benchPhases, benchHash } from "./bench-report.js";
+
+setPhaseTiming(process.env.PHASES === "1");
 
 const file = process.env.FILE ?? "/home/apolon/projects/open-sector/gridlock/data/maps/c-9u3jzf0dh6.json";
 const nAi = Number(process.env.NAI ?? 1);
@@ -82,12 +86,15 @@ for (let t = 1; t <= ticks; t++) {
     console.log(
       `tick ${t} units ${unitsN} (neutral ${neutralUnits}) buildings ${buildings} proj ${state.projectiles.length} | ` +
         `sim ${(simMs / every).toFixed(2)} ms  snapshot ${(snapMs / every).toFixed(2)} ms  worst ${worstMs.toFixed(1)} ms  over50 ${over50}  ` +
-        `snapBytes ${bytes} visible ${snap.entities.length} | sweeps ${JSON.stringify(sweepStats)} memo ${JSON.stringify(memoStats)}`,
+        `snapBytes ${bytes} visible ${snap.entities.length} | sweeps ${JSON.stringify(sweepStats)} memo ${JSON.stringify(memoStats)} path ${JSON.stringify(pathStats)}`,
     );
+    if (process.env.PHASES === "1") console.log(benchPhases(phaseMs, every));
     simMs = snapMs = worstMs = 0;
     over50 = 0;
     for (const key of Object.keys(sweepStats)) (sweepStats as Record<string, number>)[key] = 0;
     for (const key of Object.keys(memoStats)) (memoStats as Record<string, number>)[key] = 0;
+    for (const key of Object.keys(pathStats)) (pathStats as Record<string, number>)[key] = 0;
+    for (const key of Object.keys(phaseMs)) delete phaseMs[key];
   }
   if (state.ended) {
     console.log(`match ended at tick ${t}`);
@@ -95,3 +102,4 @@ for (let t = 1; t <= ticks; t++) {
   }
 }
 console.log(`total ${((performance.now() - t0) / 1000).toFixed(1)} s`);
+if (process.env.HASH === "1") console.log(`hash ${benchHash(state)}`);

@@ -106,6 +106,9 @@ export function setPath(state: MatchState, e: Entity, toX: number, toY: number):
   return false;
 }
 
+/** Running totals, for benchmarks: searches that reached A*, straight-line answers, and nodes expanded. */
+export const pathStats = { searches: 0, straight: 0, expansions: 0, cached: 0, deferred: 0, unreachable: 0 };
+
 export function astar(
   state: MatchState,
   sx: number,
@@ -116,7 +119,11 @@ export function astar(
 ): { x: number; y: number }[] {
   if (sx === gx && sy === gy) return [];
   const straight = straightPath(state, sx, sy, gx, gy, type);
-  if (straight) return straight;
+  if (straight) {
+    pathStats.straight++;
+    return straight;
+  }
+  pathStats.searches++;
   if (!inBounds(state, sx, sy) || !inBounds(state, gx, gy)) return astarLegacy(state, sx, sy, gx, gy, type);
   return astarGrid(state, sx, sy, gx, gy, type);
 }
@@ -263,7 +270,8 @@ function astarGrid(
   best[start] = 0;
   let found = -1;
   const cap = n * 4;
-  for (let it = 0; it < cap && open.size > 0; it++) {
+  let it = 0;
+  for (; it < cap && open.size > 0; it++) {
     openPop();
     const cur = popped.at;
     const curG = popped.g;
@@ -298,6 +306,7 @@ function astarGrid(
       }
     }
   }
+  pathStats.expansions += it;
   if (found < 0) return [];
   const path: { x: number; y: number }[] = [{ x: gx, y: gy }];
   let at = found;

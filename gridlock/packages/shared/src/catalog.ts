@@ -9167,16 +9167,21 @@ export const MAX_BOAT_RADIUS = Math.max(
   ...Object.values(ENTRIES).filter((d) => d.kind === "unit" && d.naval).map((d) => d.radius),
 );
 
+// Set lookups: these predicates run per entity per tick and, in a site search, per candidate tile.
+const BUILDING_TYPE_SET: ReadonlySet<string> = new Set(BUILDING_TYPES);
+const FIELD_STRUCTURE_SET: ReadonlySet<string> = new Set(FIELD_STRUCTURES);
+const YARD_FIELD_SET: ReadonlySet<string> = new Set(YARD_FIELD_TYPES);
+
 export function isBuildingType(type: string): type is BuildingType {
-  return (BUILDING_TYPES as readonly string[]).includes(type);
+  return BUILDING_TYPE_SET.has(type);
 }
 
 export function isFieldStructure(type: EntityType): type is FieldStructureType {
-  return (FIELD_STRUCTURES as readonly string[]).includes(type);
+  return FIELD_STRUCTURE_SET.has(type);
 }
 
 export function isYardField(type: string): type is YardFieldType {
-  return (YARD_FIELD_TYPES as readonly string[]).includes(type);
+  return YARD_FIELD_SET.has(type);
 }
 
 /** Builds in the yard's line lane, beside sandbags and walls, apart from the other defences: the lines, the Laser Fence, and the Spotlight post. */
@@ -9219,8 +9224,15 @@ export function buildRadiusOf(type: string): number {
  * so a chain of towers or a wall run cannot carry the yard across the map.
  */
 export function anchorsBuildRange(type: EntityType): boolean {
-  return !isFieldStructure(type) && !isDefenceStructure(type);
+  let v = anchorMemo.get(type);
+  if (v === undefined) {
+    v = !isFieldStructure(type) && !isDefenceStructure(type);
+    anchorMemo.set(type, v);
+  }
+  return v;
 }
+/** The answer depends on the static catalog only. */
+const anchorMemo = new Map<string, boolean>();
 
 /** World-pixel length along the wall and thickness across it. Null for other types. */
 export function fieldSpan(type: EntityType): { length: number; thick: number } | null {
@@ -9426,8 +9438,9 @@ export function isDroneType(type: EntityType): boolean {
   return catalog(type).drone === true;
 }
 
+const INFANTRY_TYPE_SET: ReadonlySet<string> = new Set(INFANTRY_TYPES);
 export function isInfantryType(type: EntityType): boolean {
-  return (INFANTRY_TYPES as readonly string[]).includes(type);
+  return INFANTRY_TYPE_SET.has(type);
 }
 
 /**
