@@ -535,6 +535,12 @@ export const REPATH_STALE_TICKS = 30;
 export const PATH_BUDGET_EXPANSIONS = 150_000;
 /** Nodes one search may expand. A goal the coarse regions call reachable but a maze hides past this is given up. */
 export const PATH_MAX_EXPANSIONS = 250_000;
+/**
+ * Nodes a chase may expand after a mark. A mark across a lake or behind a wall run has a route,
+ * but only by a long way round; a chaser gives that up and holds rather than search the map for
+ * it every few seconds. A player's own move order keeps the full search.
+ */
+export const CHASE_PATH_EXPANSIONS = 6000;
 /** Tree tiles a sight ray may pass before the grove closes. One authoring cell. */
 export const TREE_LOS_THROUGH = TILE_SUBDIV;
 /**

@@ -1,5 +1,5 @@
 import { isNavalType, PATH_BUDGET_EXPANSIONS, PATH_MAX_EXPANSIONS, PATH_RETRY_TICKS, WATER_PATH_COST, type EntityType } from "../catalog.js";
-import { inBounds, isWater, nearestWalkable, tileCenter, walkable, worldToTile } from "./geo.js";
+import { groundKey, inBounds, isWater, nearestWalkable, tileCenter, walkable, worldToTile } from "./geo.js";
 import { climbableDelta, minSlopeCostMul, slopeCostMul, tileHeight } from "./elevation.js";
 import { laneOverBridges } from "./bridge-lane.js";
 import { pathClass, REGION_CELL, sameRegion } from "./region.js";
@@ -35,6 +35,22 @@ function sharedRoutes(state: MatchState): Map<string, { x: number; y: number }[]
     shared.routes.clear();
   }
   return shared.routes;
+}
+
+/**
+ * Searches that found nothing, by start cell, goal cell, walking class and search cap, with the
+ * ground they were made on. A hundred chasers in one cell after marks in another would each
+ * search for a route one of them has just shown is not there; the first failure answers for
+ * all of them until PATH_RETRY_TICKS have passed or the ground changes.
+ */
+const failed = { state: null as MatchState | null, swept: -1, routes: new Map<string, { tick: number; ground: number }>() };
+function failedRoutes(state: MatchState): Map<string, { tick: number; ground: number }> {
+  if (failed.state !== state || state.tick < failed.swept || state.tick - failed.swept > PATH_RETRY_TICKS * 4) {
+    failed.state = state;
+    failed.swept = state.tick;
+    failed.routes.clear();
+  }
+  return failed.routes;
 }
 
 /** `route` joined from (sx, sy) by a clear straight line onto one of its first tiles, or null when none is clear. */
@@ -117,6 +133,7 @@ export function pathToWorld(
   toY: number,
   type?: EntityType,
   fresh = false,
+  maxExpansions = PATH_MAX_EXPANSIONS,
 ): Vec[] {
   const ts = state.tileSize;
   const sx = worldToTile(fromX, ts);
@@ -133,7 +150,17 @@ export function pathToWorld(
   const routes = fresh || !sightKeysHeld() ? null : sharedRoutes(state);
   // By goal cell, not tile: chasers after marks a few tiles apart join one route and walk the last tiles straight.
   const cols = Math.ceil(state.width / REGION_CELL);
-  const routeKey = `${((goal.y / REGION_CELL) | 0) * cols + ((goal.x / REGION_CELL) | 0)}:${pathClass(type)}`;
+  const goalCell = ((goal.y / REGION_CELL) | 0) * cols + ((goal.x / REGION_CELL) | 0);
+  const cls = pathClass(type);
+  const routeKey = `${goalCell}:${cls}`;
+  const failKey = routes ? `${((sy / REGION_CELL) | 0) * cols + ((sx / REGION_CELL) | 0)}:${goalCell}:${cls}:${maxExpansions}` : "";
+  if (routes) {
+    const f = failedRoutes(state).get(failKey);
+    if (f && state.tick - f.tick < PATH_RETRY_TICKS && f.ground === groundKey(state)) {
+      pathStats.unreachable++;
+      return [];
+    }
+  }
   let tiles: { x: number; y: number }[] | null = null;
   const known = routes && !(sx === goal.x && sy === goal.y) ? routes.get(routeKey) : undefined;
   if (known) {
@@ -151,8 +178,11 @@ export function pathToWorld(
     }
   }
   if (!tiles) {
-    tiles = astar(state, sx, sy, goal.x, goal.y, type);
-    if (routes && tiles.length > 0) routes.set(routeKey, tiles);
+    tiles = astar(state, sx, sy, goal.x, goal.y, type, maxExpansions);
+    if (routes) {
+      if (tiles.length > 0) routes.set(routeKey, tiles);
+      else failedRoutes(state).set(failKey, { tick: state.tick, ground: groundKey(state) });
+    }
   }
   if (tiles.length === 0) {
     if (sx === goal.x && sy === goal.y) return [{ x: toX, y: toY }];
@@ -175,6 +205,8 @@ export interface SetPathOptions {
   urgent?: boolean;
   /** Search afresh and share nothing: the asker has stamped ground that only it should see. */
   fresh?: boolean;
+  /** Nodes the search may expand before the goal counts as out of reach. The full search when left out. */
+  maxExpansions?: number;
 }
 
 export function setPath(state: MatchState, e: Entity, toX: number, toY: number, opts?: SetPathOptions): boolean {
@@ -190,7 +222,7 @@ export function setPath(state: MatchState, e: Entity, toX: number, toY: number, 
     pathStats.deferred++;
     return true;
   }
-  const pts = pathToWorld(state, e.x, e.y, toX, toY, e.type, opts?.fresh === true);
+  const pts = pathToWorld(state, e.x, e.y, toX, toY, e.type, opts?.fresh === true, opts?.maxExpansions);
   e.waypoints = pts;
   e.pathGoal = { x: toX, y: toY, tick: state.tick };
   if (pts.length > 0) {
@@ -211,6 +243,7 @@ export function astar(
   gx: number,
   gy: number,
   type?: EntityType,
+  maxExpansions = PATH_MAX_EXPANSIONS,
 ): { x: number; y: number }[] {
   if (sx === gx && sy === gy) return [];
   const straight = straightPath(state, sx, sy, gx, gy, type);
@@ -220,7 +253,7 @@ export function astar(
   }
   pathStats.searches++;
   if (!inBounds(state, sx, sy) || !inBounds(state, gx, gy)) return astarLegacy(state, sx, sy, gx, gy, type);
-  return astarGrid(state, sx, sy, gx, gy, type);
+  return astarGrid(state, sx, sy, gx, gy, type, maxExpansions);
 }
 
 /** Per-search scratch, valid where `stamp` equals the current generation. */
@@ -320,7 +353,8 @@ function astarGrid(
   sy: number,
   gx: number,
   gy: number,
-  type?: EntityType,
+  type: EntityType | undefined,
+  maxExpansions: number,
 ): { x: number; y: number }[] {
   const width = state.width;
   const height = state.height;
@@ -364,7 +398,7 @@ function astarGrid(
   stamp[start] = gen;
   best[start] = 0;
   let found = -1;
-  const cap = Math.min(n * 4, PATH_MAX_EXPANSIONS);
+  const cap = Math.min(n * 4, maxExpansions);
   let it = 0;
   for (; it < cap && open.size > 0; it++) {
     openPop();

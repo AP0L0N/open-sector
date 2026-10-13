@@ -232,6 +232,26 @@ describe("path search economy", () => {
     }
   });
 
+  it("lets one failed search answer for the whole cell until the retry", () => {
+    const { state } = twoPlayerMatch();
+    clearPad(state, 2, 2, 60, 60);
+    // A one-tile wall ring round 37..46: every coarse cell on it still holds open tiles, so the regions call the inside reachable; it is closed in fact.
+    for (let y = 36; y <= 47; y++) for (let x = 36; x <= 47; x++) if (x === 36 || x === 47 || y === 36 || y === 47) wall(state, x, y);
+    const ts = state.tileSize;
+    holdSightKeys(true);
+    try {
+      const before = { searches: pathStats.searches, unreachable: pathStats.unreachable };
+      const a = pathToWorld(state, tileCenter(5, ts), tileCenter(5, ts), tileCenter(41, ts), tileCenter(41, ts), "rifleman", false, 2000);
+      const b = pathToWorld(state, tileCenter(6, ts), tileCenter(6, ts), tileCenter(42, ts), tileCenter(42, ts), "rifleman", false, 2000);
+      assert.equal(a.length + b.length, 0, "neither found a way in");
+      assert.ok(pathStats.searches <= before.searches + 1, "the second asker did not search again");
+      const full = pathToWorld(state, tileCenter(6, ts), tileCenter(6, ts), tileCenter(42, ts), tileCenter(42, ts), "rifleman");
+      assert.equal(full.length, 0);
+      assert.equal(pathStats.searches, before.searches + 2, "a search with a wider cap is its own question");
+    } finally {
+      holdSightKeys(false);
+    }
+  });
   it("keeps a route in hand past the step's search budget and serves a unit with none", () => {
     const { state, a } = twoPlayerMatch();
     clearPad(state, 2, 2, 40, 40);

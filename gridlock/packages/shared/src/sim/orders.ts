@@ -10,7 +10,7 @@ import {
   TILE_SIZE,
   TRACK_ARRIVE_SLOP,
 } from "../catalog.js";
-import { REPATH_DRIFT_TILES, REPATH_STALE_TICKS } from "../catalog.js";
+import { CHASE_PATH_EXPANSIONS, REPATH_DRIFT_TILES, REPATH_STALE_TICKS } from "../catalog.js";
 import { adjacentToBuilding, hqOf, rallyPoint, unitInWater, waterSilenced, worldToTile } from "./geo.js";
 import { wantsCapture, pathToCapture } from "./capture.js";
 import { moveWithCollision, pathAroundParked, stepGiveWay, tickMakeWay, tickShuffle } from "./collision.js";
@@ -222,7 +222,7 @@ function tickMovementBodies(state: MatchState, dt: number): void {
             continue;
           }
           if (chaseRepath(state, e, t.x, t.y)) {
-            setPath(state, e, t.x, t.y, { urgent: e.waypoints.length === 0 });
+            setPath(state, e, t.x, t.y, { urgent: e.waypoints.length === 0, maxExpansions: CHASE_PATH_EXPANSIONS });
           }
         }
       }
@@ -385,7 +385,7 @@ function steerPatrol(state: MatchState, e: Entity): boolean {
       // A unit told to hold its ground keeps walking the route and lets the target come to it.
       if (!e.holdPosition && !(waterSilenced(state, e) && dist <= range)) {
         if (chaseRepath(state, e, t.x, t.y)) {
-          setPath(state, e, t.x, t.y, { urgent: e.waypoints.length === 0 });
+          setPath(state, e, t.x, t.y, { urgent: e.waypoints.length === 0, maxExpansions: CHASE_PATH_EXPANSIONS });
         }
         return false;
       }
@@ -620,7 +620,7 @@ function tickEscort(state: MatchState, e: Entity): boolean {
   }
   const dest = escortAnchor(e, t);
   if (chaseRepath(state, e, dest.x, dest.y)) {
-    setPath(state, e, dest.x, dest.y, { urgent: e.waypoints.length === 0 });
+    setPath(state, e, dest.x, dest.y, { urgent: e.waypoints.length === 0, maxExpansions: CHASE_PATH_EXPANSIONS });
   }
   return false;
 }
