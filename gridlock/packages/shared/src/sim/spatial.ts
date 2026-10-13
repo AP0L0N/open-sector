@@ -13,6 +13,7 @@ import {
 } from "../catalog.js";
 import { allies } from "./geo.js";
 import type { Entity, MatchState } from "./types.js";
+import { sightKeysHeld } from "./vision.js";
 
 /** Cell side, in fine tiles. A rifle's reach is a handful of these. */
 const CELL_TILES = 8;
@@ -40,6 +41,9 @@ export type SpatialGrid = {
   ownerBit: Map<string, number>;
   /** Bits of the owners hostile to a side, by that side, made on first use. */
   hostileBits: Map<string, number>;
+  /** Tick and phase the grid was last brought up to date for: a second ask in the same phase is answered as is. */
+  syncedTick: number;
+  syncedRev: number;
 };
 
 let active: SpatialGrid | null = null;
@@ -66,8 +70,15 @@ export function syncSpatial(state: MatchState): SpatialGrid {
   if (!grid || grid.cell !== cell || grid.cols !== cols || grid.rows !== rows) {
     grid = buildSpatial(state);
     persistent.set(state, grid);
+    grid.syncedTick = state.tick;
+    grid.syncedRev = state.phaseRev;
     return grid;
   }
+  // Nothing moves between two asks in one phase of a running tick (the patrol pass and the
+  // movement pass share one); outside a tick a test may have moved things by hand.
+  if (grid.syncedTick === state.tick && grid.syncedRev === state.phaseRev && sightKeysHeld()) return grid;
+  grid.syncedTick = state.tick;
+  grid.syncedRev = state.phaseRev;
   grid.cellOwners.fill(0);
   grid.hostileBits.clear();
   for (const [id, e] of grid.byId) {
@@ -134,6 +145,8 @@ export function buildSpatial(state: MatchState): SpatialGrid {
     byId: new Map(),
     cellsOf: new Map(),
     maxRadius: 0,
+    syncedTick: -1,
+    syncedRev: -1,
     splashPad: 0,
     cellOwners: new Int32Array(cols * rows),
     ownerBit: new Map(),

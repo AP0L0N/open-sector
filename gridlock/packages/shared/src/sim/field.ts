@@ -1551,7 +1551,24 @@ export function raiseWallCrest(state: MatchState, built: readonly Entity[]): voi
  * (vehicles only; infantry walk through). 4 = barbwire (infantry only; vehicles
  * roll through). A trench blocks no one.
  */
+/** Hash of every field structure's standing and gate lock, so the fort grid is re-laid only when one changed. */
+function fortStampKey(state: MatchState): number {
+  let h = 2166136261;
+  for (const e of state.entities.values()) {
+    if (!isFieldStructure(e.type)) continue;
+    h = Math.imul(h ^ e.id, 16777619);
+    h = Math.imul(h ^ ((e.hp > 0 ? 1 : 0) | (e.ruined ? 2 : 0) | (e.gate && !e.gate.locked ? 4 : 0)), 16777619);
+  }
+  h = Math.imul(h ^ state.fortBlock.length, 16777619);
+  return h;
+}
+
+const fortStamps = new WeakMap<MatchState, number>();
+
 export function restampForts(state: MatchState): void {
+  const key = fortStampKey(state);
+  if (fortStamps.get(state) === key) return;
+  fortStamps.set(state, key);
   state.fortBlock.fill(0);
   state.fortOwner.clear();
   for (const e of state.entities.values()) {
