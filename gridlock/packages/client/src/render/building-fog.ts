@@ -183,11 +183,13 @@ export class BuildingVeil {
         lctx.filter = "none";
       }
       lctx.restore();
-      main.save();
+      // The main context's state is put back by hand: a save/restore pair per veiled piece is not free on a wall line.
+      const alpha = main.globalAlpha;
       main.setTransform(1, 0, 0, 1, 0, 0);
       main.globalAlpha = 1;
       main.drawImage(this.layer, dx0, dy0, dw, dh, dx0, dy0, dw, dh);
-      main.restore();
+      main.setTransform(t);
+      main.globalAlpha = alpha;
     }
     // Only the drawn rect is cleared; a whole-viewport clear per veiled piece was most of a frame on a wall line.
     lctx.save();

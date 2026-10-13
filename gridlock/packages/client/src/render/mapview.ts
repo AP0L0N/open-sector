@@ -4952,11 +4952,32 @@ export class MapView {
     return wreckNightAlpha(this.daylight(), this.fogField.sample(p.x / ts, p.y / ts, now));
   }
 
+  /**
+   * Whether any tile under the view (and the blur's reach round it) reads below `lit` in `values`.
+   * A base view with every tile in sight, or every tile explored, needs no veil pass at all.
+   */
+  private fieldBelowInView(values: ArrayLike<number>, lit: number): boolean {
+    const map = this.map();
+    const box = this.visibleTiles();
+    const reach = FOG_BLUR_TILES * 2;
+    const x0 = Math.max(0, box.x0 - reach);
+    const y0 = Math.max(0, box.y0 - reach);
+    const x1 = Math.min(map.width - 1, box.x1 + reach);
+    const y1 = Math.min(map.height - 1, box.y1 + reach);
+    for (let y = y0; y <= y1; y++) {
+      const row = y * map.width;
+      for (let x = x0; x <= x1; x++) if ((values[row + x] ?? 0) < lit) return true;
+    }
+    return false;
+  }
+
   /** Soft veil over ground out of sight, laid on the hills. Drawn under everything standing. */
   private drawGroundFog(): void {
     const field = this.fogField;
     if (!field) return;
     const now = performance.now();
+    // Every tile in view in full sight and no fade running: the pass would paint nothing.
+    if (field.mix(now) >= 1 && !this.fieldBelowInView(field.next, 0.999)) return;
     // Out of sight at night is near black: the dark sight rings and lamps read on the ground.
     const look = nightFog(this.daylight(), FOG_VEIL_ALPHA, FOG_RGB);
     if (this.fogGl === undefined) this.fogGl = FogGl.create();
@@ -4995,6 +5016,8 @@ export class MapView {
     const field = this.shroudField;
     if (!field) return;
     const now = performance.now();
+    // Every tile in view explored and no fade running: nothing of the black would show.
+    if (field.mix(now) >= 1 && this.explored && !this.fieldBelowInView(this.explored, 1)) return;
     // Above 1 so the veil's noise never lets the ground show through where nothing is known.
     const look = { alpha: SHROUD_ALPHA, rgb: SHROUD_RGB };
     if (this.shroudGl === undefined) this.shroudGl = FogGl.create();
