@@ -5,13 +5,9 @@ import {
   halfBurrow,
   SIPHON_BURROW_HP,
   STALKER_CLOAK_SECONDS,
-  neverSurfacesOf,
   costFor,
   energyOf,
   energySupplyOf,
-  energySupplyOfEntity,
-  levelNameOf,
-  isNeuralPulsar,
   canStartResearch,
   researchTechMissing,
   RESEARCH,
@@ -27,11 +23,9 @@ import {
   isHqRig,
   isSmelterType,
   type Faction,
-  CRIT_LABEL,
   isCyborg,
   canContinuousTrain,
   isOneAtATime,
-  DRONE_MODE_LABEL,
   SHELL_TYPES,
   STANCE_LABEL,
   TRAIN_QUEUE_CAP,
@@ -51,8 +45,6 @@ import {
   bridgeCost,
   bridgeCostPerTile,
   isBridge,
-  HAULER_SMOKE_CHARGES,
-  MAULER_CART_HP,
   SMELTER_SCRAP_PER_SEC,
   smelterRateOn,
   type ScrapCell,
@@ -62,7 +54,6 @@ import {
   beltOf,
   carriesShell,
   endlessAmmo,
-  airLoadoutOf,
   staysAloft,
   AIR_DROPS,
   AIR_DROP_INFO,
@@ -73,7 +64,6 @@ import {
   isTransportType,
   catalog,
   clockMarkLine,
-  colorHex,
   getMap,
   matchClock,
   hasAmmo,
@@ -99,9 +89,7 @@ import {
   radarLaidOf,
   aimsOwnGun,
   rocketsOf,
-  rocketsNow,
   rocketAmmoOf,
-  plasmaCellOf,
   launcherOnlyOf,
   airRackOf,
   isStance,
@@ -117,16 +105,13 @@ import {
   specialReady,
   wreckScrapOf,
   WALKER_GUN_MODES,
-  WALKER_SELF_DESTRUCT_HP,
   WALKER_SELF_DESTRUCT_MODES,
   COMMANDER_FIELD_MODES,
   hasForceField,
   BEHEMOTH_PULSE_MODES,
-  behemothPulseOf,
   hasPulseModes,
   type BuildingType,
   type ResearchDef,
-  FORCE_SHIELD_BUILDINGS,
   type YardFieldType,
   canPowerDown,
   isSimUnit,
@@ -264,9 +249,8 @@ export function mountBattlefield(
     el("span", { class: "match-clock-next", text: "NIGHT AT 20:30" }),
   );
   radarHead.append(el("h3", { text: "Radar" }), clock);
-  const zoomLevel = el("div", { class: "zoom-level", attrs: { id: "zoom-level" } });
   const mini = el("canvas", { attrs: { id: "minimap" } });
-  side.append(radarHead, zoomLevel, mini);
+  side.append(radarHead, mini);
 
   const tabs = el("div", { class: "group-tabs", attrs: { id: "group-tabs", role: "tablist" } });
   const heading = el("h3", { class: "group-heading", attrs: { id: "group-heading" } });
@@ -311,16 +295,14 @@ export function mountBattlefield(
     el("div", { class: "config-types", attrs: { id: "config-types" } }),
     el("div", { class: "config-body", attrs: { id: "config-body" } }),
   );
-  const inspect = el("div", { class: "inspect-box", attrs: { id: "inspect" } });
-  inspect.textContent = "No selection.";
-  side.append(el("h3", { text: "Selection" }), config, el("h3", { text: "Inspect" }), inspect);
+  side.append(el("h3", { attrs: { id: "config-head" }, text: "Selection" }), config);
 
   const banner = el("div", { class: "victory-banner hidden", attrs: { id: "victory-banner" } });
   wrap.append(top, body, side, banner);
   root.append(wrap);
 
   existing?.destroy();
-  const view = new MapView(canvas, mini, ctx.match, zoomLevel);
+  const view = new MapView(canvas, mini, ctx.match);
   viewRef = view;
   view.onCommand = (msg) => ctx.net.send(msg);
   view.onCheat = () => {
@@ -339,8 +321,6 @@ export function mountBattlefield(
     // Units joining the selection answer; reselecting the same group stays quiet.
     selectionVoice(ids.filter((id) => !lastSelected.has(id)), ctx.match);
     lastSelected = new Set(ids);
-    ctx.inspect = ids[0] ?? null;
-    paintInspect(ctx, view);
     paintConfig(ctx, view);
     paintQuickActions(ctx, view);
     paintGarrisonRoster(ctx, view);
@@ -957,7 +937,6 @@ export function paintBattleHud(ctx: Ctx): void {
     }
   }
 
-  paintInspect(ctx, viewRef);
   paintConfig(ctx, viewRef);
   paintQuickActions(ctx, viewRef);
   paintScanDock(ctx.match, viewRef?.scanSlot ?? null);
@@ -978,310 +957,6 @@ function paintMatchClock(tick: number, alwaysNight = false): void {
   const label = `${clock.text}, ${clock.phase}. ${mark}.`;
   if (node.title !== label) node.title = label;
   if (node.getAttribute("aria-label") !== label) node.setAttribute("aria-label", label);
-}
-
-function paintInspect(ctx: Ctx, view: MapView | null): void {
-  const box = document.getElementById("inspect");
-  if (!box || !ctx.match) return;
-  const id = ctx.inspect ?? (view ? [...view.selected][0] : null);
-  const e = ctx.match.entities.find((x) => x.id === id);
-  if (!e) {
-    box.textContent = ctx.match.you.alive
-      ? ctx.match.entities.some((x) => x.ownerId === ctx.match!.youPlayerId && isHqBuilding(x.type))
-        ? "No selection."
-        : `Select the ${catalog(HQ_OF[hudFaction].rig).name}, then click it again or press ${SPECIAL_HOTKEY.toUpperCase()} to deploy.`
-      : `${catalog(HQ_OF[hudFaction].core).name} down.`;
-    return;
-  }
-  const owner = ctx.match.players.find((p) => p.playerId === e.ownerId);
-  const def = catalog(e.type);
-  const qn = e.trainQueue?.length ?? 0;
-  const qPaused = e.trainQueue?.[0]?.paused === true;
-  const q =
-    e.trainProgress != null
-      ? `  ·  train ${qPaused ? "paused " : ""}${Math.round(e.trainProgress * 100)}%${qn > 1 ? " ×" + qn : ""}`
-      : "";
-  const cart =
-    e.type === "hauler" && !e.wreck && e.cart != null
-      ? e.cart <= 0
-        ? "  ·  cart off — Smelter"
-        : `  ·  cart ${e.cart}/${MAULER_CART_HP}`
-      : "";
-  const cd = e.specialCooldown ?? 0;
-  const smoke =
-    e.type === "hauler" && e.ownerId === ctx.match.youPlayerId && !e.wreck && e.smokeCharges != null
-      ? e.smokeCharges <= 0 && cd > 0
-        ? `  ·  smoke 0/${HAULER_SMOKE_CHARGES} reloading ${cd.toFixed(1)}s`
-        : `  ·  smoke ${e.smokeCharges}/${HAULER_SMOKE_CHARGES}`
-      : "";
-  const dep =
-    e.deployProgress != null
-      ? `  ·  ${e.state === "undeploy" ? "packing" : e.type === "titan" ? "bracing" : "deploying"} ${Math.round(e.deployProgress * 100)}%`
-      : "";
-  const special =
-    e.ownerId !== ctx.match.youPlayerId || !specialOf(e.type)
-      ? ""
-      : cd > 0 && e.state !== "deploy" && e.state !== "undeploy"
-        ? `  ·  ${specialLabel(e.type, e.braced) ?? "Special"} ${cd.toFixed(1)}s`
-        : specialReady(e.type, e.state, cd)
-          ? `  ·  ${specialLabel(e.type, e.braced) ?? "Special"} (${SPECIAL_HOTKEY.toUpperCase()} / click)`
-          : "";
-  const armor = armorLabel(e.type);
-  const plates = armor ? `  ·  armor ${armor}` : "";
-  const blink = e.purge
-    ? `  ·  PURGING ${Math.round(e.purge.u * 100)}%`
-    : e.blink
-      ? e.blink.u >= 1
-        ? "  ·  blink ready"
-        : `  ·  blink ${Math.round(e.blink.u * 100)}%`
-      : "";
-  const field =
-    (e.field
-      ? `  ·  field ${e.field.hp}/${e.field.max}${e.field.hp <= 0 ? " (down)" : ""}${e.fieldDivert ? " · SHIELD POWER" : ""}`
-      : "") + blink;
-  const wreck = e.wreck
-    ? "  ·  WRECK"
-    : e.shutdown
-      ? e.takeover
-        ? `  ·  SHUT DOWN — uplink ${Math.round(e.takeover.u * 100)}%`
-        : "  ·  SHUT DOWN — wakes when the link is back, unless an enemy Cyborg Commander takes him over"
-      : e.dormant
-        ? "  ·  SHUT DOWN — hiding in plain sight: enemy guns pass him by. Power up to resume"
-        : "";
-  const injuries =
-    e.crits && e.crits.length > 0
-      ? `  ·  ${e.crits.map((c) => (isCyborg(e.type) && c === "leg" ? "legs torn off" : CRIT_LABEL[c])).join(", ")}${e.shielded ? " (plating holds — cannot be hurt yet)" : ""}`
-      : "";
-  const posture = e.swimming
-    ? "  ·  swimming"
-    : e.wading
-      ? rocketsNow(e)
-        ? "  ·  wading, rockets only"
-        : "  ·  wading, cannot fire"
-      : e.braced
-        ? "  ·  braced"
-        : isInfantryType(e.type) && e.stance
-          ? `  ·  ${STANCE_LABEL[e.stance]}${e.stanceOrder && e.stanceOrder !== e.stance ? " (under fire)" : ""}`
-          : "";
-  const belt = beltOf(e.type);
-  const walkerMode = e.type === "walker" ? WALKER_GUN_MODES.find((m) => m.guns === (e.guns === 2 ? 2 : 1)) : undefined;
-  const gun = isInfantryType(e.type)
-    ? infantryGunFor(e)
-    : belt
-      ? {
-          name:
-            walkerMode?.name ??
-            (e.type === "ciws"
-              ? "20mm belt"
-              : e.type === "mammoth"
-                ? "Bow MG"
-                : e.type === "submarine"
-                  ? "Torpedoes"
-                  : e.type === "mgnest"
-                    ? "MG42 belt"
-                    : e.type === "flak"
-                      ? "37mm clip"
-                      : "Gatlings"),
-          clip: belt.clip,
-        }
-      : null;
-  const mag =
-    gun && e.clip != null && !e.wreck
-      ? e.fieldDivert
-        ? `  ·  ${gun.name} dark`
-        : e.reload && e.reload > 0
-        ? `  ·  ${gun.name} reloading ${e.reload.toFixed(1)}s`
-        : "id" in gun && gun.id === "daggers"
-        ? `  ·  ${gun.name}`
-        : `  ·  ${gun.name} ${e.clip}/${gun.clip}`
-      : "";
-  const pulse = behemothPulseOf(e);
-  const rack = pulse
-    ? e.wreck || e.ownerId !== ctx.match.youPlayerId
-      ? ""
-      : `  ·  ${pulse.name}`
-    : e.ammo && e.shell && !e.wreck
-    ? `  ·  ${e.shell.toUpperCase()} ${ammoOf(e.ammo, e.shell)}`
-    : "";
-  const rockets =
-    rocketsNow(e) && !e.wreck && e.ownerId === ctx.match.youPlayerId
-      ? airRackOf(e.type)
-        ? `  ·  ${e.airMode ? "air" : "ground"} attacks`
-        : e.energy != null && plasmaCellOf(e.type)
-          ? `  ·  energy ${Math.round(e.energy * 100)}%${(e.rocketReload ?? 0) > 0 ? ` · ${e.rocketReload!.toFixed(1)}s` : ""}`
-        : e.rocketsOff
-        ? `  ·  rockets off ${e.rockets ?? 0}`
-        : (e.rockets ?? 0) <= 0
-          ? "  ·  rockets EMPTY"
-          : (e.rocketReload ?? 0) > 0
-            ? `  ·  rockets ${e.rockets} · ${e.rocketReload!.toFixed(1)}s`
-            : `  ·  rockets ${e.rockets} ready`
-      : "";
-  const mg =
-    e.mgAmmo != null && !e.wreck
-      ? `  ·  ${roofCiwsOf(e.type) ? "20mm" : "MG"} ${e.mgAmmo}${e.mgOverheat && e.mgOverheat > 0 ? " HOT" : ""}`
-      : "";
-  const garrison =
-    e.garrison && !isTransportType(e.type) && e.type !== "supply"
-      ? tankDeckOf(e.type)
-        ? `  ·  deck ${e.garrison.count}/${e.garrison.cap}`
-        : `  ·  garrison ${e.garrison.count}/${e.garrison.cap}${e.garrison.hide ? " hide" : e.garrison.count ? " watch" : ""}`
-      : e.mountedGun != null
-        ? "  ·  on the deck MG"
-        : e.garrisonedIn
-          ? "  ·  inside"
-          : "";
-  const capturing =
-    e.capture && e.capture.progress > 0 ? `  ·  capturing ${Math.round(e.capture.progress * 100)}%` : "";
-  const holding = e.patrol?.length
-    ? "  ·  PATROL"
-    : e.guardTargetId != null
-      ? "  ·  GUARD UNIT"
-      : e.guardFacing != null
-        ? "  ·  GUARD"
-        : e.holdPosition
-          ? "  ·  HOLD"
-          : "";
-  const selfDestroy =
-    e.type === "walker" &&
-    !e.wreck &&
-    e.ownerId === ctx.match.youPlayerId &&
-    e.selfDestruct !== false &&
-    e.hp <= e.hpMax * WALKER_SELF_DESTRUCT_HP
-      ? "  ·  SELF DESTROY"
-      : "";
-  const tending =
-    e.tend != null ? "  ·  tending" : ctx.match.entities.some((o) => o.tend === e.id) ? "  ·  being tended" : "";
-  const scout =
-    e.scout && e.ownerId === ctx.match.youPlayerId
-      ? e.scout.hp <= 0
-        ? "  ·  scout KIA"
-        : e.scout.out
-          ? `  ·  hatch ${e.scout.hp}/${e.scout.hpMax}`
-          : `  ·  scout ${e.scout.hp}/${e.scout.hpMax}`
-      : "";
-  const bed = e.bed
-    ? `  ·  ${e.bed.open ? "no driver" : e.bed.crew ? "crew" : "driven"} ${(e.bed.crew ? 1 : 0) + e.bed.seats}/2${
-        e.supply != null ? `  ·  supply ${Math.round(e.supply)}` : ""
-      }`
-    : "";
-  const occ = e.garrison?.ownerId
-    ? ctx.match.players.find((p) => p.playerId === e.garrison!.ownerId)
-    : owner;
-  const who = occ?.name ?? (isGarrisonable(e.type) ? "civilian" : "—");
-  const flight = e.drone
-    ? droneLine(e.drone)
-    : e.droneLink
-      ? droneLinkLine(e.droneLink)
-      : e.jet
-        ? jetLine(e.jet)
-        : e.type === "aswheli"
-          ? "  ·  on the hunt"
-          : e.arkOf != null
-            ? "  ·  off its Hive Ark"
-          : e.air
-            ? airLine(e.air, e.type, e.energy)
-            : "";
-  const pads = e.pads ? `  ·  planes ${e.pads.used}/${e.pads.cap}` : "";
-  const depth = e.dive
-    ? diveLine(e.dive, !!e.submerged)
-    : e.asw
-      ? aswLine(e.asw)
-      : e.ark?.cannons[0]?.energy != null
-        ? arkLine(e.ark)
-        : neverSurfacesOf(e.type) && !e.wreck && e.ownerId === ctx.match.youPlayerId
-          ? `  ·  ${e.submerged ? "submerged" : "surfaced to bite"}`
-          : "";
-  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${field}${plates}${injuries}${posture}${mag}${rack}${rockets}${mg}${flight}${depth}  ·  ${who}${q}${cart}${smoke}${dep}${special}${garrison}${scout}${bed}${pads}${capturing}${holding}${selfDestroy}${tending}`;
-  box.style.borderColor = occ ? colorHex(occ.colorId) : "#b08968";
-}
-
-const AIR_PHASE_LABEL: Record<NonNullable<EntityView["air"]>["phase"], string> = {
-  parked: "on the pad",
-  takeoff: "taking off",
-  fly: "airborne",
-  landing: "landing",
-  crash: "going down",
-};
-
-/** Phase, and for your own planes fuel, bomb, and belts. A fighter carries no bomb; it counts barrages. */
-function airLine(air: NonNullable<EntityView["air"]>, type: EntityType, energy?: number): string {
-  // A Xenite flier runs on the hive: no tank, no rack, no field to go home to. Its weapon's energy cell is all that runs low.
-  if (staysAloft(type)) {
-    const cell = energy != null ? `  ·  energy ${Math.round(energy * 100)}%` : "";
-    return `  ·  ${air.phase === "crash" ? "going down" : air.phase === "takeoff" ? "lifting off" : "hovering"}${cell}`;
-  }
-  let s = `  ·  ${AIR_PHASE_LABEL[air.phase]}`;
-  if (air.fuel != null && air.fuelMax) s += `  ·  fuel ${Math.round((air.fuel / air.fuelMax) * 100)}%`;
-  const load = airLoadoutOf(type);
-  if (air.payload) {
-    const name = AIR_DROP_INFO[air.payload].name.toLowerCase();
-    if (air.payload === "troops") s += `  ·  paratroops ${air.troops ?? 0}/${BV222_TROOPS}`;
-    else if (air.bombs != null) s += `  ·  ${name} ${air.bombs > 0 ? "loaded" : air.phase === "parked" ? "loading" : "dropped"}`;
-    if (air.phase !== "parked" && air.homeId == null && air.fuel != null) s += "  ·  NO AIRFIELD";
-    return s;
-  }
-  if (air.bombs != null && load.bombs > 0) s += `  ·  bomb ${air.bombs > 0 ? "armed" : "spent"}`;
-  if (air.rounds != null) s += load.bombs > 0 ? `  ·  MG ${Math.round(air.rounds)}` : `  ·  barrages ${Math.floor(air.rounds)}`;
-  if (air.phase !== "parked" && air.homeId == null && air.fuel != null) s += "  ·  NO AIRFIELD";
-  return s;
-}
-
-/** Your own submarine: depth and air. */
-function diveLine(d: NonNullable<EntityView["dive"]>, down: boolean): string {
-  const air = `air ${Math.round((d.air / Math.max(1, d.airMax)) * 100)}%`;
-  return `  ·  ${down ? "submerged" : "surfaced"}  ·  ${air}${d.winded ? " — recovering" : ""}`;
-}
-
-/** Your own Destroyer: the helicopter on the fantail and the mines on the rail. */
-function aswLine(a: NonNullable<EntityView["asw"]>): string {
-  const heli =
-    a.heli === "up"
-      ? "helicopter out"
-      : a.heli === "lost"
-        ? `new helicopter in ${Math.ceil(a.replace ?? 0)}s`
-        : a.heli === "rearm"
-          ? `helicopter loading${a.rearm != null ? ` ${Math.ceil(a.rearm)}s` : ""}`
-          : "helicopter ready";
-  return `  ·  ${heli}  ·  mines ${a.mines}/${a.minesMax}`;
-}
-
-/** Your own Hive Ark: each cannon's cell, the dome, and the Wasps on the pods. */
-function arkLine(a: NonNullable<EntityView["ark"]>): string {
-  const cells = a.cannons
-    .map((c, i) => `${i === 0 ? "fore" : "aft"} cannon ${Math.round((c.energy ?? 0) * 100)}%${c.drained ? " recharging" : ""}`)
-    .join(", ");
-  const dome = a.domeDown != null ? `dome down ${a.domeDown}s` : "dome up";
-  const wasps = a.pods
-    .map((p) => (p.docked ? "docked" : p.regrow != null ? `regrowing ${p.regrow}s` : "up"))
-    .join(" / ");
-  return `  ·  ${cells}  ·  ${dome}  ·  Interceptors ${wasps}`;
-}
-
-/** Mode, and for your own drone the battery and a recall. */
-function droneLine(d: NonNullable<EntityView["drone"]>): string {
-  let s = `  ·  ${DRONE_MODE_LABEL[d.mode]}`;
-  if (d.battery != null && d.batteryMax) s += `  ·  battery ${Math.round((d.battery / d.batteryMax) * 100)}%`;
-  if (d.recall) s += "  ·  returning";
-  return s;
-}
-
-/** The operator's drone: up, being built, or stowed with its charge. */
-/** Jump Jet: flying or not, and for your own man the pack. */
-function jetLine(j: NonNullable<EntityView["jet"]>): string {
-  let s = j.alt > 0.5 ? "  ·  flying" : "";
-  if (j.fuel != null && j.fuelMax) {
-    s += `  ·  jet fuel ${Math.round((j.fuel / j.fuelMax) * 100)}%`;
-    if (j.refuel != null) s += ` (refuel in ${Math.ceil(j.refuel)}s)`;
-  }
-  return s;
-}
-
-function droneLinkLine(l: NonNullable<EntityView["droneLink"]>): string {
-  if (l.droneId != null) return `  ·  drone up (${DRONE_MODE_LABEL[l.mode]})`;
-  if (l.rebuild != null) return `  ·  new drone in ${Math.ceil(l.rebuild)}s`;
-  const pct = Math.round((l.charge / l.chargeMax) * 100);
-  return `  ·  drone stowed ${pct}%${l.charge < l.launchMin ? " charging" : ""}`;
 }
 
 function beltLine(live: EntityView[]): string {
@@ -1711,7 +1386,9 @@ function buildConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
   }
   const def = catalog(focus.type);
   const mine = live.filter((e) => e.ownerId === you);
-  body.append(el("div", { class: "config-kicker", attrs: { "data-field": "kicker" } }));
+  // A structure shows no name or armour here: only what it can do (its upgrades, a CIWS's reach).
+  const structure = focus.kind === "building";
+  if (!structure) body.append(el("div", { class: "config-kicker", attrs: { "data-field": "kicker" } }));
   if (focus.type === "walker") {
     const rack = el("div", { class: "shell-rack" });
     for (const mode of WALKER_GUN_MODES) {
@@ -1827,7 +1504,7 @@ function buildConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
     body.append(bar);
   }
   if (hasScout(focus.type)) body.append(el("p", { class: "tiny", attrs: { "data-field": "scout" } }));
-  if (armorLabel(focus.type)) body.append(el("p", { class: "tiny", attrs: { "data-field": "armor" } }));
+  if (armorLabel(focus.type) && !structure) body.append(el("p", { class: "tiny", attrs: { "data-field": "armor" } }));
   if (specialLabel(focus.type)) body.append(el("p", { class: "tiny", attrs: { "data-field": "special" } }));
   if (mine.length > 0 && researchOf(focus.type).length > 0) appendResearch(body, focus.type);
 }
@@ -2055,12 +1732,10 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
 
 /**
  * Research: the structure's upgrades as cameos, two to a row, like the production grid. A level
- * chain shows only its next level (visibleResearch). Left starts one, or resumes it once held;
- * right holds it, and again cancels it.
+ * chain shows only its next level (visibleResearch), and a researched upgrade leaves the grid.
+ * Left starts one, or resumes it once held; right holds it, and again cancels it.
  */
 function appendResearch(body: HTMLElement, type: EntityType): void {
-  // The level line leads: the panel is short, and the long story is in each cameo's card.
-  body.append(el("p", { class: "tiny", attrs: { "data-field": "level" } }), el("div", { class: "tiny", text: "Upgrades" }));
   const grid = el("div", { class: "cameos research-cameos" });
   for (const r of researchOf(type)) grid.append(researchCameo(r, type));
   body.append(grid);
@@ -2082,66 +1757,50 @@ function researchCameo(r: ResearchDef, type: EntityType): HTMLButtonElement {
   b.innerHTML =
     `<span class="cameo-name">${r.name}</span>` +
     `<span class="cameo-meta"><span class="cameo-cost${energy > 0 ? " is-energy" : ""}">${price}</span><span class="cameo-time">${r.seconds}s</span></span>` +
-    `<span class="pip"></span><span class="cameo-paused">PAUSED</span><span class="cameo-done">DONE</span>`;
+    `<span class="pip"></span><span class="cameo-paused">PAUSED</span>`;
   return b;
 }
 
 function updateResearch(body: HTMLElement, type: EntityType, mine: EntityView[], m: MatchSnapshot): void {
   const running = mine.filter((e) => e.research);
   const shown = new Set(visibleResearch(type, mine).map((r) => r.id));
+  let open = 0;
   for (const r of researchOf(type)) {
     const btn = body.querySelector(`[data-research="${r.id}"]`);
     if (!(btn instanceof HTMLElement)) continue;
-    btn.classList.toggle("hidden", !shown.has(r.id));
-    if (!shown.has(r.id)) continue;
     const done = mine.length > 0 && mine.every((e) => researchDone(e, r));
     const on = running.filter((e) => e.research!.id === r.id);
+    // Only what is still on offer: a researched upgrade leaves the grid.
+    const offered = shown.has(r.id) && !done;
+    btn.classList.toggle("hidden", !offered);
+    if (!offered) continue;
+    open++;
     const held = on.length > 0 && on.every((e) => e.research!.paused);
     const need = researchTechMissing(r, (t) => m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === t && e.hp > 0 && !e.wreck));
     const ready = need.length > 0 ? [] : mine.filter((e) => canStartResearch(e, r));
     const share = on.length > 0 ? on.reduce((n, e) => n + e.research!.progress, 0) / on.length : 0;
     // Locked: nothing to start, and none of it running to hold or resume.
-    const locked = !done && on.length === 0 && ready.length === 0;
-    btn.classList.toggle("is-done", done && on.length === 0);
+    const locked = on.length === 0 && ready.length === 0;
     btn.classList.toggle("is-training", on.length > 0);
     btn.classList.toggle("is-paused", held);
     btn.classList.toggle("is-disabled", locked);
-    btn.setAttribute("aria-disabled", String(on.length === 0 && (done || locked)));
+    btn.setAttribute("aria-disabled", String(locked));
     const pip = btn.querySelector(".pip");
     if (pip instanceof HTMLElement) pip.style.width = `${Math.round(Math.max(0, Math.min(1, share)) * 100)}%`;
     const busy = running.find((e) => e.research!.id !== r.id);
     const note = on.length > 0
       ? `${held ? "Paused" : "Researching"}  ${Math.floor(share * 100)}%${on.length > 1 ? `  ·  ×${on.length}` : ""}`
-      : done
-        ? "Researched."
-        : need.length > 0
-          ? `Needs a ${catalog(need[0]!).name}.`
-          : ready.length === 0 && busy
-            ? `Busy with ${RESEARCH[busy.research!.id].name}.`
-            : ready.length > 1
-              ? `Starts on all ${ready.length}.`
-              : "";
-    const hint = on.length > 0 ? (held ? "Left: resume  ·  Right: cancel" : "Right: pause, again to cancel") : done || locked ? "" : RESEARCH_HINT;
+      : need.length > 0
+        ? `Needs a ${catalog(need[0]!).name}.`
+        : ready.length === 0 && busy
+          ? `Busy with ${RESEARCH[busy.research!.id].name}.`
+          : ready.length > 1
+            ? `Starts on all ${ready.length}.`
+            : "";
+    const hint = on.length > 0 ? (held ? "Left: resume  ·  Right: cancel" : "Right: pause, again to cancel") : locked ? "" : RESEARCH_HINT;
     setCameoCardState(btn, note, hint);
   }
-  const focus = mine[0];
-  if (focus) {
-    const level = focus.level ?? 0;
-    const name = levelNameOf(type, level) || catalog(type).name;
-    const energy = energySupplyOfEntity(focus);
-    const flak = focus.roofFlak?.energy != null ? `  ·  Flak ${Math.round(focus.roofFlak.energy * 100)}%${focus.roofFlak.drained ? " dry" : ""}` : "";
-    const job = focus.research ? `${RESEARCH[focus.research.id].name}${focus.research.paused ? ", paused" : ""}` : "";
-    const line = energySupplyOf(type) > 0
-      ? `${name}  ·  ${energy} energy${job ? `  (${job})` : ""}${flak}`
-      : focus.shield
-        ? `${isNeuralPulsar(focus) ? "Pulsar Dome" : "Force Shield"}  ${focus.shield.hp}/${focus.shield.max}${focus.shield.hp <= 0 ? "  recharging" : ""}`
-        : job
-          ? `Upgrading: ${job}`
-          : FORCE_SHIELD_BUILDINGS.includes(type as BuildingType) && level === 0
-            ? "No shield"
-            : name;
-    setField(body, "level", mine.length > 1 ? `${line}  ·  ×${mine.length}` : line);
-  }
+  body.querySelector(".research-cameos")?.classList.toggle("hidden", open === 0);
 }
 
 function paintConfig(ctx: Ctx, view: MapView | null): void {
@@ -2151,6 +1810,7 @@ function paintConfig(ctx: Ctx, view: MapView | null): void {
   const selected = selectedViews(ctx, view);
   if (selected.length === 0) {
     clearConfigPanel(typesEl, body);
+    showConfig(typesEl, true, true);
     return;
   }
   const counts = new Map<EntityType, number>();
@@ -2191,6 +1851,7 @@ function paintConfig(ctx: Ctx, view: MapView | null): void {
       body.dataset.layout = "empty";
       body.textContent = "No selection.";
     }
+    showConfig(typesEl, true, true);
     return;
   }
   const wrecks = ofType.filter((e) => e.wreck);
@@ -2203,6 +1864,17 @@ function paintConfig(ctx: Ctx, view: MapView | null): void {
     body.dataset.layout = layout;
   }
   patchConfigBody(body, focus, live, wrecks, you, ctx.match);
+  // One kind of structure selected: no avatar strip, and the panel only shows when it has something to offer.
+  const structure = types.length === 1 && catalog(types[0]!).kind === "building";
+  const offers = [...body.children].some((n) => n instanceof HTMLElement && !n.classList.contains("hidden"));
+  showConfig(typesEl, !structure, !structure || offers);
+}
+
+/** The Selection heading and panel, and its avatar strip. */
+function showConfig(typesEl: HTMLElement, strip: boolean, panel: boolean): void {
+  typesEl.classList.toggle("hidden", !strip);
+  document.getElementById("config")?.classList.toggle("hidden", !panel);
+  document.getElementById("config-head")?.classList.toggle("hidden", !panel);
 }
 
 function paintGarrisonRoster(ctx: Ctx, view: MapView | null): void {

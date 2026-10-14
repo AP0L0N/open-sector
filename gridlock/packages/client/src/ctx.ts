@@ -21,7 +21,6 @@ export interface Ctx {
   room: RoomState | null;
   match: MatchSnapshot | null;
   chat: ChatLine[];
-  inspect: number | null;
   connected: boolean;
   pendingJoin: string | null;
   /** Skirmish to open once the link is up, or false. */
