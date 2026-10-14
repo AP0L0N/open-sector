@@ -11,6 +11,9 @@ type LaserView = NonNullable<EntityView["laser"]>;
 export const BEAM_FADE_MS = 140;
 /** A shimmer runs over the field this long after it soaks a hit, ms. */
 export const FIELD_HIT_MS = 320;
+/** The dome is this much wider and taller than the box drawUnit hands over, so it clears his whole body. */
+const FIELD_WIDE = 1.7;
+const FIELD_TALL = 1.3;
 
 /**
  * Share of the sweep cut by now. The snapshot gave `view.u` when it arrived at
@@ -138,8 +141,8 @@ export function drawForceField(
   if (share <= 0) return;
   const hit = hitAgeMs != null && hitAgeMs >= 0 && hitAgeMs < FIELD_HIT_MS ? 1 - hitAgeMs / FIELD_HIT_MS : 0;
   const glow = Math.min(1, shieldGlow({ hp: share, hpMax: 1 }, nowMs, seed) + 0.45 * hit);
-  const rx = width * 0.5;
-  // The ground ring is a 2:1 iso circle; the crown stands where the old bubble's top did.
+  const rx = width * 0.5 * FIELD_WIDE;
+  // The ground ring is a 2:1 iso circle; the crown stands well over his head.
   const ry = rx * 0.5;
-  drawDome(ctx, { x, y }, rx, ry, Math.max(0, height * 1.03 - ry), glow);
+  drawDome(ctx, { x, y }, rx, ry, Math.max(0, height * 1.03 * FIELD_TALL - ry), glow);
 }
