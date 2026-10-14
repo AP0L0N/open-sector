@@ -112,6 +112,7 @@ import {
   isHoverType,
   isMothership,
   MOTHERSHIP_STANDOFF_TILES,
+  MOTHERSHIP_DEATH_FALL_PER_SEC,
   OVERSEER_BEAM_TILES,
   OVERSEER_BUILDING_MUL,
   OVERSEER_FIRE_TILES,
@@ -163,7 +164,7 @@ import { canSeeEntity } from "./vision.js";
 import { blastWrecks, toWreck } from "./wreck.js";
 import { blastClutter } from "./clutter.js";
 import { catchLanding, domeOver, domeShelters, soakEnergyStrike } from "./energy-shield.js";
-import { mothershipCanTake, mothershipDown } from "./mothership.js";
+import { mothershipCanTake, mothershipDown, mothershipShockwave } from "./mothership.js";
 import type { AirState, Entity, MatchState, Order, Projectile } from "./types.js";
 
 /** Runway heading of an unturned Airfield, world radians: the strip runs east–west. A turned one adds its facing. */
@@ -1472,6 +1473,13 @@ function tickCrash(state: MatchState, e: Entity, dt: number): void {
   e.order = null;
   e.attackTarget = null;
   if (e.hp < 1) e.hp = 1;
+  // The Mothership drops like a stone, straight down where it was shot, and goes off on the ground.
+  if (isMothership(e.type)) {
+    a.speed = 0;
+    a.alt = Math.max(0, a.alt - MOTHERSHIP_DEATH_FALL_PER_SEC * dt);
+    if (a.alt <= 0) finishAircraftCrash(state, e);
+    return;
+  }
   if (a.yaw == null) rollCrashFlight(state, e);
   const ox = a.originX ?? e.x;
   const oy = a.originY ?? e.y;
@@ -1625,7 +1633,11 @@ function finishAircraftCrash(state: MatchState, e: Entity): void {
   // only taken while the airframe is still airborne, so hold a sliver until then.
   if (e.air.alt <= 0.5) e.air.alt = 0.51;
   loseRiders(state, e);
-  crashSplash(state, e);
+  // A Mothership's fall is a shockwave on dry ground (nothing on water), not a plane's splash.
+  if (isMothership(e.type)) {
+    e.air.alt = 0;
+    mothershipShockwave(state, e);
+  } else crashSplash(state, e);
   e.air.alt = 0;
   burnTreesNear(state, e, state.tileSize);
   shoveOffStructure(state, e);

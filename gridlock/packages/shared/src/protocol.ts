@@ -20,7 +20,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 168;
+export const PROTOCOL_VERSION = 169;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -269,6 +269,8 @@ export interface EntityView {
    * 0–1 (`light`, it starts absorbing at 1), and how far it has been absorbed 0–1 (`u`).
    */
   absorb?: { by: number; light: number; u: number };
+  /** A Mothership beaming its crew down: the ground spots its beams point at, and how far along 0–1. */
+  drop?: { x: number; y: number; u: number }[];
   /** Seconds left on a magazine change. Allied infantry. Omitted when idle. */
   reload?: number;
   /** Seconds until a planted support weapon can fire. Gunner bipod, or the mortar tube. Omitted once it is set. */
@@ -681,6 +683,8 @@ export interface ImpactView {
   cookoff?: boolean;
   /** A Titan's reactor went up here: a small nuclear blast on the ground. */
   nuke?: boolean;
+  /** A downed Mothership's shockwave here: its reach in world px. */
+  shockwave?: number;
   /** A tank's HE shell burst here: a hull-sized fireball, and the ground around it is set burning. */
   heBurst?: boolean;
   /** A submarine's torpedo went off here. On a hull: the hull-sized fireball inside the water column. Otherwise the column alone. */

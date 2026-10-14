@@ -722,6 +722,8 @@ export interface Entity {
   mothership?: MothershipState;
   /** A unit in a Mothership's tractor light: that Mothership's id (sim/mothership.ts). */
   absorbedBy?: number;
+  /** One of a Mothership's beamed-down crew: the ship's id. It runs on the ship, not the hive's energy. */
+  beamedBy?: number;
   /** Paratrooper on the way down. No orders, no fire; small arms can reach him. */
   chute?: Chute;
   /** Jump Jet, and the Titan's leg jets. */
@@ -830,6 +832,14 @@ export interface MothershipBeam {
 export interface MothershipState {
   /** Up to MOTHERSHIP_BEAMS at once. */
   beams: MothershipBeam[];
+  /** The crew it has beamed down and not yet taken back (MOTHERSHIP_CREW): their ids. */
+  crew: number[];
+  /** Seconds since it was last in a fight. */
+  calm: number;
+  /** Seconds until it may beam a crew down again. */
+  dropCooldown: number;
+  /** A beam-down under way: the spots its beams point at, and the seconds until the crew stands there. */
+  drop?: { t: number; spots: { x: number; y: number; type: TrainType }[] };
   /** Down on the water while offline: under it, out of sight, until the power is back. */
   sunk?: true;
 }

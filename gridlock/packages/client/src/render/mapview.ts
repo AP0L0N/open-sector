@@ -186,6 +186,7 @@ import {
 } from "./energy-shield.js";
 import { drawScanEdge, drawScanGhost, scanNow, scanOutline, scanWorldRect, sweepAt, tracePoly } from "./ground-scan.js";
 import { drawNuke, drawNukeFlash, drawNukeScorch, NUKE_FX_MS, NUKE_SCORCH_MS } from "./nuke-fx.js";
+import { drawShockwave, SHOCKWAVE_FX_MS } from "./shockwave-fx.js";
 import { drawTitanThrust } from "./titan-jet-fx.js";
 import {
   FX_BOOM,
@@ -622,6 +623,8 @@ const DROPPED_CANNON_FADE_MS = 8_000;
 const DROPPED_CANNON_CAP = 40;
 /** Screen px above a Weaver's feet where its nanite spindle sits: the thread to a wall starts there. */
 const WEAVER_SPINDLE_LIFT_PX = 12;
+/** World radius of the light pool on a spot a Mothership is beaming a crewman down to. */
+const DROP_SPOT_RADIUS = 14;
 /** How long a Mothership dome shows after a hit, ms, and how bright it is at the hit (0–1). */
 const AIR_DOME_FLASH_MS = 350;
 const AIR_DOME_FLASH_GLOW = 0.55;
@@ -1337,6 +1340,8 @@ export class MapView {
   private cookOffsSeen = new Set<number>();
   /** A Titan's reactor went up: ground zero and when it was first seen. Kept while its scorch lasts. */
   private nukes: { id: number; x: number; y: number; at: number }[] = [];
+  /** Downed Motherships' shockwaves: ground zero, reach in world px, when they went off. */
+  private shockwaves: { id: number; x: number; y: number; r: number; at: number }[] = [];
   /** Every ground zero this match. Bushes and signposts inside one stay gone for good. */
   private nukeZones: { x: number; y: number }[] = [];
   /** Black smoke off burning fuel. Same drift as rocket smoke, sooty colour. `shade` 1 is black. */
@@ -1929,6 +1934,8 @@ export class MapView {
       if (i.bite) continue;
       // A 20mm round that missed a plane climbed away into the sky: its tracer is all there is.
       if (i.airZ != null && i.kind === "miss") continue;
+      // A downed Mothership: its ring races out over the ground, over the big blast at its centre.
+      if (i.shockwave && !this.shockwaves.some((s) => s.id === i.id)) this.shockwaves.push({ id: i.id, x: i.x, y: i.y, r: i.shockwave, at: now });
       if (i.nuke) {
         // A Titan's reactor: its own flash, shockwave, and mushroom cloud, not a shell burst.
         if (!this.nukes.some((n) => n.id === i.id)) {
@@ -5605,8 +5612,9 @@ export class MapView {
       const spot = missileSpot(wx, wy, p.vx, p.vy, ts);
       lay(spot.x, spot.y, spot.r, spot.a, "missile");
     }
-    // A Mothership's tractor light: a blue pool a little wider than the unit it holds.
+    // A Mothership's tractor light: a blue pool a little wider than the unit it holds, and one on each spot of a beam-down.
     for (const e of this.curr.entities) {
+      if (e.drop && e.hp > 0) for (const d of e.drop) lay(d.x, d.y, DROP_SPOT_RADIUS * 1.25, Math.min(1, d.u * 3), "tractor");
       if (!e.absorb || e.hp <= 0) continue;
       const p = this.lerpEnt(e);
       lay(p.x, p.y, catalog(e.type).radius * TRACTOR_POOL_SCALE * 1.25, Math.min(1, e.absorb.light * 3), "tractor");
@@ -6309,6 +6317,23 @@ export class MapView {
   private drawTractorBeams(): void {
     const now = performance.now();
     const size = MOTHERSHIP_SPRITE.drawSize;
+    // A beam-down: a beam from under the cube to each spot its crew will stand on, brightening until they are there.
+    for (const ship of this.curr.entities) {
+      if (!ship.drop || ship.hp <= 0) continue;
+      const sp = this.lerpEnt(ship);
+      const mid = this.toScreen(sp.x, sp.y);
+      mid.y -= this.airLift(ship);
+      const top = { x: mid.x, y: mid.y + mothershipEmitterDrop(size) };
+      const hide = mothershipOutline(sp.facing, size, this.ts()).map((q) => ({ x: mid.x + q.x, y: mid.y + q.y }));
+      ship.drop.forEach((d, k) => {
+        const elev = this.elevAt(d.x, d.y);
+        const ground = this.toScreen(d.x, d.y, elev);
+        const r = DROP_SPOT_RADIUS;
+        const q = this.toScreen(d.x + r / Math.SQRT2, d.y + r / Math.SQRT2, elev);
+        const rx = Math.max(2, Math.abs(q.x - ground.x) * Math.SQRT2);
+        drawTractorBeam(this.ctx, top, ground, rx, rx / 2, d.u, 0, now, ship.id * 7 + k, hide);
+      });
+    }
     for (const e of this.curr.entities) {
       const ab = e.absorb;
       if (!ab || e.hp <= 0) continue;
@@ -10227,6 +10252,15 @@ export class MapView {
       drawNuke(this.ctx, f.g, f.rx, f.ry, age, n.id);
     }
     for (const n of this.nukes) drawNukeFlash(this.ctx, now - n.at);
+    this.shockwaves = this.shockwaves.filter((s) => now - s.at < SHOCKWAVE_FX_MS);
+    for (const s of this.shockwaves) {
+      const elev = this.elevAt(s.x, s.y);
+      const g = this.toScreen(s.x, s.y, elev);
+      const r = s.r / Math.SQRT2;
+      const ex = this.toScreen(s.x + r, s.y - r, elev);
+      const ey = this.toScreen(s.x + r, s.y + r, elev);
+      drawShockwave(this.ctx, g, Math.abs(ex.x - g.x), Math.abs(ey.y - g.y), now - s.at);
+    }
   }
 
   /** The Pyro's tanks going up: a boiling fireball, fuel thrown clear, and a tall column of black smoke. */

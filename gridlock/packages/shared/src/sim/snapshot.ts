@@ -81,7 +81,7 @@ import { ramCharge } from "./juggernaut.js";
 import { cloakCharge } from "./cloak.js";
 import { hiddenBurrowed } from "./burrow.js";
 import { hiddenCloaked } from "./shade.js";
-import { beamOn, beamProgress } from "./mothership.js";
+import { beamOn, beamProgress, dropView } from "./mothership.js";
 import { isSimUnit, onUplink, usesHiveEnergy, vaultsWalls } from "../catalog.js";
 import { onFortTop } from "./thrall.js";
 import { aswDeckView, sonarContacts } from "./destroyer.js";
@@ -618,6 +618,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       ship: shipView(state, e, friendly),
       ark: arkView(state, e, friendly),
       absorb: absorbView(state, e),
+      drop: dropView(e),
       arkOf: e.arkOf,
       reload: friendly && (isInfantryType(e.type) || beltOf(e.type)) && e.reload > 0 ? e.reload : undefined,
       bipod: plantRemaining(e, friendly),

@@ -48,7 +48,7 @@ import { syncTorpedoes, tickCombat, tickPatrol, tickProjectiles } from "./combat
 import { tickSubmarines } from "./naval.js";
 import { tickDestroyers } from "./destroyer.js";
 import { tickHiveArks } from "./hive-ark.js";
-import { tickMotherships } from "./mothership.js";
+import { mothershipShockwave, tickMotherships } from "./mothership.js";
 import { groundLstBows } from "./lst.js";
 import { tickSmoke } from "./smoke.js";
 import { maybeCookOff, tickFires } from "./flame.js";
@@ -570,6 +570,8 @@ function reapDead(state: MatchState): void {
       dead.push(e.id);
       continue;
     }
+    // A Mothership killed where it lay landed goes off where it lies (sim/mothership.ts), then leaves its hulk.
+    if (!e.wreck && e.type === "mothership" && e.garrisonedIn == null) mothershipShockwave(state, e);
     // A tank that goes down with its LST, or flat under an Apocalypse, leaves no hulk of its own.
     if (!e.wreck && leavesWreck(e.type) && !isHq(e.type) && e.garrisonedIn == null && !wasFlattened(e)) {
       toWreck(state, e);
