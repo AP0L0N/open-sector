@@ -702,6 +702,8 @@ export interface Entity {
   ark?: ArkState;
   /** A Wasp off a Hive Ark's pod: the Ark it flies from. It takes no orders from anyone. */
   arkOf?: number;
+  /** Mothership only: its four mounts, each on its own cell (sim/mothership.ts). Its dome is an energy shield. */
+  mothership?: MothershipState;
   /** Paratrooper on the way down. No orders, no fire; small arms can reach him. */
   chute?: Chute;
   /** Jump Jet, and the Titan's leg jets. */
@@ -778,6 +780,31 @@ export interface ArkState {
   pods: ArkPod[];
   /** Seconds since no enemy unit was in sight. The Wasps come home past ARK_WASP_CALM_SECONDS. */
   calm: number;
+}
+
+/** One Mothership mount (catalog MOTHERSHIP_MOUNTS): spine, pulse, maw, or flak. */
+export interface MothershipGun {
+  /** World bearing the mount is laid on, radians. */
+  facing: number;
+  /** Seconds until it may fire again: the gun's own cooldown, or a maw's ripple or reload. */
+  cooldown: number;
+  /** Shots of energy in its cell. */
+  energy: number;
+  /** Its cell ran dry: it holds fire until PLASMA_RESUME_SHARE of the cell has regrown. */
+  drained: boolean;
+  /** What it is laid on, if anything. */
+  targetId: number | null;
+  /** A maw only: balls left in the salvo under way. */
+  salvo: number;
+  /** Sim tick it last fired. Missing until it first does. */
+  firedTick?: number;
+}
+
+export interface MothershipState {
+  spine: MothershipGun;
+  pulse: MothershipGun;
+  maw: MothershipGun;
+  flak: MothershipGun;
 }
 
 export interface ShipState {
@@ -925,6 +952,11 @@ export interface EnergyShield {
   synced?: number;
   /** An Energy Wall's curtain: stands while its core is online, across the way the core was placed. */
   post?: true;
+  /**
+   * A dome round a flier (the Mothership): it stands up in the air, centred this high (elevation
+   * units, as a round's z), and reaches `depth` above and below that. Ground lines never meet it.
+   */
+  aloft?: { z: number; depth: number };
 }
 
 export interface SmokeCloud {

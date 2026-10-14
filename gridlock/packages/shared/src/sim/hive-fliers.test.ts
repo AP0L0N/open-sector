@@ -105,7 +105,7 @@ function wander(state: MatchState, e: Entity, n: number): number {
 describe("Xenite fliers", () => {
   it("are every Xenite aircraft, and the Aerie is a plain producer with the Forge's footprint", () => {
     const fliers = TRAIN_TYPES.filter((t) => isAircraftType(t) && factionOf(t) === "xeno");
-    assert.deepEqual([...fliers].sort(), ["gnat", "overseer", "scourge", "wasp"]);
+    assert.deepEqual([...fliers].sort(), ["gnat", "mothership", "overseer", "scourge", "wasp"]);
     for (const t of fliers) assert.ok(staysAloft(t), t);
     assert.equal(staysAloft("stuka"), false);
     assert.equal(staysAloft("drifter"), false, "the Bloom still nest");

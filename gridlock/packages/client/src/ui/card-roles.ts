@@ -40,6 +40,7 @@ export const CARD_ROLE: Partial<Record<EntityType, string>> = {
   scourge: "Heavy hive gunship. Plasma bolts and pulse guns from the air.",
   gnat: "Hive scout flier. Sees far from high up; very fragile.",
   overseer: "Hive beam flier. Hovers over a target and burns it from above.",
+  mothership: "Hive flying capital ship. Spine, pulse, and two maws; a dome in the air.",
   titan: "Heavy assault walker. Tank gun, rocket pods, deploys and jump-jets.",
   mammoth: "Armored troop carrier walker. Carries infantry who fire out; lays mines.",
   nebelwerfer: "Rocket artillery. Longest reach, blankets infantry in the open.",

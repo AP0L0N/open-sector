@@ -416,12 +416,13 @@ export const XENO_HEAVY: readonly { unit: TrainType; want: number }[] = [
   { unit: "behemoth", want: 1 },
   { unit: "juggernaut", want: 1 },
 ];
-/** The hive's fliers, from the Aerie: a Gnat to scout, Wasps and Scourges to strike, an Overseer. */
+/** The hive's fliers, from the Aerie: a Gnat to scout, Wasps and Scourges to strike, an Overseer, the Mothership. */
 export const XENO_AIR: readonly { unit: TrainType; want: number }[] = [
   { unit: "gnat", want: 1 },
   { unit: "wasp", want: 3 },
   { unit: "scourge", want: 2 },
   { unit: "overseer", want: 1 },
+  { unit: "mothership", want: 1 },
 ];
 /** The hive's sea beasts, from the Spawning Pool. */
 export const XENO_SEA: readonly { unit: TrainType; want: number }[] = [

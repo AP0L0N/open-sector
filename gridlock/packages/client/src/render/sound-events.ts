@@ -109,6 +109,8 @@ const FIRE_GAP_MS: Record<string, number> = {
   stuka: 500,
   // One zap a pulse: the Overseer burns every 0.3 s.
   overseer: 260,
+  // Four mounts fire on their own: one plasma report at a time.
+  mothership: 350,
   nebelwerfer: 1600,
   titan: 350,
   battleship: 700,

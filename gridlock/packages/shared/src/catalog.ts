@@ -615,6 +615,7 @@ export type EntityType =
   | "scourge"
   | "overseer"
   | "gnat"
+  | "mothership"
   | "spawnling"
   | "gobber"
   | "quillback"
@@ -900,7 +901,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "shed",
   "boiler",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "simunit2" | "xenodrone" | "thrall" | "lancer" | "bombard" | "weaver" | "shade" | "stalker" | "ravager" | "behemoth" | "juggernaut" | "siphon" | "assembler" | "mawcaster" | "leech" | "lurker" | "hiveark" | "wasp" | "scourge" | "gnat" | "overseer" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "horten" | "droneop" | "jumpjet" | "spawnling" | "gobber" | "quillback" | "bloater" | "longspine" | "mender" | "skitter" | "goretusk" | "mantis" | "bileworm" | "sporemaw" | "matriarch" | "driftjelly" | "spineback" | "abyssray" | "leviathan" | "broodbarge" | "moth" | "razorwing" | "gasbag" | "drifter" | "harpy";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "simunit2" | "xenodrone" | "thrall" | "lancer" | "bombard" | "weaver" | "shade" | "stalker" | "ravager" | "behemoth" | "juggernaut" | "siphon" | "assembler" | "mawcaster" | "leech" | "lurker" | "hiveark" | "wasp" | "scourge" | "gnat" | "overseer" | "mothership" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "horten" | "droneop" | "jumpjet" | "spawnling" | "gobber" | "quillback" | "bloater" | "longspine" | "mender" | "skitter" | "goretusk" | "mantis" | "bileworm" | "sporemaw" | "matriarch" | "driftjelly" | "spineback" | "abyssray" | "leviathan" | "broodbarge" | "moth" | "razorwing" | "gasbag" | "drifter" | "harpy";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -1037,14 +1038,14 @@ export const BUILDING_FACINGS = 24;
 export function isRotatableBuilding(type: string): type is BuildingType {
   return (ROTATABLE_BUILDINGS as readonly string[]).includes(type);
 }
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "simunit2", "xenodrone", "thrall", "lancer", "bombard", "weaver", "shade", "stalker", "ravager", "behemoth", "juggernaut", "siphon", "assembler", "mawcaster", "leech", "lurker", "hiveark", "wasp", "scourge", "gnat", "overseer", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "horten", "droneop", "jumpjet", "spawnling", "gobber", "quillback", "bloater", "longspine", "mender", "skitter", "goretusk", "mantis", "bileworm", "sporemaw", "matriarch", "driftjelly", "spineback", "abyssray", "leviathan", "broodbarge", "moth", "razorwing", "gasbag", "drifter", "harpy"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "simunit2", "xenodrone", "thrall", "lancer", "bombard", "weaver", "shade", "stalker", "ravager", "behemoth", "juggernaut", "siphon", "assembler", "mawcaster", "leech", "lurker", "hiveark", "wasp", "scourge", "gnat", "overseer", "mothership", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "horten", "droneop", "jumpjet", "spawnling", "gobber", "quillback", "bloater", "longspine", "mender", "skitter", "goretusk", "mantis", "bileworm", "sporemaw", "matriarch", "driftjelly", "spineback", "abyssray", "leviathan", "broodbarge", "moth", "razorwing", "gasbag", "drifter", "harpy"];
 
 /**
  * A player fields only one of each of these at a time. While it lives, another
  * cannot be queued; only one can sit in the queues at once. Destroyed, it can be
  * trained again.
  */
-export const ONE_AT_A_TIME: readonly TrainType[] = ["titan", "cyborgcommander", "juggernaut"];
+export const ONE_AT_A_TIME: readonly TrainType[] = ["titan", "cyborgcommander", "juggernaut", "mothership"];
 export function isOneAtATime(type: string): boolean {
   return (ONE_AT_A_TIME as readonly string[]).includes(type);
 }
@@ -1078,6 +1079,7 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly Bu
   hiveark: "nexus",
   scourge: "nexus",
   overseer: "nexus",
+  mothership: "nexus",
   mawcaster: "nexus",
   matriarch: "braincoral",
   abyssray: "braincoral",
@@ -1166,6 +1168,7 @@ export const XENO_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([
   "scourge",
   "overseer",
   "gnat",
+  "mothership",
 ]);
 /**
  * Everything the Bloom grow, train, or start with: the third faction, an alien spore that
@@ -2253,9 +2256,12 @@ export interface EnergyDomeDef {
 export const SIPHON_DOME: EnergyDomeDef = { energy: 800, radiusTiles: t(3), rechargeSeconds: 20, regenPerSecond: 12 };
 /** The Hive Ark's dome over its whole hull (ARK_HULL_RADIUS 40 px): far stronger, slower to come back. */
 export const ARK_DOME: EnergyDomeDef = { energy: 4000, radiusTiles: t(1.7), rechargeSeconds: 30, regenPerSecond: 20 };
+/** The Mothership's dome round its hull, up in the air (MOTHERSHIP_DOME_DEPTH): as wide as the Ark's. */
+export const MOTHERSHIP_DOME: EnergyDomeDef = { energy: 3000, radiusTiles: t(1.7), rechargeSeconds: 30, regenPerSecond: 20 };
 const ENERGY_DOMES: Partial<Record<EntityType, EnergyDomeDef>> = {
   siphon: SIPHON_DOME,
   hiveark: ARK_DOME,
+  mothership: MOTHERSHIP_DOME,
 };
 /**
  * The Xenite Energy Wall (sim/energy-shield.ts): a low emitter core that holds a tall curtain of
@@ -2421,6 +2427,8 @@ export const LASER_FENCE_BURN_MIN = 60;
  * 3-second burst, and it regrows 10 rounds a second: held on a target, it settles at half pace.
  */
 export const SPINE_TURRET_CELL = { shots: 60, rechargeSeconds: 0.1 };
+/** The Pulse Spire's cell: 8 pulses, one regrown every 6 seconds. */
+export const PULSE_SPIRE_CELL = { shots: 8, rechargeSeconds: 6 };
 /** Hive energy a fence link holds per cell of its length, on top of each post's own (sim/hive-energy.ts). */
 export const LASER_FENCE_ENERGY_PER_CELL = 5.75;
 /** World px either side of a fence beam that a body still touches. */
@@ -4834,6 +4842,46 @@ export const ARK_WASP_LEASH_TILES = t(5);
 /** A Wasp this close over its pod sets down and is stowed. */
 export const ARK_WASP_DOCK_TILES = t(0.8);
 
+/**
+ * Mothership (sim/mothership.ts). The hive's flying capital ship: a vast chitin saucer that
+ * lifts out of the Aerie and cruises high (MOTHERSHIP_CRUISE_ALT, over AIR_HIGH_ALT), so only
+ * anti-air guns reach it, and sees far. Four mounts work on their own, each with its own cell,
+ * each the very gun it is named for:
+ *   spine  a Spine Turret's twin pulse repeater (catalog spineturret): soldiers first;
+ *   pulse  a Pulse Spire's emitter (catalog pulsespire): armor first;
+ *   maw    a Mawcaster's maw on Ground attacks (MAWCASTER_POD), out of the same band;
+ *   flak   a Mawcaster's maw on Air attacks (MAWCASTER_AIR_BALL): planes, Jump Jets, low drones.
+ * The spine and pulse rounds come down from its height onto roofs. An energy dome rides round
+ * the hull in the air (MOTHERSHIP_DOME): rounds climbing at the ship stop on it and air bursts
+ * outside it do not reach in, but ground fire passes under it and nobody is fenced off below.
+ */
+export type MothershipMount = "spine" | "pulse" | "maw" | "flak";
+export const MOTHERSHIP_MOUNTS: readonly MothershipMount[] = ["spine", "pulse", "maw", "flak"];
+/** The hull's radius in world px: its hitbox, and the scale the art and the mounts are laid on. */
+export const MOTHERSHIP_HULL_RADIUS = 40;
+/** Height it cruises at: above AIR_HIGH_ALT, the Gnat's and the Horten's height. */
+export const MOTHERSHIP_CRUISE_ALT = 40;
+/** Sent at a target it hangs this far off it, inside the spine's reach and short of the pulse's. */
+export const MOTHERSHIP_STANDOFF_TILES = t(9);
+/** The dome round the hull reaches this share of its cruise height above and below it. */
+export const MOTHERSHIP_DOME_DEPTH = 0.55;
+/** Each mount's cell: the gun's own on the ground. */
+export const MOTHERSHIP_CELLS: Record<MothershipMount, PlasmaCellDef> = {
+  spine: SPINE_TURRET_CELL,
+  pulse: PULSE_SPIRE_CELL,
+  maw: MAWCASTER_CELL,
+  flak: MAWCASTER_CELL,
+};
+/** Where each mount sits on the hull: along the nose and across to starboard, as shares of MOTHERSHIP_HULL_RADIUS. */
+export const MOTHERSHIP_MOUNT_AT: Record<MothershipMount, { along: number; across: number }> = {
+  spine: { along: 0.62, across: 0 },
+  pulse: { along: -0.55, across: 0 },
+  maw: { along: 0, across: -0.5 },
+  flak: { along: 0, across: 0.5 },
+};
+/** Degrees a second each mount slews: the gun's own. The maw lays as the Mawcaster's does. */
+export const MOTHERSHIP_MAW_TURN_DEG_PER_SEC = 50;
+
 const ENTRIES: Record<EntityType, CatalogEntry> = {
   rig: {
     type: "rig",
@@ -6992,7 +7040,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rangeTiles: t(15),
     sightTiles: INFANTRY_SIGHT_TILES,
     cooldown: 3,
-    plasmaCell: { shots: 8, rechargeSeconds: 6 },
+    plasmaCell: PULSE_SPIRE_CELL,
     damage: PULSE_SPIRE_SHELLS.ap.damage,
     projectileSpeed: TANK_SHELL_SPEED,
     armorFront: 0,
@@ -7083,7 +7131,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "A ribbed chitin hive where the fliers are grown. Grows the Wasp, the Gnat, and, with a Neural Nexus standing, the Scourge and the Overseer. They lift straight up out of it and never come down: no runway and no fuel. Their weapons run on energy cells that drain as they fire and charge again by themselves. A Weaver mends them in the air.",
+    blurb: "A ribbed chitin hive where the fliers are grown. Grows the Wasp, the Gnat, and, with a Neural Nexus standing, the Scourge, the Overseer, and the Mothership. They lift straight up out of it and never come down: no runway and no fuel. Their weapons run on energy cells that drain as they fire and charge again by themselves. A Weaver mends them in the air.",
   },
   /** Xenite fast attack boat: a skimming chitin hull with a plasma cannon. */
   leech: {
@@ -7309,6 +7357,32 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     recon: true,
     wreckHp: 6,
     blurb: `A spy fly the size of a man on buzzing wings, grown in the Aerie in a few seconds for a sliver of hive energy. No weapon: one great sensor eye. It flies as high as the Wraith and sees almost as far from up there, ${(t(11) + HORTEN_FLYING_SIGHT_BONUS) / TILE_SUBDIV} tiles around it. Only anti-air guns and a fighter that climbs after it can reach it, but its shell is paper: one burst brings it down. It never lands and never tires. Send it at a point or a unit and it flies straight over and hangs there, following a unit it can see; on guard or patrol it keeps watching the area.`,
+  },
+  /** Xenite flying capital ship: four mounts on their own cells and a dome round it in the air (sim/mothership.ts). */
+  mothership: {
+    type: "mothership",
+    kind: "unit",
+    name: "Mothership",
+    letter: "m",
+    cost: 0,
+    energy: 3200,
+    buildSeconds: 50,
+    hp: 1400,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: MOTHERSHIP_HULL_RADIUS,
+    moveTilesPerSec: paced(1.4),
+    turnDegPerSec: 35,
+    rangeTiles: MAWCASTER_RANGE_TILES,
+    sightTiles: t(11.5),
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    aircraft: true,
+    wreckHp: 60,
+    blurb: `The hive's flying capital ship: a vast chitin saucer grown slowly in the Aerie on a great deal of hive energy, one at a time. It lifts out and cruises high, as high as the Wraith, where only anti-air guns reach it, and sees farther than anything else the hive has, ${(t(11.5) + HORTEN_FLYING_SIGHT_BONUS) / TILE_SUBDIV} tiles around it, nearly as far as the Wraith. It flies slowly and never lands. Four mounts work by themselves, each on its own energy cell, each the very gun it is named for: a Spine Turret's twin repeater cuts down soldiers below, a Pulse Spire's emitter drives pulses down through tank roofs, a Mawcaster's maw throws plasma salvos on the ground out to ${MAWCASTER_RANGE_TILES / TILE_SUBDIV} tiles but never inside ${MAWCASTER_MIN_RANGE_TILES / TILE_SUBDIV}, and a second maw spits balls at planes, Jump Jets, and low drones within ${MAWCASTER_AIR_RANGE_TILES / TILE_SUBDIV} tiles. Sent at a target it hangs off it and every mount that can hurt it joins in; otherwise each picks its own. An energy dome stands round the hull in the air: anti-air fire and air bursts from outside stop on it, draining its ${MOTHERSHIP_DOME.energy} points, and drained it is gone for ${MOTHERSHIP_DOME.rechargeSeconds} seconds. Fire on the ground passes under it. Needs a Neural Nexus.`,
   },
   // ── The Bloom ───────────────────────────────────────────────────────────────────────────
   /** Bloom HQ on the move: a fat seed-pod on root legs. */
@@ -9432,6 +9506,7 @@ export function isReconType(type: EntityType): boolean {
 /** Height a plane cruises at between runs. */
 export function airCruiseAltOf(type: EntityType): number {
   if (isHoverType(type)) return OVERSEER_CRUISE_ALT;
+  if (type === "mothership") return MOTHERSHIP_CRUISE_ALT;
   return isReconType(type) ? HORTEN_CRUISE_ALT : AIR_CRUISE_ALT;
 }
 
@@ -10157,6 +10232,11 @@ export function isBattleship(type: EntityType): boolean {
 }
 
 /** The Hive Ark: two plasma cannons on their own cells, two Wasp pods, and a dome (sim/hive-ark.ts). */
+/** The Xenite Mothership: four mounts and a dome in the air (sim/mothership.ts). */
+export function isMothership(type: EntityType): boolean {
+  return type === "mothership";
+}
+
 export function isHiveArk(type: EntityType): boolean {
   return type === "hiveark";
 }

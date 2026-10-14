@@ -1,5 +1,5 @@
-import { NEUTRAL_OWNER, energyDomeOf, energyShieldOf, energyWallOf, secondsToTicks, type EnergyDomeDef, type EnergyWallDef } from "../catalog.js";
-import { weaponRangeWorld } from "./elevation.js";
+import { MOTHERSHIP_DOME_DEPTH, NEUTRAL_OWNER, energyDomeOf, energyShieldOf, energyWallOf, isAircraftType, secondsToTicks, type EnergyDomeDef, type EnergyWallDef } from "../catalog.js";
+import { airAlt, entityHeight, weaponRangeWorld } from "./elevation.js";
 import { allies, worldToTile } from "./geo.js";
 import { energyRound } from "./remains.js";
 import type { Entity, EnergyShield, MatchState, Projectile } from "./types.js";
@@ -15,6 +15,11 @@ import type { Entity, EnergyShield, MatchState, Projectile } from "./types.js";
  * walks, up whenever the Siphon can hold it. The dome stops what comes in from
  * outside, rounds dropping from above and blasts and blows too, and its points
  * are the Siphon's energy. Drained, it is gone until the energy fills back up.
+ *
+ * A Mothership's dome stands round it up in the air (`aloft`): a bubble about the hull, not a
+ * circle on the ground. Ground lines and ground units never meet it (shieldSweep, domeOver skip
+ * it); rounds that climb into it do (aloftSweep), and an air burst outside it does not reach a
+ * flier inside (aloftShelters).
  *
  * An Energy Wall building holds a far wider curtain the same way a wall stands, but for as long
  * as the core is online, across the way the core was placed. Hits drain it, it mends slowly, and
@@ -79,7 +84,7 @@ export function shieldSweep(
   if (!shields || shields.length === 0) return null;
   let best: ShieldHit | null = null;
   for (const s of shields) {
-    if (s.hp <= 0 || (domesOnly && !s.dome) || allies(state, s.ownerId, ownerId)) continue;
+    if (s.hp <= 0 || s.aloft || (domesOnly && !s.dome) || allies(state, s.ownerId, ownerId)) continue;
     const t = crossArc(s, x0, y0, x1, y1);
     if (t < 0 || (best && t >= best.t)) continue;
     best = { s, t, x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t };
@@ -92,12 +97,102 @@ export function domeOver(state: MatchState, ownerId: string, x: number, y: numbe
   const shields = state.energyShields;
   if (!shields || shields.length === 0) return null;
   for (const s of shields) {
-    if (!s.dome || s.hp <= 0 || allies(state, s.ownerId, ownerId)) continue;
+    if (!s.dome || s.aloft || s.hp <= 0 || allies(state, s.ownerId, ownerId)) continue;
     const dx = x - s.x;
     const dy = y - s.y;
     if (dx * dx + dy * dy < s.r * s.r) return s;
   }
   return null;
+}
+
+/** (x, y, z) is inside this dome in the air. Its height is stretched to the dome's radius, so the bubble is a ball. */
+function insideAloft(s: EnergyShield, x: number, y: number, z: number): boolean {
+  const up = s.aloft!;
+  const dz = ((z - up.z) * s.r) / Math.max(1e-6, up.depth);
+  const dx = x - s.x;
+  const dy = y - s.y;
+  return dx * dx + dy * dy + dz * dz < s.r * s.r;
+}
+
+/** The standing dome in the air, not on `ownerId`'s side, that holds (x, y, z), or null. */
+export function aloftOver(state: MatchState, ownerId: string, x: number, y: number, z: number): EnergyShield | null {
+  const shields = state.energyShields;
+  if (!shields || shields.length === 0) return null;
+  for (const s of shields) {
+    if (!s.aloft || s.hp <= 0 || allies(state, s.ownerId, ownerId)) continue;
+    if (insideAloft(s, x, y, z)) return s;
+  }
+  return null;
+}
+
+/**
+ * Where a round's line (x0, y0, z0)→(x1, y1, z1) first goes into an enemy dome in the air, or
+ * null. Only the way in counts: a round fired from inside flies out.
+ */
+export function aloftSweep(
+  state: MatchState,
+  ownerId: string,
+  x0: number,
+  y0: number,
+  z0: number,
+  x1: number,
+  y1: number,
+  z1: number,
+): ShieldHit | null {
+  const shields = state.energyShields;
+  if (!shields || shields.length === 0) return null;
+  let best: ShieldHit | null = null;
+  for (const s of shields) {
+    if (!s.aloft || s.hp <= 0 || allies(state, s.ownerId, ownerId)) continue;
+    const k = s.r / Math.max(1e-6, s.aloft.depth);
+    const fx = x0 - s.x;
+    const fy = y0 - s.y;
+    const fz = (z0 - s.aloft.z) * k;
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const dz = (z1 - z0) * k;
+    const a = dx * dx + dy * dy + dz * dz;
+    if (a < 1e-9) continue;
+    const c = fx * fx + fy * fy + fz * fz - s.r * s.r;
+    if (c <= 0) continue;
+    const b = 2 * (fx * dx + fy * dy + fz * dz);
+    const disc = b * b - 4 * a * c;
+    if (disc < 0) continue;
+    const t = (-b - Math.sqrt(disc)) / (2 * a);
+    if (t < 0 || t > 1 || (best && t >= best.t)) continue;
+    best = { s, t, x: x0 + dx * t, y: y0 + dy * t };
+  }
+  return best;
+}
+
+/**
+ * An air burst at (fx, fy, fz) reaching a flier at `victim`: an enemy dome in the air that holds
+ * the flier but not the burst takes it instead. True when a dome took it. Pass one `soaked` set
+ * for a whole burst so each dome pays for it once.
+ */
+export function aloftShelters(
+  state: MatchState,
+  ownerId: string,
+  fx: number,
+  fy: number,
+  fz: number,
+  victim: { x: number; y: number; z: number },
+  damage: number,
+  soaked?: Set<number>,
+): boolean {
+  const s = aloftOver(state, ownerId, victim.x, victim.y, victim.z);
+  if (!s || insideAloft(s, fx, fy, fz)) return false;
+  if (soaked?.has(s.id)) return true;
+  soaked?.add(s.id);
+  soakShield(state, s, damage);
+  return true;
+}
+
+/** A flier's dome stands round it in the air, as high as it flies. Undefined for a dome on the ground. */
+function aloftOf(state: MatchState, e: Entity): EnergyShield["aloft"] {
+  if (!isAircraftType(e.type)) return undefined;
+  const alt = airAlt(e);
+  return { z: entityHeight(state, e) + alt, depth: Math.max(1, alt * MOTHERSHIP_DOME_DEPTH) };
 }
 
 /**
@@ -258,6 +353,8 @@ function tickDome(state: MatchState, s: EnergyShield, dt: number): boolean {
   }
   s.x = from.x;
   s.y = from.y;
+  const aloft = aloftOf(state, from);
+  if (aloft) s.aloft = aloft;
   s.hp = Math.min(s.hpMax, s.hp + def.regenPerSecond * dt);
   return true;
 }
@@ -276,6 +373,7 @@ function castDome(state: MatchState, e: Entity, def: EnergyDomeDef): void {
     hpMax: def.energy,
     life: 0,
     dome: true,
+    ...(isAircraftType(e.type) ? { aloft: aloftOf(state, e) } : {}),
   });
   e.energy = undefined;
 }

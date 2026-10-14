@@ -1377,6 +1377,7 @@ const TYPE_ORDER: EntityType[] = [
   "scourge",
   "overseer",
   "gnat",
+  "mothership",
   "razorwing",
   "gasbag",
   "drifter",

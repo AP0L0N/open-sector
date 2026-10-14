@@ -168,12 +168,14 @@ import {
   MAMMOTH_MINE_RANGE_TILES,
   SIMUNIT_BLINK_RANGE_TILES,
   isSimUnit,
+  MOTHERSHIP_DOME_DEPTH,
 } from "@gridlock/shared";
 import {
   CURTAIN_PANELS,
   WEAVE_THREAD_MS,
   curtainHeightElev,
   domeHeightElev,
+  drawAirDome,
   drawDome,
   drawShieldPanel,
   drawWeaveThread,
@@ -267,6 +269,8 @@ import {
   BATTLESHIP_SPRITE,
   HIVEARK_CANNON,
   HIVEARK_SPRITE,
+  MOTHERSHIP_MOUNT_SHEETS,
+  MOTHERSHIP_SPRITE,
   FEUERWIRBEL_CIWS_SHEET,
   FEUERWIRBEL_SPRITE,
   unitSpritePaintRect,
@@ -390,6 +394,7 @@ import { bumpTilt, crushBump } from "./crush-bump.js";
 import { drawFieldGunSmoke, fieldGunSmokePose, spawnFieldGunSmoke, type FieldGunSmokePuff } from "./field-gun-smoke.js";
 import { emplacementShotLook, facingConeDegOf, PAK43_FX_CALIBER_MUL } from "./emplacement-fx.js";
 import { drawArkCharge, drawArkPlasmaBall, hiveArkLayers, hiveArkMuzzle } from "./hive-ark.js";
+import { mothershipLayers } from "./mothership.js";
 import {
   BATTLESHIP_WORLD_PER_UNIT,
   battleshipLayers,
@@ -933,6 +938,7 @@ const EXTRUDE: Record<EntityType, number> = {
   submarine: 7,
   lurker: 7,
   hiveark: 20,
+  mothership: 20,
   battleship: 20,
   destroyer: 14,
   lst: 16,
@@ -8665,6 +8671,20 @@ export class MapView {
     }
   }
 
+  /** The Mothership's four mounts over its hull, far first, each on its own bearing. (ox, oy) is the model origin on screen. */
+  private drawMothershipLayers(e: EntityView, facing: number, ox: number, oy: number, size: number): void {
+    const ship = e.mothership;
+    if (!ship) return;
+    const left = ox - size / 2;
+    const top = oy - size * MOTHERSHIP_SPRITE.contactY;
+    for (const l of mothershipLayers(facing, ship.mounts.map((m) => m.facing), size, this.ts())) {
+      const sheet = MOTHERSHIP_MOUNT_SHEETS[l.mount];
+      if (!spriteReady(sheet)) continue;
+      const cell = sheet.frameSize;
+      this.ctx.drawImage(sheet.image, 0, l.row * cell, cell, cell, left + l.dx, top + l.dy, size, size);
+    }
+  }
+
   /** The Feuerwirbel's two CIWS mounts, each on its ring and its own facing row, far one first. */
   private drawTwinMounts(mounts: NonNullable<EntityView["mounts"]>, facing: number, ox: number, oy: number, size: number): void {
     const sheet = FEUERWIRBEL_CIWS_SHEET;
@@ -8799,7 +8819,7 @@ export class MapView {
     // A map's neutral unit is grey: no one's colours, everyone's enemy.
     else if (!e.wreck && !e.ownerId) ctx.filter = NEUTRAL_UNIT_FILTER;
     // The ship's mounts are placed on the sim's own spots: no ground sink under the hull.
-    if (e.ship || def === BATTLESHIP_SPRITE || e.ark || def === HIVEARK_SPRITE) hullShiftY -= unitGroundSink(size);
+    if (e.ship || def === BATTLESHIP_SPRITE || e.ark || def === HIVEARK_SPRITE || e.mothership || def === MOTHERSHIP_SPRITE) hullShiftY -= unitGroundSink(size);
     const stepping = unitStepping({ type: e.type, state: e.state, swimming: e.swimming, prev: this.prevById.get(e.id), curr: e });
     if (e.type === "juggernaut" && !e.wreck) {
       const pose = this.juggernautPose(e);
@@ -8857,6 +8877,7 @@ export class MapView {
     // A sunk hulk has its superstructure and turrets baked in; the grey stand-in still needs them.
     if (drawn && e.ship && (!e.wreck || sheet === def)) this.drawShipLayers(e, p.facing, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size);
     if (drawn && e.ark && (!e.wreck || sheet === def)) this.drawArkLayers(e, p.facing, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size);
+    if (drawn && e.mothership && (!e.wreck || sheet === def)) this.drawMothershipLayers(e, p.facing, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size);
     // A wrecked Feuerwirbel's mounts are torn off; its hulk sheet shows the empty rings.
     if (drawn && e.mounts && !e.wreck) this.drawTwinMounts(e.mounts, p.facing, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size);
     if (drawn && e.type === "titan" && !e.wreck) this.drawTitanLamp(e, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size, def);
@@ -10023,6 +10044,11 @@ export class MapView {
     const at = host ? this.lerpEnt(host) : { x: s.x, y: s.y };
     const elev = this.elevAt(at.x, at.y);
     const c = this.toScreen(at.x, at.y, elev);
+    // A flier's dome hangs round it in the air, at its height.
+    if (host?.air && host.air.alt > 0.5) {
+      this.collectAirDome(items, w, h, s, host, at, c, now);
+      return;
+    }
     const span = this.groundSpan(at.x, at.y, s.r) * 2;
     if (c.x < -span || c.y < -span || c.x > w + span || c.y > h + span) return;
     let rx = 0;
@@ -10042,6 +10068,44 @@ export class MapView {
       z: isoDepth(front.x, front.y),
       at: front,
       run: () => drawDome(this.ctx, c, rx, ry, lift, glow),
+    });
+  }
+
+  /**
+   * The Mothership's dome: a bubble round the hull, lifted with it (MapView.airLift). Its depth is
+   * the sim's (MOTHERSHIP_DOME_DEPTH of the height it flies at); it sorts with the fliers.
+   */
+  private collectAirDome(
+    items: DrawItem[],
+    w: number,
+    h: number,
+    s: EnergyShieldView,
+    host: EntityView,
+    at: { x: number; y: number },
+    ground: { x: number; y: number },
+    now: number,
+  ): void {
+    const lift = this.airLift(host);
+    const c = { x: ground.x, y: ground.y - lift };
+    let rx = 0;
+    let ry = 0;
+    const elev = this.elevAt(at.x, at.y);
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      const p = this.toScreen(at.x + Math.cos(a) * s.r, at.y + Math.sin(a) * s.r, elev);
+      rx = Math.max(rx, Math.abs(p.x - ground.x));
+      ry = Math.max(ry, Math.abs(p.y - ground.y));
+    }
+    const depth = airLiftPx(Math.max(1, (host.air?.alt ?? 0) * MOTHERSHIP_DOME_DEPTH));
+    const rv = Math.hypot(ry, depth);
+    if (c.x < -rx || c.y < -rv || c.x > w + rx || c.y > h + rv) return;
+    const glow = shieldGlow(s, now, s.id);
+    items.push({
+      layer: AIR_DRAW_LAYER,
+      // Just in front of the ship it wraps.
+      z: isoDepth(at.x, at.y) + 0.5,
+      at,
+      run: () => drawAirDome(this.ctx, c, rx, rv, ry, glow),
     });
   }
 
