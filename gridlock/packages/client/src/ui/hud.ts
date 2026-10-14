@@ -2019,7 +2019,7 @@ function appendResearch(body: HTMLElement, type: EntityType): void {
   bar.append(el("span"));
   const cancel = el("button", {
     class: "shell research-cancel hidden",
-    attrs: { type: "button", "data-research-cancel": "1", title: "Cancel the upgrade. A Fusion Node or Fusion Core goes back to its full output; a Force Shield or Flak Maw gives its energy back." },
+    attrs: { type: "button", "data-research-cancel": "1", title: "Cancel the upgrade. A Fusion Node or Fusion Core goes back to its full output; a Force Shield or Ion Turret gives its energy back." },
   });
   cancel.append(el("span", { class: "shell-row", text: "Cancel upgrade" }));
   body.append(bar, cancel);

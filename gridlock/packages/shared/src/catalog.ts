@@ -1276,7 +1276,7 @@ export interface ResearchDef {
   buildings: readonly BuildingType[];
   /** The level the structure reaches once it is done. Unset for an upgrade that is not a level. */
   level?: number;
-  /** What it grants instead of a level: the Force Shield's dome, the Flak Maw on a Fusion Core's roof, Sky Tracking's reach on aircraft, or the Shield Wall drill. */
+  /** What it grants instead of a level: the Force Shield's dome, the roof Ion Turret on a Fusion Core, Sky Tracking's reach on aircraft, or the Shield Wall drill. */
   grants?: "forceShield" | "roofFlak" | "skySpines" | "shieldWall";
   seconds: number;
   cost: number;
@@ -1297,7 +1297,7 @@ export const FUSION_CORE_LEVEL_ENERGY: readonly number[] = [FUSION_CORE_ENERGY, 
 /** Every Xenite defence can research a Force Shield, and so can the Fusion Core. */
 export const FORCE_SHIELD_BUILDINGS: readonly BuildingType[] = ["spineturret", "pulsespire", "energywall", "laserfence", "fusioncore"];
 /**
- * The Flak Maw (sim/roof-flak.ts): a small anti-air maw grown on a Fusion Core's roof. It is the
+ * The roof Ion Turret (research "flakmaw", once the Flak Maw; sim/roof-flak.ts): a small anti-air maw grown on a Fusion Core's roof. It is the
  * Mothership's flak mount: the Mawcaster's maw on Air attacks (MAWCASTER_AIR_BALL), on the
  * Mawcaster's cell, laying itself on planes, Jump Jets, and low drones in its reach.
  */
@@ -1362,7 +1362,7 @@ export const RESEARCH: Record<ResearchId, ResearchDef> = {
   },
   flakmaw: {
     id: "flakmaw",
-    name: "Flak Maw",
+    name: "Ion Turret",
     buildings: ROOF_FLAK_BUILDINGS,
     grants: "roofFlak",
     seconds: 40,
@@ -1371,7 +1371,7 @@ export const RESEARCH: Record<ResearchId, ResearchDef> = {
     effect: `Anti-air · ${ROOF_FLAK_ENERGY} energy`,
     // A getter: the Mawcaster's numbers are declared further down this module.
     get blurb() {
-      return `Grows a small maw on the core's roof that spits plasma balls at planes, Jump Jets, and low drones within ${MAWCASTER_AIR_RANGE_TILES / TILE_SUBDIV} cells, ${MAWCASTER_AIR_SALVO} at a time, each bursting at the flier's height: the Mawcaster's Air attack. It lays itself and leaves the ground alone, firing off an energy cell that holds ${MAWCASTER_CELL.shots} and regrows one every ${MAWCASTER_CELL.rechargeSeconds} seconds. Takes ${ROOF_FLAK_ENERGY} hive energy from the moment the research starts.`;
+      return `Grows a small ion turret on the core's roof that spits plasma balls at planes, Jump Jets, and low drones within ${MAWCASTER_AIR_RANGE_TILES / TILE_SUBDIV} cells, ${MAWCASTER_AIR_SALVO} at a time, each bursting at the flier's height: the Mawcaster's Air attack. It lays itself and leaves the ground alone, firing off an energy cell that holds ${MAWCASTER_CELL.shots} and regrows one every ${MAWCASTER_CELL.rechargeSeconds} seconds. Takes ${ROOF_FLAK_ENERGY} hive energy from the moment the research starts.`;
     },
   },
   skyspines: {
@@ -1509,7 +1509,7 @@ export function energySupplyOfEntity(e: { type: string; level?: number; research
   const levelling = e.research != null && (id == null || RESEARCH[id]?.level != null);
   return levelling ? Math.floor(base * RESEARCH_OUTPUT_SHARE) : base;
 }
-/** Hive energy a structure's upgrades take on top of its own: a Force Shield's, a Flak Maw's, Sky Tracking's and a Shield Wall's, from the moment their research starts. */
+/** Hive energy a structure's upgrades take on top of its own: a Force Shield's, a roof Ion Turret's, Sky Tracking's and a Shield Wall's, from the moment their research starts. */
 export function upgradeEnergyOf(e: ResearchSubject): number {
   let n = (e.forceShield ? FORCE_SHIELD_ENERGY : 0) + (e.roofFlak ? ROOF_FLAK_ENERGY : 0) + (e.skySpines ? SKY_SPINES_ENERGY : 0) + (e.shieldWall ? SHIELD_WALL_ENERGY : 0);
   const running = e.research ? RESEARCH[e.research.id] : undefined;
@@ -7207,7 +7207,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `A fusion reactor on a caged plasma well, bigger than a Neural Nexus. It takes as long to raise as eight Fusion Nodes and stores ${FUSION_CORE_ENERGY} energy for the hive, four Fusion Nodes' worth, while it stands. It can research a Fusion Reactor for twice that, a Force Shield of its own, and a Flak Maw on its roof against aircraft. Destroyed, it goes up in the same nuclear blast as a Titan: everything round it is hurt, friend or foe, and small things are levelled. Needs a Neural Nexus to build.`,
+    blurb: `A fusion reactor on a caged plasma well, bigger than a Neural Nexus. It takes as long to raise as eight Fusion Nodes and stores ${FUSION_CORE_ENERGY} energy for the hive, four Fusion Nodes' worth, while it stands. It can research a Fusion Reactor for twice that, a Force Shield of its own, and an Ion Turret on its roof against aircraft. Destroyed, it goes up in the same nuclear blast as a Titan: everything round it is hurt, friend or foe, and small things are levelled. Needs a Neural Nexus to build.`,
   },
   /** Xenite anti-infantry gun: crewless, runs on base power. */
   spineturret: {
