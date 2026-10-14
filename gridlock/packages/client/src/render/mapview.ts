@@ -270,6 +270,8 @@ import {
   BATTLESHIP_SPRITE,
   HIVEARK_CANNON,
   HIVEARK_SPRITE,
+  ROOF_FLAK_SEAT,
+  ROOF_FLAK_SHEET,
   MOTHERSHIP_SPRITE,
   FEUERWIRBEL_CIWS_SHEET,
   FEUERWIRBEL_SPRITE,
@@ -402,6 +404,7 @@ import {
   shipBarrelMuzzle,
   shipCiwsMuzzle,
   shipLampMount,
+  shipRow,
 } from "./battleship.js";
 import {
   drawMuzzleSmoke,
@@ -735,15 +738,15 @@ function fillPool(c: CanvasRenderingContext2D, p: NightPool, rgb: string, a: num
   c.restore();
 }
 
-/**
- * A live Xenite or Bloom unit or structure out in the open: it glows. Not a wreck, a ruin, a passenger, or a burrowed or submerged body,
- * nor one powered down (offline for want of hive energy), nor any structure of a hive below zero.
- */
 /** A structure's lit parts this frame: the sprite's box on screen, and how much of it is in sight. */
 type GlowEntry = { glow: BuildingGlow; x: number; y: number; w: number; h: number; a: number };
 
+/**
+ * A live Bloom unit or structure out in the open: its sacs throw amber on the ground. Not a wreck, a ruin, a passenger,
+ * or a burrowed or submerged body, nor one powered down. The Xenite throw no glow: only their structures' own panels shine (glowCut).
+ */
 function xenoGlows(e: EntityView): boolean {
-  if (factionOf(e.type) === "alliance" || e.hp <= 0 || e.wreck || e.ruined) return false;
+  if (factionOf(e.type) !== "bloom" || e.hp <= 0 || e.wreck || e.ruined) return false;
   if (e.shutdown || e.unpowered || e.hiveDark) return false;
   if (e.garrisonedIn != null || e.burrow === "down" || e.submerged) return false;
   return e.kind === "unit" || e.kind === "building";
@@ -1158,6 +1161,8 @@ export class MapView {
   private zoomLabel: HTMLElement | null;
   private keys = new Set<string>();
   private panning = false;
+  /** Left button went down on the minimap and is still held: moves steer the view. */
+  private miniDrag = false;
   private lastMX = 0;
   private lastMY = 0;
   private mouseX = -1;
@@ -1202,7 +1207,7 @@ export class MapView {
   private nightLayer: HTMLCanvasElement | null = null;
   /** Small layer the lamps' warm light is summed and capped on. */
   private lightLayer: HTMLCanvasElement | null = null;
-  /** This frame's Xenite glow pools: drawn on the ground, and cut from the night layer. */
+  /** This frame's Bloom glow pools: drawn on the ground, and cut from the night layer. */
   private xenoFrame: NightPool[] = [];
   /**
    * What of the night is cut away this frame, built in the depth sort: each
@@ -3303,23 +3308,33 @@ export class MapView {
     this.mini.addEventListener("mousedown", (e) => {
       // A dark panel is not a map: nothing to click until a Radar Station stands.
       if (!this.curr.you.radar) return;
-      const map = this.map();
-      const rect = this.mini.getBoundingClientRect();
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
-      const scale = Math.min(rect.width / map.width, rect.height / map.height);
-      const tileX = mx / scale;
-      const tileY = my / scale;
-      const view = this.viewSize();
-      const iso = worldToIso(tileX * map.tileSize, tileY * map.tileSize, map.tileSize);
-      this.camX = iso.x - view.w / 2;
-      this.camY = iso.y - view.h / 2;
-      this.clamp();
+      e.preventDefault();
+      this.lookAtMini(e.clientX, e.clientY);
+      // Held down, the view keeps following the pointer until the button comes up.
+      if (e.button === 0) this.miniDrag = true;
     });
+  }
+
+  /** Centre the view on the map tile under a minimap point; past the map's edge it pins to the edge. */
+  private lookAtMini(clientX: number, clientY: number): void {
+    const map = this.map();
+    const rect = this.mini.getBoundingClientRect();
+    const scale = Math.min(rect.width / map.width, rect.height / map.height);
+    const tileX = Math.max(0, Math.min(map.width, (clientX - rect.left) / scale));
+    const tileY = Math.max(0, Math.min(map.height, (clientY - rect.top) / scale));
+    const view = this.viewSize();
+    const iso = worldToIso(tileX * map.tileSize, tileY * map.tileSize, map.tileSize);
+    this.camX = iso.x - view.w / 2;
+    this.camY = iso.y - view.h / 2;
+    this.clamp();
   }
 
   private onUp = (e: MouseEvent): void => {
     if (e.button === 1) this.panning = false;
+    if (e.button === 0 && this.miniDrag) {
+      this.miniDrag = false;
+      return;
+    }
     if (e.button === 2 && this.moveFace) {
       this.commitMoveFace();
       return;
@@ -3399,6 +3414,11 @@ export class MapView {
     if (this.ctrlHeld !== e.ctrlKey) {
       this.ctrlHeld = e.ctrlKey;
       this.syncCursor();
+    }
+    if (this.miniDrag) {
+      // Radar knocked out mid-drag (the panel went dark) or the button came up outside the window: stop steering.
+      if (!this.curr.you.radar || !(e.buttons & 1)) this.miniDrag = false;
+      else this.lookAtMini(e.clientX, e.clientY);
     }
     if (this.panning) {
       this.camX -= (e.clientX - this.lastMX) / this.zoom;
@@ -4882,7 +4902,7 @@ export class MapView {
     if (this.keys.has("arrowleft")) vx -= 1;
     if (this.keys.has("d") || this.keys.has("arrowright")) vx += 1;
     const edge = 24;
-    if (edgeScroll && !this.panning && !this.box && this.winX >= 0 && !this.overControl) {
+    if (edgeScroll && !this.panning && !this.miniDrag && !this.box && this.winX >= 0 && !this.overControl) {
       const sw = window.innerWidth;
       const sh = window.innerHeight;
       if (this.winX < edge) vx -= 1;
@@ -5167,7 +5187,7 @@ export class MapView {
     items.push({ layer: GROUND_DECAL_DRAW_LAYER, z: -Infinity, run: () => drawYardWear(this.ctx, yardWear) });
     // One path under craters and unit blobs, so overlapping shadows don't stack.
     items.push({ layer: HOLE_DRAW_LAYER, z: -Infinity, run: () => drawCastShadows(this.ctx, castShadows) });
-    // The Xenite glow lights the ground they stand on: over craters and shadows, under everything that stands.
+    // The Bloom glow lights the ground they stand on: over craters and shadows, under everything that stands.
     const xenoGlow = lampGlow(this.daylight());
     this.xenoFrame = xenoGlow > 0 ? this.xenoPools(w, h) : [];
     this.beginGlowCut();
@@ -5520,7 +5540,7 @@ export class MapView {
       lay(p.x, p.y, catalog(e.type).radius * TRACTOR_POOL_SCALE * 1.25, Math.min(1, e.absorb.light * 3), "tractor");
     }
     const nowSec = performance.now() / 1000;
-    // The Xenite glow, laid this frame under the units (drawXenoGlow); here it only cuts the dark.
+    // The Bloom glow, laid this frame under the units (drawXenoGlow); here it only cuts the dark.
     out.push(...this.xenoFrame);
     // Gate lamps: a small pool off each post, on both sides of the boom.
     const gateSpan = fieldSpan("gate");
@@ -5552,8 +5572,8 @@ export class MapView {
   }
 
   /**
-   * The Xenite carry no lamps: every live unit of theirs gives off a blue glow,
-   * sized to it, as pools in screen space like nightPools. The Bloom's structures glow amber too.
+   * The Bloom's amber glow off every live unit and structure, sized to it, as
+   * pools in screen space like nightPools.
    */
   private xenoPools(w: number, h: number): NightPool[] {
     const ts = this.ts();
@@ -5567,10 +5587,7 @@ export class MapView {
     };
     for (const e of this.curr.entities) {
       if (!xenoGlows(e)) continue;
-      // Blue off the hive, amber off the Bloom's sacs.
-      const kind = factionOf(e.type) === "bloom" ? "bloom" : "xeno";
-      // A hive structure's own panels glow instead (glowCut); only its units cast the blue.
-      if (kind === "xeno" && e.kind === "building") continue;
+      const kind = "bloom";
       const at = e.kind === "unit" ? this.lerpEnt(e) : e;
       const r = xenoGlowRadius(e, catalog(e.type).radius, ts);
       const a = xenoGlowPulse(e.id, nowSec);
@@ -5582,7 +5599,7 @@ export class MapView {
   }
 
   /**
-   * The Xenite glow's blue, on the ground under units and structures. The night
+   * The Bloom glow's amber, on the ground under units and structures. The night
    * layer goes over it after, so it is lifted to make up for the shade left there.
    */
   private drawXenoGlow(glow: number): void {
@@ -5775,7 +5792,7 @@ export class MapView {
       }
     }
     ctx.save();
-    // The Xenite glow lifts the dark above, but its blue was laid on the ground under the units (drawXenoGlow).
+    // The Bloom glow lifts the dark above, but its amber was laid on the ground under the units (drawXenoGlow).
     const lit = pools.filter((p) => p.kind !== "xeno" && p.kind !== "bloom");
     if (lit.length) this.drawLampLight(lit, glow);
     if (pools.length) {
@@ -7853,6 +7870,7 @@ export class MapView {
             performance.now() * (this.curr.gameSpeed || 1),
             lit ? (lx, ly, lr, la) => this.cutLight(lx, ly, lr, la * lit.a) : undefined,
           );
+          if (e.roofFlak) this.drawRoofFlak(e.type, e.roofFlak.facing, spr, south.x, south.y, footprintW);
         }
       });
       if (lit) this.drawBuildingBloom(lit);
@@ -8839,6 +8857,20 @@ export class MapView {
       const y = oy + l.dy - waspSize * wasp.contactY;
       ctx.drawImage(wasp.image, 0, l.row * cell, cell, cell, x, y, waspSize, waspSize);
     }
+  }
+
+  /** A Fusion Core's Flak Maw on its seat (ROOF_FLAK_SEAT), turned to its own bearing (ROOF_FLAK_SHEET). */
+  private drawRoofFlak(type: EntityType, facing: number, spr: BuildingSpriteDef, southX: number, southY: number, footprintW: number): void {
+    const seat = ROOF_FLAK_SEAT[type];
+    const sheet = ROOF_FLAK_SHEET;
+    if (!seat || !spriteReady(sheet)) return;
+    const scale = footprintW / spr.padWidth;
+    const size = footprintW * seat.cellPerPad;
+    const cx = southX + (seat.x - spr.padSouthX) * scale;
+    const cy = southY + (seat.y - spr.padSouthY) * scale;
+    const cell = sheet.frameSize;
+    const row = shipRow(facing, this.ts());
+    this.ctx.drawImage(sheet.image, 0, row * cell, cell, cell, cx - size / 2, cy - size / 2, size, size);
   }
 
   /** The Feuerwirbel's two CIWS mounts, each on its ring and its own facing row, far one first. */

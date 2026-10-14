@@ -50,6 +50,7 @@ import {
   hasForceField,
   TICK_DT,
   ARK_CANNON_CELL,
+  MAWCASTER_CELL,
   ARK_CANNON_CHARGE_SECONDS,
 } from "../catalog.js";
 import { padsTaken } from "./air.js";
@@ -193,6 +194,19 @@ function absorbView(state: MatchState, e: Entity): EntityView["absorb"] {
   const on = beamOn(state, e);
   if (!on) return undefined;
   return { by: on.ship.id, ...beamProgress(on.beam) };
+}
+
+/** A Fusion Core's Flak Maw. Cell charge only for its own side. */
+function roofFlakView(state: MatchState, e: Entity, friendly: boolean): EntityView["roofFlak"] {
+  const g = e.roofFlak;
+  if (!g || e.kind !== "building") return undefined;
+  const window = Math.max(1, clampGameSpeed(state.gameSpeed));
+  return {
+    facing: g.facing,
+    ...(!e.wreck && g.firedTick != null && state.tick - g.firedTick < window ? { fire: true as const } : {}),
+    ...(friendly ? { energy: Math.round((g.energy / MAWCASTER_CELL.shots) * 100) / 100 } : {}),
+    ...(friendly && g.drained ? { drained: true as const } : {}),
+  };
 }
 
 function scoutView(e: Entity, friendly: boolean): EntityView["scout"] {
@@ -535,7 +549,10 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       hiveDark: e.kind === "building" && e.hiveDark ? true : undefined,
       level: e.kind === "building" && e.level ? e.level : undefined,
       forceShield: e.kind === "building" && e.forceShield ? true : undefined,
+      skySpines: e.kind === "building" && e.skySpines ? true : undefined,
+      shieldWall: e.kind === "building" && e.shieldWall ? true : undefined,
       shield: e.kind === "building" && e.forceShield ? forceShieldView(state, e) : undefined,
+      roofFlak: roofFlakView(state, e, friendly),
       research: friendly && e.research ? { id: e.research.id, progress: Math.round((e.research.progressTicks / e.research.totalTicks) * 1000) / 1000 } : undefined,
       holdPosition: friendly && e.holdPosition ? true : undefined,
       patrol:

@@ -75,7 +75,7 @@ import {
   FEUERWIRBEL_MOUNT_TURN,
   twinCiwsOf,
   hullFlamerOf,
-  antiAirGunOf,
+  antiAirGun,
   armorFirstOf,
   crewGunOf,
   garrisonCapOf,
@@ -2658,7 +2658,7 @@ function fireRockets(
  * bursts in the air beside it. On anything else it is fused on the ground.
  * A rack with an apex lobs it over whatever stands between. `side` is the
  * launch offset off the aim line, world pixels. `mount` launches it from a gun that is not the
- * unit's own rack (a Mothership's maw): from that point and height, as that launcher's ball.
+ * unit's own rack (a Fusion Core's Flak Maw): from that point and height, as that launcher's ball.
  */
 export function launchRocket(
   state: MatchState,
@@ -2670,20 +2670,21 @@ export function launchRocket(
   dist: number,
   target: Entity | undefined,
   side: number,
+  mount?: { x: number; y: number; z: number; launcher: EntityType; airRack: boolean; forced: boolean },
 ): void {
   const aloft = !!target && isAirborne(target);
   const moving = !!target && (aloft || target.waypoints.length > 0 || target.state === "move");
   // The pods lay on their own bearing, not the torso's. A tube lies along the soldier's.
   // From inside, the tube pokes out of the opening facing the target.
-  const slit = garrisonMuzzleToward(state, e, aimX, aimY);
-  const fromX = slit?.x ?? e.x;
-  const fromY = slit?.y ?? e.y;
+  const slit = mount ? null : garrisonMuzzleToward(state, e, aimX, aimY);
+  const fromX = mount?.x ?? slit?.x ?? e.x;
+  const fromY = mount?.y ?? slit?.y ?? e.y;
   const aim = Math.atan2(aimY - fromY, aimX - fromX);
   const sideX = -Math.sin(aim);
   const sideY = Math.cos(aim);
   const x = fromX + sideX * side;
   const y = fromY + sideY * side;
-  const z0 = muzzleHeight(state, e) + rack.podLift;
+  const z0 = mount ? mount.z : muzzleHeight(state, e) + rack.podLift;
   let goalX = aimX;
   let goalY = aimY;
   if (aloft && target) {
@@ -2739,12 +2740,12 @@ export function launchRocket(
     landX: land.x,
     landY: land.y,
     flightTime: flight,
-    harmAllies: e.order?.kind === "forceattack",
+    harmAllies: mount ? mount.forced : e.order?.kind === "forceattack",
     airBurst: aloft || undefined,
     z: z0,
     vz: (zLand - z0) / flight,
-    launcher: e.type,
-    airRack: rack === airRackOf(e.type) || undefined,
+    launcher: mount?.launcher ?? e.type,
+    airRack: (mount ? mount.airRack : rack === airRackOf(e.type)) || undefined,
     homeOn: homeOn?.id,
     homeLeft: homeOn ? flight * 2 : undefined,
     heavy: rack.plate != null && rack.plate > 1 ? true : undefined,
@@ -3576,7 +3577,7 @@ function fireRound(
     hpFraction: gunId === "scoped" || gunId === "ptrd" ? scopedHpFraction(dist, range) * (factionOf(e.type) === "xeno" ? XENO_DAMAGE_MUL : 1) : undefined,
     antiAir:
       opts?.radar ||
-      (!opts?.shell && (e.type === "walker" || radarLaidOf(e.type) || antiAirGunOf(e.type) || !!infantryGunFor(e)?.antiAir))
+      (!opts?.shell && (e.type === "walker" || radarLaidOf(e.type) || antiAirGun(e) || !!infantryGunFor(e)?.antiAir))
         ? true
         : undefined,
     gatling: gatling || undefined,

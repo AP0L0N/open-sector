@@ -1264,23 +1264,26 @@ export function energySupplyOf(type: string): number {
 }
 /**
  * Research (sim/research.ts): a structure upgrades itself. A level entry lifts its `buildings` from
- * `level - 1` to `level`; a Force Shield entry gives the structure its own small energy dome. It runs
+ * `level - 1` to `level`; a Force Shield entry gives the structure its own small energy dome; Shield
+ * Wall on a Conversion Chamber lets its side's Drones and Lancers raise their energy walls. It runs
  * on the structure for `seconds` at the owner's job pace and costs `cost` scrap as it goes (nothing
  * for the Xenite, who pay no scrap) and `energy` more hive energy for as long as it stands.
  */
-export type ResearchId = "advancedfusion" | "ultrafusion" | "forceshield";
+export type ResearchId = "advancedfusion" | "ultrafusion" | "fusionreactor" | "forceshield" | "flakmaw" | "skyspines" | "shieldwall";
 export interface ResearchDef {
   id: ResearchId;
   name: string;
   buildings: readonly BuildingType[];
   /** The level the structure reaches once it is done. Unset for an upgrade that is not a level. */
   level?: number;
-  /** What it grants instead of a level: the Force Shield's dome. */
-  grants?: "forceShield";
+  /** What it grants instead of a level: the Force Shield's dome, the Flak Maw on a Fusion Core's roof, Sky Tracking's reach on aircraft, or the Shield Wall drill. */
+  grants?: "forceShield" | "roofFlak" | "skySpines" | "shieldWall";
   seconds: number;
   cost: number;
   /** Hive energy the upgrade takes from the moment it starts, for as long as the structure stands. */
   energy?: number;
+  /** Buildings the owner needs standing before the research can start. */
+  requires?: readonly BuildingType[];
   /** One short line for the button: what the structure gives once it is done. */
   effect: string;
   blurb: string;
@@ -1289,13 +1292,31 @@ export interface ResearchDef {
 export const FUSION_NODE_LEVEL_ENERGY: readonly number[] = [FUSION_NODE_ENERGY, 400, 600];
 /** While a structure researches its next level, it gives this share of what it gives now. */
 export const RESEARCH_OUTPUT_SHARE = 0.5;
-/** Every Xenite defence can research a Force Shield. */
-export const FORCE_SHIELD_BUILDINGS: readonly BuildingType[] = ["spineturret", "pulsespire", "energywall", "laserfence"];
+/** Hive energy a Fusion Core holds at each level: plain, Fusion Reactor (twice as much). */
+export const FUSION_CORE_LEVEL_ENERGY: readonly number[] = [FUSION_CORE_ENERGY, FUSION_CORE_ENERGY * 2];
+/** Every Xenite defence can research a Force Shield, and so can the Fusion Core. */
+export const FORCE_SHIELD_BUILDINGS: readonly BuildingType[] = ["spineturret", "pulsespire", "energywall", "laserfence", "fusioncore"];
+/**
+ * The Flak Maw (sim/roof-flak.ts): a small anti-air maw grown on a Fusion Core's roof. It is the
+ * Mothership's flak mount: the Mawcaster's maw on Air attacks (MAWCASTER_AIR_BALL), on the
+ * Mawcaster's cell, laying itself on planes, Jump Jets, and low drones in its reach.
+ */
+export const ROOF_FLAK_BUILDINGS: readonly BuildingType[] = ["fusioncore"];
+/** Hive energy the Flak Maw takes, from the moment its research starts. */
+export const ROOF_FLAK_ENERGY = 100;
+/** Degrees a second the Flak Maw slews: the Mothership's maws'. */
+export const ROOF_FLAK_TURN_DEG_PER_SEC = 50;
 /** Hive energy one Force Shield takes, from the moment its research starts. */
 export const FORCE_SHIELD_ENERGY = 30;
 /** The Force Shield dome: a small store, mended while it holds; its radius comes from the footprint (FORCE_SHIELD_MARGIN_TILES past it). */
 export const FORCE_SHIELD_DOME: EnergyDomeDef = { energy: 150, radiusTiles: 0, rechargeSeconds: 15, regenPerSecond: 6 };
 export const FORCE_SHIELD_MARGIN_TILES = 1.5;
+/** Hive energy Sky Tracking takes on an Ion Turret, from the moment the research starts. */
+export const SKY_SPINES_ENERGY = 20;
+/** Hive energy the Shield Wall drill takes, from the moment its research starts. */
+export const SHIELD_WALL_ENERGY = 20;
+/** The units that raise an energy wall only once their side holds the Shield Wall (wallsNeedDrill). */
+export const SHIELD_WALL_UNITS: readonly EntityType[] = ["xenodrone", "lancer"];
 export const RESEARCH: Record<ResearchId, ResearchDef> = {
   advancedfusion: {
     id: "advancedfusion",
@@ -1313,9 +1334,20 @@ export const RESEARCH: Record<ResearchId, ResearchDef> = {
     buildings: ["fusionnode"],
     level: 2,
     seconds: 75,
+    requires: ["nexus"],
     effect: `${FUSION_NODE_LEVEL_ENERGY[2]} energy`,
     cost: 0,
-    blurb: `A four-coil crown around a caged star: ${FUSION_NODE_LEVEL_ENERGY[2]} energy instead of ${FUSION_NODE_LEVEL_ENERGY[1]}. While it upgrades the node holds only half its energy.`,
+    blurb: `A four-coil crown around a caged star: ${FUSION_NODE_LEVEL_ENERGY[2]} energy instead of ${FUSION_NODE_LEVEL_ENERGY[1]}. While it upgrades the node holds only half its energy. Needs a Neural Nexus.`,
+  },
+  fusionreactor: {
+    id: "fusionreactor",
+    name: "Fusion Reactor",
+    buildings: ["fusioncore"],
+    level: 1,
+    seconds: 120,
+    effect: `${FUSION_CORE_LEVEL_ENERGY[1]} energy`,
+    cost: 0,
+    blurb: `Lights the plasma well into a full reactor: ${FUSION_CORE_LEVEL_ENERGY[1]} energy instead of ${FUSION_CORE_LEVEL_ENERGY[0]}, twice the store. While it upgrades the core holds only half its energy.`,
   },
   forceshield: {
     id: "forceshield",
@@ -1326,7 +1358,43 @@ export const RESEARCH: Record<ResearchId, ResearchDef> = {
     cost: 0,
     energy: FORCE_SHIELD_ENERGY,
     effect: `Dome · ${FORCE_SHIELD_ENERGY} energy`,
-    blurb: `Wraps the defence in its own energy dome. The dome stops what comes in from outside until its ${FORCE_SHIELD_DOME.energy} points are gone, mends while it holds, and comes back a while after it breaks. Takes ${FORCE_SHIELD_ENERGY} hive energy from the moment the research starts.`,
+    blurb: `Wraps the structure in its own energy dome. The dome stops what comes in from outside until its ${FORCE_SHIELD_DOME.energy} points are gone, mends while it holds, and comes back a while after it breaks. Takes ${FORCE_SHIELD_ENERGY} hive energy from the moment the research starts.`,
+  },
+  flakmaw: {
+    id: "flakmaw",
+    name: "Flak Maw",
+    buildings: ROOF_FLAK_BUILDINGS,
+    grants: "roofFlak",
+    seconds: 40,
+    cost: 0,
+    energy: ROOF_FLAK_ENERGY,
+    effect: `Anti-air · ${ROOF_FLAK_ENERGY} energy`,
+    // A getter: the Mawcaster's numbers are declared further down this module.
+    get blurb() {
+      return `Grows a small maw on the core's roof that spits plasma balls at planes, Jump Jets, and low drones within ${MAWCASTER_AIR_RANGE_TILES / TILE_SUBDIV} cells, ${MAWCASTER_AIR_SALVO} at a time, each bursting at the flier's height: the Mawcaster's Air attack. It lays itself and leaves the ground alone, firing off an energy cell that holds ${MAWCASTER_CELL.shots} and regrows one every ${MAWCASTER_CELL.rechargeSeconds} seconds. Takes ${ROOF_FLAK_ENERGY} hive energy from the moment the research starts.`;
+    },
+  },
+  skyspines: {
+    id: "skyspines",
+    name: "Sky Tracking",
+    buildings: ["spineturret"],
+    grants: "skySpines",
+    seconds: 35,
+    cost: 0,
+    energy: SKY_SPINES_ENERGY,
+    effect: `Hits air · ${SKY_SPINES_ENERGY} energy`,
+    blurb: `Gives the turret a tracking head that tilts its repeater skyward. It lays on aircraft, a Jump Jet aloft, and drones, high or low, as well as on the ground, at its full reach, like an MG Nest. Takes ${SKY_SPINES_ENERGY} hive energy from the moment the research starts.`,
+  },
+  shieldwall: {
+    id: "shieldwall",
+    name: "Shield Wall",
+    buildings: ["conversion"],
+    grants: "shieldWall",
+    seconds: 40,
+    cost: 0,
+    energy: SHIELD_WALL_ENERGY,
+    effect: `Drone & Lancer walls · ${SHIELD_WALL_ENERGY} energy`,
+    blurb: `Teaches the side's Drones and Lancers to raise a curved energy wall across their front when they fight. Holds while a Conversion Chamber with it stands. Takes ${SHIELD_WALL_ENERGY} hive energy from the moment the research starts.`,
   },
 };
 export const RESEARCH_IDS = Object.keys(RESEARCH) as ResearchId[];
@@ -1348,17 +1416,28 @@ export interface ResearchSubject {
   type: string;
   level?: number;
   forceShield?: boolean;
+  shieldWall?: boolean;
+  /** The Flak Maw on the roof: its gun state in the sim, its view in a snapshot. Set once researched. */
+  roofFlak?: object;
+  skySpines?: boolean;
   research?: { id: ResearchId };
 }
 /** Has `e` got what `r` gives? */
 export function researchDone(e: ResearchSubject, r: ResearchDef): boolean {
   if (r.level != null) return (e.level ?? 0) >= r.level;
-  return r.grants === "forceShield" ? !!e.forceShield : false;
+  if (r.grants === "roofFlak") return !!e.roofFlak;
+  if (r.grants === "skySpines") return !!e.skySpines;
+  if (r.grants === "forceShield") return !!e.forceShield;
+  return r.grants === "shieldWall" ? !!e.shieldWall : false;
 }
 /** May `e` start `r` now: its own research, not done, the level before it reached, nothing running. */
 export function canStartResearch(e: ResearchSubject, r: ResearchDef): boolean {
   if (!r.buildings.includes(e.type as BuildingType) || e.research || researchDone(e, r)) return false;
   return r.level == null || (e.level ?? 0) === r.level - 1;
+}
+/** Buildings `r` still needs standing (ResearchDef.requires), given what the owner has standing. */
+export function researchTechMissing(r: ResearchDef, standing: (type: BuildingType) => boolean): BuildingType[] {
+  return (r.requires ?? []).filter((t) => !standing(t));
 }
 /** The highest level `type` can be researched to; 0 when it has no level research. */
 export function maxLevelOf(type: string): number {
@@ -1370,18 +1449,19 @@ export function levelNameOf(type: string, level = 0): string {
   return researchOf(type).find((r) => r.level === level)?.name ?? `Level ${level}`;
 }
 /**
- * Hive energy one standing structure adds: the Fusion Node by its level, and half of that while it
- * researches the next one.
+ * Hive energy one standing structure adds: the Fusion Node and the Fusion Core by their level, and
+ * half of that while they research the next one.
  */
 export function energySupplyOfEntity(e: { type: string; level?: number; research?: { id: ResearchId } | unknown }): number {
-  const base = e.type === "fusionnode" ? (FUSION_NODE_LEVEL_ENERGY[Math.min(e.level ?? 0, FUSION_NODE_LEVEL_ENERGY.length - 1)] ?? FUSION_NODE_ENERGY) : energySupplyOf(e.type);
+  const levels = e.type === "fusionnode" ? FUSION_NODE_LEVEL_ENERGY : e.type === "fusioncore" ? FUSION_CORE_LEVEL_ENERGY : undefined;
+  const base = levels ? (levels[Math.min(e.level ?? 0, levels.length - 1)] ?? energySupplyOf(e.type)) : energySupplyOf(e.type);
   const id = (e.research as { id?: ResearchId } | undefined)?.id;
   const levelling = e.research != null && (id == null || RESEARCH[id]?.level != null);
   return levelling ? Math.floor(base * RESEARCH_OUTPUT_SHARE) : base;
 }
-/** Hive energy a structure's upgrades take on top of its own: a Force Shield's, from the moment its research starts. */
+/** Hive energy a structure's upgrades take on top of its own: a Force Shield's, a Flak Maw's, Sky Tracking's and a Shield Wall's, from the moment their research starts. */
 export function upgradeEnergyOf(e: ResearchSubject): number {
-  let n = e.forceShield ? FORCE_SHIELD_ENERGY : 0;
+  let n = (e.forceShield ? FORCE_SHIELD_ENERGY : 0) + (e.roofFlak ? ROOF_FLAK_ENERGY : 0) + (e.skySpines ? SKY_SPINES_ENERGY : 0) + (e.shieldWall ? SHIELD_WALL_ENERGY : 0);
   const running = e.research ? RESEARCH[e.research.id] : undefined;
   if (running?.energy && !researchDone(e, running)) n += running.energy;
   return n;
@@ -5155,7 +5235,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `Twin coils around a caged plasma core. Feeds the hive: each Fusion Node adds ${FUSION_NODE_ENERGY} energy to the store your Hive Core starts with. Every Xenite unit, defence, and base structure takes a share while it stands. Below zero the hive builds and grows 70% slower, and its units and defences go offline one by one, the hungriest first, until it is back above zero; they wake again once there is room. Costs nothing to grow. Select it to research Advanced Fusion, then Ultra Fusion, for more energy from the same node.`,
+    blurb: `Twin coils around a caged plasma core. Feeds the hive: each Fusion Node adds ${FUSION_NODE_ENERGY} energy to the store your Hive Core starts with. Every Xenite unit, defence, and base structure takes a share while it stands. Below zero the hive builds and grows 70% slower, and its units and defences go offline one by one, the hungriest first, until it is back above zero; they wake again once there is room. Costs nothing to grow. Select it to research Advanced Fusion, then Ultra Fusion once a Neural Nexus stands, for more energy from the same node.`,
   },
   assimilator: {
     type: "assimilator",
@@ -6597,7 +6677,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: RIFLE.penetration,
     caliber: RIFLE.caliber,
     spreadDeg: RIFLE.spreadDeg,
-    blurb: `The hive's line soldier: a body taken and fitted with a pulse carbine in place of a forearm. It shoots like a rifle, a clip and then a short recharge. Several times a soldier's hit points for a few riflemen's price, but slower on its feet. No stance orders; it fights standing. In a fight it raises a small energy wall in front of it, like the Behemoth's but far weaker (${INFANTRY_SHIELD.hp} points): enemy rounds stop on it and enemies cannot walk through, while it and its side shoot and walk through. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
+    blurb: `The hive's line soldier: a body taken and fitted with a pulse carbine in place of a forearm. It shoots like a rifle, a clip and then a short recharge. Several times a soldier's hit points for a few riflemen's price, but slower on its feet. No stance orders; it fights standing. Once a Conversion Chamber has researched the Shield Wall, in a fight it raises a small energy wall in front of it, like the Behemoth's but far weaker (${INFANTRY_SHIELD.hp} points): enemy rounds stop on it and enemies cannot walk through, while it and its side shoot and walk through. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
   },
   thrall: {
     type: "thrall",
@@ -6649,7 +6729,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: LAUNCHER.penetration,
     caliber: LAUNCHER.caliber,
     spreadDeg: LAUNCHER.spreadDeg,
-    blurb: `Anti-armor cyborg. A plasma lance rides its shoulder and throws a burning bolt like a rocket: loose at full reach, tighter up close, a burst among soldiers that dents a tank. The capacitor on its back recharges the lance between shots. Heavy plating keeps it standing where a Rocketer would fall. In a fight it raises the Drone's small energy wall in front of it (${INFANTRY_SHIELD.hp} points). No stance orders. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
+    blurb: `Anti-armor cyborg. A plasma lance rides its shoulder and throws a burning bolt like a rocket: loose at full reach, tighter up close, a burst among soldiers that dents a tank. The capacitor on its back recharges the lance between shots. Heavy plating keeps it standing where a Rocketer would fall. Once a Conversion Chamber has researched the Shield Wall, in a fight it raises the Drone's small energy wall in front of it (${INFANTRY_SHIELD.hp} points). No stance orders. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
   },
   /** Xenite cyborg: a long plasma cannon for one big round from far off; dropped for its fists when closed with. */
   bombard: {
@@ -7077,7 +7157,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `A fusion reactor on a caged plasma well, bigger than a Neural Nexus. It takes as long to raise as eight Fusion Nodes and stores ${FUSION_CORE_ENERGY} energy for the hive, four Fusion Nodes' worth, while it stands. Destroyed, it goes up in the same nuclear blast as a Titan: everything round it is hurt, friend or foe, and small things are levelled. Needs a Neural Nexus to build.`,
+    blurb: `A fusion reactor on a caged plasma well, bigger than a Neural Nexus. It takes as long to raise as eight Fusion Nodes and stores ${FUSION_CORE_ENERGY} energy for the hive, four Fusion Nodes' worth, while it stands. It can research a Fusion Reactor for twice that, a Force Shield of its own, and a Flak Maw on its roof against aircraft. Destroyed, it goes up in the same nuclear blast as a Titan: everything round it is hurt, friend or foe, and small things are levelled. Needs a Neural Nexus to build.`,
   },
   /** Xenite anti-infantry gun: crewless, runs on base power. */
   spineturret: {
@@ -7111,7 +7191,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     plasmaCell: SPINE_TURRET_CELL,
     poweredGun: true,
     capturable: false,
-    blurb: "A chitin bulb rooted in the ground with a twin pulse repeater for a head. Nobody works it: it lays itself all the way round and cuts down soldiers at an MG42's pace from a little short of an MG Nest's reach, and draws its charge from the hive: a cell that holds 3 seconds of fire and regrows at half the pace it fires, so a long burst slows to a stutter. The bolts burn into tank plate, but only a little, and they do not bring a building down. Takes hive energy while it stands; offline, it falls silent. Cannot move.",
+    blurb: "A chitin bulb rooted in the ground with a twin pulse repeater for a head. Nobody works it: it lays itself all the way round and cuts down soldiers at an MG42's pace from a little short of an MG Nest's reach, and draws its charge from the hive: a cell that holds 3 seconds of fire and regrows at half the pace it fires, so a long burst slows to a stutter. The bolts burn into tank plate, but only a little, and they do not bring a building down. Takes hive energy while it stands; offline, it falls silent. Research Sky Tracking and it reaches aircraft too. Cannot move.",
   },
   /** Xenite fence post: links to the posts beside it with two laser beams (sim/laser-fence.ts). */
   laserfence: {
@@ -10302,6 +10382,11 @@ export function mountArcDegOf(type: EntityType): number | null {
 /** A building gun whose rounds reach aircraft, a Jump Jet, and a high drone: the MG Nest, the Flak. */
 export function antiAirGunOf(type: EntityType): boolean {
   return catalog(type).antiAir === true;
+}
+
+/** antiAirGunOf for one standing gun: also an Ion Turret that researched Sky Tracking. */
+export function antiAirGun(e: { type: EntityType; skySpines?: boolean }): boolean {
+  return !!e.skySpines || antiAirGunOf(e.type);
 }
 
 /** Looks for a plane first and lays on it with the CIWS's cone: the Flak. */

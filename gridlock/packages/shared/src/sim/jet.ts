@@ -6,7 +6,7 @@ import {
   type JetFlightDef,
   infantryGunFor,
   radarLaidOf,
-  antiAirGunOf,
+  antiAirGun,
   rocketRackFor,
   rocketsOf,
   isBattleship,
@@ -53,7 +53,7 @@ export function beginJetCrash(e: Entity): boolean {
  * rack (the Titan's pods). Rifles, pistols, tank guns, and mortars cannot.
  */
 export function reachesJet(shooter: Entity): boolean {
-  if (shooter.type === "walker" || radarLaidOf(shooter.type) || isBattleship(shooter.type) || antiAirGunOf(shooter.type)) return true;
+  if (shooter.type === "walker" || radarLaidOf(shooter.type) || isBattleship(shooter.type) || antiAirGun(shooter)) return true;
   if (rocketsOf(shooter.type) && rocketRackFor(shooter).antiAir) return true;
   return !!infantryGunFor(shooter)?.antiAir;
 }

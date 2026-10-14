@@ -748,6 +748,37 @@ export function bindMothershipSheets(images: Record<keyof typeof mothershipGlobs
     });
 }
 
+const flakMawGlob = import.meta.glob("../assets/units/flakmaw/maw/*.png", { eager: true, import: "default" }) as Record<string, string>;
+let flakMawPrevious = "";
+
+/** The Fusion Core's Flak Maw (tools/sprites/render_flak_maw.py): one 16-bearing sheet, rows as the Hive Ark's layers. */
+export function bindFlakMawSheet(image: HTMLImageElement): void {
+  let urls: string[];
+  try {
+    urls = pickTurntableUrls(flakMawGlob);
+  } catch (err) {
+    console.error("flak maw turntable", err);
+    return;
+  }
+  void Promise.all(urls.map(loadImage))
+    .then(async (frames) => {
+      const cell = frames[0]!.naturalWidth;
+      const sheet = makeSheetCanvas(cell);
+      const g = sheet.getContext("2d");
+      if (!g) throw new Error("2d context");
+      frames.forEach((img, i) => g.drawImage(img, 0, engineRowFromFrame(i + 1) * cell));
+      return canvasPngUrl(sheet);
+    })
+    .then((next) => {
+      if (flakMawPrevious) URL.revokeObjectURL(flakMawPrevious);
+      flakMawPrevious = next;
+      image.src = next;
+    })
+    .catch((err) => {
+      console.error("flak maw turntable", err);
+    });
+}
+
 let stukaPrevious: ComposedTurntable | null = null;
 
 /** Stuka drop-ins: one hull sheet and a cameo, same fit rules as the trucks. */

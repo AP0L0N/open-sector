@@ -425,6 +425,7 @@ import {
   bindNavalSheets,
   bindBattleshipSheets,
   bindHiveArkSheets,
+  bindFlakMawSheet,
   bindMothershipSheets,
   bindApocalypseSheets,
   bindPlaneSheets,
@@ -1760,6 +1761,18 @@ export const MOTHERSHIP_SPRITE: UnitSpriteDef = {
   facingSpace: "world",
 };
 bindMothershipSheets({ hull: MOTHERSHIP_SPRITE.image });
+
+/**
+ * Where a researched Flak Maw (sim/roof-flak.ts) sits on its structure: its pivot in the building
+ * sheet's pixels, and the mount cell's width as a share of the pad's (ROOF_FLAK_SHEET).
+ * The Fusion Core still wears the Assimilator's art: the maw rides on the silo's cap.
+ */
+export const ROOF_FLAK_SEAT: Partial<Record<EntityType, { x: number; y: number; cellPerPad: number }>> = {
+  fusioncore: { x: 323.6, y: 95, cellPerPad: 0.95 },
+};
+/** The Flak Maw on its 16 bearings (tools/sprites/render_flak_maw.py), on the Hive Ark's camera and cell. */
+export const ROOF_FLAK_SHEET: TurretSpriteDef = { image: new Image(), dirs: TANK_FACE_DIRS, frames: 1, frameSize: MOTHERSHIP_MODEL.cell };
+bindFlakMawSheet(ROOF_FLAK_SHEET.image);
 
 /** Wing-stroke frames a second on the Xenite insects: a blur of a beat at play size. */
 export const WING_BEAT_FPS = 24;

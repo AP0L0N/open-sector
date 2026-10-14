@@ -595,10 +595,16 @@ export interface Entity {
   level?: number;
   /** Researched Force Shield (sim/research.ts): the structure holds its own small energy dome (sim/energy-shield.ts). */
   forceShield?: true;
+  /** Researched Shield Wall on a Conversion Chamber (sim/research.ts): while it stands, the side's Drones and Lancers raise energy walls. */
+  shieldWall?: true;
   /** Force Shield charge kept while its dome is lowered (offline); unset is full. */
   forceShieldHp?: number;
   /** Tick a drained Force Shield dome comes back. */
   forceShieldReady?: number;
+  /** Researched Flak Maw on a Fusion Core's roof (sim/roof-flak.ts): the Mothership's flak mount, on its own cell. */
+  roofFlak?: MawGun;
+  /** Researched Sky Tracking (sim/research.ts): an Ion Turret that lays on aircraft too (catalog antiAirGun). */
+  skySpines?: true;
   /** Research running on this structure, for the side that started it; `paid` is the scrap it took. */
   research?: { id: ResearchId; ownerId: string; progressTicks: number; totalTicks: number; paid: number };
   /** Shut-down Cyborg only: the Cyborg Commander taking him over, and ticks of uplink so far. */
@@ -792,6 +798,24 @@ export interface ArkState {
   pods: ArkPod[];
   /** Seconds since no enemy unit was in sight. The Wasps come home past ARK_WASP_CALM_SECONDS. */
   calm: number;
+}
+
+/** A Fusion Core's Flak Maw (sim/roof-flak.ts): a maw on its own cell, laid on its own bearing. */
+export interface MawGun {
+  /** World bearing the maw is laid on, radians. */
+  facing: number;
+  /** Seconds until it may fire again: the ripple, or the reload. */
+  cooldown: number;
+  /** Shots of energy in its cell. */
+  energy: number;
+  /** Its cell ran dry: it holds fire until PLASMA_RESUME_SHARE of the cell has regrown. */
+  drained: boolean;
+  /** What it is laid on, if anything. */
+  targetId: number | null;
+  /** Balls left in the salvo under way. */
+  salvo: number;
+  /** Sim tick it last fired. Missing until it first does. */
+  firedTick?: number;
 }
 
 /** One Mothership tractor beam: the unit it lights and then absorbs (sim/mothership.ts). */
