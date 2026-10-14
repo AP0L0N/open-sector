@@ -95,6 +95,7 @@ import { smelterRateOn, smelterSiteOk } from "./smelter.js";
 import { powerOf } from "./power.js";
 import { fenceLineEnergy, hiveEnergyOf } from "./hive-energy.js";
 import { purgeDenied } from "./simunit.js";
+import { researchBlocker } from "./research.js";
 import { needsSupply } from "./supply.js";
 import { canSeeEntity, sightKeysHeld } from "./vision.js";
 import type { AiFleet, AiForce, AiPlan, Entity, MatchState, SimPlayer, StructureJob, Vec } from "./types.js";
@@ -492,7 +493,8 @@ const XENO_SHIELDED: ReadonlySet<string> = new Set(["spineturret", "pulsespire",
  * hive keeps HIVE_ENERGY_LOW free after its draw: Drones and Lancers fight without walls until then.
  * The rest waits for the build order to stand. First the least upgraded Fusion Node, when the
  * dip while it upgrades keeps the hive at zero or above; else the oldest defence still bare gets its
- * Force Shield, when the hive keeps HIVE_ENERGY_LOW free after the shield's draw.
+ * Force Shield, when the hive keeps HIVE_ENERGY_LOW free after the shield's draw. Ultra Fusion waits
+ * for a Neural Nexus.
  */
 function researchXeno(state: MatchState, p: SimPlayer): void {
   let node: Entity | undefined;
@@ -516,6 +518,9 @@ function researchXeno(state: MatchState, p: SimPlayer): void {
     return;
   }
   if (nodes < XENO_RESEARCH_AFTER_NODES || xenoOrderNext(state, p) != null) return;
+  // The least upgraded node is the one to go next; if its level is still locked (Ultra Fusion
+  // without a Neural Nexus), every node is, and the shields go first.
+  if (node && researchBlocker(state, p.playerId, node, nextResearch(node.type, node.level ?? 0)!.id)) node = undefined;
   const free = hiveFreeAfterQueue(state, p);
   if (node) {
     const dip = energySupplyOfEntity(node) - energySupplyOfEntity({ ...node, research: true });

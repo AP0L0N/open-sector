@@ -601,6 +601,8 @@ export interface Entity {
   forceShieldHp?: number;
   /** Tick a drained Force Shield dome comes back. */
   forceShieldReady?: number;
+  /** Researched Flak Maw on a Fusion Core's roof (sim/roof-flak.ts): the Mothership's flak mount, on its own cell. */
+  roofFlak?: MothershipGun;
   /** Research running on this structure, for the side that started it; `paid` is the scrap it took. */
   research?: { id: ResearchId; ownerId: string; progressTicks: number; totalTicks: number; paid: number };
   /** Shut-down Cyborg only: the Cyborg Commander taking him over, and ticks of uplink so far. */

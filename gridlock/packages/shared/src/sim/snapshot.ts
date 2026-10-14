@@ -51,6 +51,7 @@ import {
   TICK_DT,
   ARK_CANNON_CELL,
   MOTHERSHIP_MOUNTS,
+  MAWCASTER_CELL,
   ARK_CANNON_CHARGE_SECONDS,
 } from "../catalog.js";
 import { padsTaken } from "./air.js";
@@ -205,6 +206,19 @@ function mothershipView(state: MatchState, e: Entity, friendly: boolean): Entity
       };
     }),
     ...(friendly && e.shieldReady != null && state.tick < e.shieldReady ? { domeDown: Math.ceil((e.shieldReady - state.tick) * TICK_DT) } : {}),
+  };
+}
+
+/** A Fusion Core's Flak Maw. Cell charge only for its own side. */
+function roofFlakView(state: MatchState, e: Entity, friendly: boolean): EntityView["roofFlak"] {
+  const g = e.roofFlak;
+  if (!g || e.kind !== "building") return undefined;
+  const window = Math.max(1, clampGameSpeed(state.gameSpeed));
+  return {
+    facing: g.facing,
+    ...(!e.wreck && g.firedTick != null && state.tick - g.firedTick < window ? { fire: true as const } : {}),
+    ...(friendly ? { energy: Math.round((g.energy / MAWCASTER_CELL.shots) * 100) / 100 } : {}),
+    ...(friendly && g.drained ? { drained: true as const } : {}),
   };
 }
 
@@ -548,6 +562,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       forceShield: e.kind === "building" && e.forceShield ? true : undefined,
       shieldWall: e.kind === "building" && e.shieldWall ? true : undefined,
       shield: e.kind === "building" && e.forceShield ? forceShieldView(state, e) : undefined,
+      roofFlak: roofFlakView(state, e, friendly),
       research: friendly && e.research ? { id: e.research.id, progress: Math.round((e.research.progressTicks / e.research.totalTicks) * 1000) / 1000 } : undefined,
       holdPosition: friendly && e.holdPosition ? true : undefined,
       patrol:
