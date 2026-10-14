@@ -154,6 +154,27 @@ describe("research", () => {
     assert.equal(hiveEnergyOf(state, "B").cap, HIVE_CORE_ENERGY + FUSION_NODE_LEVEL_ENERGY[0]!);
   });
 
+  it("holds still while paused, resumes, and shows the hold in the snapshot", () => {
+    const state = field();
+    const node = at(state, "fusionnode", 40, 40);
+    applyCommand(state, "B", { type: "cmd.research", ids: [node.id], research: "advancedfusion" });
+    ticks(state, 20);
+    assert.equal(applyCommand(state, "B", { type: "cmd.research", ids: [node.id], research: null, paused: true }).ok, true);
+    const held = node.research!.progressTicks;
+    assert.ok(held > 0);
+    ticks(state, 40);
+    assert.equal(node.research!.progressTicks, held);
+    assert.equal(snapshotFor(state, "B").entities.find((e) => e.id === node.id)?.research?.paused, true);
+    assert.equal(applyCommand(state, "B", { type: "cmd.research", ids: [node.id], research: null, paused: false }).ok, true);
+    ticks(state, 20);
+    assert.ok(node.research!.progressTicks > held);
+    assert.equal(snapshotFor(state, "B").entities.find((e) => e.id === node.id)?.research?.paused, undefined);
+    // A held job still cancels.
+    applyCommand(state, "B", { type: "cmd.research", ids: [node.id], research: null, paused: true });
+    assert.equal(applyCommand(state, "B", { type: "cmd.research", ids: [node.id], research: null }).ok, true);
+    assert.equal(node.research, undefined);
+  });
+
   it("drops the job when the node changes hands", () => {
     const state = field();
     const node = at(state, "fusionnode", 40, 40);

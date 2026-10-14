@@ -2049,24 +2049,59 @@ input[type="range"] { padding: 0; }
   width: 100%;
 }
 
-/* Research: the upgrade bar fills in the hive's glow; Cancel sits under it. */
-.research-bar {
-  height: 7px;
-  margin-top: 4px;
-  background: #0b1412;
-  border: 2px solid #1f3a33;
+/* Research: the upgrades as cameos, two to a row; the pip fills in the hive's glow. Art: tools/sprites/render_research_cameos.py. */
+.research-cameos { margin-top: 4px; }
+.research-cameo {
+  --research-art: none;
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    var(--research-art);
+  background-size: cover;
+  background-position: right 10% center;
+  min-height: 3.1rem;
 }
-.research-bar > span {
-  display: block;
-  height: 100%;
-  background: #3fe8b8;
-  transition: width 0.2s linear;
+.research-cameo .pip { background: #3fe8b8; }
+.research-cameo .cameo-time {
+  padding: 2px 4px 1px;
+  background: rgba(8, 5, 3, 0.86);
+  border: 1px solid rgba(138, 122, 100, 0.5);
+  border-radius: 2px;
+  color: var(--amber);
+  font-size: 0.66rem;
 }
-.research-cancel {
-  margin-top: 4px;
-  width: 100%;
+.research-cameo .cameo-done {
+  display: none;
+  position: absolute;
+  right: 3px;
+  bottom: 5px;
+  padding: 0 3px;
+  background: rgba(8, 6, 4, 0.82);
+  color: var(--ready);
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  line-height: 1.3;
+  pointer-events: none;
+  z-index: 2;
 }
-.research-rack .shell[aria-disabled="true"]:not(.is-on) { cursor: not-allowed; }
+.research-cameo.is-done { border-color: var(--ready); cursor: default; }
+.research-cameo.is-done .cameo-done { display: block; }
+.research-cameo[data-art="scanrelay"] { --research-art: url("../assets/research/scanrelay-cameo.png"); }
+.research-cameo[data-art="scanarray"] { --research-art: url("../assets/research/scanarray-cameo.png"); }
+.research-cameo[data-art="advancedfusion"] { --research-art: url("../assets/research/advancedfusion-cameo.png"); }
+.research-cameo[data-art="ultrafusion"] { --research-art: url("../assets/research/ultrafusion-cameo.png"); }
+.research-cameo[data-art="fusionreactor"] { --research-art: url("../assets/research/fusionreactor-cameo.png"); }
+.research-cameo[data-art="forceshield-spineturret"] { --research-art: url("../assets/research/forceshield-spineturret-cameo.png"); }
+.research-cameo[data-art="forceshield-pulsespire"] { --research-art: url("../assets/research/forceshield-pulsespire-cameo.png"); }
+.research-cameo[data-art="forceshield-energywall"] { --research-art: url("../assets/research/forceshield-energywall-cameo.png"); }
+.research-cameo[data-art="forceshield-laserfence"] { --research-art: url("../assets/research/forceshield-laserfence-cameo.png"); }
+.research-cameo[data-art="forceshield-fusioncore"] { --research-art: url("../assets/research/forceshield-fusioncore-cameo.png"); }
+.research-cameo[data-art="flakmaw"] { --research-art: url("../assets/research/flakmaw-cameo.png"); }
+.research-cameo[data-art="skyspines"] { --research-art: url("../assets/research/skyspines-cameo.png"); }
+.research-cameo[data-art="shieldwall"] { --research-art: url("../assets/research/shieldwall-cameo.png"); }
+.research-cameo[data-art="advancedassembly"] { --research-art: url("../assets/research/advancedassembly-cameo.png"); }
+.research-cameo[data-art="neuralassembly"] { --research-art: url("../assets/research/neuralassembly-cameo.png"); }
+.research-cameo[data-art="advancedforge"] { --research-art: url("../assets/research/advancedforge-cameo.png"); }
+.research-cameo[data-art="neuralforge"] { --research-art: url("../assets/research/neuralforge-cameo.png"); }
 
 /* Command bar: centred under the map, orders grouped, icons with a shared tooltip. */
 .battle-commands {

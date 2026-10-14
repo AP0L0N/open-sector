@@ -110,6 +110,17 @@ describe("skirmish save", () => {
     assert.equal([...restored.entities.values()].some((e) => e.ownerId === "ai:1"), true);
   });
 
+  it("keeps a held upgrade with the commander who opened the save", () => {
+    const { state, room } = skirmish();
+    const rig = [...state.entities.values()].find((e) => e.type === "rig" && e.ownerId === "A")!;
+    rig.research = { id: "forceshield", ownerId: "A", progressTicks: 40, totalTicks: 100, paid: 0, paused: true };
+    const back = restoreMatch(exportSave(state, room, 1_700_000_000_000), { roomId: "NEXT", humanPlayerId: "Zed" });
+    assert.equal(back.ok, true);
+    if (!back.ok) return;
+    const job = back.value.state.entities.get(rig.id)?.research;
+    assert.deepEqual(job, { id: "forceshield", ownerId: "Zed", progressTicks: 40, totalTicks: 100, paid: 0, paused: true });
+  });
+
   it("loads a save from before the CPU types: its Easy CPU plays on as Defensive", () => {
     const { state, room } = skirmish();
     const saved = exportSave(state, room, 1_700_000_000_000);

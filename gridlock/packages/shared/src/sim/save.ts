@@ -224,6 +224,8 @@ export function restoreMatch(
       ...e,
       ownerId: mapOwner(e.ownerId),
       captureOwnerId: e.captureOwnerId ? mapOwner(e.captureOwnerId) : e.captureOwnerId,
+      // The job names its side too; left unmapped, tickResearch drops it as changed hands.
+      research: e.research ? { ...e.research, ownerId: mapOwner(e.research.ownerId) } : e.research,
     });
   }
   for (const p of save.projectiles) bump(p.id);

@@ -8,6 +8,10 @@ import {
   catalog,
   isBuildingType,
   isFieldStructure,
+  isResearchId,
+  RESEARCH,
+  researchOf,
+  type ResearchDef,
   costFor,
   endlessAmmo,
   energyDomeOf,
@@ -270,6 +274,32 @@ export function cameoCard(type: EntityType, faction: Faction): CameoCard {
   };
 }
 
+/** The card of an upgrade researched on a `on` structure: what it gives, its price, its time, and what it waits on. */
+export function researchCard(r: ResearchDef, on: string): CameoCard {
+  const energy = r.energy ?? 0;
+  const price: CameoCard["price"] =
+    energy > 0
+      ? { value: fmtNum(energy), unit: "ENERGY", note: "taken from the start", tone: "energy" }
+      : r.cost > 0
+        ? { value: fmtNum(r.cost), unit: "SCRAP", tone: "scrap" }
+        : { value: "FREE", unit: "", tone: "free" };
+  const before = r.level != null ? researchOf(on).find((x) => x.level === r.level! - 1) : undefined;
+  const needs = [...(before ? [before.name] : []), ...(r.requires ?? []).map((t) => catalog(t).name)];
+  return {
+    name: r.name,
+    kind: r.level != null ? `Upgrade · Level ${r.level}` : "Upgrade",
+    role: r.effect ?? "",
+    blurb: r.blurb,
+    price,
+    meta: [{ label: "Research", value: fmtNum(r.seconds), unit: "s" }],
+    body: [],
+    weapon: null,
+    traits: [],
+    needs,
+    from: isBuildingType(on) ? catalog(on).name : null,
+  };
+}
+
 /** The cameo art: the last image layer of the button's own background. */
 function artOf(btn: HTMLElement): string | null {
   const bg = getComputedStyle(btn).backgroundImage;
@@ -308,7 +338,8 @@ export function renderCameoCard(card: CameoCard, btn: HTMLElement): HTMLElement[
   title.append(price);
   head.append(art, title);
 
-  const parts: HTMLElement[] = [head, statGrid(card.body, "card-stats")];
+  const parts: HTMLElement[] = [head];
+  if (card.body.length) parts.push(statGrid(card.body, "card-stats"));
   if (card.weapon) {
     const w = el("div", { class: "card-weapon" });
     w.append(el("div", { class: "card-section", text: card.weapon.name }), statGrid(card.weapon.stats, "card-stats"));
@@ -323,7 +354,7 @@ export function renderCameoCard(card: CameoCard, btn: HTMLElement): HTMLElement[
   const reqs: string[] = [];
   // A live "Needs a ..." note already names what is missing.
   const note = btn.dataset.cardNote ?? "";
-  if (card.from && !note.includes(card.from)) reqs.push(`Trained at ${card.from}`);
+  if (card.from && !note.includes(card.from)) reqs.push(`${btn.dataset.cardResearch ? "Researched at" : "Trained at"} ${card.from}`);
   if (card.needs.length && !note.startsWith("Needs")) reqs.push(`Needs ${card.needs.join(" + ")}`);
   if (reqs.length) parts.push(el("div", { class: "card-reqs", text: reqs.join("  ·  ") }));
   if (btn.dataset.cardNote) parts.push(el("div", { class: "card-note", text: btn.dataset.cardNote }));
@@ -370,9 +401,15 @@ function showCameoCard(btn: HTMLElement): void {
   cardTimer = null;
   const box = cardBox;
   const type = btn.dataset.cardType as EntityType | undefined;
-  if (!box || !type || !btn.isConnected) return;
+  const research = btn.dataset.cardResearch;
+  const card = research && isResearchId(research)
+    ? researchCard(RESEARCH[research], btn.dataset.cardOn ?? "")
+    : type
+      ? cameoCard(type, cardFaction())
+      : null;
+  if (!box || !card || !btn.isConnected) return;
   cardAnchor = btn;
-  box.replaceChildren(...renderCameoCard(cameoCard(type, cardFaction()), btn));
+  box.replaceChildren(...renderCameoCard(card, btn));
   box.classList.add("is-shown");
   const at = btn.getBoundingClientRect();
   const side = btn.closest(".sidebar")?.getBoundingClientRect() ?? at;

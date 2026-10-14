@@ -20,7 +20,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 168;
+export const PROTOCOL_VERSION = 169;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -337,8 +337,8 @@ export interface EntityView {
   hiveDark?: true;
   /** Research level the structure has reached (the Fusion Node: 1 Advanced, 2 Ultra). Everyone sees it; omitted at 0. */
   level?: number;
-  /** Research running on the structure, 0..1 done. Friendly snapshots. */
-  research?: { id: ResearchId; progress: number };
+  /** Research running on the structure, 0..1 done; `paused` while it is held. Friendly snapshots. */
+  research?: { id: ResearchId; progress: number; paused?: true };
   /** Researched Force Shield: the structure holds its own small dome. Everyone sees it. */
   forceShield?: true;
   /** Researched Sky Tracking: the Ion Turret lays on aircraft too. Everyone sees it. */
@@ -1017,8 +1017,11 @@ export type ClientMessage =
   /** Mawcaster: `air` true for Air attacks (fliers only, small quick balls), false for Ground attacks. */
   | { type: "cmd.airmode"; ids: number[]; air: boolean }
   | { type: "cmd.reach"; ids: number[]; max: boolean }
-  /** Start `research` on each selected structure that can take it; `research: null` cancels what runs there (sim/research.ts). */
-  | { type: "cmd.research"; ids: number[]; research: ResearchId | null }
+  /**
+   * Start `research` on each selected structure that can take it; `research: null` cancels what runs there (sim/research.ts).
+   * With `research: null` and `paused` set, it holds (true) or resumes (false) what runs there instead of cancelling.
+   */
+  | { type: "cmd.research"; ids: number[]; research: ResearchId | null; paused?: boolean }
   | { type: "cmd.build"; building: BuildingType | YardFieldType }
   /**
    * `facing`: world radians for a Bunker, Watch Tower, or Airfield, snapped to the nearest BUILDING_TURN_STEP;
