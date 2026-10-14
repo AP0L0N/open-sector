@@ -733,15 +733,15 @@ function fillPool(c: CanvasRenderingContext2D, p: NightPool, rgb: string, a: num
   c.restore();
 }
 
-/**
- * A live Xenite or Bloom unit or structure out in the open: it glows. Not a wreck, a ruin, a passenger, or a burrowed or submerged body,
- * nor one powered down (offline for want of hive energy), nor any structure of a hive below zero.
- */
 /** A structure's lit parts this frame: the sprite's box on screen, and how much of it is in sight. */
 type GlowEntry = { glow: BuildingGlow; x: number; y: number; w: number; h: number; a: number };
 
+/**
+ * A live Bloom unit or structure out in the open: its sacs throw amber on the ground. Not a wreck, a ruin, a passenger,
+ * or a burrowed or submerged body, nor one powered down. The Xenite throw no glow: only their structures' own panels shine (glowCut).
+ */
 function xenoGlows(e: EntityView): boolean {
-  if (factionOf(e.type) === "alliance" || e.hp <= 0 || e.wreck || e.ruined) return false;
+  if (factionOf(e.type) !== "bloom" || e.hp <= 0 || e.wreck || e.ruined) return false;
   if (e.shutdown || e.unpowered || e.hiveDark) return false;
   if (e.garrisonedIn != null || e.burrow === "down" || e.submerged) return false;
   return e.kind === "unit" || e.kind === "building";
@@ -1200,7 +1200,7 @@ export class MapView {
   private nightLayer: HTMLCanvasElement | null = null;
   /** Small layer the lamps' warm light is summed and capped on. */
   private lightLayer: HTMLCanvasElement | null = null;
-  /** This frame's Xenite glow pools: drawn on the ground, and cut from the night layer. */
+  /** This frame's Bloom glow pools: drawn on the ground, and cut from the night layer. */
   private xenoFrame: NightPool[] = [];
   /**
    * What of the night is cut away this frame, built in the depth sort: each
@@ -5165,7 +5165,7 @@ export class MapView {
     items.push({ layer: GROUND_DECAL_DRAW_LAYER, z: -Infinity, run: () => drawYardWear(this.ctx, yardWear) });
     // One path under craters and unit blobs, so overlapping shadows don't stack.
     items.push({ layer: HOLE_DRAW_LAYER, z: -Infinity, run: () => drawCastShadows(this.ctx, castShadows) });
-    // The Xenite glow lights the ground they stand on: over craters and shadows, under everything that stands.
+    // The Bloom glow lights the ground they stand on: over craters and shadows, under everything that stands.
     const xenoGlow = lampGlow(this.daylight());
     this.xenoFrame = xenoGlow > 0 ? this.xenoPools(w, h) : [];
     this.beginGlowCut();
@@ -5511,7 +5511,7 @@ export class MapView {
       lay(spot.x, spot.y, spot.r, spot.a, "missile");
     }
     const nowSec = performance.now() / 1000;
-    // The Xenite glow, laid this frame under the units (drawXenoGlow); here it only cuts the dark.
+    // The Bloom glow, laid this frame under the units (drawXenoGlow); here it only cuts the dark.
     out.push(...this.xenoFrame);
     // Gate lamps: a small pool off each post, on both sides of the boom.
     const gateSpan = fieldSpan("gate");
@@ -5543,8 +5543,8 @@ export class MapView {
   }
 
   /**
-   * The Xenite carry no lamps: every live unit of theirs gives off a blue glow,
-   * sized to it, as pools in screen space like nightPools. The Bloom's structures glow amber too.
+   * The Bloom's amber glow off every live unit and structure, sized to it, as
+   * pools in screen space like nightPools.
    */
   private xenoPools(w: number, h: number): NightPool[] {
     const ts = this.ts();
@@ -5558,10 +5558,7 @@ export class MapView {
     };
     for (const e of this.curr.entities) {
       if (!xenoGlows(e)) continue;
-      // Blue off the hive, amber off the Bloom's sacs.
-      const kind = factionOf(e.type) === "bloom" ? "bloom" : "xeno";
-      // A hive structure's own panels glow instead (glowCut); only its units cast the blue.
-      if (kind === "xeno" && e.kind === "building") continue;
+      const kind = "bloom";
       const at = e.kind === "unit" ? this.lerpEnt(e) : e;
       const r = xenoGlowRadius(e, catalog(e.type).radius, ts);
       const a = xenoGlowPulse(e.id, nowSec);
@@ -5573,7 +5570,7 @@ export class MapView {
   }
 
   /**
-   * The Xenite glow's blue, on the ground under units and structures. The night
+   * The Bloom glow's amber, on the ground under units and structures. The night
    * layer goes over it after, so it is lifted to make up for the shade left there.
    */
   private drawXenoGlow(glow: number): void {
@@ -5766,7 +5763,7 @@ export class MapView {
       }
     }
     ctx.save();
-    // The Xenite glow lifts the dark above, but its blue was laid on the ground under the units (drawXenoGlow).
+    // The Bloom glow lifts the dark above, but its amber was laid on the ground under the units (drawXenoGlow).
     const lit = pools.filter((p) => p.kind !== "xeno" && p.kind !== "bloom");
     if (lit.length) this.drawLampLight(lit, glow);
     if (pools.length) {
