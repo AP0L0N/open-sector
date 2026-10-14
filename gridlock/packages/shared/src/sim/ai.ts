@@ -95,6 +95,7 @@ import { smelterRateOn, smelterSiteOk } from "./smelter.js";
 import { powerOf } from "./power.js";
 import { fenceLineEnergy, hiveEnergyOf } from "./hive-energy.js";
 import { purgeDenied } from "./simunit.js";
+import { researchBlocker } from "./research.js";
 import { needsSupply } from "./supply.js";
 import { canSeeEntity, sightKeysHeld } from "./vision.js";
 import type { AiFleet, AiForce, AiPlan, Entity, MatchState, SimPlayer, StructureJob, Vec } from "./types.js";
@@ -489,9 +490,10 @@ const XENO_SHIELDED: ReadonlySet<string> = new Set(["spineturret", "pulsespire",
 
 /**
  * One upgrade at a time, once the build order stands. First the least upgraded Fusion Node, when the
- * dip while it upgrades keeps the hive at zero or above; else, once enemy fliers have been seen, the
- * oldest Ion Turret still blind to them grows Sky Tracking; else the oldest defence still bare gets
- * its Force Shield. Either only when the hive keeps HIVE_ENERGY_LOW free after the upgrade's draw.
+ * dip while it upgrades keeps the hive at zero or above (Ultra Fusion waits for a Neural Nexus); else,
+ * once enemy fliers have been seen, the oldest Ion Turret still blind to them grows Sky Tracking; else
+ * the oldest defence still bare gets its Force Shield. Either only when the hive keeps HIVE_ENERGY_LOW
+ * free after the upgrade's draw.
  */
 function researchXeno(state: MatchState, p: SimPlayer): void {
   let node: Entity | undefined;
@@ -510,6 +512,9 @@ function researchXeno(state: MatchState, p: SimPlayer): void {
     }
   }
   if (nodes < XENO_RESEARCH_AFTER_NODES || xenoOrderNext(state, p) != null) return;
+  // The least upgraded node is the one to go next; if its level is still locked (Ultra Fusion
+  // without a Neural Nexus), every node is, and the shields go first.
+  if (node && researchBlocker(state, p.playerId, node, nextResearch(node.type, node.level ?? 0)!.id)) node = undefined;
   const free = hiveFreeAfterQueue(state, p);
   if (node) {
     const dip = energySupplyOfEntity(node) - energySupplyOfEntity({ ...node, research: true });

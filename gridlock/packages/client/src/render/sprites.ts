@@ -1770,6 +1770,15 @@ bindMothershipSheets({
   flak: MOTHERSHIP_MOUNT_SHEETS.flak.image,
 });
 
+/**
+ * Where a researched Flak Maw (sim/roof-flak.ts) sits on its structure: its pivot in the building
+ * sheet's pixels, and the mount cell's width as a share of the pad's. The Mothership's flak sheet.
+ * The Fusion Core still wears the Assimilator's art: the maw rides on the silo's cap.
+ */
+export const ROOF_FLAK_SEAT: Partial<Record<EntityType, { x: number; y: number; cellPerPad: number }>> = {
+  fusioncore: { x: 323.6, y: 95, cellPerPad: 0.95 },
+};
+
 /** Wing-stroke frames a second on the Xenite insects: a blur of a beat at play size. */
 export const WING_BEAT_FPS = 24;
 

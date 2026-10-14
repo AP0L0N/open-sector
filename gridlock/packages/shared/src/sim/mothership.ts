@@ -139,7 +139,7 @@ export function mothershipHurts(state: MatchState, e: Entity, t: Entity): boolea
 }
 
 /** An enemy the mounts may pick for themselves: seen by their side, in the open, not hidden. */
-function fairGame(state: MatchState, e: Entity, o: Entity): boolean {
+export function fairGame(state: MatchState, e: Entity, o: Entity): boolean {
   if (o.id === e.id || o.ownerId === "" || allies(state, e.ownerId, o.ownerId) || hiddenFromAuto(o) || o.dormant) return false;
   return canSeeEntity(state, e.ownerId, o);
 }

@@ -81,6 +81,7 @@ import { tickWalkerCharge } from "./walker-charge.js";
 import { tickOrderQueue } from "./commands.js";
 import { tickTrain } from "./train.js";
 import { tickResearch } from "./research.js";
+import { tickRoofFlak } from "./roof-flak.js";
 import { aimSpotlightPatrol, hasSpotlight, tickSpotlights } from "./night.js";
 import type { Entity, MatchState, SimPlayer } from "./types.js";
 import { leaveCorpse } from "./remains.js";
@@ -433,6 +434,7 @@ function stepHeld(state: MatchState, dt: number): void {
   tickDestroyers(state, dt); lap("tickDestroyers");
   tickHiveArks(state, dt); lap("tickHiveArks");
   tickMotherships(state, dt); lap("tickMotherships");
+  tickRoofFlak(state, dt); lap("tickRoofFlak");
   tickJets(state, dt); lap("tickJets");
   state.phaseRev++;
   tickCollision(state, dt); lap("tickCollision");

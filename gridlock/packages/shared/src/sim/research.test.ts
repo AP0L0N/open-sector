@@ -27,6 +27,7 @@ import { reachesHighFlyer } from "./drone.js";
 import { destroyEntity, hasCore, hqOf, makeEntity, tileCenter } from "./geo.js";
 import { domeOver } from "./energy-shield.js";
 import { hiveEnergyOf } from "./hive-energy.js";
+import { researchBlocker } from "./research.js";
 import { createMatch, step } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
 import { reachesJet } from "./jet.js";
@@ -94,9 +95,11 @@ describe("research", () => {
     assert.equal(hiveEnergyOf(state, "B").cap, HIVE_CORE_ENERGY + FUSION_NODE_LEVEL_ENERGY[1]!);
     assert.equal(snapshotFor(state, "A").entities.find((e) => e.id === node.id)?.level ?? 1, 1);
 
+    at(state, "nexus", 50, 40);
     assert.equal(applyCommand(state, "B", { type: "cmd.research", ids: [node.id], research: "ultrafusion" }).ok, true);
     assert.equal(hiveEnergyOf(state, "B").cap, HIVE_CORE_ENERGY + Math.floor(FUSION_NODE_LEVEL_ENERGY[1]! * RESEARCH_OUTPUT_SHARE));
-    ticks(state, secondsToTicks(RESEARCH.ultrafusion.seconds) + 2);
+    // The Nexus's own draw sinks the hive, so the job runs at the slow pace.
+    for (let i = 0; i < secondsToTicks(RESEARCH.ultrafusion.seconds) * 5 && node.research; i++) step(state, TICK_DT);
     assert.equal(node.level, 2);
     assert.equal(hiveEnergyOf(state, "B").cap, HIVE_CORE_ENERGY + FUSION_NODE_LEVEL_ENERGY[2]!);
     assert.equal(applyCommand(state, "B", { type: "cmd.research", ids: [node.id], research: "ultrafusion" }).ok, false, "nothing past Ultra");
@@ -109,6 +112,26 @@ describe("research", () => {
     assert.equal(applyCommand(state, "A", { type: "cmd.research", ids: [node.id], research: "advancedfusion" }).ok, false);
     assert.equal(applyCommand(state, "B", { type: "cmd.research", ids: [node.id], research: "advancedfusion" }).ok, true);
     assert.equal(applyCommand(state, "B", { type: "cmd.research", ids: [node.id], research: "advancedfusion" }).ok, false);
+  });
+
+  it("holds Ultra Fusion back until a Neural Nexus stands, and again once it falls", () => {
+    const state = field();
+    const node = at(state, "fusionnode", 40, 40);
+    node.level = 1;
+    const ultra = { type: "cmd.research" as const, ids: [node.id], research: "ultrafusion" as const };
+    const refused = applyCommand(state, "B", ultra);
+    assert.equal(refused.ok, false);
+    assert.match(refused.ok ? "" : refused.message, /Neural Nexus/);
+    assert.equal(researchBlocker(state, "B", node, "ultrafusion"), "Needs a Neural Nexus.");
+    assert.equal(researchBlocker(state, "B", node, "advancedfusion"), "Already researched.", "Advanced needs no Nexus");
+
+    at(state, "nexus", 60, 40, "A");
+    assert.equal(applyCommand(state, "B", ultra).ok, false, "the enemy's Nexus does not count");
+
+    const nexus = at(state, "nexus", 50, 40);
+    assert.equal(researchBlocker(state, "B", node, "ultrafusion"), null);
+    nexus.hp = 0;
+    assert.match(researchBlocker(state, "B", node, "ultrafusion") ?? "", /Neural Nexus/, "a dead Nexus does not count");
   });
 
   it("starts on every selected node at once", () => {
