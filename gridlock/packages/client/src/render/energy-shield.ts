@@ -143,6 +143,46 @@ export function domeHeightElev(r: number): number {
 }
 
 /**
+ * A dome round a flier (the Mothership): a whole bubble of green light hanging in the air round
+ * the hull, centred on `c` (screen), `rx` wide and `rv` tall, with its waist (`ry`, the rim
+ * plane seen from the camera) faintly marked. Nothing of it touches the ground.
+ */
+export function drawAirDome(ctx: CanvasRenderingContext2D, c: { x: number; y: number }, rx: number, rv: number, ry: number, shine: number): void {
+  const glow = shine * DOME_OPACITY;
+  if (glow <= 0 || rx <= 0 || rv <= 0) return;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.beginPath();
+  ctx.ellipse(c.x, c.y, rx, rv, 0, 0, Math.PI * 2);
+  const g = ctx.createRadialGradient(c.x, c.y - rv * 0.25, Math.max(1, rx * 0.2), c.x, c.y, Math.max(rx, rv) * 1.02);
+  g.addColorStop(0, `rgba(90, 240, 165, ${0.04 * glow})`);
+  g.addColorStop(0.7, `rgba(90, 240, 165, ${0.1 * glow})`);
+  g.addColorStop(1, `rgba(160, 255, 210, ${0.32 * glow})`);
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.lineWidth = 1.4;
+  ctx.strokeStyle = `rgba(200, 255, 228, ${0.6 * glow})`;
+  ctx.stroke();
+  // The waist, round the rim plane: the far half faint, the near half a little brighter.
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = `rgba(130, 255, 196, ${0.2 * glow})`;
+  ctx.beginPath();
+  ctx.ellipse(c.x, c.y, rx, ry, 0, Math.PI, Math.PI * 2);
+  ctx.stroke();
+  ctx.strokeStyle = `rgba(130, 255, 196, ${0.4 * glow})`;
+  ctx.beginPath();
+  ctx.ellipse(c.x, c.y, rx, ry, 0, 0, Math.PI);
+  ctx.stroke();
+  // A soft highlight on the crown.
+  ctx.strokeStyle = `rgba(230, 255, 240, ${0.25 * glow})`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.ellipse(c.x, c.y, rx * 0.72, rv * 0.82, 0, Math.PI * 1.15, Math.PI * 1.55);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/**
  * A Siphon's dome: a glass bubble of green light over the ground ellipse (centre `c`, half axes
  * `rx`, `ry` on screen), its crown `lift` screen px up. Drawn over what stands under it.
  */

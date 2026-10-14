@@ -48,6 +48,7 @@ import { syncTorpedoes, tickCombat, tickPatrol, tickProjectiles } from "./combat
 import { tickSubmarines } from "./naval.js";
 import { tickDestroyers } from "./destroyer.js";
 import { tickHiveArks } from "./hive-ark.js";
+import { tickMotherships } from "./mothership.js";
 import { groundLstBows } from "./lst.js";
 import { tickSmoke } from "./smoke.js";
 import { maybeCookOff, tickFires } from "./flame.js";
@@ -431,6 +432,7 @@ function stepHeld(state: MatchState, dt: number): void {
   tickSubmarines(state, dt); lap("tickSubmarines");
   tickDestroyers(state, dt); lap("tickDestroyers");
   tickHiveArks(state, dt); lap("tickHiveArks");
+  tickMotherships(state, dt); lap("tickMotherships");
   tickJets(state, dt); lap("tickJets");
   state.phaseRev++;
   tickCollision(state, dt); lap("tickCollision");

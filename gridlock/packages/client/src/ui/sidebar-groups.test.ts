@@ -34,7 +34,7 @@ describe("sidebarGroupOf", () => {
     assert.deepEqual(g.infantry.map((e) => e.type).sort(), ["bombard", "lancer", "shade", "simunit2", "thrall", "weaver", "xenodrone"]);
     assert.deepEqual(g.tanks.map((e) => e.type).sort(), ["assembler", "behemoth", "juggernaut", "mawcaster", "ravager", "siphon", "stalker"]);
     assert.deepEqual(g.naval.map((e) => e.type).sort(), ["hiveark", "leech", "lurker"]);
-    assert.deepEqual(g.aircraft.map((e) => e.type).sort(), ["gnat", "overseer", "scourge", "wasp"]);
+    assert.deepEqual(g.aircraft.map((e) => e.type).sort(), ["gnat", "mothership", "overseer", "scourge", "wasp"]);
     const alliance = groupEntries("alliance");
     assert.deepEqual(alliance.infantry.map((e) => e.type).filter((t) => t.startsWith("cyborg")).sort(), ["cyborg", "cyborgcommander"]);
     assert.ok(alliance.structures.some((e) => e.type === "cyborgcentral"));

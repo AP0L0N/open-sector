@@ -107,6 +107,7 @@ describe("factions in the catalog", () => {
         "leech",
         "lurker",
         "mawcaster",
+        "mothership",
         "nexus",
         "overseer",
         "pulsespire",

@@ -96,6 +96,7 @@ import {
   trackCritAllowed,
   infantryGunFor,
   isAircraftType,
+  factionOf,
   isArmoredType,
   isDroneType,
   isHiveArk,
@@ -109,6 +110,8 @@ import {
   endlessAmmo,
   factionDamage,
   isHoverType,
+  isMothership,
+  MOTHERSHIP_STANDOFF_TILES,
   OVERSEER_BEAM_TILES,
   OVERSEER_BUILDING_MUL,
   OVERSEER_FIRE_TILES,
@@ -160,6 +163,7 @@ import { canSeeEntity } from "./vision.js";
 import { blastWrecks, toWreck } from "./wreck.js";
 import { blastClutter } from "./clutter.js";
 import { catchLanding, domeOver, domeShelters, soakEnergyStrike } from "./energy-shield.js";
+import { mothershipHurts } from "./mothership.js";
 import type { AirState, Entity, MatchState, Order, Projectile } from "./types.js";
 
 /** Runway heading of an unturned Airfield, world radians: the strip runs east–west. A turned one adds its facing. */
@@ -524,14 +528,15 @@ function hasRounds(e: Entity): boolean {
 /**
  * Whether this plane's guns do anything to the target. Plate stops the Stuka's
  * wing MGs; infantry, soft trucks, and parked planes do not. The Fw 190's cannon
- * come down through any hull's roof, and reach planes in the air.
+ * come down through any hull's roof, and reach planes in the air. A Xenite flier's pulse
+ * guns burn into any plate (ballistics energyBurn), if only a little.
  */
 function gunsHurt(e: Entity, target: Entity): boolean {
   if (isCrashing(target)) return false;
   if (target.kind !== "unit" || target.wreck) return false;
   if (isFighterType(e.type)) return isAirborne(target) ? !!target.air && !target.drone : true;
   if (isAirborne(target)) return false;
-  return !isArmoredType(target.type);
+  return !isArmoredType(target.type) || factionOf(e.type) === "xeno";
 }
 
 
@@ -1795,6 +1800,10 @@ function tickHover(state: MatchState, e: Entity, dt: number): void {
   const strike = hoverStrike(state, e);
   const o = e.order;
   if (strike && !isHoverType(e.type)) {
+    if (isMothership(e.type)) {
+      mothershipStation(state, e, strike, dt);
+      return;
+    }
     if (isReconType(e.type)) {
       flitTo(state, e, strike.x, strike.y, dt);
       hoverAlt(a, airCruiseAltOf(e.type), dt);
@@ -1879,14 +1888,17 @@ function hoverStrike(state: MatchState, e: Entity): HoverStrike | null {
   }
   if (o.kind === "forceattack" && o.x != null && o.y != null) {
     const t = o.targetId != null ? state.entities.get(o.targetId) : undefined;
-    // Only the Wasp's cannon reach a plane in the air.
-    if (o.targetId != null && (!t || t.hp <= 0 || isCrashing(t) || (isAirborne(t) && !(isFighterType(e.type) && gunsHurt(e, t))))) {
+    // Only the Wasp's cannon, or the Mothership's flak maw, reach a plane in the air.
+    const reachesAir = isMothership(e.type) ? !!t && mothershipHurts(state, e, t) : isFighterType(e.type) && !!t && gunsHurt(e, t);
+    if (o.targetId != null && (!t || t.hp <= 0 || isCrashing(t) || (isAirborne(t) && !reachesAir))) {
       e.order = null;
       return null;
     }
     return { x: t?.x ?? o.x, y: t?.y ?? o.y, target: t, forced: true };
   }
   if (o.kind === "attackmove" || o.kind === "guard" || o.kind === "patrol") {
+    // The Mothership flies its order on: its mounts pick their own targets as it goes (sim/mothership.ts).
+    if (isMothership(e.type)) return null;
     let t = e.attackTarget != null ? state.entities.get(e.attackTarget) : undefined;
     if (t && (!hoverFinds(state, e, t) || !canSeeEntity(state, e.ownerId, t))) t = undefined;
     if (isHoverType(e.type)) t ??= acquireBelow(state, e);
@@ -1906,6 +1918,7 @@ type HoverStrike = { x: number; y: number; target?: Entity; forced: boolean };
 /** What this hovering flier can fire on: the Overseer's pulse, or a Wasp's or Scourge's guns and bomb. */
 function hoverFinds(state: MatchState, e: Entity, t: Entity): boolean {
   if (isHoverType(e.type)) return pulseFinds(state, e, t);
+  if (isMothership(e.type)) return t.hp > 0 && !t.wreck && !isCrashing(t) && mothershipHurts(state, e, t);
   if (t.hp <= 0 || t.wreck || isCrashing(t) || t.garrisonedIn != null || allies(state, e.ownerId, t.ownerId)) return false;
   return canHurt(state, e, t);
 }
@@ -1963,6 +1976,15 @@ function waspStation(state: MatchState, e: Entity, strike: HoverStrike, dt: numb
   if (off > (WASP_BURST_ARC_DEG * Math.PI) / 180) return;
   fireWaspBurst(state, e, strike.x, strike.y, t, strike.forced);
   if (e.order?.once) e.order = null;
+}
+
+/**
+ * The Mothership on station: hang MOTHERSHIP_STANDOFF_TILES off what it was sent at, turned on it,
+ * at its cruise height. Its mounts lay and fire by themselves (sim/mothership.ts).
+ */
+function mothershipStation(state: MatchState, e: Entity, strike: HoverStrike, dt: number): void {
+  holdOff(state, e, strike.x, strike.y, MOTHERSHIP_STANDOFF_TILES * state.tileSize, dt);
+  hoverAlt(e.air!, airCruiseAltOf(e.type), dt);
 }
 
 /**

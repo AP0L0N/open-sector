@@ -66,6 +66,7 @@ import { nextRand } from "./rng.js";
 import { sightKeysHeld } from "./vision.js";
 import { newShipState } from "./battleship.js";
 import { newArkState } from "./hive-ark.js";
+import { newMothershipState } from "./mothership.js";
 import { newTwinCiws } from "./twin-ciws.js";
 import type { AirState, AswDeck, DroneLink, Entity, JetState, MatchState } from "./types.js";
 
@@ -851,6 +852,7 @@ export function makeEntity(
   if (type === "artillery") e.gunCrew = Array.from({ length: ARTILLERY_CREW }, () => ARTILLERY_CREW_HP);
   if (type === "battleship") e.ship = newShipState(facing);
   if (type === "hiveark") e.ark = newArkState(facing);
+  if (type === "mothership") e.mothership = newMothershipState(facing);
   if (twinCiwsOf(type)) e.twinCiws = newTwinCiws(facing);
   if (type === "droneop") e.droneLink = newDroneLink();
   if (hasSonar(type)) e.asw = newAswDeck();

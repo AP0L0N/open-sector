@@ -50,6 +50,7 @@ import {
   hasForceField,
   TICK_DT,
   ARK_CANNON_CELL,
+  MOTHERSHIP_MOUNTS,
   ARK_CANNON_CHARGE_SECONDS,
 } from "../catalog.js";
 import { padsTaken } from "./air.js";
@@ -79,6 +80,7 @@ import { ramCharge } from "./juggernaut.js";
 import { cloakCharge } from "./cloak.js";
 import { hiddenBurrowed } from "./burrow.js";
 import { hiddenCloaked } from "./shade.js";
+import { mountCharge } from "./mothership.js";
 import { isSimUnit, onUplink, usesHiveEnergy, vaultsWalls } from "../catalog.js";
 import { onFortTop } from "./thrall.js";
 import { aswDeckView, sonarContacts } from "./destroyer.js";
@@ -183,6 +185,25 @@ function arkView(state: MatchState, e: Entity, friendly: boolean): EntityView["a
       docked: !e.wreck && p.waspId == null && p.regrow <= 0,
       ...(friendly && p.regrow > 0 ? { regrow: Math.ceil(p.regrow) } : {}),
     })),
+    ...(friendly && e.shieldReady != null && state.tick < e.shieldReady ? { domeDown: Math.ceil((e.shieldReady - state.tick) * TICK_DT) } : {}),
+  };
+}
+
+/** Mothership mounts. Cell charge and the dome's clock only for its own side. */
+function mothershipView(state: MatchState, e: Entity, friendly: boolean): EntityView["mothership"] {
+  const ship = e.mothership;
+  if (!ship) return undefined;
+  const window = Math.max(1, clampGameSpeed(state.gameSpeed));
+  return {
+    mounts: MOTHERSHIP_MOUNTS.map((m) => {
+      const g = ship[m];
+      return {
+        facing: g.facing,
+        ...(!e.wreck && g.firedTick != null && state.tick - g.firedTick < window ? { fire: true as const } : {}),
+        ...(friendly ? { energy: mountCharge(g, m) } : {}),
+        ...(friendly && g.drained ? { drained: true as const } : {}),
+      };
+    }),
     ...(friendly && e.shieldReady != null && state.tick < e.shieldReady ? { domeDown: Math.ceil((e.shieldReady - state.tick) * TICK_DT) } : {}),
   };
 }
@@ -588,6 +609,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       mounts: twinCiwsView(state, e, friendly),
       ship: shipView(state, e, friendly),
       ark: arkView(state, e, friendly),
+      mothership: mothershipView(state, e, friendly),
       arkOf: e.arkOf,
       reload: friendly && (isInfantryType(e.type) || beltOf(e.type)) && e.reload > 0 ? e.reload : undefined,
       bipod: plantRemaining(e, friendly),

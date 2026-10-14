@@ -189,7 +189,8 @@ export function liveSightExtra(e: {
     return Math.min(0, SUB_SUBMERGED_SIGHT_TILES - catalog(e.type).sightTiles - sightBonusTilesOf(e.type));
   }
   if (isAircraftType(e.type) && airAlt(e) > 0) {
-    return isReconType(e.type) ? HORTEN_FLYING_SIGHT_BONUS : AIRCRAFT_FLYING_SIGHT_BONUS;
+    // A recon plane, or the Mothership, sees from high up.
+    return isReconType(e.type) || e.type === "mothership" ? HORTEN_FLYING_SIGHT_BONUS : AIRCRAFT_FLYING_SIGHT_BONUS;
   }
   return droneSightExtra(e);
 }

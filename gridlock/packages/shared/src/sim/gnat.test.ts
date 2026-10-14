@@ -80,7 +80,7 @@ describe("Gnat", () => {
     assert.deepEqual([...techNeeds("gnat")], []);
   });
 
-  it("is the cheapest, quickest, frailest thing in the air, and out-sees every plane but the Horten", () => {
+  it("is the cheapest, quickest, frailest thing in the air, and out-sees every plane but the Horten and the Mothership", () => {
     const g = catalog("gnat");
     for (const t of OTHER_PLANES) {
       const c = catalog(t);
@@ -88,7 +88,7 @@ describe("Gnat", () => {
       else assert.ok(g.cost < c.cost / 2, `costs well under ${t}`);
       assert.ok(g.buildSeconds < c.buildSeconds / 2, `grows well faster than ${t}`);
       assert.ok(g.hp < c.hp / 2, `far frailer than ${t}`);
-      if (t !== "horten") assert.ok(flyingSight("gnat") > flyingSight(t), `sees farther than ${t}`);
+      if (t !== "horten" && t !== "mothership") assert.ok(flyingSight("gnat") > flyingSight(t), `sees farther than ${t}`);
     }
     assert.ok(flyingSight("gnat") >= flyingSight("horten") - 2 * 4, "nearly the Horten's sight");
   });

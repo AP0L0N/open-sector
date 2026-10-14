@@ -20,7 +20,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 159;
+export const PROTOCOL_VERSION = 160;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -264,6 +264,15 @@ export interface EntityView {
   };
   /** A Wasp off a Hive Ark's pod: the Ark's id. It takes no orders and cannot be selected. */
   arkOf?: number;
+  /**
+   * Mothership: each mount's world bearing (spine, pulse, maw, flak, as MOTHERSHIP_MOUNTS) and
+   * whether it just fired; for its own side each cell's charge 0–1 and whether it ran dry.
+   */
+  mothership?: {
+    mounts: { facing: number; fire?: true; energy?: number; drained?: true }[];
+    /** Seconds until a broken dome rises again. Own side only. */
+    domeDown?: number;
+  };
   /** Seconds left on a magazine change. Allied infantry. Omitted when idle. */
   reload?: number;
   /** Seconds until a planted support weapon can fire. Gunner bipod, or the mortar tube. Omitted once it is set. */

@@ -706,6 +706,53 @@ export function bindHiveArkSheets(images: Record<keyof typeof hivearkGlobs, HTML
     });
 }
 
+const mothershipGlobs = {
+  hull: import.meta.glob("../assets/units/mothership/hull/*.png", { eager: true, import: "default" }) as Record<string, string>,
+  spine: import.meta.glob("../assets/units/mothership/spine/*.png", { eager: true, import: "default" }) as Record<string, string>,
+  pulse: import.meta.glob("../assets/units/mothership/pulse/*.png", { eager: true, import: "default" }) as Record<string, string>,
+  maw: import.meta.glob("../assets/units/mothership/maw/*.png", { eager: true, import: "default" }) as Record<string, string>,
+  flak: import.meta.glob("../assets/units/mothership/flak/*.png", { eager: true, import: "default" }) as Record<string, string>,
+};
+let mothershipPrevious: string[] = [];
+
+/**
+ * Mothership: the hull and its four mounts (tools/sprites/render_mothership.py), stacked 1:1
+ * into rows like the Hive Ark's layers, so render/mothership.ts can place each mount by its
+ * model position.
+ */
+export function bindMothershipSheets(images: Record<keyof typeof mothershipGlobs, HTMLImageElement>): void {
+  const names = Object.keys(mothershipGlobs) as (keyof typeof mothershipGlobs)[];
+  let urls: string[][];
+  try {
+    urls = names.map((n) => pickTurntableUrls(mothershipGlobs[n]));
+  } catch (err) {
+    console.error("mothership turntable", err);
+    return;
+  }
+  void Promise.all(urls.map((list) => Promise.all(list.map(loadImage))))
+    .then(async (layers) => {
+      const sheets = layers.map((frames) => {
+        const cell = frames[0]!.naturalWidth;
+        const sheet = makeSheetCanvas(cell);
+        const g = sheet.getContext("2d");
+        if (!g) throw new Error("2d context");
+        frames.forEach((img, i) => g.drawImage(img, 0, engineRowFromFrame(i + 1) * cell));
+        return sheet;
+      });
+      return Promise.all(sheets.map(canvasPngUrl));
+    })
+    .then((next) => {
+      for (const url of mothershipPrevious) URL.revokeObjectURL(url);
+      mothershipPrevious = next;
+      names.forEach((n, i) => {
+        images[n].src = next[i] ?? "";
+      });
+    })
+    .catch((err) => {
+      console.error("mothership turntable", err);
+    });
+}
+
 let stukaPrevious: ComposedTurntable | null = null;
 
 /** Stuka drop-ins: one hull sheet and a cameo, same fit rules as the trucks. */

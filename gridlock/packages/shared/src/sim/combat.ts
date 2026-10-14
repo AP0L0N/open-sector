@@ -151,6 +151,7 @@ import {
   rocketRackFor,
   airRackOf,
   type RocketRackDef,
+  type EntityType,
   LAUNCHER_ROCKET_RACK,
   PENETRATOR_RACK,
   PLASMA_FIRE_CALIBER,
@@ -231,7 +232,7 @@ import {
   weaponRangeWorld,
   worldTileHeight,
 } from "./elevation.js";
-import { absorbRound, catchLanding, domeShelters, overheadSweep, reflectRound, shieldSweep } from "./energy-shield.js";
+import { absorbRound, aloftOver, aloftShelters, aloftSweep, catchLanding, domeShelters, overheadSweep, reflectRound, shieldSweep, soakShield } from "./energy-shield.js";
 import { drawPlasma, plasmaShots } from "./hive-ammo.js";
 import {
   ownerless,
@@ -1773,6 +1774,8 @@ function infantryRoundCanHarm(state: MatchState, e: Entity, target: Entity): boo
   if (gun.id === "gatling" && isLightHull(def)) return true;
   // The Commander's laser cuts any plate.
   if (gun.id === "laser") return true;
+  // A Xenite pulse burns into any plate, if only a little. The Shade's spine is a solid round.
+  if (gun.id !== "scoped" && energyRound(state, e.ownerId)) return true;
   // The Sim Unit's daggers open a light hull; a heavy plate is not worth the run.
   if (gun.id === "daggers") return isLightHull(def);
   // The Thrall's fists never touch a plate: it goes off against it.
@@ -2281,7 +2284,11 @@ function burstFlak(state: MatchState, p: Projectile): void {
   const z = p.z ?? 0;
   const inner = FLAK_BURST_RADIUS / 3;
   const grid = spatialGrid();
-  for (const o of poolCircle(state, p.x, p.y, FLAK_BURST_RADIUS, grid?.maxRadius ?? 0)) {
+  // Fused inside an enemy dome in the air: the dome takes the whole burst.
+  const inside = aloftOver(state, p.ownerId, p.x, p.y, z);
+  if (inside) soakShield(state, inside, p.damage);
+  const soaked = new Set<number>();
+  for (const o of inside ? [] : poolCircle(state, p.x, p.y, FLAK_BURST_RADIUS, grid?.maxRadius ?? 0)) {
     if (o.hp <= 0 || o.wreck || o.garrisonedIn != null || isCrashing(o)) continue;
     if (!isAirborne(o) && !o.drone) continue;
     // A forced shot hurts whoever flies in the cloud, friend or foe, as a forced shell does on the ground.
@@ -2289,6 +2296,8 @@ function burstFlak(state: MatchState, p: Projectile): void {
     if (Math.abs(entityHeight(state, o) + airAlt(o) - z) > FLAK_BURST_DEPTH) continue;
     const d = Math.max(0, Math.hypot(o.x - p.x, o.y - p.y) - o.radius);
     if (d > FLAK_BURST_RADIUS) continue;
+    // A flier inside an enemy's dome in the air is behind it: the dome takes the burst.
+    if (aloftShelters(state, p.ownerId, p.x, p.y, z, { x: o.x, y: o.y, z: entityHeight(state, o) + airAlt(o) }, p.damage, soaked)) continue;
     const falloff = d <= inner ? 1 : 1 - (d - inner) / (FLAK_BURST_RADIUS - inner);
     const dmg = Math.max(1, Math.round(p.damage * falloff * (0.85 + nextRand(state) * 0.3)));
     o.hp = Math.max(0, o.hp - dmg);
@@ -2648,9 +2657,10 @@ function fireRockets(
  * On a plane it leads the plane's flight and is fused at its height, so it
  * bursts in the air beside it. On anything else it is fused on the ground.
  * A rack with an apex lobs it over whatever stands between. `side` is the
- * launch offset off the aim line, world pixels.
+ * launch offset off the aim line, world pixels. `mount` launches it from a gun that is not the
+ * unit's own rack (a Mothership's maw): from that point and height, as that launcher's ball.
  */
-function launchRocket(
+export function launchRocket(
   state: MatchState,
   e: Entity,
   rack: RocketRackDef,
@@ -2660,20 +2670,21 @@ function launchRocket(
   dist: number,
   target: Entity | undefined,
   side: number,
+  mount?: { x: number; y: number; z: number; launcher: EntityType; airRack: boolean; forced: boolean },
 ): void {
   const aloft = !!target && isAirborne(target);
   const moving = !!target && (aloft || target.waypoints.length > 0 || target.state === "move");
   // The pods lay on their own bearing, not the torso's. A tube lies along the soldier's.
   // From inside, the tube pokes out of the opening facing the target.
-  const slit = garrisonMuzzleToward(state, e, aimX, aimY);
-  const fromX = slit?.x ?? e.x;
-  const fromY = slit?.y ?? e.y;
+  const slit = mount ? null : garrisonMuzzleToward(state, e, aimX, aimY);
+  const fromX = mount?.x ?? slit?.x ?? e.x;
+  const fromY = mount?.y ?? slit?.y ?? e.y;
   const aim = Math.atan2(aimY - fromY, aimX - fromX);
   const sideX = -Math.sin(aim);
   const sideY = Math.cos(aim);
   const x = fromX + sideX * side;
   const y = fromY + sideY * side;
-  const z0 = muzzleHeight(state, e) + rack.podLift;
+  const z0 = mount ? mount.z : muzzleHeight(state, e) + rack.podLift;
   let goalX = aimX;
   let goalY = aimY;
   if (aloft && target) {
@@ -2729,12 +2740,12 @@ function launchRocket(
     landX: land.x,
     landY: land.y,
     flightTime: flight,
-    harmAllies: e.order?.kind === "forceattack",
+    harmAllies: mount ? mount.forced : e.order?.kind === "forceattack",
     airBurst: aloft || undefined,
     z: z0,
     vz: (zLand - z0) / flight,
-    launcher: e.type,
-    airRack: rack === airRackOf(e.type) || undefined,
+    launcher: mount?.launcher ?? e.type,
+    airRack: (mount ? mount.airRack : rack === airRackOf(e.type)) || undefined,
     homeOn: homeOn?.id,
     homeLeft: homeOn ? flight * 2 : undefined,
     heavy: rack.plate != null && rack.plate > 1 ? true : undefined,
@@ -2781,6 +2792,13 @@ function stepHomingRocket(state: MatchState, p: Projectile, dt: number, rand: ()
   const dx = t.x - p.x;
   const dy = t.y - p.y;
   const d = Math.hypot(dx, dy);
+  // A dome in the air round the flier, or one it flies past, takes the ball on its skin.
+  const reach = Math.min(1, (speed * dt) / Math.max(1e-6, d));
+  const sky = aloftSweep(state, p.ownerId, p.x, p.y, z0, p.x + dx * reach, p.y + dy * reach, z0 + (tz - z0) * reach);
+  if (sky) {
+    absorbRound(state, p, sky);
+    return false;
+  }
   if (d <= speed * dt) {
     p.x = t.x;
     p.y = t.y;
@@ -2823,6 +2841,12 @@ function stepRocket(state: MatchState, p: Projectile, dt: number, rand: () => nu
     p.z = (p.launchZ ?? 0) + (p.vz ?? 0) * total * u + mortarAirZ(u, p.apex);
   } else {
     p.z = z0 + (p.vz ?? 0) * stepDt;
+  }
+  // A dome up in the air round a flier stops whatever climbs into it, fused on a point or not.
+  const sky = aloftSweep(state, p.ownerId, x0, y0, z0, p.x, p.y, p.z);
+  if (sky) {
+    absorbRound(state, p, sky);
+    return false;
   }
   // A forced Nebelwerfer rocket is fused on the point. It clears walls, trees,
   // and hulls on the way and bursts where it was aimed. Any other rocket flies
@@ -2979,6 +3003,9 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
     const falloff = mortarFalloff(d, reach);
     const def = catalog(e.type);
     if (inAir) {
+      // An air burst outside an enemy dome in the air does not reach the flier inside it.
+      const at = { x: e.x, y: e.y, z: entityHeight(state, e) + airAlt(e) };
+      if (aloftShelters(state, p.ownerId, p.x, p.y, p.z ?? at.z, at, p.damage, soaked)) continue;
       e.hp = Math.max(0, e.hp - Math.max(1, Math.round(p.damage * rack.airMul * falloff)));
       continue;
     }
@@ -3685,14 +3712,17 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     const blocker = concrete && (!bagHit || concrete.t < bagHit.t) ? concrete : bagHit;
     // An enemy energy wall stops the round where it meets it. A barrage from overhead falls past a
     // wall but not onto a dome. A torpedo runs under a wall but a dome goes all the way round, below the water too.
-    const guard = p.aloft
+    const flat = p.aloft
       ? null
       : p.fromAbove
         ? overheadSweep(state, p.ownerId, x0, y0, p.x, p.y)
         : shieldSweep(state, p.ownerId, x0, y0, p.x, p.y, !!p.torpedo);
+    // A dome up in the air round a flier meets any round that climbs into it, a plane's too.
+    const sky = p.torpedo ? null : aloftSweep(state, p.ownerId, x0, y0, z0, p.x, p.y, z1);
+    const guard = sky && (!flat || sky.t < flat.t) ? sky : flat;
     if (guard && (!struck || guard.t <= struck.t) && (!blocker || guard.t <= blocker.t)) {
-      // A pulse bolt fired flat turns back off the face. Anything else, or from overhead, stops there.
-      if (!p.fromAbove && !p.plunging && !p.flight && !p.torpedo && energyRound(state, p.ownerId)) {
+      // A pulse bolt fired flat turns back off the face. Anything else, or from overhead, or into a dome in the air, stops there.
+      if (!guard.s.aloft && !p.fromAbove && !p.plunging && !p.flight && !p.torpedo && energyRound(state, p.ownerId)) {
         reflectRound(state, p, guard);
         keep.push(p);
       } else absorbRound(state, p, guard);
@@ -3777,6 +3807,8 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     const targetDef = e.wreck ? wreckHitDef(e, p.caliber) : liveDef;
     const frac = p.hpFraction;
     const scopedInfantry = frac != null && isInfantryType(e.type) && !e.wreck;
+    // A Xenite pulse, plasma, or disruptor bolt burns into any plate. The Shade's spine is a solid round.
+    const energy = frac == null && !p.flight && energyRound(state, p.ownerId);
     const atArmor =
       !p.bounced &&
       p.caliber === PTRD_CALIBER &&
@@ -3800,7 +3832,14 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     // StuG sides, a Tiger's rear, and every heavier face stay on resolveHit.
     const gatlingLight = !!p.gatling && !p.bounced && !e.wreck && !roofHit && !atArmor && isLightHull(liveDef);
     const res = roofHit
-      ? resolveRoofHit({ penetration: p.penetration, target: liveDef, targetHp: e.hp, targetHpMax: e.hpMax, rand })
+      ? resolveRoofHit({
+          penetration: p.penetration,
+          target: liveDef,
+          targetHp: e.hp,
+          targetHpMax: e.hpMax,
+          rand,
+          energyDamage: energy ? p.damage : undefined,
+        })
       : atArmor
       ? resolveAtRifleHit({
           penetration: p.penetration,
@@ -3838,6 +3877,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
           vy: p.vy,
           rand,
           exact: scopedInfantry,
+          energy,
         });
     const occupied = wallsShieldGarrison(state, e);
     // A walker round stops on the wall. It does not chew the structure, even
@@ -3846,8 +3886,15 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     const chipWalls = (!occupied || p.caliber >= GARRISON_STRUCTURAL_CALIBER) && !walkerWall;
     let dealt = res.damage;
     if (chipWalls) {
-      dealt = coverStrike(e, dealt, state.tick, !!(p.fromAbove || p.plunging));
-      if (e.hp > 0 && roofHit) {
+      const overhead = !!(p.fromAbove || p.plunging);
+      // A wall takes its share of a fractional burn, not the whole-point floor coverStrike keeps.
+      dealt =
+        res.burn && !overhead && (e.wallCover ?? 0) > 0 && e.kind === "unit"
+          ? takeDamage(e, dealt * WALL_COVER_DR, state.tick)
+          : coverStrike(e, dealt, state.tick, overhead);
+      if (res.burn) {
+        // An energy burn on plate it did not pierce: no track or engine breaks.
+      } else if (e.hp > 0 && roofHit) {
         if (res.kind === "pen" && isMotorVehicle(e.type) && rand() < FW190_ROOF_ENGINE_CHANCE) addCrit(e, "engine");
       } else if (e.hp > 0 && !gatlingLight) {
         const tracks =

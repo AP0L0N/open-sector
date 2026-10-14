@@ -46,6 +46,8 @@ export interface HitResolution {
   bounceVy: number;
   effectiveArmor: number;
   overmatch: number;
+  /** An energy bolt's burn on plate it did not pierce (energyBurn): harm, but no crit roll. */
+  burn?: true;
 }
 
 export function isArmored(def: CatalogEntry): boolean {
@@ -147,10 +149,41 @@ type HitOpts = {
   rand: () => number;
   /** Use gun.damage as the final number. Scoped infantry hits set this. */
   exact?: boolean;
+  /** A Xenite energy round: plate never turns it, it only takes the edge off (energyBurn). */
+  energy?: boolean;
 };
 
+/** How steeply plate thicker than an energy bolt's penetration cuts its burn (energyBurn). */
+export const ENERGY_BURN_POWER = 2;
+/** The least share of its damage an energy bolt burns into any plate. */
+export const ENERGY_BURN_MIN = 0.05;
+
+/**
+ * What a Xenite pulse, plasma, or disruptor bolt burns into a plate it does not pierce:
+ * its damage times (penetration over the plate it meets, angle included) to ENERGY_BURN_POWER,
+ * whole damage at or past the plate. Fractional: heavy or sloped plate shrugs off nearly all
+ * of it, but never all.
+ */
+export function energyBurn(damage: number, penetration: number, effectiveArmor: number, rand: () => number): number {
+  const ratio = effectiveArmor <= 1e-6 ? 1 : Math.min(1, penetration / effectiveArmor);
+  const share = Math.max(ENERGY_BURN_MIN, ratio ** ENERGY_BURN_POWER);
+  return damage * share * (0.9 + rand() * 0.2);
+}
+
+/**
+ * An energy round lands the plate test's harm or its burn, whichever is more. It never
+ * bounces, and a burn (`burn`) heats the plate without breaking a track or an engine.
+ */
+function burnThrough(opts: HitOpts, res: HitResolution): HitResolution {
+  if (!isArmored(opts.target) || opts.target.kind === "building") return res;
+  const burn = Math.min(opts.targetHp, energyBurn(opts.gun.damage, opts.gun.penetration, res.effectiveArmor, opts.rand));
+  if (res.damage >= burn) return res;
+  return { ...res, kind: burn >= opts.targetHp ? "kill" : "hit", damage: burn, bounceVx: 0, bounceVy: 0, burn: true };
+}
+
 export function resolveHit(opts: HitOpts): HitResolution {
-  const res = resolveHitOnPlate(opts);
+  let res = resolveHitOnPlate(opts);
+  if (opts.energy) res = burnThrough(opts, res);
   const resist = opts.target.shellResist;
   if (!resist || opts.gun.caliber < BIG_GUN_CALIBER || res.damage <= 0) return res;
   return softenShell(opts, res, resist);
@@ -393,9 +426,16 @@ export function resolveRoofHit(opts: {
   targetHp: number;
   targetHpMax: number;
   rand: () => number;
+  /** A Xenite energy bolt's damage: a roof it does not pierce still takes its energyBurn. */
+  energyDamage?: number;
 }): HitResolution {
   const roof = roofArmorOf(opts.target);
   const overmatch = roof <= 1e-6 ? 99 : opts.penetration / roof;
+  if (opts.penetration < roof * 0.92 && opts.energyDamage != null) {
+    const damage = Math.min(opts.targetHp, energyBurn(opts.energyDamage, opts.penetration, roof, opts.rand));
+    const kind = damage >= opts.targetHp ? "kill" : "hit";
+    return { kind, face: "rear", damage, bounceVx: 0, bounceVy: 0, effectiveArmor: roof, overmatch, burn: true };
+  }
   if (opts.penetration < roof * 0.92) {
     return { kind: "glance", face: "rear", damage: 0, bounceVx: 0, bounceVy: 0, effectiveArmor: roof, overmatch };
   }
