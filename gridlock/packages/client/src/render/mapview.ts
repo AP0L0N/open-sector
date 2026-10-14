@@ -397,7 +397,7 @@ import { bumpTilt, crushBump } from "./crush-bump.js";
 import { drawFieldGunSmoke, fieldGunSmokePose, spawnFieldGunSmoke, type FieldGunSmokePuff } from "./field-gun-smoke.js";
 import { emplacementShotLook, facingConeDegOf, PAK43_FX_CALIBER_MUL } from "./emplacement-fx.js";
 import { drawArkCharge, drawArkPlasmaBall, hiveArkLayers, hiveArkMuzzle } from "./hive-ark.js";
-import { TRACTOR_POOL_SCALE, TRACTOR_RGB, absorbFade, drawAbsorbFx, drawTractorBeam, mothershipEmitterDrop } from "./mothership.js";
+import { TRACTOR_POOL_SCALE, TRACTOR_RGB, absorbFade, drawAbsorbFx, drawTractorBeam, mothershipEmitterDrop, mothershipOutline, MOTHERSHIP_SHADOW_HALF } from "./mothership.js";
 import {
   BATTLESHIP_WORLD_PER_UNIT,
   battleshipLayers,
@@ -446,7 +446,7 @@ const SHIELD_BAR_FILL = "#b4e2ff";
 import { INTERCEPT_BURST_SIZE, RAM_MISS_BURST_SIZE, interceptorTrail } from "./ram.js";
 import { drawCyborgDeathSparks } from "./cyborg-sparks.js";
 import { drawGroundShadow, unitCastsShadow, unitShadowFootprint } from "./unit-shadow.js";
-import { drawOwnerPennant, drawOwnerRing, ownerRingPoints, ownerRingRadius } from "./owner-mark.js";
+import { drawOwnerPennant, drawOwnerRing, ownerRingPoints, ownerRingRadius, ownerSquarePoints } from "./owner-mark.js";
 import { buildingShadowFootprint, convexHull, drawCastShadows, shadowOffset, treeShadowFootprint } from "./cast-shadow.js";
 import { buildingGroundElev, drawYardWear, WALL_SHARE, wallFootprint, yardWearFootprint } from "./building-ground.js";
 import { footprintPeak, radarReachTiles, showsReachRing } from "./radar-reach.js";
@@ -6236,7 +6236,7 @@ export class MapView {
    */
   private drawTractorBeams(): void {
     const now = performance.now();
-    const blend = Math.min(1, (now - this.snapAt) / 100);
+    const size = MOTHERSHIP_SPRITE.drawSize;
     for (const e of this.curr.entities) {
       const ab = e.absorb;
       if (!ab || e.hp <= 0) continue;
@@ -6244,9 +6244,11 @@ export class MapView {
       if (!ship) continue;
       const p = this.lerpEnt(e);
       const sp = this.lerpEnt(ship);
-      const alt = lerpAirAlt(this.prevById.get(ship.id), ship, blend);
-      const mid = this.toScreen(sp.x, sp.y, this.elevAt(sp.x, sp.y) + alt);
-      const top = { x: mid.x, y: mid.y + mothershipEmitterDrop(MOTHERSHIP_SPRITE.drawSize) * this.zoom };
+      // The ship's drawn middle, as its sprite is placed (drawSpritedUnit): its height and its bob.
+      const mid = this.toScreen(sp.x, sp.y);
+      mid.y -= this.airLift(ship);
+      const top = { x: mid.x, y: mid.y + mothershipEmitterDrop(size) };
+      const hide = mothershipOutline(sp.facing, size, this.ts()).map((q) => ({ x: mid.x + q.x, y: mid.y + q.y }));
       const elev = this.elevAt(p.x, p.y);
       const ground = this.toScreen(p.x, p.y, elev);
       const r = catalog(e.type).radius * TRACTOR_POOL_SCALE;
@@ -6258,9 +6260,9 @@ export class MapView {
         rx = Math.max(rx, Math.abs(q.x - ground.x));
         ry = Math.max(ry, Math.abs(q.y - ground.y));
       }
-      drawTractorBeam(this.ctx, top, ground, rx, ry, ab.light, ab.u, now, e.id);
+      drawTractorBeam(this.ctx, top, ground, rx, ry, ab.light, ab.u, now, e.id, hide);
       if (ab.u > 0) {
-        const body = (this.spriteOf(e)?.drawSize ?? 32) * this.zoom * 0.55;
+        const body = (this.spriteOf(e)?.drawSize ?? 32) * 0.55;
         drawAbsorbFx(this.ctx, ground.x, ground.y - body * 0.45, body, ab.u, now, e.id);
       }
     }
@@ -6977,8 +6979,9 @@ export class MapView {
       if (!unitCastsShadow({ kind: e.kind, garrisonedIn: e.garrisonedIn, swimming: inWater })) continue;
       const def = catalog(e.type);
       let scale = isInfantryType(e.type) ? INFANTRY_VISUAL_SCALE : UNIT_VISUAL_SCALE;
-      // A plane's shadow is its wingspan, and it spreads as the plane climbs.
-      if (e.air) scale *= aircraftShadowScale(e.air.alt).scale;
+      // A plane's shadow is its wingspan, and it spreads as the plane climbs. The Mothership's is its cube.
+      const cube = e.type === "mothership";
+      if (e.air && !cube) scale *= aircraftShadowScale(e.air.alt).scale;
       const p = this.lerpEnt(e);
       this.pushGroundShadow(
         items,
@@ -6986,8 +6989,9 @@ export class MapView {
           x: p.x,
           y: p.y,
           facing: p.facing,
-          radius: def.radius * scale,
+          radius: cube ? def.radius * MOTHERSHIP_SHADOW_HALF : def.radius * scale,
           elongated: !isInfantryType(e.type),
+          square: cube,
           stance: e.stance,
           airborne: (e.air?.alt ?? 0) > 0 || (e.jet?.alt ?? 0) > 0,
         }),
@@ -7007,7 +7011,12 @@ export class MapView {
       if (fade <= 0) continue;
       const infantry = isInfantryType(e.type);
       const radius = ownerRingRadius(catalog(e.type).radius, infantry ? INFANTRY_VISUAL_SCALE : UNIT_VISUAL_SCALE, infantry);
-      const pts = ownerRingPoints(p.x, p.y, radius).map((q) => this.toScreen(q.x, q.y));
+      // The Mothership's mark is square, round its cube, like its shadow.
+      const ring =
+        e.type === "mothership"
+          ? ownerSquarePoints(p.x, p.y, catalog(e.type).radius * MOTHERSHIP_SHADOW_HALF * 1.1, p.facing)
+          : ownerRingPoints(p.x, p.y, radius);
+      const pts = ring.map((q) => this.toScreen(q.x, q.y));
       const hex = this.ownerColor(e);
       items.push({
         layer: HOLE_DRAW_LAYER,

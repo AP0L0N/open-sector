@@ -21,6 +21,16 @@ export function ownerRingPoints(x: number, y: number, radius: number): MarkPt[] 
   return out;
 }
 
+/** A square ring instead, `half` world px from its middle to each side, turned with `facing`: the Mothership's cube. */
+export function ownerSquarePoints(x: number, y: number, half: number, facing: number): MarkPt[] {
+  const fx = Math.cos(facing);
+  const fy = Math.sin(facing);
+  return [[1, 1], [-1, 1], [-1, -1], [1, -1]].map(([u, v]) => ({
+    x: x + (fx * u! - fy * v!) * half,
+    y: y + (fy * u! + fx * v!) * half,
+  }));
+}
+
 /** Ring radius, world px, for a unit of catalog radius `r` drawn at visual `scale`. */
 export function ownerRingRadius(r: number, scale: number, infantry: boolean): number {
   return Math.max(infantry ? 5 : 7, r * scale * (infantry ? 0.95 : 0.85));

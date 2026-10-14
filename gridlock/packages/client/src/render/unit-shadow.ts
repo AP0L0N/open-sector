@@ -35,6 +35,8 @@ export function unitShadowFootprint(opts: {
   stance?: string;
   /** Off the ground (a flying plane): no contact patch under it. */
   airborne?: boolean;
+  /** A square of half-side `radius`, turned with `facing` (the Mothership's cube), not an oval. */
+  square?: boolean;
 }): { cx: number; cy: number; points: { x: number; y: number }[]; contact: { x: number; y: number }[] } {
   const height = Math.max(2, opts.radius * 0.7 * shadowStanceScale(opts.stance));
   const cx = opts.x + Math.cos(SLIDE_ANGLE) * height * SLIDE;
@@ -45,6 +47,14 @@ export function unitShadowFootprint(opts: {
   const fy = Math.sin(opts.facing);
   const ring = (ox: number, oy: number, a: number, b: number): { x: number; y: number }[] => {
     const out: { x: number; y: number }[] = [];
+    if (opts.square) {
+      // The four corners, side `2 * radius`, along and across the facing.
+      for (const [u, v] of [[1, 1], [-1, 1], [-1, -1], [1, -1]] as const) {
+        const s = opts.radius * (a / Math.max(1e-6, along));
+        out.push({ x: ox + fx * u * s - fy * v * s, y: oy + fy * u * s + fx * v * s });
+      }
+      return out;
+    }
     for (let i = 0; i < SEGS; i++) {
       const t = (i / SEGS) * Math.PI * 2;
       const ca = Math.cos(t);

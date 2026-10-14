@@ -9,6 +9,8 @@
  */
 
 import { MOTHERSHIP_HULL_RADIUS, isoScale } from "@gridlock/shared";
+import { rowYaw, shipRow } from "./battleship.js";
+import { convexHull } from "./cast-shadow.js";
 
 /** The render script's numbers (render_mothership.py). Model units are 10 m. */
 export const MOTHERSHIP_MODEL = {
@@ -16,8 +18,11 @@ export const MOTHERSHIP_MODEL = {
   scaleFrac: (0.0325 * 384) / 256,
   cyFrac: 0.5,
   cell: 256,
-  /** The tractor emitter under the belly, model units below the cube's middle. */
-  emitterZ: -3.6,
+  /** Half the cube's edge, model units; the panels stand a little proud of it. */
+  half: 3.1,
+  relief: 0.3,
+  /** The beam leaves from the middle of the bottom face, model units below the cube's middle. */
+  emitterZ: -3.1,
 };
 
 const COS_CAM = Math.cos(Math.PI / 6);
@@ -31,9 +36,34 @@ export function mothershipDrawSize(tileSize: number): number {
   return screenPerUnit / MOTHERSHIP_MODEL.scaleFrac;
 }
 
-/** Screen px below the ship's drawn middle where the emitter under the belly sits. */
+/** The cube's shadow is a square this share of the hull radius from its middle to each side. */
+export const MOTHERSHIP_SHADOW_HALF = (MOTHERSHIP_MODEL.half + MOTHERSHIP_MODEL.relief) / MOTHERSHIP_MODEL.hullR;
+
+/** Screen px below the ship's drawn middle where the beam leaves the bottom face. */
 export function mothershipEmitterDrop(drawSize: number): number {
   return -MOTHERSHIP_MODEL.emitterZ * COS_CAM * MOTHERSHIP_MODEL.scaleFrac * drawSize;
+}
+
+/**
+ * The cube's outline on screen, offsets from its drawn middle, on the sheet row drawn for
+ * `facing`: the eight corners (panels included) projected the render script's way, hulled.
+ * The beam is clipped outside it, so the cube hides where the beam leaves its belly.
+ */
+export function mothershipOutline(facing: number, drawSize: number, tileSize: number): { x: number; y: number }[] {
+  const yaw = rowYaw(shipRow(facing, tileSize));
+  const k = MOTHERSHIP_MODEL.scaleFrac * drawSize;
+  const h = MOTHERSHIP_MODEL.half + MOTHERSHIP_MODEL.relief;
+  const pts: { x: number; y: number }[] = [];
+  for (const x of [-h, h]) {
+    for (const y of [-h, h]) {
+      for (const z of [-h, h]) {
+        const gx = x * Math.cos(yaw) - y * Math.sin(yaw);
+        const gy = x * Math.sin(yaw) + y * Math.cos(yaw);
+        pts.push({ x: gx * k, y: -(gy * Math.sin(Math.PI / 6) + z * COS_CAM) * k });
+      }
+    }
+  }
+  return convexHull(pts);
 }
 
 /** The pool of light is this much wider than the unit it holds. */
@@ -42,10 +72,11 @@ export const TRACTOR_POOL_SCALE = 1.35;
 export const TRACTOR_RGB = "140, 205, 255";
 
 /**
- * One tractor beam, screen px: a cone of blue light from the emitter (`top`) down to an ellipse
+ * One tractor beam, screen px: a cone of blue light from under the ship (`top`) down to an ellipse
  * round the unit on the ground (`ground`, half axes `rx`, `ry`). `light` 0–1 is how far the light
  * has shone (it fades in over the first third); `u` 0–1 how far the absorbing has gone: bands of
- * light run up the cone while it draws, quicker toward the end.
+ * light run up the cone while it draws, quicker toward the end. `hide` is the ship's outline on
+ * screen: the beam is cut away inside it.
  */
 export function drawTractorBeam(
   ctx: CanvasRenderingContext2D,
@@ -57,10 +88,21 @@ export function drawTractorBeam(
   u: number,
   now: number,
   seed: number,
+  hide?: readonly { x: number; y: number }[],
 ): void {
   const a = Math.min(1, light * 3) * (0.9 + 0.1 * Math.sin(now * 0.008 + seed));
   if (a <= 0.01 || rx <= 0) return;
   ctx.save();
+  // Behind the cube: the beam shows only below its outline, so it seems to come out of its belly.
+  if (hide && hide.length >= 3) {
+    const big = 1e5;
+    ctx.beginPath();
+    ctx.rect(-big, -big, big * 2, big * 2);
+    ctx.moveTo(hide[0]!.x, hide[0]!.y);
+    for (let i = 1; i < hide.length; i++) ctx.lineTo(hide[i]!.x, hide[i]!.y);
+    ctx.closePath();
+    ctx.clip("evenodd");
+  }
   ctx.globalCompositeOperation = "lighter";
   // The cone: from a narrow mouth under the cube to the width of the pool.
   const mouth = Math.max(2, rx * 0.22);

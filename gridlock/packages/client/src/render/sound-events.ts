@@ -435,6 +435,11 @@ export class SoundTracker {
         if (e.ownerId === me) out.push({ kind: "announce", event: "captured" });
         else if (prev.ownerId === me) out.push({ kind: "announce", event: "buildingcaptured" });
       }
+      // A Mothership's tractor beam takes hold of a new unit: the ship's fire sound, the beam locking on.
+      if (e.absorb && e.absorb.by !== prev?.absorb?.by) {
+        const ship = byId.get(e.absorb.by);
+        if (ship) out.push({ kind: "fire", id: ship.id, type: ship.type, weapon: "beam", x: ship.x, y: ship.y });
+      }
       if (e.laser && !e.wreck) {
         const was = prev?.laser;
         if (!was || was.a0 !== e.laser.a0 || e.laser.u < was.u) {
@@ -465,8 +470,12 @@ export class SoundTracker {
       if (byId.has(id)) continue;
       this.lastHp.delete(id);
       if (prev.wreck) continue;
-      // Drawn up into a Mothership: it goes in a flash of light (the blink), not an explosion.
-      if (prev.absorb) continue;
+      // Drawn up into a Mothership: it goes in a flash of light (the blink) and the ship's own absorbing sound, not an explosion.
+      if (prev.absorb) {
+        const ship = byId.get(prev.absorb.by);
+        if (ship) out.push({ kind: "unitsfx", type: ship.type, cue: "special", x: prev.x, y: prev.y });
+        continue;
+      }
       if (prev.type === "aswheli" && prev.hp > prev.hpMax * LOST_HP_SHARE) {
         // Gone whole: it came down on its ship's deck and was stowed.
         out.push({ kind: "unitsfx", type: prev.type, cue: "special", x: prev.x, y: prev.y });

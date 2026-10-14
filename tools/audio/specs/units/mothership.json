@@ -1,0 +1,74 @@
+{
+  "key": "mothership",
+  "out": "units/mothership",
+  "voice": {
+    "name": "Borg",
+    "voice_id": "l9umSdoIe6S0HnS02NAS",
+    "note": "The user's own voice, designed on the site for the cube Mothership: many voices speaking as one.",
+    "description": "A voice of the many: an evil, serious, robotic adult male chorus, as if a whole collective speaks at once, cold and unhurried.",
+    "stability": 0.7,
+    "similarity": 0.85,
+    "style": 0.2,
+    "speed": 0.9
+  },
+  "lines": {
+    "select": [
+      "We are listening.",
+      "The collective hears.",
+      "We observe.",
+      "Your will is noted.",
+      "We are the Mothership."
+    ],
+    "move": [
+      "We proceed.",
+      "Course corrected.",
+      "The cube advances.",
+      "We move as one.",
+      "Adjusting position."
+    ],
+    "attack": [
+      "Begin absorption.",
+      "Your form will serve us.",
+      "Bring them to us.",
+      "Their mass is ours."
+    ],
+    "ready": [
+      "The Mothership is complete.",
+      "We have arrived."
+    ],
+    "hit": [
+      "Our shield weakens.",
+      "Damage is irrelevant."
+    ],
+    "die": [
+      "We are... diminished.",
+      "The collective... endures."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Sci-fi tractor beam locking on from a huge alien ship overhead: a deep humming energy beam switching on, a rising electric whir that settles into a steady resonant throb, cold and mechanical, no explosion, no gunfire, outdoors, no music, no voice",
+      "duration": 1.8,
+      "variants": 2,
+      "influence": 0.65
+    },
+    "special": {
+      "prompt": "Sci-fi matter absorption: a vehicle dissolving into light and drawn up into a ship overhead, a shimmering electric crackle rising quickly in pitch into a soft deep whoosh and a hollow mechanical thump, no explosion, outdoors, no music, no voice",
+      "duration": 2.0,
+      "variants": 2,
+      "influence": 0.6
+    },
+    "move": {
+      "prompt": "Enormous alien cube spaceship hovering overhead and drifting: a very deep low droning engine hum with slow mechanical pulses and a faint metallic groan, heavy and ominous, outdoors, no music, no voice",
+      "duration": 2.8,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Enormous alien cube spaceship destroyed in the air: deep chained energy explosions ripping through a huge metal structure, a long metallic groan, crackling electric arcs, and a massive crash on the ground, medium distance outdoors, no music, no voice",
+      "duration": 4.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

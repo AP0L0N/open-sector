@@ -29,8 +29,6 @@ const UI_VOLUME = 0.5;
 const BORROWED_AUDIO: Partial<Record<string, string>> = {
   // The Hive Ark: the Xenite sea voice and the Leech's plasma cannon.
   hiveark: "leech",
-  // The Mothership: the hive flier voice and the Scourge's plasma.
-  mothership: "scourge",
 };
 
 function unitFolder(type: string): string {
