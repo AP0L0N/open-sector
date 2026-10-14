@@ -309,8 +309,8 @@ const DEFS: Partial<Record<EntityType, BuildingAnimDef>> = {
 };
 
 /**
- * Researched levels (sim/research.ts) drawn from their own sheets (fusionnode-advanced.json,
- * fusionnode-ultra.json from tools/sprites/render_xeno_base.py), by level - 1.
+ * Researched levels (sim/research.ts) drawn from their own sheets (<type>-<level>.json from
+ * tools/sprites/render_xeno_base.py, see LEVEL_SHEETS), by level - 1.
  */
 const LEVEL_DEFS: Partial<Record<EntityType, BuildingAnimDef[]>> = {
   // Advanced Fusion: a hotter core that throbs faster, the tips blink quicker.
@@ -343,6 +343,100 @@ const LEVEL_DEFS: Partial<Record<EntityType, BuildingAnimDef[]>> = {
         { x: 190, y: 88 },
         { x: 230, y: 88 },
       ],
+    },
+  ],
+  // Assembly (conversion-advanced.json, conversion-neural.json). Advanced: taller pods breathe under lit caps.
+  conversion: [
+    {
+      lights: [
+        { x: 293, y: 184, r: 10, color: "#7dffd0", period: 2200, phase: 0.0, mode: "pulse" },
+        { x: 249, y: 205, r: 10, color: "#7dffd0", period: 2200, phase: 0.167, mode: "pulse" },
+        { x: 132, y: 162, r: 10, color: "#7dffd0", period: 2200, phase: 0.333, mode: "pulse" },
+        { x: 162, y: 133, r: 10, color: "#7dffd0", period: 2200, phase: 0.5, mode: "pulse" },
+        { x: 231, y: 124, r: 10, color: "#7dffd0", period: 2200, phase: 0.667, mode: "pulse" },
+        { x: 290, y: 145, r: 10, color: "#7dffd0", period: 2200, phase: 0.833, mode: "pulse" },
+        { x: 293, y: 137, r: 5, color: "#b6fff0", period: 1400, phase: 0.0, mode: "blink" },
+        { x: 249, y: 159, r: 5, color: "#b6fff0", period: 1400, phase: 0.167, mode: "blink" },
+        { x: 132, y: 116, r: 5, color: "#b6fff0", period: 1400, phase: 0.333, mode: "blink" },
+        { x: 162, y: 87, r: 5, color: "#b6fff0", period: 1400, phase: 0.5, mode: "blink" },
+        { x: 231, y: 78, r: 5, color: "#b6fff0", period: 1400, phase: 0.667, mode: "blink" },
+        { x: 290, y: 98, r: 5, color: "#b6fff0", period: 1400, phase: 0.833, mode: "blink" },
+        { x: 142, y: 221, r: 12, color: "#6dffc8", period: 2400, phase: 0.0, mode: "pulse" },
+        { x: 132, y: 246, r: 4, color: "#6dffc8", period: 1100, phase: 0.0, mode: "pulse" },
+        { x: 120, y: 252, r: 4, color: "#6dffc8", period: 1100, phase: 0.33, mode: "pulse" },
+        { x: 108, y: 258, r: 4, color: "#6dffc8", period: 1100, phase: 0.66, mode: "pulse" },
+        { x: 216, y: 88, r: 13, color: "#6dffc8", period: 1800, phase: 0.0, mode: "pulse" },
+        { x: 216, y: 51, r: 7, color: "#7fe3ff", period: 1400, phase: 0.0, mode: "pulse" },
+        { x: 216, y: 19, r: 6, color: "#b6fff0", period: 1100, phase: 0.0, mode: "blink" },
+      ],
+    },
+    // Neural: the caged brain throbs, the crown tips sweep round, the pods answer it in turn.
+    {
+      lights: [
+        { x: 293, y: 205, r: 10, color: "#7dffd0", period: 2000, phase: 0.0, mode: "pulse" },
+        { x: 249, y: 226, r: 10, color: "#7dffd0", period: 2000, phase: 0.167, mode: "pulse" },
+        { x: 132, y: 183, r: 10, color: "#7dffd0", period: 2000, phase: 0.333, mode: "pulse" },
+        { x: 162, y: 154, r: 10, color: "#7dffd0", period: 2000, phase: 0.5, mode: "pulse" },
+        { x: 231, y: 145, r: 10, color: "#7dffd0", period: 2000, phase: 0.667, mode: "pulse" },
+        { x: 290, y: 166, r: 10, color: "#7dffd0", period: 2000, phase: 0.833, mode: "pulse" },
+        { x: 142, y: 242, r: 12, color: "#6dffc8", period: 2400, phase: 0.0, mode: "pulse" },
+        { x: 132, y: 267, r: 4, color: "#6dffc8", period: 1100, phase: 0.0, mode: "pulse" },
+        { x: 120, y: 273, r: 4, color: "#6dffc8", period: 1100, phase: 0.33, mode: "pulse" },
+        { x: 108, y: 279, r: 4, color: "#6dffc8", period: 1100, phase: 0.66, mode: "pulse" },
+        { x: 216, y: 100, r: 20, color: "#8ff7ff", period: 1200, phase: 0.0, mode: "pulse" },
+        { x: 216, y: 58, r: 8, color: "#7fe3ff", period: 1600, phase: 0.3, mode: "pulse" },
+        { x: 225, y: 81, r: 4, color: "#b6fff0", period: 1500, phase: 0.0, mode: "blink" },
+        { x: 191, y: 76, r: 4, color: "#b6fff0", period: 1500, phase: 0.167, mode: "blink" },
+        { x: 181, y: 59, r: 4, color: "#b6fff0", period: 1500, phase: 0.333, mode: "blink" },
+        { x: 207, y: 46, r: 4, color: "#b6fff0", period: 1500, phase: 0.5, mode: "blink" },
+        { x: 242, y: 51, r: 4, color: "#b6fff0", period: 1500, phase: 0.667, mode: "blink" },
+        { x: 251, y: 68, r: 4, color: "#b6fff0", period: 1500, phase: 0.833, mode: "blink" },
+        { x: 216, y: 19, r: 6, color: "#b6fff0", period: 1100, phase: 0.0, mode: "blink" },
+      ],
+    },
+  ],
+  // Nanite Forge (forge-advanced.json, forge-neural.json). Advanced: deeper vats, the maw pylons pulse.
+  forge: [
+    {
+      lights: [
+        { x: 127, y: 125, r: 18, color: "#6dffc8", period: 2400, phase: 0.0, mode: "pulse" },
+        { x: 115, y: 152, r: 5, color: "#6dffc8", period: 1100, phase: 0.0, mode: "pulse" },
+        { x: 105, y: 157, r: 5, color: "#6dffc8", period: 1100, phase: 0.33, mode: "pulse" },
+        { x: 95, y: 162, r: 5, color: "#6dffc8", period: 1100, phase: 0.66, mode: "pulse" },
+        { x: 284, y: 122, r: 11, color: "#7dffd0", period: 1600, phase: 0.0, mode: "pulse" },
+        { x: 244, y: 142, r: 11, color: "#7dffd0", period: 1600, phase: 0.33, mode: "pulse" },
+        { x: 204, y: 162, r: 11, color: "#7dffd0", period: 1600, phase: 0.66, mode: "pulse" },
+        { x: 155, y: 65, r: 5, color: "#7fe3ff", period: 2200, phase: 0.0, mode: "pulse" },
+        { x: 129, y: 74, r: 5, color: "#7fe3ff", period: 2200, phase: 0.33, mode: "pulse" },
+        { x: 102, y: 84, r: 5, color: "#7fe3ff", period: 2200, phase: 0.66, mode: "pulse" },
+        { x: 70, y: 83, r: 6, color: "#b6fff0", period: 1300, phase: 0.0, mode: "blink" },
+        { x: 170, y: 132, r: 6, color: "#b6fff0", period: 1300, phase: 0.5, mode: "blink" },
+        { x: 224, y: 35, r: 7, color: "#b6fff0", period: 1000, phase: 0.0, mode: "blink" },
+      ],
+      smoke: [{ x: 264, y: 115, rise: 30, thin: true }],
+    },
+    // Neural: the ridge brain throbs under its crown, the vat cores answer it.
+    {
+      lights: [
+        { x: 127, y: 146, r: 18, color: "#6dffc8", period: 2400, phase: 0.0, mode: "pulse" },
+        { x: 115, y: 173, r: 5, color: "#6dffc8", period: 1100, phase: 0.0, mode: "pulse" },
+        { x: 105, y: 178, r: 5, color: "#6dffc8", period: 1100, phase: 0.33, mode: "pulse" },
+        { x: 95, y: 183, r: 5, color: "#6dffc8", period: 1100, phase: 0.66, mode: "pulse" },
+        { x: 284, y: 142, r: 11, color: "#7dffd0", period: 1600, phase: 0.0, mode: "pulse" },
+        { x: 244, y: 162, r: 11, color: "#7dffd0", period: 1600, phase: 0.33, mode: "pulse" },
+        { x: 204, y: 182, r: 11, color: "#7dffd0", period: 1600, phase: 0.66, mode: "pulse" },
+        { x: 70, y: 103, r: 6, color: "#b6fff0", period: 1300, phase: 0.0, mode: "blink" },
+        { x: 170, y: 153, r: 6, color: "#b6fff0", period: 1300, phase: 0.5, mode: "blink" },
+        { x: 190, y: 45, r: 16, color: "#8ff7ff", period: 1200, phase: 0.0, mode: "pulse" },
+        { x: 190, y: 29, r: 7, color: "#7fe3ff", period: 1600, phase: 0.3, mode: "pulse" },
+        { x: 201, y: 31, r: 4, color: "#b6fff0", period: 1500, phase: 0.0, mode: "blink" },
+        { x: 174, y: 30, r: 4, color: "#b6fff0", period: 1500, phase: 0.2, mode: "blink" },
+        { x: 170, y: 16, r: 4, color: "#b6fff0", period: 1500, phase: 0.4, mode: "blink" },
+        { x: 193, y: 10, r: 4, color: "#b6fff0", period: 1500, phase: 0.6, mode: "blink" },
+        { x: 212, y: 19, r: 4, color: "#b6fff0", period: 1500, phase: 0.8, mode: "blink" },
+        { x: 224, y: 55, r: 7, color: "#b6fff0", period: 1000, phase: 0.0, mode: "blink" },
+      ],
+      smoke: [{ x: 264, y: 135, rise: 30, thin: true }],
     },
   ],
 };
