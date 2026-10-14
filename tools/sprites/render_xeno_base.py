@@ -47,6 +47,16 @@ pad, like core.png, smelter.png, and dynamo.png.
   a caged star in a lit torus fed by a plasma stream, the pylons grow into glowing coil spires.
 
   python tools/sprites/render_xeno_base.py --out ... --only fusioncore fusioncore-reactor
+
+  conversion-advanced / conversion-neural: the Assembly after Advanced and Neural Assembly
+  research. Same plinth, dome and door; taller pods under lit caps, lit rib knuckles, a taller
+  spire, and for Neural a big brain in a rib cage under a sensor crown, tendrils down to every pod.
+  forge-advanced / forge-neural: the Nanite Forge after Advanced and Neural Forge research. Same
+  vault and maw; deeper hooped vats, lit rib crests, core-tipped spines, two lit pylons at the
+  maw, and for Neural a brain node on the ridge cabled down into core-capped vats.
+
+  python tools/sprites/render_xeno_base.py --out ... --only conversion conversion-advanced conversion-neural
+  python tools/sprites/render_xeno_base.py --out ... --only forge forge-advanced forge-neural
 """
 
 from __future__ import annotations
@@ -974,7 +984,39 @@ def nf_seg(i: int) -> tuple[float, float, float, float, float, float]:
     return y0, y1, hw0 - 2.0, ht0 - 2.0, hw1, ht1
 
 
+# Research levels (sim/research.ts): plain, Advanced Forge, Neural Forge. Same plinth, vault and
+# maw, so the pad and the door never move; the vats deepen, the vault lights up, and at Neural a
+# brain node on the ridge is cabled down into the vats (the Nexus link).
+NF_LEVELS = {
+    0: {"vat_r": NF_VAT_R, "vat_top": NF_VAT_TOP, "pod_r": 2.6},
+    1: {"vat_r": 7.0, "vat_top": 26.0, "pod_r": 3.2},
+    2: {"vat_r": 7.0, "vat_top": 26.0, "pod_r": 3.6},
+}
+NF_NODE_Y = 43.0
+NF_NODE_Z = 31.0      # the vault's skin under the node
+NF_BRAIN_Z = 47.0
+NF_BRAIN_R = 6.4
+NF_CROWN = 5
+
+
+def nf_pylons() -> list[tuple[float, float]]:
+    """The two lit pylons flanking the maw on the apron (Advanced and up)."""
+    off = NF_HW[1] * NF_MAW_W + 6.0
+    return [(NF_CX - off, NF_Y1 + 4.0), (NF_CX + off, NF_Y1 + 4.0)]
+
+
+def nf_crown_tip(i: int) -> tuple[float, float, float]:
+    a = 2 * math.pi * i / NF_CROWN + 0.3
+    return NF_CX + 8.0 * math.cos(a), NF_NODE_Y + 8.0 * math.sin(a), NF_BRAIN_Z + 12.0
+
+
 def build_forge(with_pad: bool) -> ra.Mesh:
+    return build_forge_level(with_pad, 0)
+
+
+def build_forge_level(with_pad: bool, level: int) -> ra.Mesh:
+    L = NF_LEVELS[level]
+    vat_r, vat_top = L["vat_r"], L["vat_top"]
     m = ra.Mesh()
     if with_pad:
         pad(m, NF, NF)
@@ -990,6 +1032,9 @@ def build_forge(with_pad: bool) -> ra.Mesh:
         # Rib: a raised band over the lip.
         vault_shell(m, cx, y1 - 2.2, y1, hw1 + 0.6, ht1 + 0.6, hw1 + 1.4, ht1 + 1.4, NF_Z0, "chitin_dark")
         arch_face(m, cx, y1, hw1 - 2.0, ht1 - 2.0, hw1 + 1.4, ht1 + 1.4, NF_Z0, "chitin_dark")
+        if level >= 1:
+            # A lit crest along the top of every rib.
+            vault_shell(m, cx, y1 - 1.9, y1 - 0.6, hw1 + 1.6, ht1 + 1.6, hw1 + 1.6, ht1 + 1.6, NF_Z0, "glow")
         if i < NF_SEGS - 1:
             # Glow seam where the next plate slides out from under this rib.
             vault_shell(m, cx, y1, y1 + 1.3, hw1 - 0.3, ht1 - 0.3, hw1 - 0.3, ht1 - 0.3, NF_Z0, "glow")
@@ -1026,19 +1071,65 @@ def build_forge(with_pad: bool) -> ra.Mesh:
         y0, y1, hw0, ht0, hw1, ht1 = nf_seg(i)
         yb = y1 - 2.0
         zb = NF_Z0 + ht1 + 1.0
-        m.cyl((cx, yb, zb - 1.0), (cx, yb - 4.0, zb + 5.5 + i * 0.6), 1.8, 0.25, "spine", n=6)
+        if level >= 2 and i == 2:
+            continue  # the neural node stands here
+        tip = (cx, yb - 4.0, zb + 5.5 + i * 0.6 + (2.0 if level else 0.0))
+        m.cyl((cx, yb, zb - 1.0), tip, 1.8, 0.25, "spine", n=6)
+        if level >= 1:
+            ball(m, tip, 1.0, "core", rings=4, n=8)
     # Nanite vats on the east side, linked into the vault.
+    bars = 6 if level == 0 else 8
     for vx, vy in NF_VATS:
-        m.cyl((vx, vy, 1.0), (vx, vy, 4.0), NF_VAT_R + 2.0, NF_VAT_R + 1.4, "steel_dark", n=16)
-        m.cyl((vx, vy, 4.0), (vx, vy, NF_VAT_TOP - 3.0), NF_VAT_R, NF_VAT_R, "vat", n=16)
-        for k in range(6):
-            a = 2 * math.pi * k / 6 + 0.3
-            px, py = vx + (NF_VAT_R + 0.3) * math.cos(a), vy + (NF_VAT_R + 0.3) * math.sin(a)
-            m.cyl((px, py, 4.0), (px, py, NF_VAT_TOP - 3.0), 0.55, 0.55, "spine", n=5)
-        m.cyl((vx, vy, NF_VAT_TOP - 3.0), (vx, vy, NF_VAT_TOP), NF_VAT_R + 0.8, NF_VAT_R * 0.5, "steel_dark", n=16)
-        m.cyl((vx, vy, NF_VAT_TOP), (vx, vy, NF_VAT_TOP + 1.6), 1.6, 1.2, "core", n=10)
-        m.cyl((vx - NF_VAT_R, vy, 9.0), (cx + 24.0, vy, 10.0), 1.3, 1.3, "pipe", n=8)
-        collar(m, (vx - NF_VAT_R, vy, 9.0), (cx + 24.0, vy, 10.0), 0.5, 1.8, 0.4, "glow")
+        m.cyl((vx, vy, 1.0), (vx, vy, 4.0), vat_r + 2.0, vat_r + 1.4, "steel_dark", n=16)
+        m.cyl((vx, vy, 4.0), (vx, vy, vat_top - 3.0), vat_r, vat_r, "vat", n=16)
+        for k in range(bars):
+            a = 2 * math.pi * k / bars + 0.3
+            px, py = vx + (vat_r + 0.3) * math.cos(a), vy + (vat_r + 0.3) * math.sin(a)
+            m.cyl((px, py, 4.0), (px, py, vat_top - 3.0), 0.55, 0.55, "spine", n=5)
+        if level >= 1:
+            # Hoops binding the deeper vats.
+            for z in (10.0, 17.0):
+                m.cyl((vx, vy, z), (vx, vy, z + 0.8), vat_r + 0.9, vat_r + 0.9, "steel_dark", n=16)
+        m.cyl((vx, vy, vat_top - 3.0), (vx, vy, vat_top), vat_r + 0.8, vat_r * 0.5, "steel_dark", n=16)
+        if level >= 2:
+            ball(m, (vx, vy, vat_top + 2.0), 2.4, "core", rings=5, n=12)
+        else:
+            m.cyl((vx, vy, vat_top), (vx, vy, vat_top + 1.6), 1.6, 1.2, "core", n=10)
+        m.cyl((vx - vat_r, vy, 9.0), (cx + 24.0, vy, 10.0), 1.3, 1.3, "pipe", n=8)
+        collar(m, (vx - vat_r, vy, 9.0), (cx + 24.0, vy, 10.0), 0.5, 1.8, 0.4, "glow")
+    if level >= 1:
+        # Two lit pylons flanking the maw.
+        for px, py in nf_pylons():
+            m.box((px - 2.2, py - 2.2, 2.0), (px + 2.2, py + 2.2, 4.0), "steel_dark", top="roof")
+            m.cyl((px, py, 4.0), (px, py, 22.0), 2.0, 1.2, "ribbed", n=8)
+            for z in (8.0, 13.0, 18.0):
+                m.cyl((px, py, z), (px, py, z + 0.6), 1.8, 1.8, "glow", n=8, caps=False)
+            ball(m, (px, py, 23.4), 2.0, "core", rings=4, n=10)
+    if level >= 2:
+        # The neural node on the ridge: a collar, a stalk, a brain under a crown, cables to the vats.
+        nz = NF_NODE_Z
+        m.cyl((cx, NF_NODE_Y, nz - 3.0), (cx, NF_NODE_Y, nz + 2.0), 7.0, 5.6, "chitin_dark", n=14)
+        m.cyl((cx, NF_NODE_Y, nz + 2.0), (cx, NF_NODE_Y, nz + 2.6), 5.8, 5.8, "glow", n=14, caps=False)
+        m.cyl((cx, NF_NODE_Y, nz + 2.6), (cx, NF_NODE_Y, NF_BRAIN_Z - NF_BRAIN_R + 1.0), 2.6, 2.2, "ribbed", n=10)
+        ball(m, (cx, NF_NODE_Y, NF_BRAIN_Z), NF_BRAIN_R, "neural", rings=8, n=18, squash=1.15)
+        for i in range(NF_CROWN):
+            a = 2 * math.pi * i / NF_CROWN + 0.3
+            root = (cx + 2.5 * math.cos(a), NF_NODE_Y + 2.5 * math.sin(a), NF_BRAIN_Z - 2.0)
+            knee = (cx + 9.0 * math.cos(a), NF_NODE_Y + 9.0 * math.sin(a), NF_BRAIN_Z + 3.0)
+            tip = nf_crown_tip(i)
+            m.cyl(root, knee, 0.9, 0.7, "spine", n=6)
+            m.cyl(knee, tip, 0.7, 0.2, "spine", n=6)
+            ball(m, tip, 0.9, "core", rings=4, n=8)
+        m.cyl((cx, NF_NODE_Y, NF_BRAIN_Z + 8.0), (cx, NF_NODE_Y, NF_BRAIN_Z + 8.5), 8.0, 8.0, "glow", n=20, caps=False)
+        for vx, vy in NF_VATS:
+            a = np.array([cx + 4.5, NF_NODE_Y + (vy - NF_NODE_Y) * 0.12, nz + 1.0])
+            b = np.array([vx - 1.5, vy, vat_top + 2.0])
+            mid = (a + b) / 2 + np.array([0.0, 0.0, 3.0])
+            m.cyl(a, mid, 0.8, 0.8, "glow", n=8)
+            m.cyl(mid, b, 0.8, 0.8, "glow", n=8)
+            ball(m, mid, 1.1, "steel_dark", rings=4, n=8)
+            collar(m, a, mid, 0.5, 1.3, 0.3, "steel_dark")
+            collar(m, mid, b, 0.5, 1.3, 0.3, "steel_dark")
     # Crane: a pylon at the back-west corner, a jointed arm out over the vault, a claw holding a pod.
     px_, py_ = NF_PYLON
     m.box((px_ - 4.5, py_ - 4.5, 1.0), (px_ + 4.5, py_ + 4.5, 5.0), "steel_dark", top="roof")
@@ -1062,24 +1153,38 @@ def build_forge(with_pad: bool) -> ra.Mesh:
         m.cyl(w, mid, 1.0, 0.8, "spine", n=5)
         m.cyl(mid, tip, 0.8, 0.2, "spine", n=5)
     # The pod it carries: a glowing walker core being lowered in.
-    ball(m, (kx, ky, NF_ARM_Z - 6.5), 2.6, "core", rings=5, n=10)
+    ball(m, (kx, ky, NF_ARM_Z - 6.5), L["pod_r"], "core", rings=5, n=10)
     return m
 
 
 def forge_spots() -> dict:
+    return forge_level_spots(0)
+
+
+def forge_level_spots(level: int) -> dict:
     cx = NF_CX
     hwf, htf = NF_HW[1], NF_HT[1]
     kx, ky = NF_CLAW
+    L = NF_LEVELS[level]
+    vat_r, vat_top = L["vat_r"], L["vat_top"]
     segs = [nf_seg(i) for i in range(NF_SEGS - 1)]
-    return {
+    spots = {
         "maw": (cx, NF_Y1 + 0.3, NF_Z0 + htf * NF_MAW_H * 0.35),
         "apron": [(cx, NF_Y1 + y + 0.6, 2.25) for y in (6.0, 11.0, 16.0)],
-        "vats": [(vx - NF_VAT_R * 0.7, vy + NF_VAT_R * 0.7, 11.0) for vx, vy in NF_VATS],
+        "vats": [(vx - vat_r * 0.7, vy + vat_r * 0.7, 11.0 if level == 0 else 14.0) for vx, vy in NF_VATS],
         "pod": (kx, ky, NF_ARM_Z - 6.5),
         "seams": [(cx - hw1 * 0.95, y1 + 0.35, NF_Z0 + ht1 * 0.35) for _, y1, _, _, hw1, ht1 in segs[1:]],
-        "smoke": (NF_VATS[1][0], NF_VATS[1][1], NF_VAT_TOP + 1.6),
+        "smoke": (NF_VATS[1][0], NF_VATS[1][1], vat_top + 1.6),
         "stack": (cx, (NF_Y0 + NF_Y1) / 2, NF_Z0 + NF_HT[1] + 12.0),
     }
+    if level >= 1:
+        spots["pylons"] = [(px, py, 23.4) for px, py in nf_pylons()]
+    if level >= 2:
+        spots["brain"] = (cx, NF_NODE_Y, NF_BRAIN_Z)
+        spots["crown"] = [nf_crown_tip(i) for i in range(NF_CROWN)]
+        spots["halo"] = (cx, NF_NODE_Y, NF_BRAIN_Z + 8.2)
+        spots["stack"] = (cx, NF_NODE_Y, NF_BRAIN_Z + 14.0)
+    return spots
 
 
 # ---------------------------------------------------------------- Neural Nexus, t(2) x t(2)
@@ -1354,6 +1459,24 @@ CC_DOOR_Y1 = CC_C[1] + 24.5
 CC_DOOR_HW, CC_DOOR_HT = 7.5, 11.0
 # Pod centres, read by the texture to draw the body inside each one.
 PODS: list[tuple[float, float]] = []
+# Research levels (sim/research.ts): plain, Advanced Assembly, Neural Assembly. Same plinth, dome and
+# door, so the pad and the exit never move; the pods grow, the spire climbs, and at Neural a big brain
+# in a rib cage under a sensor crown wires itself into every pod.
+CC_LEVELS = {
+    0: {"pod_z1": CC_POD_Z1, "bulb_z": CC_BULB_Z, "bulb_r": 4.2, "spire_top": CC_SPIRE_TOP},
+    1: {"pod_z1": 27.0, "bulb_z": 41.0, "bulb_r": 4.8, "spire_top": 63.0},
+    2: {"pod_z1": 27.0, "bulb_z": 44.0, "bulb_r": 6.8, "spire_top": 70.0},
+}
+CC_CROWN = 6
+# Top of the pods being drawn, read by the texture to size the body inside.
+POD_TOP = [CC_POD_Z1]
+
+
+def cc_crown_tip(i: int, level: int) -> tuple[float, float, float]:
+    cx, cy = CC_C
+    bz = CC_LEVELS[level]["bulb_z"]
+    a = 2 * math.pi * i / CC_CROWN + math.pi / 6
+    return cx + 8.5 * math.cos(a), cy + 8.5 * math.sin(a), bz + 12.0
 
 
 def cc_pod(a_deg: float) -> tuple[float, float]:
@@ -1373,7 +1496,7 @@ def tex_v3(mat: str, P: np.ndarray, n: np.ndarray) -> np.ndarray:
     k = np.argmin((X[:, None] - pts[None, :, 0]) ** 2 + (Y[:, None] - pts[None, :, 1]) ** 2, axis=1)
     # Across the pod as the camera sees it (the camera looks down the +x+y diagonal).
     u = ((X - pts[k, 0]) - (Y - pts[k, 1])) / math.sqrt(2)
-    h = (Z - CC_POD_Z0) / (CC_POD_Z1 - CC_POD_Z0)
+    h = (Z - CC_POD_Z0) / (POD_TOP[0] - CC_POD_Z0)
     head = np.hypot(u, (h - 0.8) * 9.0) < 1.15
     shoulders = (h > 0.5) & (h < 0.72) & (np.abs(u) < 1.9 - (0.72 - h) * 2.2)
     waist = (h > 0.3) & (h <= 0.5) & (np.abs(u) < 1.15)
@@ -1386,9 +1509,16 @@ def tex_v3(mat: str, P: np.ndarray, n: np.ndarray) -> np.ndarray:
 
 
 def build_conversion(with_pad: bool) -> ra.Mesh:
+    return build_conversion_level(with_pad, 0)
+
+
+def build_conversion_level(with_pad: bool, level: int) -> ra.Mesh:
     global RIB_C
     RIB_C = CC_C
     ra.tex = tex_v3
+    L = CC_LEVELS[level]
+    pod_z1, bz, br, spire_top = L["pod_z1"], L["bulb_z"], L["bulb_r"], L["spire_top"]
+    POD_TOP[0] = pod_z1
     m = ra.Mesh()
     if with_pad:
         pad(m, CC, CC)
@@ -1412,8 +1542,16 @@ def build_conversion(with_pad: bool) -> ra.Mesh:
             if prev is not None:
                 m.cyl(prev, p, 1.1, 1.0, "spine", n=6)
             prev = p
+        if level >= 1:
+            # Lit knuckles up every rib.
+            for t in (0.35, 0.7):
+                r = CC_DOME_R * math.sqrt(1 - t * t) + 1.4
+                ball(m, (cx + r * math.cos(a), cy + r * math.sin(a), CC_DOME_Z + 2.0 + CC_DOME_H * t), 1.0, "core", rings=4, n=8)
     # The door: a short ribbed vestibule out of the dome toward +y, its glowing maw at the front.
     vault_shell(m, cx, CC_DOOR_Y0, CC_DOOR_Y1, CC_DOOR_HW, CC_DOOR_HT, CC_DOOR_HW + 1.0, CC_DOOR_HT + 1.0, CC_DOME_Z, "chitin")
+    if level >= 1:
+        ym = (CC_DOOR_Y0 + CC_DOOR_Y1) / 2
+        vault_shell(m, cx, ym - 0.5, ym + 0.5, CC_DOOR_HW + 1.1, CC_DOOR_HT + 1.1, CC_DOOR_HW + 1.1, CC_DOOR_HT + 1.1, CC_DOME_Z, "glow")
     vault_shell(m, cx, CC_DOOR_Y1 - 1.6, CC_DOOR_Y1, CC_DOOR_HW + 1.6, CC_DOOR_HT + 1.6, CC_DOOR_HW + 2.2, CC_DOOR_HT + 2.2, CC_DOME_Z, "chitin_dark")
     arch_face(m, cx, CC_DOOR_Y1, CC_DOOR_HW * 0.62, CC_DOOR_HT * 0.72, CC_DOOR_HW + 2.2, CC_DOOR_HT + 2.2, CC_DOME_Z, "chitin_dark")
     MAW.update({"x": cx, "z0": CC_DOME_Z, "hw": CC_DOOR_HW * 0.62, "h": CC_DOOR_HT * 0.72})
@@ -1429,13 +1567,17 @@ def build_conversion(with_pad: bool) -> ra.Mesh:
         px, py = cc_pod(a_deg)
         PODS.append((px, py))
         m.cyl((px, py, CC_DOME_Z), (px, py, CC_POD_Z0), CC_POD_R + 1.6, CC_POD_R + 1.1, "steel_dark", n=12)
-        m.cyl((px, py, CC_POD_Z0), (px, py, CC_POD_Z1), CC_POD_R, CC_POD_R, "pod", n=16, caps=False)
+        m.cyl((px, py, CC_POD_Z0), (px, py, pod_z1), CC_POD_R, CC_POD_R, "pod", n=16, caps=False)
         for k in range(4):
             b = 2 * math.pi * k / 4 + math.radians(a_deg) + math.pi / 4
             qx, qy = px + (CC_POD_R + 0.25) * math.cos(b), py + (CC_POD_R + 0.25) * math.sin(b)
-            m.cyl((qx, qy, CC_POD_Z0), (qx, qy, CC_POD_Z1), 0.5, 0.5, "spine", n=5)
-        m.cyl((px, py, CC_POD_Z1), (px, py, CC_POD_Z1 + 2.2), CC_POD_R + 0.6, CC_POD_R * 0.45, "steel_dark", n=12)
-        m.cyl((px, py, CC_POD_Z1 + 2.2), (px, py, CC_POD_Z1 + 3.4), 1.0, 0.6, "core", n=8)
+            m.cyl((qx, qy, CC_POD_Z0), (qx, qy, pod_z1), 0.5, 0.5, "spine", n=5)
+        m.cyl((px, py, pod_z1), (px, py, pod_z1 + 2.2), CC_POD_R + 0.6, CC_POD_R * 0.45, "steel_dark", n=12)
+        if level >= 1:
+            m.cyl((px, py, pod_z1 + 0.2), (px, py, pod_z1 + 0.8), CC_POD_R + 0.75, CC_POD_R + 0.75, "glow", n=12, caps=False)
+            ball(m, (px, py, pod_z1 + 3.4), 1.5, "core", rings=4, n=10)
+        else:
+            m.cyl((px, py, pod_z1 + 2.2), (px, py, pod_z1 + 3.4), 1.0, 0.6, "core", n=8)
         a = math.radians(a_deg)
         inner = (cx + (CC_DOME_R - 1.0) * math.cos(a), cy + (CC_DOME_R - 1.0) * math.sin(a), CC_POD_Z1 - 1.0)
         outer = (px - CC_POD_R * math.cos(a), py - CC_POD_R * math.sin(a), CC_POD_Z1 - 3.0)
@@ -1443,36 +1585,83 @@ def build_conversion(with_pad: bool) -> ra.Mesh:
         collar(m, outer, inner, 0.45, 1.5, 0.35, "glow")
     # The synapse spire: a collar on the crown, a ribbed shaft, a neural bulb, fins, and the beacon.
     m.cyl((cx, cy, dome_top - 2.0), (cx, cy, dome_top + 2.5), 5.5, 4.2, "steel_dark", n=14)
-    m.cyl((cx, cy, dome_top + 2.5), (cx, cy, CC_BULB_Z - 3.0), 2.8, 2.2, "ribbed", n=10)
+    m.cyl((cx, cy, dome_top + 2.5), (cx, cy, bz - (3.0 if level == 0 else br - 1.2)), 2.8, 2.2, "ribbed", n=10)
     for z in (dome_top + 5.0, dome_top + 9.0):
         m.cyl((cx, cy, z), (cx, cy, z + 0.7), 3.1, 3.1, "glow", n=10, caps=False)
-    ball(m, (cx, cy, CC_BULB_Z), 4.2, "neural", rings=8, n=18, squash=1.2)
-    m.cyl((cx, cy, CC_BULB_Z + 4.0), (cx, cy, CC_SPIRE_TOP), 2.0, 0.5, "ribbed", n=10)
-    for i in range(3):
-        a = 2 * math.pi * i / 3 + math.pi / 4
-        root = (cx + 1.5 * math.cos(a), cy + 1.5 * math.sin(a), CC_BULB_Z + 6.0)
-        knee = (cx + 6.0 * math.cos(a), cy + 6.0 * math.sin(a), CC_BULB_Z + 10.0)
-        tip = (cx + 4.0 * math.cos(a), cy + 4.0 * math.sin(a), CC_BULB_Z + 17.0)
-        m.cyl(root, knee, 0.9, 0.7, "spine", n=6)
-        m.cyl(knee, tip, 0.7, 0.2, "spine", n=6)
-        ball(m, knee, 0.9, "core", rings=4, n=8)
-    m.cyl((cx, cy, CC_BULB_Z + 12.0), (cx, cy, CC_BULB_Z + 12.5), 5.5, 5.5, "glow", n=20, caps=False)
-    ball(m, (cx, cy, CC_SPIRE_TOP + 0.8), 1.6, "core", rings=4, n=10)
+    if level >= 1:
+        m.cyl((cx, cy, dome_top + 13.0), (cx, cy, dome_top + 13.7), 3.1, 3.1, "glow", n=10, caps=False)
+    ball(m, (cx, cy, bz), br, "neural", rings=8, n=18, squash=1.2)
+    m.cyl((cx, cy, bz + (4.0 if level == 0 else br * 0.95)), (cx, cy, spire_top), 2.0, 0.5, "ribbed", n=10)
+    if level >= 2:
+        # A rib cage round the brain, a sensor crown above it, and tendrils down into every pod.
+        for i in range(6):
+            a = 2 * math.pi * (i + 0.5) / 6
+            prev = None
+            for t in np.linspace(-0.85, 0.85, 7):
+                r = (br + 1.4) * math.sqrt(1 - t * t) + 0.3
+                p = np.array([cx + r * math.cos(a), cy + r * math.sin(a), bz + (br * 1.2 + 1.4) * t])
+                if prev is not None:
+                    m.cyl(prev, p, 0.7, 0.7, "spine", n=6)
+                prev = p
+        for i in range(CC_CROWN):
+            a = 2 * math.pi * i / CC_CROWN + math.pi / 6
+            root = (cx + 2.0 * math.cos(a), cy + 2.0 * math.sin(a), bz + br * 1.1)
+            knee = (cx + 9.0 * math.cos(a), cy + 9.0 * math.sin(a), bz + br + 3.0)
+            tip = cc_crown_tip(i, level)
+            m.cyl(root, knee, 0.9, 0.7, "spine", n=6)
+            m.cyl(knee, tip, 0.7, 0.2, "spine", n=6)
+            ball(m, tip, 0.9, "core", rings=4, n=8)
+        for a_deg in CC_PODS:
+            px, py = cc_pod(a_deg)
+            a = math.radians(a_deg)
+            s = np.array([cx + br * 0.7 * math.cos(a), cy + br * 0.7 * math.sin(a), bz - br * 0.6])
+            e = np.array([px, py, pod_z1 + 4.6])
+            mid = (s + e) / 2 + np.array([0.0, 0.0, -1.5])
+            m.cyl(s, mid, 0.8, 0.7, "glow", n=6)
+            m.cyl(mid, e, 0.7, 0.6, "glow", n=6)
+        m.cyl((cx, cy, bz + br + 7.0), (cx, cy, bz + br + 7.5), 7.5, 7.5, "glow", n=24, caps=False)
+    else:
+        fin_z = (6.0, 10.0, 17.0) if level == 0 else (6.0, 11.0, 20.0)
+        fin_r = 6.0 if level == 0 else 7.0
+        for i in range(3):
+            a = 2 * math.pi * i / 3 + math.pi / 4
+            root = (cx + 1.5 * math.cos(a), cy + 1.5 * math.sin(a), bz + fin_z[0])
+            knee = (cx + fin_r * math.cos(a), cy + fin_r * math.sin(a), bz + fin_z[1])
+            tip = (cx + 4.0 * math.cos(a), cy + 4.0 * math.sin(a), bz + fin_z[2])
+            m.cyl(root, knee, 0.9, 0.7, "spine", n=6)
+            m.cyl(knee, tip, 0.7, 0.2, "spine", n=6)
+            ball(m, knee, 0.9, "core", rings=4, n=8)
+            if level >= 1:
+                ball(m, tip, 0.7, "core", rings=4, n=8)
+    m.cyl((cx, cy, bz + 12.0), (cx, cy, bz + 12.5), 5.5, 5.5, "glow", n=20, caps=False)
+    ball(m, (cx, cy, spire_top + 0.8), 1.6 if level == 0 else 2.0, "core", rings=4, n=10)
     return m
 
 
 def conversion_spots() -> dict:
+    return conversion_level_spots(0)
+
+
+def conversion_level_spots(level: int) -> dict:
     cx, cy = CC_C
+    L = CC_LEVELS[level]
+    pod_z1, bz, spire_top = L["pod_z1"], L["bulb_z"], L["spire_top"]
     pods = [cc_pod(a) for a in CC_PODS]
-    return {
+    spots = {
         "maw": (cx, CC_DOOR_Y1 + 0.1, CC_DOME_Z + CC_DOOR_HT * 0.72 * 0.35),
-        "pods": [(px + CC_POD_R * 0.7, py + CC_POD_R * 0.7, (CC_POD_Z0 + CC_POD_Z1) / 2) for px, py in pods],
-        "bulb": (cx, cy, CC_BULB_Z),
-        "halo": (cx, cy, CC_BULB_Z + 12.2),
-        "beacon": (cx, cy, CC_SPIRE_TOP + 0.8),
+        "pods": [(px + CC_POD_R * 0.7, py + CC_POD_R * 0.7, (CC_POD_Z0 + pod_z1) / 2) for px, py in pods],
+        "bulb": (cx, cy, bz),
+        "halo": (cx, cy, bz + 12.2),
+        "beacon": (cx, cy, spire_top + 0.8),
         "apron": [(cx, CC_DOOR_Y1 + y + 0.5, 2.25) for y in (3.0, 7.0, 11.0)],
-        "stack": (cx, cy, CC_SPIRE_TOP + 4.0),
+        "stack": (cx, cy, spire_top + 4.0),
     }
+    if level >= 1:
+        spots["caps"] = [(px, py, pod_z1 + 3.4) for px, py in pods]
+    if level >= 2:
+        spots["crown"] = [cc_crown_tip(i, level) for i in range(CC_CROWN)]
+        spots["halo2"] = (cx, cy, bz + L["bulb_r"] + 7.2)
+    return spots
 
 
 BUILDINGS = {
@@ -1485,6 +1674,10 @@ BUILDINGS = {
     "fusioncore": (FC, FC, 2.0, build_fusioncore, fusioncore_spots),
     "fusioncore-reactor": (FC, FC, 2.0, lambda pad_: build_fusioncore_level(pad_, 1), lambda: fusioncore_level_spots(1)),
     "forge": (NF, NF, 2.0, build_forge, forge_spots),
+    "forge-advanced": (NF, NF, 2.0, lambda pad_: build_forge_level(pad_, 1), lambda: forge_level_spots(1)),
+    "forge-neural": (NF, NF, 2.0, lambda pad_: build_forge_level(pad_, 2), lambda: forge_level_spots(2)),
+    "conversion-advanced": (CC, CC, 3.0, lambda pad_: build_conversion_level(pad_, 1), lambda: conversion_level_spots(1)),
+    "conversion-neural": (CC, CC, 3.0, lambda pad_: build_conversion_level(pad_, 2), lambda: conversion_level_spots(2)),
     "nexus": (NX, NX, 3.0, build_nexus, nexus_spots),
     "aerie": (AE, AE, 2.0, build_aerie, aerie_spots),
 }

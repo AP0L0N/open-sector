@@ -13,7 +13,7 @@
   },
   "lines": {
     "select": [
-      "Wasp aloft.",
+      "Interceptor aloft.",
       "Wings ready.",
       "We buzz."
     ],
@@ -28,7 +28,7 @@
       "Swarm the prey."
     ],
     "ready": [
-      "Wasp takes wing."
+      "Interceptor takes wing."
     ]
   },
   "sfx": {

@@ -2569,7 +2569,7 @@ export function energyShieldOf(type: EntityType): EnergyShieldDef | undefined {
 
 /**
  * Hive energy dome (sim/energy-shield.ts). The unit holds a full dome of energy round itself
- * whenever it is up and running, fighting or not, and the dome walks with it. Whatever comes in
+ * whenever it is up and running, fighting or not, and the dome walks with it (a Siphon's only stands while it is still). Whatever comes in
  * from outside stops on it: every round and beam, shells and bombs dropping from above, the
  * blast of a burst outside, a blow at arm's reach. Its own side inside walks and shoots out
  * freely; no enemy ground unit walks in. Each hit drains the unit's energy by the hit's damage.
@@ -2585,8 +2585,10 @@ export interface EnergyDomeDef {
   rechargeSeconds: number;
   /** Energy regained each second while the dome stands. */
   regenPerSecond: number;
+  /** Cast only while the unit stands still: walking, the dome is down and the unit keeps what energy it had. */
+  still?: true;
 }
-export const SIPHON_DOME: EnergyDomeDef = { energy: 800, radiusTiles: t(3), rechargeSeconds: 20, regenPerSecond: 12 };
+export const SIPHON_DOME: EnergyDomeDef = { energy: 800, radiusTiles: t(3), rechargeSeconds: 20, regenPerSecond: 12, still: true };
 /** The Hive Ark's dome over its whole hull (ARK_HULL_RADIUS 40 px): far stronger, slower to come back. */
 export const ARK_DOME: EnergyDomeDef = { energy: 4000, radiusTiles: t(1.7), rechargeSeconds: 30, regenPerSecond: 20 };
 /** The Mothership's dome round its hull, up in the air (MOTHERSHIP_DOME_DEPTH): as wide as the Ark's. */
@@ -4385,7 +4387,7 @@ export const SHADE_SPOT_TILES = t(2);
  */
 export const ASSEMBLER_THRALLS = 10;
 export const ASSEMBLER_SPEEDUP = 3;
-export const ASSEMBLER_REGEN_SECONDS = 5;
+export const ASSEMBLER_REGEN_SECONDS = 10;
 
 /**
  * Mawcaster: the hive's answer to the Nebelwerfer. Six spore pods per salvo on a high arc, half
@@ -7073,7 +7075,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     power: 0,
     tileW: 1,
     tileH: 1,
-    radius: 13,
+    radius: 16,
     moveTilesPerSec: paced(1.15),
     turnDegPerSec: 480,
     rangeTiles: JUGGERNAUT_REACH_TILES,
@@ -7127,7 +7129,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: 0,
     leavesWreck: true,
     wreckHp: 32,
-    blurb: `Heavy assimilator on four legs with a forked emitter on its back. It carries no weapon. Instead it holds a dome of energy ${SIPHON_DOME.radiusTiles / TILE_SUBDIV} cells wide round itself, and the dome walks with it. Everything that comes in from outside stops on the dome: rounds, rockets, beams and flame, shells and bombs falling from above, the blast of a burst outside it, a blow at arm's reach. Your own units under it shoot and walk out freely; no enemy walks in. Every hit drains the Siphon's energy (${SIPHON_DOME.energy}) by its damage, and a standing dome slowly regains it. Drained to nothing, the dome is gone until the energy fills all the way back, ${SIPHON_DOME.rechargeSeconds} seconds, and then it is cast again. Burrow sinks it half into the ground where it stands: its back and emitter stay above the dirt, seen and shot at, but dug in it takes ${SIPHON_BURROW_HP} times the beating. It cannot walk until it hauls itself back out; the dome stands all the while.`,
+    blurb: `Heavy assimilator on four legs with a forked emitter on its back. It carries no weapon. Instead it holds a dome of energy ${SIPHON_DOME.radiusTiles / TILE_SUBDIV} cells wide round itself while it stands still. On the move the dome is down; it rises again, with the energy it had, as soon as the Siphon stops. Everything that comes in from outside stops on the dome: rounds, rockets, beams and flame, shells and bombs falling from above, the blast of a burst outside it, a blow at arm's reach. Your own units under it shoot and walk out freely; no enemy walks in. Every hit drains the Siphon's energy (${SIPHON_DOME.energy}) by its damage, and a standing dome slowly regains it. Drained to nothing, the dome is gone until the energy fills all the way back, ${SIPHON_DOME.rechargeSeconds} seconds, and then it is cast again. Burrow sinks it half into the ground where it stands: its back and emitter stay above the dirt, seen and shot at, but dug in it takes ${SIPHON_BURROW_HP} times the beating. It cannot walk until it hauls itself back out; the dome stands all the while.`,
   },
   /** Xenite heavy assimilator: a small walking nanite forge that builds Thralls. Unarmed. */
   assembler: {
@@ -7159,7 +7161,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: 0,
     leavesWreck: true,
     wreckHp: 35,
-    blurb: `A small nanite forge on four short legs. It carries no weapon. From the moment it leaves the Forge it builds Enforcers by itself, ${ASSEMBLER_SPEEDUP} times as fast as a Forge, and sets each one down behind it. Every Enforcer spends ${Math.round(100 / ASSEMBLER_THRALLS)}% of its energy, ${ASSEMBLER_THRALLS} at most. When one of its Enforcers dies, that ${Math.round(100 / ASSEMBLER_THRALLS)}% slowly flows back over ${ASSEMBLER_REGEN_SECONDS} seconds, and it builds a new one. Its Enforcers are Enforcers like any other: they count against your units and run on the uplink. At the unit cap it holds the next one until there is room. Thick plate on every face. Keep it behind the line. Needs Advanced Forge.`,
+    blurb: `A small nanite forge on four short legs. It carries no weapon. From the moment it leaves the Forge it builds Enforcers by itself, ${ASSEMBLER_SPEEDUP} times as fast as a Forge, and sets each one down behind it. Unless you give it a rally point, each new Enforcer stands guard over it. Every Enforcer spends ${Math.round(100 / ASSEMBLER_THRALLS)}% of its energy, ${ASSEMBLER_THRALLS} at most. When one of its Enforcers dies, that ${Math.round(100 / ASSEMBLER_THRALLS)}% slowly flows back over ${ASSEMBLER_REGEN_SECONDS} seconds, and it builds a new one. Its Enforcers are Enforcers like any other: they count against your units and run on the uplink. At the unit cap it holds the next one until there is room. Thick plate on every face. Keep it behind the line. Needs Advanced Forge.`,
   },
   /** Xenite heavy assimilator: spore-pod rocket artillery. */
   mawcaster: {

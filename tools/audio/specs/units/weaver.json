@@ -13,14 +13,14 @@
   },
   "lines": {
     "select": [
-      "Weaver.",
+      "Bulwark.",
       "We mend.",
       "The threads are ready.",
       "[whispers] Nothing is lost."
     ],
     "move": [
       "Following the hive.",
-      "Weaver moves.",
+      "Bulwark moves.",
       "To the wounded.",
       "Complying."
     ],
@@ -30,7 +30,7 @@
       "Others will strike."
     ],
     "ready": [
-      "Weaver grown. Threads spun."
+      "Bulwark grown. Threads spun."
     ],
     "special": [
       "Weaving.",
@@ -38,7 +38,7 @@
     ],
     "die": [
       "[sighs] Threads... unravel...",
-      "Weaver... silent..."
+      "Bulwark... silent..."
     ]
   },
   "sfx": {

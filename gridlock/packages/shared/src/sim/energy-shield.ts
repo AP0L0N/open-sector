@@ -26,9 +26,9 @@ import type { Entity, EnergyShield, MatchState, Projectile } from "./types.js";
  * units cannot walk through it. Its own side walks and shoots through.
  * A Weaver throws smaller ones in front of friends under fire (sim/weaver.ts).
  *
- * A Siphon holds a dome instead: the full circle, carried with it wherever it
- * walks, up whenever the Siphon can hold it. The dome stops what comes in from
- * outside, rounds dropping from above and blasts and blows too, and its points
+ * A Siphon holds a dome instead: the full circle, up only while the Siphon stands
+ * still. Walking, it lowers the dome and keeps its energy for when it stops. The
+ * dome stops what comes in from outside, rounds dropping from above and blasts and blows too, and its points
  * are the Siphon's energy. Drained, it is gone until the energy fills back up.
  *
  * A Mothership's dome stands round it up in the air (`aloft`): a bubble about the hull, not a
@@ -358,10 +358,14 @@ export function shieldWallSides(state: MatchState): Set<string> {
   return sides;
 }
 
-/** A Siphon holds its dome whenever it is alive, running, and out in the open; a shielded defence while it stands online. */
+/**
+ * A Siphon holds its dome whenever it is alive, running, out in the open, and standing still; a Hive
+ * Ark or Mothership carries its own on the move. A shielded defence holds one while it stands online.
+ */
 function canHoldDome(e: Entity): boolean {
   if (e.kind === "building") return !!e.forceShield && e.ownerId !== NEUTRAL_OWNER && e.hp > 0 && !e.ruined && !e.wreck && !e.unpowered;
-  return e.kind === "unit" && e.hp > 0 && !e.wreck && !e.shutdown && !e.dormant && e.garrisonedIn == null;
+  if (e.kind !== "unit" || e.hp <= 0 || e.wreck || e.shutdown || e.dormant || e.garrisonedIn != null) return false;
+  return !(energyDomeOf(e.type)?.still && e.waypoints.length > 0);
 }
 
 /** The dome `e` holds: its type's own (a Siphon's, a Hive Ark's), or its Force Shield's, a little past its footprint. */
