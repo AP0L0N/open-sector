@@ -3,6 +3,7 @@
  * The sim says where the beam runs (EntityView.laser); this only paints it.
  */
 import type { EntityView } from "@gridlock/shared";
+import { drawDome, shieldGlow } from "./energy-shield.js";
 
 type LaserView = NonNullable<EntityView["laser"]>;
 
@@ -118,9 +119,10 @@ export function drawLaserBeam(
 }
 
 /**
- * The force field: a pale blue bubble around him, brighter the fuller it is,
- * with a hex shimmer and a hard bright rim for a moment after it soaks a hit.
- * (x, y) is his contact point on screen; `height` is how tall the bubble stands.
+ * The force field, drawn as the hive's own domes are (drawDome): a green glass bubble over
+ * his feet, its ground ring all round. It glows by the hive walls' rule (shieldGlow): dimmer
+ * as it drains, flickering when nearly gone, and flaring for a moment after it soaks a hit.
+ * (x, y) is his contact point on screen; `width` spans the ground ring, `height` the crown.
  */
 export function drawForceField(
   ctx: CanvasRenderingContext2D,
@@ -135,51 +137,9 @@ export function drawForceField(
 ): void {
   if (share <= 0) return;
   const hit = hitAgeMs != null && hitAgeMs >= 0 && hitAgeMs < FIELD_HIT_MS ? 1 - hitAgeMs / FIELD_HIT_MS : 0;
-  const pulse = 0.5 + 0.5 * Math.sin(nowMs * 0.004 + seed);
-  const cx = x;
-  const cy = y - height * 0.45;
+  const glow = Math.min(1, shieldGlow({ hp: share, hpMax: 1 }, nowMs, seed) + 0.45 * hit);
   const rx = width * 0.5;
-  const ry = height * 0.58;
-  const body = 0.3 + 0.7 * share;
-  ctx.save();
-  ctx.globalCompositeOperation = "lighter";
-  const fill = ctx.createRadialGradient(cx, cy - ry * 0.2, ry * 0.15, cx, cy, Math.max(rx, ry));
-  fill.addColorStop(0, "rgba(120, 190, 255, 0)");
-  fill.addColorStop(0.75, `rgba(110, 180, 255, ${(0.05 + 0.04 * pulse) * body + 0.15 * hit})`);
-  fill.addColorStop(1, `rgba(150, 215, 255, ${(0.14 + 0.06 * pulse) * body + 0.35 * hit})`);
-  ctx.fillStyle = fill;
-  ctx.beginPath();
-  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.lineWidth = 1 + hit * 1.2;
-  ctx.strokeStyle = `rgba(170, 225, 255, ${0.22 * body + 0.06 * pulse + 0.6 * hit})`;
-  ctx.beginPath();
-  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-  ctx.stroke();
-  if (hit > 0) {
-    // Hex cells light up across the face of the bubble and fade.
-    ctx.strokeStyle = `rgba(200, 240, 255, ${0.55 * hit})`;
-    ctx.lineWidth = 0.8;
-    const cell = Math.max(3, width * 0.16);
-    for (let row = -2; row <= 2; row++) {
-      for (let col = -2; col <= 2; col++) {
-        const hx = cx + col * cell * 1.5;
-        const hy = cy + row * cell * 1.7 + (col % 2 === 0 ? 0 : cell * 0.85);
-        const nx = (hx - cx) / rx;
-        const ny = (hy - cy) / ry;
-        if (nx * nx + ny * ny > 0.8) continue;
-        if (hash(seed + row * 13 + col * 7 + Math.floor(nowMs / 60)) < 0.45) continue;
-        ctx.beginPath();
-        for (let k = 0; k <= 6; k++) {
-          const a = (k / 6) * Math.PI * 2;
-          const px = hx + Math.cos(a) * cell * 0.9;
-          const py = hy + Math.sin(a) * cell * 0.9;
-          if (k === 0) ctx.moveTo(px, py);
-          else ctx.lineTo(px, py);
-        }
-        ctx.stroke();
-      }
-    }
-  }
-  ctx.restore();
+  // The ground ring is a 2:1 iso circle; the crown stands where the old bubble's top did.
+  const ry = rx * 0.5;
+  drawDome(ctx, { x, y }, rx, ry, Math.max(0, height * 1.03 - ry), glow);
 }
