@@ -1746,8 +1746,8 @@ export const HIVEARK_CANNON: TurretSpriteDef = { image: new Image(), dirs: TANK_
 bindHiveArkSheets({ hull: HIVEARK_SPRITE.image, cannon: HIVEARK_CANNON.image });
 
 /**
- * Mothership hull, without its mounts: render/mothership.ts lays the four mounts over it, each on
- * its own pivot and bearing. Drawn at the sim's width, not UNIT_VISUAL_SCALE, lifted to its height.
+ * Mothership: one plated cube, no mounts. Drawn at the sim's width, not UNIT_VISUAL_SCALE, lifted
+ * to its height; render/mothership.ts draws its tractor beams.
  */
 export const MOTHERSHIP_SPRITE: UnitSpriteDef = {
   image: new Image(),
@@ -1759,16 +1759,7 @@ export const MOTHERSHIP_SPRITE: UnitSpriteDef = {
   contactY: MOTHERSHIP_MODEL.cyFrac,
   facingSpace: "world",
 };
-const mothershipMount = (): TurretSpriteDef => ({ image: new Image(), dirs: TANK_FACE_DIRS, frames: 1, frameSize: MOTHERSHIP_MODEL.cell });
-/** The Mothership's mount sheets: the Spine Turret's head, the Pulse Spire's, and the two maws. */
-export const MOTHERSHIP_MOUNT_SHEETS = { spine: mothershipMount(), pulse: mothershipMount(), maw: mothershipMount(), flak: mothershipMount() };
-bindMothershipSheets({
-  hull: MOTHERSHIP_SPRITE.image,
-  spine: MOTHERSHIP_MOUNT_SHEETS.spine.image,
-  pulse: MOTHERSHIP_MOUNT_SHEETS.pulse.image,
-  maw: MOTHERSHIP_MOUNT_SHEETS.maw.image,
-  flak: MOTHERSHIP_MOUNT_SHEETS.flak.image,
-});
+bindMothershipSheets({ hull: MOTHERSHIP_SPRITE.image });
 
 /** Wing-stroke frames a second on the Xenite insects: a blur of a beat at play size. */
 export const WING_BEAT_FPS = 24;

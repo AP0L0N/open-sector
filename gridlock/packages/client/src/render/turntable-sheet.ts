@@ -708,17 +708,12 @@ export function bindHiveArkSheets(images: Record<keyof typeof hivearkGlobs, HTML
 
 const mothershipGlobs = {
   hull: import.meta.glob("../assets/units/mothership/hull/*.png", { eager: true, import: "default" }) as Record<string, string>,
-  spine: import.meta.glob("../assets/units/mothership/spine/*.png", { eager: true, import: "default" }) as Record<string, string>,
-  pulse: import.meta.glob("../assets/units/mothership/pulse/*.png", { eager: true, import: "default" }) as Record<string, string>,
-  maw: import.meta.glob("../assets/units/mothership/maw/*.png", { eager: true, import: "default" }) as Record<string, string>,
-  flak: import.meta.glob("../assets/units/mothership/flak/*.png", { eager: true, import: "default" }) as Record<string, string>,
 };
 let mothershipPrevious: string[] = [];
 
 /**
- * Mothership: the hull and its four mounts (tools/sprites/render_mothership.py), stacked 1:1
- * into rows like the Hive Ark's layers, so render/mothership.ts can place each mount by its
- * model position.
+ * Mothership: the cube hull (tools/sprites/render_mothership.py), stacked 1:1 into rows like the
+ * Hive Ark's layers.
  */
 export function bindMothershipSheets(images: Record<keyof typeof mothershipGlobs, HTMLImageElement>): void {
   const names = Object.keys(mothershipGlobs) as (keyof typeof mothershipGlobs)[];

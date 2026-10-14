@@ -465,6 +465,8 @@ export class SoundTracker {
       if (byId.has(id)) continue;
       this.lastHp.delete(id);
       if (prev.wreck) continue;
+      // Drawn up into a Mothership: it goes in a flash of light (the blink), not an explosion.
+      if (prev.absorb) continue;
       if (prev.type === "aswheli" && prev.hp > prev.hpMax * LOST_HP_SHARE) {
         // Gone whole: it came down on its ship's deck and was stowed.
         out.push({ kind: "unitsfx", type: prev.type, cue: "special", x: prev.x, y: prev.y });

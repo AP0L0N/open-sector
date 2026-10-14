@@ -163,7 +163,7 @@ import { canSeeEntity } from "./vision.js";
 import { blastWrecks, toWreck } from "./wreck.js";
 import { blastClutter } from "./clutter.js";
 import { catchLanding, domeOver, domeShelters, soakEnergyStrike } from "./energy-shield.js";
-import { mothershipForceReaches, mothershipHurts } from "./mothership.js";
+import { mothershipCanTake, mothershipDown } from "./mothership.js";
 import type { AirState, Entity, MatchState, Order, Projectile } from "./types.js";
 
 /** Runway heading of an unturned Airfield, world radians: the strip runs east–west. A turned one adds its facing. */
@@ -1765,7 +1765,7 @@ const HOVER_CLEAR_ALT = 3;
  * over it at OVERSEER_HOVER_ALT, follow it, and burn down on it (firePulse); the Drifter sets
  * straight back down on its nest. A Wasp or a Scourge hangs a few cells off its target, turned
  * on it, and fires from there (waspStation, scourgeStation); a Gnat hangs over what it watches.
- * A Xenite flier never lands.
+ * A Xenite flier never lands, but a Mothership short of hive power comes down (mothershipDown).
  */
 function tickHover(state: MatchState, e: Entity, dt: number): void {
   const a = e.air!;
@@ -1774,6 +1774,7 @@ function tickHover(state: MatchState, e: Entity, dt: number): void {
   a.taxi = false;
   a.roll = 0;
   a.extend = false;
+  if (isMothership(e.type) && mothershipDown(state, e, dt)) return;
   if (a.phase === "takeoff") {
     a.touched = false;
     a.speed = 0;
@@ -1889,7 +1890,7 @@ function hoverStrike(state: MatchState, e: Entity): HoverStrike | null {
   if (o.kind === "forceattack" && o.x != null && o.y != null) {
     const t = o.targetId != null ? state.entities.get(o.targetId) : undefined;
     // Only the Wasp's cannon, or the Mothership's flak maw, reach a plane in the air.
-    const reachesAir = isMothership(e.type) ? !!t && mothershipForceReaches(t) : isFighterType(e.type) && !!t && gunsHurt(e, t);
+    const reachesAir = isMothership(e.type) ? !!t && mothershipCanTake(state, e, t, true) : isFighterType(e.type) && !!t && gunsHurt(e, t);
     if (o.targetId != null && (!t || t.hp <= 0 || isCrashing(t) || (isAirborne(t) && !reachesAir))) {
       e.order = null;
       return null;
@@ -1897,7 +1898,7 @@ function hoverStrike(state: MatchState, e: Entity): HoverStrike | null {
     return { x: t?.x ?? o.x, y: t?.y ?? o.y, target: t, forced: true };
   }
   if (o.kind === "attackmove" || o.kind === "guard" || o.kind === "patrol") {
-    // The Mothership flies its order on: its mounts pick their own targets as it goes (sim/mothership.ts).
+    // The Mothership flies its order on: its beams take what they find as it goes (sim/mothership.ts).
     if (isMothership(e.type)) return null;
     let t = e.attackTarget != null ? state.entities.get(e.attackTarget) : undefined;
     if (t && (!hoverFinds(state, e, t) || !canSeeEntity(state, e.ownerId, t))) t = undefined;
@@ -1918,7 +1919,7 @@ type HoverStrike = { x: number; y: number; target?: Entity; forced: boolean };
 /** What this hovering flier can fire on: the Overseer's pulse, or a Wasp's or Scourge's guns and bomb. */
 function hoverFinds(state: MatchState, e: Entity, t: Entity): boolean {
   if (isHoverType(e.type)) return pulseFinds(state, e, t);
-  if (isMothership(e.type)) return t.hp > 0 && !t.wreck && !isCrashing(t) && mothershipHurts(state, e, t);
+  if (isMothership(e.type)) return mothershipCanTake(state, e, t);
   if (t.hp <= 0 || t.wreck || isCrashing(t) || t.garrisonedIn != null || allies(state, e.ownerId, t.ownerId)) return false;
   return canHurt(state, e, t);
 }
@@ -1980,7 +1981,7 @@ function waspStation(state: MatchState, e: Entity, strike: HoverStrike, dt: numb
 
 /**
  * The Mothership on station: hang MOTHERSHIP_STANDOFF_TILES off what it was sent at, turned on it,
- * at its cruise height. Its mounts lay and fire by themselves (sim/mothership.ts).
+ * at its cruise height. Its beams light and absorb by themselves (sim/mothership.ts).
  */
 function mothershipStation(state: MatchState, e: Entity, strike: HoverStrike, dt: number): void {
   holdOff(state, e, strike.x, strike.y, MOTHERSHIP_STANDOFF_TILES * state.tileSize, dt);

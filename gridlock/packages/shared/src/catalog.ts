@@ -4967,44 +4967,38 @@ export const ARK_WASP_LEASH_TILES = t(5);
 export const ARK_WASP_DOCK_TILES = t(0.8);
 
 /**
- * Mothership (sim/mothership.ts). The hive's flying capital ship: a vast chitin saucer that
- * lifts out of the Aerie and cruises high (MOTHERSHIP_CRUISE_ALT, over AIR_HIGH_ALT), so only
- * anti-air guns reach it, and sees far. Four mounts work on their own, each with its own cell,
- * each the very gun it is named for:
- *   spine  a Spine Turret's twin pulse repeater (catalog spineturret): soldiers first;
- *   pulse  a Pulse Spire's emitter (catalog pulsespire): armor first;
- *   maw    a Mawcaster's maw on Ground attacks (MAWCASTER_POD), out of the same band;
- *   flak   a Mawcaster's maw on Air attacks (MAWCASTER_AIR_BALL): planes, Jump Jets, low drones.
- * The spine and pulse rounds come down from its height onto roofs. An energy dome rides round
- * the hull in the air (MOTHERSHIP_DOME): rounds climbing at the ship stop on it and air bursts
- * outside it do not reach in, but ground fire passes under it and nobody is fenced off below.
+ * Mothership (sim/mothership.ts). The hive's flying capital ship: a vast plated cube that lifts
+ * out of the Aerie and cruises high (MOTHERSHIP_CRUISE_ALT, over AIR_HIGH_ALT), so only anti-air
+ * guns reach it, and sees far. It carries no guns: it takes what it fights. Up to MOTHERSHIP_BEAMS
+ * enemy units at once in MOTHERSHIP_BEAM_TILES, each first lit by a blue tractor light for
+ * MOTHERSHIP_LIGHT_SECONDS, then drawn up and absorbed over MOTHERSHIP_ABSORB_BASE_SECONDS plus
+ * MOTHERSHIP_ABSORB_SECONDS_PER_PX for every px of its radius: the bigger, the slower. An
+ * absorbed unit is gone with nothing left behind, and fills the dome by its full hit points
+ * times MOTHERSHIP_ABSORB_ENERGY_PER_HP. An energy dome rides round the hull in the air
+ * (MOTHERSHIP_DOME). Short of hive power it goes offline like any other unit: it comes down
+ * (MOTHERSHIP_FALL_PER_SEC) to the ground, where ground fire reaches it, and over water it sinks
+ * out of sight. With the power back it lifts and carries on.
  */
-export type MothershipMount = "spine" | "pulse" | "maw" | "flak";
-export const MOTHERSHIP_MOUNTS: readonly MothershipMount[] = ["spine", "pulse", "maw", "flak"];
-/** The hull's radius in world px: its hitbox, and the scale the art and the mounts are laid on. */
+/** The hull's radius in world px: its hitbox, and the scale the art is laid on. */
 export const MOTHERSHIP_HULL_RADIUS = 40;
 /** Height it cruises at: above AIR_HIGH_ALT, the Gnat's and the Horten's height. */
 export const MOTHERSHIP_CRUISE_ALT = 40;
-/** Sent at a target it hangs this far off it, inside the spine's reach and short of the pulse's. */
-export const MOTHERSHIP_STANDOFF_TILES = t(9);
+/** Sent at a target it hangs this far off it, well inside its beam's reach. */
+export const MOTHERSHIP_STANDOFF_TILES = t(5);
+/** How far from under the hull a tractor beam reaches, and how many it holds at once. */
+export const MOTHERSHIP_BEAM_TILES = t(9);
+export const MOTHERSHIP_BEAMS = 3;
+/** Seconds the light shines on a unit before it starts to be absorbed. */
+export const MOTHERSHIP_LIGHT_SECONDS = 2;
+/** Seconds to absorb a unit: this, plus this many for each world px of its radius. */
+export const MOTHERSHIP_ABSORB_BASE_SECONDS = 0.5;
+export const MOTHERSHIP_ABSORB_SECONDS_PER_PX = 0.35;
+/** Dome points an absorbed unit gives back, per point of its full hit points. */
+export const MOTHERSHIP_ABSORB_ENERGY_PER_HP = 3;
+/** Offline, it comes down this many height units a second. */
+export const MOTHERSHIP_FALL_PER_SEC = 10;
 /** The dome round the hull reaches this share of its cruise height above and below it. */
 export const MOTHERSHIP_DOME_DEPTH = 0.55;
-/** Each mount's cell: the gun's own on the ground. */
-export const MOTHERSHIP_CELLS: Record<MothershipMount, PlasmaCellDef> = {
-  spine: SPINE_TURRET_CELL,
-  pulse: PULSE_SPIRE_CELL,
-  maw: MAWCASTER_CELL,
-  flak: MAWCASTER_CELL,
-};
-/** Where each mount sits on the hull: along the nose and across to starboard, as shares of MOTHERSHIP_HULL_RADIUS. */
-export const MOTHERSHIP_MOUNT_AT: Record<MothershipMount, { along: number; across: number }> = {
-  spine: { along: 0.62, across: 0 },
-  pulse: { along: -0.55, across: 0 },
-  maw: { along: 0, across: -0.5 },
-  flak: { along: 0, across: 0.5 },
-};
-/** Degrees a second each mount slews: the gun's own. The maw lays as the Mawcaster's does. */
-export const MOTHERSHIP_MAW_TURN_DEG_PER_SEC = 50;
 
 const ENTRIES: Record<EntityType, CatalogEntry> = {
   rig: {
@@ -7506,7 +7500,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     ...UNARMED,
     aircraft: true,
     wreckHp: 60,
-    blurb: `The hive's flying capital ship: a vast chitin saucer grown slowly in the Aerie on a great deal of hive energy, one at a time. It lifts out and cruises high, as high as the Wraith, where only anti-air guns reach it, and sees farther than anything else the hive has, ${(t(11.5) + HORTEN_FLYING_SIGHT_BONUS) / TILE_SUBDIV} tiles around it, nearly as far as the Wraith. It flies slowly and never lands. Four mounts work by themselves, each on its own energy cell, each the very gun it is named for: an Ion Turret's twin repeater cuts down soldiers below, a Disruptor Pylon's emitter drives pulses down through tank roofs, a Nova Mortar's cannon throws plasma salvos on the ground out to ${MAWCASTER_RANGE_TILES / TILE_SUBDIV} tiles but never inside ${MAWCASTER_MIN_RANGE_TILES / TILE_SUBDIV}, and a second Nova Mortar cannon spits balls at planes, Jump Jets, and low drones within ${MAWCASTER_AIR_RANGE_TILES / TILE_SUBDIV} tiles. Sent at a target it hangs off it and every mount that can hurt it joins in; otherwise each picks its own. Force attack lays the Ion Turret, the Disruptor Pylon, and the ground cannon on a point or anything on the ground there, and the air cannon on a flier. An unseen energy dome stands round the hull in the air and shimmers only when something strikes it: anti-air fire and air bursts from outside stop on it, draining its ${MOTHERSHIP_DOME.energy} points, and drained it is gone for ${MOTHERSHIP_DOME.rechargeSeconds} seconds. Fire on the ground passes under it. Needs a Neural Nexus.`,
+    blurb: `The hive's flying capital ship: a vast plated cube grown slowly in the Aerie on a great deal of hive energy, one at a time. It lifts out and cruises high, as high as the Wraith, where only anti-air guns reach it, and sees farther than anything else the hive has, ${(t(11.5) + HORTEN_FLYING_SIGHT_BONUS) / TILE_SUBDIV} tiles around it, nearly as far as the Wraith. It flies slowly and carries no guns: it takes what it fights. Up to ${MOTHERSHIP_BEAMS} enemy units at once within ${MOTHERSHIP_BEAM_TILES / TILE_SUBDIV} tiles are first lit by a blue tractor light, bright even at night, and after ${MOTHERSHIP_LIGHT_SECONDS} seconds drawn up into the hull: a soldier in a few seconds, a tank in about five, a ship far longer. Nothing is left behind, and what it absorbs refills its energy dome. A unit that gets out of reach or out of sight before the end breaks free. Sent at a unit it hangs off it and takes it first; otherwise it takes the nearest. An unseen energy dome stands round the hull in the air and shimmers only when something strikes it: anti-air fire and air bursts from outside stop on it, draining its ${MOTHERSHIP_DOME.energy} points, and drained it is gone for ${MOTHERSHIP_DOME.rechargeSeconds} seconds. Fire on the ground passes under it. It is the hungriest thing the hive runs, so when the hive is short of energy it is the first to go offline: it comes down to the ground, where anything can shoot it, or over water sinks out of sight, and lifts again when the power is back. Needs a Neural Nexus.`,
   },
   // ── The Bloom ───────────────────────────────────────────────────────────────────────────
   /** Bloom HQ on the move: a fat seed-pod on root legs. */

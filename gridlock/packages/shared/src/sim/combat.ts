@@ -2670,21 +2670,20 @@ export function launchRocket(
   dist: number,
   target: Entity | undefined,
   side: number,
-  mount?: { x: number; y: number; z: number; launcher: EntityType; airRack: boolean; forced: boolean },
 ): void {
   const aloft = !!target && isAirborne(target);
   const moving = !!target && (aloft || target.waypoints.length > 0 || target.state === "move");
   // The pods lay on their own bearing, not the torso's. A tube lies along the soldier's.
   // From inside, the tube pokes out of the opening facing the target.
-  const slit = mount ? null : garrisonMuzzleToward(state, e, aimX, aimY);
-  const fromX = mount?.x ?? slit?.x ?? e.x;
-  const fromY = mount?.y ?? slit?.y ?? e.y;
+  const slit = garrisonMuzzleToward(state, e, aimX, aimY);
+  const fromX = slit?.x ?? e.x;
+  const fromY = slit?.y ?? e.y;
   const aim = Math.atan2(aimY - fromY, aimX - fromX);
   const sideX = -Math.sin(aim);
   const sideY = Math.cos(aim);
   const x = fromX + sideX * side;
   const y = fromY + sideY * side;
-  const z0 = mount ? mount.z : muzzleHeight(state, e) + rack.podLift;
+  const z0 = muzzleHeight(state, e) + rack.podLift;
   let goalX = aimX;
   let goalY = aimY;
   if (aloft && target) {
@@ -2740,12 +2739,12 @@ export function launchRocket(
     landX: land.x,
     landY: land.y,
     flightTime: flight,
-    harmAllies: mount ? mount.forced : e.order?.kind === "forceattack",
+    harmAllies: e.order?.kind === "forceattack",
     airBurst: aloft || undefined,
     z: z0,
     vz: (zLand - z0) / flight,
-    launcher: mount?.launcher ?? e.type,
-    airRack: (mount ? mount.airRack : rack === airRackOf(e.type)) || undefined,
+    launcher: e.type,
+    airRack: rack === airRackOf(e.type) || undefined,
     homeOn: homeOn?.id,
     homeLeft: homeOn ? flight * 2 : undefined,
     heavy: rack.plate != null && rack.plate > 1 ? true : undefined,
@@ -2987,6 +2986,8 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
   const soaked = new Set<number>();
   for (const e of blast) {
     if (e.hp <= 0 || e.wreck || e.id === p.fromId || e.garrisonedIn != null || isRubble(e)) continue;
+    // A Mothership sunk on the water lies under it, out of the blast.
+    if (e.mothership?.sunk) continue;
     // A ground burst never reaches a plane; an air burst only catches planes.
     // A drone is caught by a burst near its height, air or ground, or when the rocket meets it.
     if (e.drone ? e !== direct && !rocketCatchesDrone(state, p, e) : isAirborne(e) !== inAir) continue;
@@ -4131,8 +4132,8 @@ function nearestSweepHit(
   for (const e of poolSegment(state, x0, y0, p.x, p.y)) {
     if (e.hp <= 0 || isCrashing(e)) continue;
     if (e.id === p.ignoreId) continue;
-    // A rubble heap is too low to catch a round: everything flies over it.
-    if (isRubble(e)) continue;
+    // A rubble heap is too low to catch a round: everything flies over it. So is a Mothership sunk on the water.
+    if (isRubble(e) || e.mothership?.sunk) continue;
     // A pilot strafes the enemy's line, not his own side's, unless he was told to (force-attack).
     if (p.fromAbove && !p.harmAllies && e.ownerId && allies(state, p.ownerId, e.ownerId)) continue;
     if (e.garrisonedIn != null) continue;

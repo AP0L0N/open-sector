@@ -2003,6 +2003,8 @@ export function canSeeEntity(state: MatchState, playerId: string, e: Entity, mas
   if (e.hp <= 0) return false;
   if (allies(state, playerId, e.ownerId)) return true;
   if (hiddenSubmarine(state, playerId, e)) return false;
+  // A Mothership sunk on the water, offline (sim/mothership.ts), shows to no enemy.
+  if (e.mothership?.sunk) return false;
   if (hiddenBurrowed(state, playerId, e)) return false;
   if (hiddenCloaked(state, playerId, e)) return false;
   if (sonarSpotted(state, playerId, e)) return true;

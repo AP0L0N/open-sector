@@ -852,7 +852,7 @@ export function makeEntity(
   if (type === "artillery") e.gunCrew = Array.from({ length: ARTILLERY_CREW }, () => ARTILLERY_CREW_HP);
   if (type === "battleship") e.ship = newShipState(facing);
   if (type === "hiveark") e.ark = newArkState(facing);
-  if (type === "mothership") e.mothership = newMothershipState(facing);
+  if (type === "mothership") e.mothership = newMothershipState();
   if (twinCiwsOf(type)) e.twinCiws = newTwinCiws(facing);
   if (type === "droneop") e.droneLink = newDroneLink();
   if (hasSonar(type)) e.asw = newAswDeck();

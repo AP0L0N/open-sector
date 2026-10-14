@@ -712,8 +712,10 @@ export interface Entity {
   ark?: ArkState;
   /** A Wasp off a Hive Ark's pod: the Ark it flies from. It takes no orders from anyone. */
   arkOf?: number;
-  /** Mothership only: its four mounts, each on its own cell (sim/mothership.ts). Its dome is an energy shield. */
+  /** Mothership only: its tractor beams, and whether it lies sunk (sim/mothership.ts). Its dome is an energy shield. */
   mothership?: MothershipState;
+  /** A unit in a Mothership's tractor light: that Mothership's id (sim/mothership.ts). */
+  absorbedBy?: number;
   /** Paratrooper on the way down. No orders, no fire; small arms can reach him. */
   chute?: Chute;
   /** Jump Jet, and the Titan's leg jets. */
@@ -792,29 +794,20 @@ export interface ArkState {
   calm: number;
 }
 
-/** One Mothership mount (catalog MOTHERSHIP_MOUNTS): spine, pulse, maw, or flak. */
-export interface MothershipGun {
-  /** World bearing the mount is laid on, radians. */
-  facing: number;
-  /** Seconds until it may fire again: the gun's own cooldown, or a maw's ripple or reload. */
-  cooldown: number;
-  /** Shots of energy in its cell. */
-  energy: number;
-  /** Its cell ran dry: it holds fire until PLASMA_RESUME_SHARE of the cell has regrown. */
-  drained: boolean;
-  /** What it is laid on, if anything. */
-  targetId: number | null;
-  /** A maw only: balls left in the salvo under way. */
-  salvo: number;
-  /** Sim tick it last fired. Missing until it first does. */
-  firedTick?: number;
+/** One Mothership tractor beam: the unit it lights and then absorbs (sim/mothership.ts). */
+export interface MothershipBeam {
+  targetId: number;
+  /** Seconds since the light first fell on it. */
+  t: number;
+  /** Seconds the absorbing takes once the light has shone MOTHERSHIP_LIGHT_SECONDS. */
+  absorbSeconds: number;
 }
 
 export interface MothershipState {
-  spine: MothershipGun;
-  pulse: MothershipGun;
-  maw: MothershipGun;
-  flak: MothershipGun;
+  /** Up to MOTHERSHIP_BEAMS at once. */
+  beams: MothershipBeam[];
+  /** Down on the water while offline: under it, out of sight, until the power is back. */
+  sunk?: true;
 }
 
 export interface ShipState {
