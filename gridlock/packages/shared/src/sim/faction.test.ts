@@ -84,7 +84,7 @@ function unpack(state: MatchState, pid: string): void {
 }
 
 describe("factions in the catalog", () => {
-  it("gives the Xenite their foot soldiers and their own base, the Conversion Chamber in place of the Central", () => {
+  it("gives the Xenite their foot soldiers and their own base, the Assembly in place of the Central", () => {
     assert.deepEqual(
       [...XENO_TYPES].sort(),
       [
@@ -127,12 +127,12 @@ describe("factions in the catalog", () => {
       ],
     );
     for (const t of ["rig", "core", "dynamo", "smelter", "rifleman", "ss3", "muster", "sandbags", "cyborg", "cyborgcommander"]) assert.equal(factionOf(t), "alliance", t);
-    // The Cyborg Central is the Alliance's alone; the Xenite raise their infantry in the Conversion Chamber.
+    // The Cyborg Central is the Alliance's alone; the Xenite raise their infantry in the Assembly.
     assert.deepEqual([...SHARED_TYPES], []);
     assert.ok(inFaction("cyborgcentral", "alliance") && !inFaction("cyborgcentral", "xeno"));
     assert.ok(inFaction("conversion", "xeno") && !inFaction("conversion", "alliance") && !inFaction("conversion", "bloom"));
     for (const t of BUILDING_TYPES.filter((b) => factionOf(b) === "xeno")) assert.ok(XENO_TYPES.has(t));
-    // Foot soldiers come from the Conversion Chamber, ships from the Spawning Pool, planes from the Aerie, the rest from the Nanite Forge.
+    // Foot soldiers come from the Assembly, ships from the Spawning Pool, planes from the Aerie, the rest from the Nanite Forge.
     for (const t of TRAIN_TYPES.filter((u) => factionOf(u) === "xeno")) {
       const want = isCyborg(t) ? "conversion" : isNavalType(t) ? "spawnpool" : isAircraftType(t) ? "aerie" : "forge";
       assert.equal(producerType(t), want, t);
@@ -239,7 +239,7 @@ describe("a Xenite seat", () => {
     assert.equal(applyCommand(state, "A", { type: "cmd.build", building: "dynamo" }).ok, true);
   });
 
-  it("trains its foot soldiers at a Conversion Chamber, with no Research Facility", () => {
+  it("trains its foot soldiers at an Assembly, with no Research Facility", () => {
     const state = match();
     unpack(state, "B");
     const ts = state.tileSize;
@@ -248,14 +248,20 @@ describe("a Xenite seat", () => {
     assert.equal(applyCommand(state, "B", { type: "cmd.build", building: "conversion" }).ok, true);
     const central = makeEntity(state, "conversion", "B", tileCenter(40, ts), tileCenter(40, ts), { tileX: 40, tileY: 40 });
     assert.equal(applyCommand(state, "B", { type: "cmd.train", unit: "xenodrone" }).ok, true);
-    // Sim Unit II and the Lancer also want a Neural Nexus.
+    // The Lancer waits on Advanced Assembly; the Sim Unit II on Neural Assembly, which wants a Neural Nexus.
     for (const unit of ["simunit2", "lancer"] as const) assert.equal(applyCommand(state, "B", { type: "cmd.train", unit }).ok, false, unit);
+    const locked = applyCommand(state, "B", { type: "cmd.train", unit: "lancer" });
+    assert.equal(locked.ok ? "" : locked.message, "Research Advanced Assembly at your Assembly.");
+    central.level = 1;
+    let r = applyCommand(state, "B", { type: "cmd.train", unit: "lancer" });
+    assert.equal(r.ok, true, r.ok ? "lancer" : r.message);
+    assert.equal(applyCommand(state, "B", { type: "cmd.train", unit: "simunit2" }).ok, false);
     makeEntity(state, "nexus", "B", tileCenter(46, ts), tileCenter(40, ts), { tileX: 46, tileY: 40 });
-    for (const unit of ["simunit2", "lancer"] as const) {
-      const r = applyCommand(state, "B", { type: "cmd.train", unit });
-      assert.equal(r.ok, true, r.ok ? unit : r.message);
-    }
-    assert.deepEqual(central.queue.map((j) => j.type), ["xenodrone", "simunit2", "lancer"]);
+    assert.equal(applyCommand(state, "B", { type: "cmd.train", unit: "simunit2" }).ok, false, "a Nexus alone does not unlock it");
+    central.level = 2;
+    r = applyCommand(state, "B", { type: "cmd.train", unit: "simunit2" });
+    assert.equal(r.ok, true, r.ok ? "simunit2" : r.message);
+    assert.deepEqual(central.queue.map((j) => j.type), ["xenodrone", "lancer", "simunit2"]);
     const alliance = applyCommand(state, "B", { type: "cmd.train", unit: "cyborg" });
     assert.equal(alliance.ok, false);
     const eu = applyCommand(state, "B", { type: "cmd.train", unit: "rifleman" });

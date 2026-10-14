@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Xenite base buildings: Hive Core, Fusion Node, Assimilator, Conversion Chamber,
+"""Xenite base buildings: Hive Core, Fusion Node, Assimilator, Assembly,
 Nanite Forge, Neural Nexus, Aerie.
 
 Each writes <id>.png, <id>-cameo.png (96 px), and <id>.json (pad metrics plus
@@ -1179,7 +1179,7 @@ def aerie_spots() -> dict:
     }
 
 
-# ---------------------------------------------------------------- Conversion Chamber, t(2) x t(2)
+# ---------------------------------------------------------------- Assembly, t(2) x t(2)
 
 CC = 64.0
 CC_C = (30.0, 28.0)

@@ -343,7 +343,7 @@ export interface EntityView {
   forceShield?: true;
   /** Researched Sky Tracking: the Ion Turret lays on aircraft too. Everyone sees it. */
   skySpines?: true;
-  /** Researched Shield Wall (a Conversion Chamber): the side's Drones and Lancers raise energy walls. Everyone sees it. */
+  /** Researched Shield Wall (an Assembly): the side's Drones and Lancers raise energy walls. Everyone sees it. */
   shieldWall?: true;
   /** Force Shield points and full charge (0 while it recharges), drawn as a pale blue bar under the health bar. */
   shield?: { hp: number; max: number };

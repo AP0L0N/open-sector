@@ -227,7 +227,7 @@ const DEFS: Partial<Record<EntityType, BuildingAnimDef>> = {
     ],
     smoke: [{ x: 264, y: 129, rise: 30, thin: true }],
   },
-  // Conversion Chamber (render_xeno_base.py, conversion.json): the pods breathe one after another, the door glows,
+  // Assembly (render_xeno_base.py, conversion.json): the pods breathe one after another, the door glows,
   // the apron strips chase out, the neural bulb pulses, the spire halo and beacon flicker.
   conversion: {
     lights: [

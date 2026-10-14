@@ -83,7 +83,7 @@ function fortLine(state: MatchState, type: "sandbags" | "wall", tx: number): voi
 }
 
 describe("Enforcer catalog", () => {
-  it("is a cheap, quick, tanky Xenite cyborg with fists, gated on the Conversion Chamber", () => {
+  it("is a cheap, quick, tanky Xenite cyborg with fists, gated on the Assembly", () => {
     const d = catalog("thrall");
     assert.ok(TRAIN_TYPES.includes("thrall"));
     assert.equal(d.name, "Enforcer");

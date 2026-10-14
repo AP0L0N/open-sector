@@ -37,6 +37,7 @@ import {
   airRackOf,
   SHELL_TYPES,
   techNeeds,
+  techLevelResearch,
   TILE_SUBDIV,
   usesHiveEnergy,
   type BuildingType,
@@ -251,6 +252,9 @@ export function cameoCard(type: EntityType, faction: Faction): CameoCard {
   const from = train ? producerType(type) : null;
   // The producer is named once, as where it is trained.
   const needs = (train ? techNeeds(type) : BUILD_REQUIRES[type as BuildingType] ?? []).filter((t) => t !== from).map((t) => catalog(t).name);
+  // A level of its producer it waits on (Advanced Assembly) reads first.
+  const level = train ? techLevelResearch(type) : undefined;
+  if (level) needs.unshift(level.name);
   return {
     name: c.name,
     kind: kindOf(type),
