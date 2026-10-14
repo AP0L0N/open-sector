@@ -75,7 +75,7 @@ import {
   FEUERWIRBEL_MOUNT_TURN,
   twinCiwsOf,
   hullFlamerOf,
-  antiAirGunOf,
+  antiAirGun,
   armorFirstOf,
   crewGunOf,
   garrisonCapOf,
@@ -3575,7 +3575,7 @@ function fireRound(
     hpFraction: gunId === "scoped" || gunId === "ptrd" ? scopedHpFraction(dist, range) * (factionOf(e.type) === "xeno" ? XENO_DAMAGE_MUL : 1) : undefined,
     antiAir:
       opts?.radar ||
-      (!opts?.shell && (e.type === "walker" || radarLaidOf(e.type) || antiAirGunOf(e.type) || !!infantryGunFor(e)?.antiAir))
+      (!opts?.shell && (e.type === "walker" || radarLaidOf(e.type) || antiAirGun(e) || !!infantryGunFor(e)?.antiAir))
         ? true
         : undefined,
     gatling: gatling || undefined,

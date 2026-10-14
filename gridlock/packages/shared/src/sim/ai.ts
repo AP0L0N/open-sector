@@ -47,6 +47,7 @@ import {
   energyOf,
   energySupplyOfEntity,
   FORCE_SHIELD_ENERGY,
+  SKY_SPINES_ENERGY,
   SHIELD_WALL_ENERGY,
   nextResearch,
   usesHiveEnergy,
@@ -492,13 +493,15 @@ const XENO_SHIELDED: ReadonlySet<string> = new Set(["spineturret", "pulsespire",
  * One upgrade at a time. The Shield Wall comes first, on the oldest Conversion Chamber, as soon as the
  * hive keeps HIVE_ENERGY_LOW free after its draw: Drones and Lancers fight without walls until then.
  * The rest waits for the build order to stand. First the least upgraded Fusion Node, when the
- * dip while it upgrades keeps the hive at zero or above; else the oldest defence still bare gets its
- * Force Shield, when the hive keeps HIVE_ENERGY_LOW free after the shield's draw. Ultra Fusion waits
- * for a Neural Nexus.
+ * dip while it upgrades keeps the hive at zero or above (Ultra Fusion waits for a Neural Nexus); else,
+ * once enemy fliers have been seen, the oldest Ion Turret still blind to them grows Sky Tracking; else
+ * the oldest defence still bare gets its Force Shield. Either only when the hive keeps HIVE_ENERGY_LOW
+ * free after the upgrade's draw.
  */
 function researchXeno(state: MatchState, p: SimPlayer): void {
   let node: Entity | undefined;
   let bare: Entity | undefined;
+  let grounded: Entity | undefined;
   let chamber: Entity | undefined;
   let drilled = false;
   let nodes = 0;
@@ -511,7 +514,10 @@ function researchXeno(state: MatchState, p: SimPlayer): void {
     } else if (e.type === "fusionnode") {
       nodes++;
       if (nextResearch(e.type, e.level ?? 0) && (!node || (e.level ?? 0) < (node.level ?? 0))) node = e;
-    } else if (XENO_SHIELDED.has(e.type) && !e.forceShield && (!bare || e.id < bare.id)) bare = e;
+    } else {
+      if (XENO_SHIELDED.has(e.type) && !e.forceShield && (!bare || e.id < bare.id)) bare = e;
+      if (e.type === "spineturret" && !e.skySpines && (!grounded || e.id < grounded.id)) grounded = e;
+    }
   }
   if (!drilled && chamber && hiveFreeAfterQueue(state, p) - SHIELD_WALL_ENERGY >= HIVE_ENERGY_LOW) {
     applyCommand(state, p.playerId, { type: "cmd.research", ids: [chamber.id], research: "shieldwall" });
@@ -528,6 +534,10 @@ function researchXeno(state: MatchState, p: SimPlayer): void {
       applyCommand(state, p.playerId, { type: "cmd.research", ids: [node.id], research: nextResearch(node.type, node.level ?? 0)!.id });
       return;
     }
+  }
+  if (grounded && aiPlanOf(p).airSeenTick != null && free - SKY_SPINES_ENERGY >= HIVE_ENERGY_LOW) {
+    applyCommand(state, p.playerId, { type: "cmd.research", ids: [grounded.id], research: "skyspines" });
+    return;
   }
   if (bare && free - FORCE_SHIELD_ENERGY >= HIVE_ENERGY_LOW) {
     applyCommand(state, p.playerId, { type: "cmd.research", ids: [bare.id], research: "forceshield" });

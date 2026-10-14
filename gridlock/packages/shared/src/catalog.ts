@@ -1269,15 +1269,15 @@ export function energySupplyOf(type: string): number {
  * on the structure for `seconds` at the owner's job pace and costs `cost` scrap as it goes (nothing
  * for the Xenite, who pay no scrap) and `energy` more hive energy for as long as it stands.
  */
-export type ResearchId = "advancedfusion" | "ultrafusion" | "fusionreactor" | "forceshield" | "flakmaw" | "shieldwall";
+export type ResearchId = "advancedfusion" | "ultrafusion" | "fusionreactor" | "forceshield" | "flakmaw" | "skyspines" | "shieldwall";
 export interface ResearchDef {
   id: ResearchId;
   name: string;
   buildings: readonly BuildingType[];
   /** The level the structure reaches once it is done. Unset for an upgrade that is not a level. */
   level?: number;
-  /** What it grants instead of a level: the Force Shield's dome, the Flak Maw on a Fusion Core's roof, or the Shield Wall drill. */
-  grants?: "forceShield" | "roofFlak" | "shieldWall";
+  /** What it grants instead of a level: the Force Shield's dome, the Flak Maw on a Fusion Core's roof, Sky Tracking's reach on aircraft, or the Shield Wall drill. */
+  grants?: "forceShield" | "roofFlak" | "skySpines" | "shieldWall";
   seconds: number;
   cost: number;
   /** Hive energy the upgrade takes from the moment it starts, for as long as the structure stands. */
@@ -1311,6 +1311,8 @@ export const FORCE_SHIELD_ENERGY = 30;
 /** The Force Shield dome: a small store, mended while it holds; its radius comes from the footprint (FORCE_SHIELD_MARGIN_TILES past it). */
 export const FORCE_SHIELD_DOME: EnergyDomeDef = { energy: 150, radiusTiles: 0, rechargeSeconds: 15, regenPerSecond: 6 };
 export const FORCE_SHIELD_MARGIN_TILES = 1.5;
+/** Hive energy Sky Tracking takes on an Ion Turret, from the moment the research starts. */
+export const SKY_SPINES_ENERGY = 20;
 /** Hive energy the Shield Wall drill takes, from the moment its research starts. */
 export const SHIELD_WALL_ENERGY = 20;
 /** The units that raise an energy wall only once their side holds the Shield Wall (wallsNeedDrill). */
@@ -1372,6 +1374,17 @@ export const RESEARCH: Record<ResearchId, ResearchDef> = {
       return `Grows a small maw on the core's roof that spits plasma balls at planes, Jump Jets, and low drones within ${MAWCASTER_AIR_RANGE_TILES / TILE_SUBDIV} cells, ${MAWCASTER_AIR_SALVO} at a time, each bursting at the flier's height: the Mawcaster's Air attack. It lays itself and leaves the ground alone, firing off an energy cell that holds ${MAWCASTER_CELL.shots} and regrows one every ${MAWCASTER_CELL.rechargeSeconds} seconds. Takes ${ROOF_FLAK_ENERGY} hive energy from the moment the research starts.`;
     },
   },
+  skyspines: {
+    id: "skyspines",
+    name: "Sky Tracking",
+    buildings: ["spineturret"],
+    grants: "skySpines",
+    seconds: 35,
+    cost: 0,
+    energy: SKY_SPINES_ENERGY,
+    effect: `Hits air · ${SKY_SPINES_ENERGY} energy`,
+    blurb: `Gives the turret a tracking head that tilts its repeater skyward. It lays on aircraft, a Jump Jet aloft, and drones, high or low, as well as on the ground, at its full reach, like an MG Nest. Takes ${SKY_SPINES_ENERGY} hive energy from the moment the research starts.`,
+  },
   shieldwall: {
     id: "shieldwall",
     name: "Shield Wall",
@@ -1406,12 +1419,14 @@ export interface ResearchSubject {
   shieldWall?: boolean;
   /** The Flak Maw on the roof: its gun state in the sim, its view in a snapshot. Set once researched. */
   roofFlak?: object;
+  skySpines?: boolean;
   research?: { id: ResearchId };
 }
 /** Has `e` got what `r` gives? */
 export function researchDone(e: ResearchSubject, r: ResearchDef): boolean {
   if (r.level != null) return (e.level ?? 0) >= r.level;
   if (r.grants === "roofFlak") return !!e.roofFlak;
+  if (r.grants === "skySpines") return !!e.skySpines;
   if (r.grants === "forceShield") return !!e.forceShield;
   return r.grants === "shieldWall" ? !!e.shieldWall : false;
 }
@@ -1444,9 +1459,9 @@ export function energySupplyOfEntity(e: { type: string; level?: number; research
   const levelling = e.research != null && (id == null || RESEARCH[id]?.level != null);
   return levelling ? Math.floor(base * RESEARCH_OUTPUT_SHARE) : base;
 }
-/** Hive energy a structure's upgrades take on top of its own: a Force Shield's, a Flak Maw's and a Shield Wall's, from the moment their research starts. */
+/** Hive energy a structure's upgrades take on top of its own: a Force Shield's, a Flak Maw's, Sky Tracking's and a Shield Wall's, from the moment their research starts. */
 export function upgradeEnergyOf(e: ResearchSubject): number {
-  let n = (e.forceShield ? FORCE_SHIELD_ENERGY : 0) + (e.roofFlak ? ROOF_FLAK_ENERGY : 0) + (e.shieldWall ? SHIELD_WALL_ENERGY : 0);
+  let n = (e.forceShield ? FORCE_SHIELD_ENERGY : 0) + (e.roofFlak ? ROOF_FLAK_ENERGY : 0) + (e.skySpines ? SKY_SPINES_ENERGY : 0) + (e.shieldWall ? SHIELD_WALL_ENERGY : 0);
   const running = e.research ? RESEARCH[e.research.id] : undefined;
   if (running?.energy && !researchDone(e, running)) n += running.energy;
   return n;
@@ -7182,7 +7197,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     plasmaCell: SPINE_TURRET_CELL,
     poweredGun: true,
     capturable: false,
-    blurb: "A chitin bulb rooted in the ground with a twin pulse repeater for a head. Nobody works it: it lays itself all the way round and cuts down soldiers at an MG42's pace from a little short of an MG Nest's reach, and draws its charge from the hive: a cell that holds 3 seconds of fire and regrows at half the pace it fires, so a long burst slows to a stutter. The bolts burn into tank plate, but only a little, and they do not bring a building down. Takes hive energy while it stands; offline, it falls silent. Cannot move.",
+    blurb: "A chitin bulb rooted in the ground with a twin pulse repeater for a head. Nobody works it: it lays itself all the way round and cuts down soldiers at an MG42's pace from a little short of an MG Nest's reach, and draws its charge from the hive: a cell that holds 3 seconds of fire and regrows at half the pace it fires, so a long burst slows to a stutter. The bolts burn into tank plate, but only a little, and they do not bring a building down. Takes hive energy while it stands; offline, it falls silent. Research Sky Tracking and it reaches aircraft too. Cannot move.",
   },
   /** Xenite fence post: links to the posts beside it with two laser beams (sim/laser-fence.ts). */
   laserfence: {
@@ -10373,6 +10388,11 @@ export function mountArcDegOf(type: EntityType): number | null {
 /** A building gun whose rounds reach aircraft, a Jump Jet, and a high drone: the MG Nest, the Flak. */
 export function antiAirGunOf(type: EntityType): boolean {
   return catalog(type).antiAir === true;
+}
+
+/** antiAirGunOf for one standing gun: also an Ion Turret that researched Sky Tracking. */
+export function antiAirGun(e: { type: EntityType; skySpines?: boolean }): boolean {
+  return !!e.skySpines || antiAirGunOf(e.type);
 }
 
 /** Looks for a plane first and lays on it with the CIWS's cone: the Flak. */

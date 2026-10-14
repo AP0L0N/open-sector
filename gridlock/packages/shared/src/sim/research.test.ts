@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
+  AIR_CRUISE_ALT,
+  AIR_HIGH_ALT,
   FORCE_SHIELD_DOME,
   FORCE_SHIELD_ENERGY,
   FUSION_NODE_LEVEL_ENERGY,
@@ -10,20 +12,25 @@ import {
   RESEARCH_OUTPUT_SHARE,
   TICK_DT,
   TILE_SUBDIV,
+  catalog,
   isCivilianType,
   nextResearch,
   researchOf,
+  SKY_SPINES_ENERGY,
   secondsToTicks,
   type EntityType,
 } from "../catalog.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
+import { reachesAircraft } from "./air.js";
 import { applyCommand } from "./commands.js";
+import { reachesHighFlyer } from "./drone.js";
 import { destroyEntity, hasCore, hqOf, makeEntity, tileCenter } from "./geo.js";
 import { domeOver } from "./energy-shield.js";
 import { hiveEnergyOf } from "./hive-energy.js";
 import { researchBlocker } from "./research.js";
 import { createMatch, step } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
+import { reachesJet } from "./jet.js";
 import type { Entity, MatchState } from "./types.js";
 
 /** A is Alliance, B the Xenite with its Hive Core standing, on bare flat ground. */
@@ -231,6 +238,85 @@ describe("research", () => {
       shield(state, wall);
       assert.ok(state.energyShields?.some((d) => d.post && d.fromId === wall.id), "the curtain still stands");
       assert.ok(domeOf(state, wall), "and the dome over the core");
+    });
+  });
+
+  describe("Sky Tracking", () => {
+    const grow = (state: MatchState, e: Entity) => {
+      applyCommand(state, "B", { type: "cmd.research", ids: [e.id], research: "skyspines" });
+      ticks(state, secondsToTicks(RESEARCH.skyspines.seconds) + 2);
+    };
+    function aloft(state: MatchState, x: number, y: number, alt: number): Entity {
+      const plane = makeEntity(state, "stuka", "A", x, y);
+      plane.air!.phase = "fly";
+      plane.air!.alt = alt;
+      plane.air!.speed = 1;
+      plane.facing = 0;
+      plane.order = { kind: "move", x, y };
+      return plane;
+    }
+
+    it("is offered on the Ion Turret and on nothing else", () => {
+      assert.ok(researchOf("spineturret").some((r) => r.id === "skyspines"));
+      for (const t of ["pulsespire", "energywall", "laserfence", "fusionnode", "hivecore"] as const) {
+        assert.ok(!researchOf(t).some((r) => r.id === "skyspines"), t);
+      }
+    });
+
+    it("takes its energy from the moment it starts, and lets the turret reach what flies once done", () => {
+      const state = field();
+      at(state, "fusionnode", 30, 30);
+      const spine = at(state, "spineturret", 40, 40);
+      ticks(state, 1);
+      assert.equal(reachesAircraft(spine), false);
+      assert.equal(reachesJet(spine), false);
+      assert.equal(reachesHighFlyer(spine), false);
+      const before = hiveEnergyOf(state, "B").used;
+      applyCommand(state, "B", { type: "cmd.research", ids: [spine.id], research: "skyspines" });
+      ticks(state, 1);
+      assert.equal(hiveEnergyOf(state, "B").used, before + SKY_SPINES_ENERGY);
+      assert.equal(reachesAircraft(spine), false, "not while it researches");
+      ticks(state, secondsToTicks(RESEARCH.skyspines.seconds) + 2);
+      assert.equal(spine.skySpines, true);
+      assert.equal(spine.research, undefined);
+      assert.equal(hiveEnergyOf(state, "B").used, before + SKY_SPINES_ENERGY, "the draw stays");
+      assert.equal(reachesAircraft(spine), true);
+      assert.equal(reachesJet(spine), true);
+      assert.equal(reachesHighFlyer(spine), true);
+      assert.equal(snapshotFor(state, "B").entities.find((e) => e.id === spine.id)?.skySpines, true);
+    });
+
+    it("stacks with a Force Shield, each drawing its own energy", () => {
+      const state = field();
+      at(state, "fusionnode", 30, 30);
+      const spine = at(state, "spineturret", 40, 40);
+      ticks(state, 1);
+      const before = hiveEnergyOf(state, "B").used;
+      grow(state, spine);
+      applyCommand(state, "B", { type: "cmd.research", ids: [spine.id], research: "forceshield" });
+      ticks(state, secondsToTicks(RESEARCH.forceshield.seconds) + 2);
+      assert.equal(spine.skySpines, true);
+      assert.equal(spine.forceShield, true);
+      assert.equal(hiveEnergyOf(state, "B").used, before + SKY_SPINES_ENERGY + FORCE_SHIELD_ENERGY);
+    });
+
+    it("brings down a plane overhead only after the research", () => {
+      for (const alt of [AIR_CRUISE_ALT, AIR_HIGH_ALT]) {
+        const state = field();
+        at(state, "fusionnode", 30, 30);
+        const spine = at(state, "spineturret", 40, 40);
+        ticks(state, 1);
+        const ts = state.tileSize;
+        const blind = aloft(state, spine.x + 5 * TILE_SUBDIV * ts, spine.y, alt);
+        ticks(state, 40);
+        assert.equal(blind.hp, catalog("stuka").hp, `untouched at ${alt}`);
+        assert.ok((blind.air?.alt ?? 0) > AIR_CRUISE_ALT / 2, `still up at ${alt}`);
+        destroyEntity(state, blind);
+        grow(state, spine);
+        const plane = aloft(state, spine.x + 5 * TILE_SUBDIV * ts, spine.y, alt);
+        ticks(state, 40);
+        assert.ok(plane.wreck || plane.air?.phase === "crash" || plane.hp < catalog("stuka").hp, `hit at ${alt}`);
+      }
     });
   });
 });
