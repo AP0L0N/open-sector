@@ -84,7 +84,7 @@ import { orderBoardPlane, setPayload, unloadPlane } from "./airdrop.js";
 import { droneOf, guardDrone, launchDrone, orderDrone, recallDrone, setDroneMode, stopDrone } from "./drone.js";
 import { landJet, takeOff } from "./jet.js";
 import { setDive } from "./naval.js";
-import { cancelResearch, startResearch } from "./research.js";
+import { cancelResearch, pauseResearch, startResearch } from "./research.js";
 import { placeGroundScan } from "./ground-scan.js";
 import { layMine } from "./destroyer.js";
 import { orderMineLay } from "./minelauncher.js";
@@ -167,7 +167,12 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
       return cmdReach(state, playerId, msg.ids, msg.max);
     case "cmd.research": {
       if (!Array.isArray(msg.ids) || (msg.research !== null && !isResearchId(msg.research))) return fail("bad_payload", "Unknown research.");
-      const r = msg.research === null ? cancelResearch(state, playerId, msg.ids) : startResearch(state, playerId, msg.ids, msg.research);
+      if (msg.paused !== undefined && typeof msg.paused !== "boolean") return fail("bad_payload", "Unknown research hold.");
+      const r = msg.research !== null
+        ? startResearch(state, playerId, msg.ids, msg.research)
+        : msg.paused !== undefined
+          ? pauseResearch(state, playerId, msg.ids, msg.paused)
+          : cancelResearch(state, playerId, msg.ids);
       return r.ok ? ok() : fail("busy", r.reason);
     }
     case "cmd.guns":

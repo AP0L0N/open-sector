@@ -76,6 +76,18 @@ export function cancelResearch(state: MatchState, playerId: string, ids: readonl
   return cancelled > 0 ? { ok: true } : { ok: false, reason: "No research to cancel." };
 }
 
+/** Hold (`paused`) or resume the research running on each of `ids`. A held job keeps what it took and stands still. */
+export function pauseResearch(state: MatchState, playerId: string, ids: readonly number[], paused: boolean): ResearchResult {
+  let changed = 0;
+  for (const eid of ids) {
+    const e = state.entities.get(eid);
+    if (!e?.research || e.ownerId !== playerId) continue;
+    e.research.paused = paused || undefined;
+    changed++;
+  }
+  return changed > 0 ? { ok: true } : { ok: false, reason: "No research to hold." };
+}
+
 export function tickResearch(state: MatchState): void {
   let speeds: Map<string, number> | undefined;
   for (const e of state.entities.values()) {
@@ -91,6 +103,7 @@ export function tickResearch(state: MatchState): void {
       e.research = undefined;
       continue;
     }
+    if (job.paused) continue;
     speeds ??= new Map();
     let speed = speeds.get(p.playerId);
     if (speed === undefined) speeds.set(p.playerId, (speed = jobSpeed(state, p.playerId)));

@@ -555,7 +555,9 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       shieldWall: e.kind === "building" && e.shieldWall ? true : undefined,
       shield: e.kind === "building" && e.forceShield ? forceShieldView(state, e) : undefined,
       roofFlak: roofFlakView(state, e, friendly),
-      research: friendly && e.research ? { id: e.research.id, progress: Math.round((e.research.progressTicks / e.research.totalTicks) * 1000) / 1000 } : undefined,
+      research: friendly && e.research
+        ? { id: e.research.id, progress: Math.round((e.research.progressTicks / e.research.totalTicks) * 1000) / 1000, paused: e.research.paused ? true : undefined }
+        : undefined,
       holdPosition: friendly && e.holdPosition ? true : undefined,
       patrol:
         friendly && e.order?.kind === "patrol" && e.order.route

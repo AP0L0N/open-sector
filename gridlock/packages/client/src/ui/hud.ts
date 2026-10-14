@@ -124,6 +124,8 @@ import {
   behemothPulseOf,
   hasPulseModes,
   type BuildingType,
+  type ResearchDef,
+  FORCE_SHIELD_BUILDINGS,
   type YardFieldType,
   canPowerDown,
   isSimUnit,
@@ -150,6 +152,7 @@ import { el } from "./dom.js";
 import { mountScanDock, paintScanDock } from "./scan-dock.js";
 import { bindCameoCards, fmtNum, setCameoCardState } from "./cameo-card.js";
 import { renderOptionsPane } from "./pause.js";
+import { researchArtKey, visibleResearch } from "./research-grid.js";
 import { garrisonRoster, type GarrisonSeat } from "./garrison-roster.js";
 import { commandHotkey, commandIconSvg, groupCommands, hasCommandIcon } from "./command-bar.js";
 import {
@@ -458,8 +461,21 @@ export function mountBattlefield(
     });
   }
 
-  bindPress(config, "[data-config-type], [data-shell], [data-weapon], [data-guns], [data-selfdestruct], [data-fielddivert], [data-pulse], [data-rockets], [data-attack], [data-reach], [data-payload], [data-research], [data-research-cancel]", (t) => {
+  bindPress(config, "[data-config-type], [data-shell], [data-weapon], [data-guns], [data-selfdestruct], [data-fielddivert], [data-pulse], [data-rockets], [data-attack], [data-reach], [data-payload], [data-research]", (t) => {
     runConfigAction(ctx, t);
+  });
+  // An upgrade cameo, like a production one: the first right-click holds it, the next cancels it.
+  config.addEventListener("contextmenu", (e) => {
+    const btn = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-research]");
+    const id = btn?.dataset.research;
+    if (!btn || !id || !isResearchId(id)) return;
+    e.preventDefault();
+    if (!viewRef || !ctx.match) return;
+    const on = selectedOfType(ctx, viewRef, configFocus).filter((ent) => ent.ownerId === ctx.match!.youPlayerId && ent.research?.id === id);
+    if (on.length === 0) return;
+    const live = on.filter((ent) => !ent.research!.paused).map((ent) => ent.id);
+    if (live.length > 0) ctx.net.send({ type: "cmd.research", ids: live, research: null, paused: true });
+    else ctx.net.send({ type: "cmd.research", ids: on.map((ent) => ent.id), research: null });
   });
   // Double-click a type's avatar: keep only that type selected, drop the rest.
   config.addEventListener("dblclick", (e) => {
@@ -2036,72 +2052,93 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
   if (researchOf(focus.type).length > 0) updateResearch(body, focus.type, live.filter((e) => e.ownerId === you), m);
 }
 
-/** Research: one button per level of the structure's upgrades, a bar while one runs, and Cancel. */
+/**
+ * Research: the structure's upgrades as cameos, two to a row, like the production grid. A level
+ * chain shows only its next level (visibleResearch). Left starts one, or resumes it once held;
+ * right holds it, and again cancels it.
+ */
 function appendResearch(body: HTMLElement, type: EntityType): void {
-  // The level line leads: the panel is short, and the long story is in each button's tooltip.
-  body.append(el("p", { class: "tiny", attrs: { "data-field": "level" } }), el("div", { class: "tiny", text: "Research" }));
-  const rack = el("div", { class: "shell-rack research-rack" });
-  for (const r of researchOf(type)) {
-    rack.append(
-      loadoutButton({ attr: "data-research", id: r.id, name: r.name, blurb: r.effect, count: "", on: false, title: `${r.name} — ${r.blurb}` }),
-    );
-  }
-  body.append(rack);
-  const bar = el("div", { class: "research-bar hidden", attrs: { "data-field": "research-bar" } });
-  bar.append(el("span"));
-  const cancel = el("button", {
-    class: "shell research-cancel hidden",
-    attrs: { type: "button", "data-research-cancel": "1", title: "Cancel the upgrade. A Fusion Node or Fusion Core goes back to its full output; a Force Shield or Ion Turret gives its energy back." },
+  // The level line leads: the panel is short, and the long story is in each cameo's card.
+  body.append(el("p", { class: "tiny", attrs: { "data-field": "level" } }), el("div", { class: "tiny", text: "Upgrades" }));
+  const grid = el("div", { class: "cameos research-cameos" });
+  for (const r of researchOf(type)) grid.append(researchCameo(r, type));
+  body.append(grid);
+}
+
+const RESEARCH_HINT = "Left: research  ·  Right: pause, again to cancel";
+
+function researchCameo(r: ResearchDef, type: EntityType): HTMLButtonElement {
+  const b = el("button", {
+    class: "cameo research-cameo hidden",
+    attrs: { type: "button", "data-research": r.id, "data-art": researchArtKey(r.id, type) },
   });
-  cancel.append(el("span", { class: "shell-row", text: "Cancel upgrade" }));
-  body.append(bar, cancel);
+  // The rich card on hover reads these (see cameo-card.ts).
+  b.dataset.cardResearch = r.id;
+  b.dataset.cardOn = type;
+  b.dataset.cardHint = RESEARCH_HINT;
+  const energy = r.energy ?? 0;
+  const price = energy > 0 ? `${fmtNum(energy)} EN` : r.cost > 0 ? fmtNum(r.cost) : "FREE";
+  b.innerHTML =
+    `<span class="cameo-name">${r.name}</span>` +
+    `<span class="cameo-meta"><span class="cameo-cost${energy > 0 ? " is-energy" : ""}">${price}</span><span class="cameo-time">${r.seconds}s</span></span>` +
+    `<span class="pip"></span><span class="cameo-paused">PAUSED</span><span class="cameo-done">DONE</span>`;
+  return b;
 }
 
 function updateResearch(body: HTMLElement, type: EntityType, mine: EntityView[], m: MatchSnapshot): void {
   const running = mine.filter((e) => e.research);
+  const shown = new Set(visibleResearch(type, mine).map((r) => r.id));
   for (const r of researchOf(type)) {
     const btn = body.querySelector(`[data-research="${r.id}"]`);
     if (!(btn instanceof HTMLElement)) continue;
+    btn.classList.toggle("hidden", !shown.has(r.id));
+    if (!shown.has(r.id)) continue;
     const done = mine.length > 0 && mine.every((e) => researchDone(e, r));
     const on = running.filter((e) => e.research!.id === r.id);
+    const held = on.length > 0 && on.every((e) => e.research!.paused);
     const need = researchTechMissing(r, (t) => m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === t && e.hp > 0 && !e.wreck));
     const ready = need.length > 0 ? [] : mine.filter((e) => canStartResearch(e, r));
-    const pct = on.length > 0 ? Math.floor((on.reduce((n, e) => n + e.research!.progress, 0) / on.length) * 100) : 0;
-    const before = r.level != null ? researchOf(type).find((x) => x.level === r.level! - 1) : undefined;
-    updateLoadoutButton(btn, {
-      count: done ? "Done" : on.length > 0 ? `${pct}%` : ready.length > 0 ? (ready.length > 1 ? `${r.seconds}s ×${ready.length}` : `${r.seconds}s`) : "",
-      on: done || on.length > 0,
-      empty: !done && on.length === 0 && ready.length === 0,
-      locked: ready.length === 0,
-      title:
-        ready.length === 0 && !done && on.length === 0 && before && mine.some((e) => !researchDone(e, before))
-          ? `${r.name} — Research ${before.name} first. ${r.blurb}`
-          : ready.length === 0 && !done && on.length === 0 && need.length > 0
-            ? `${r.name} — Build a ${catalog(need[0]!).name} first. ${r.blurb}`
-            : `${r.name} — ${r.blurb}`,
-    });
+    const share = on.length > 0 ? on.reduce((n, e) => n + e.research!.progress, 0) / on.length : 0;
+    // Locked: nothing to start, and none of it running to hold or resume.
+    const locked = !done && on.length === 0 && ready.length === 0;
+    btn.classList.toggle("is-done", done && on.length === 0);
+    btn.classList.toggle("is-training", on.length > 0);
+    btn.classList.toggle("is-paused", held);
+    btn.classList.toggle("is-disabled", locked);
+    btn.setAttribute("aria-disabled", String(on.length === 0 && (done || locked)));
+    const pip = btn.querySelector(".pip");
+    if (pip instanceof HTMLElement) pip.style.width = `${Math.round(Math.max(0, Math.min(1, share)) * 100)}%`;
+    const busy = running.find((e) => e.research!.id !== r.id);
+    const note = on.length > 0
+      ? `${held ? "Paused" : "Researching"}  ${Math.floor(share * 100)}%${on.length > 1 ? `  ·  ×${on.length}` : ""}`
+      : done
+        ? "Researched."
+        : need.length > 0
+          ? `Needs a ${catalog(need[0]!).name}.`
+          : ready.length === 0 && busy
+            ? `Busy with ${RESEARCH[busy.research!.id].name}.`
+            : ready.length > 1
+              ? `Starts on all ${ready.length}.`
+              : "";
+    const hint = on.length > 0 ? (held ? "Left: resume  ·  Right: cancel" : "Right: pause, again to cancel") : done || locked ? "" : RESEARCH_HINT;
+    setCameoCardState(btn, note, hint);
   }
-  const bar = body.querySelector('[data-field="research-bar"]');
-  if (bar instanceof HTMLElement) {
-    bar.classList.toggle("hidden", running.length === 0);
-    const fill = bar.querySelector("span");
-    const share = running.length > 0 ? running.reduce((n, e) => n + e.research!.progress, 0) / running.length : 0;
-    if (fill instanceof HTMLElement) fill.style.width = `${Math.round(Math.max(0, Math.min(1, share)) * 100)}%`;
-  }
-  body.querySelector(".research-cancel")?.classList.toggle("hidden", running.length === 0);
   const focus = mine[0];
   if (focus) {
     const level = focus.level ?? 0;
     const name = levelNameOf(type, level) || catalog(type).name;
     const energy = energySupplyOfEntity(focus);
     const flak = focus.roofFlak?.energy != null ? `  ·  Flak ${Math.round(focus.roofFlak.energy * 100)}%${focus.roofFlak.drained ? " dry" : ""}` : "";
+    const job = focus.research ? `${RESEARCH[focus.research.id].name}${focus.research.paused ? ", paused" : ""}` : "";
     const line = energySupplyOf(type) > 0
-      ? `${name}  ·  ${energy} energy${focus.research ? "  (upgrading)" : ""}${flak}`
+      ? `${name}  ·  ${energy} energy${job ? `  (${job})` : ""}${flak}`
       : focus.shield
         ? `Force Shield  ${focus.shield.hp}/${focus.shield.max}${focus.shield.hp <= 0 ? "  recharging" : ""}`
-        : focus.research
-          ? "Raising its Force Shield"
-          : "No shield";
+        : job
+          ? `Upgrading: ${job}`
+          : FORCE_SHIELD_BUILDINGS.includes(type as BuildingType) && level === 0
+            ? "No shield"
+            : name;
     setField(body, "level", mine.length > 1 ? `${line}  ·  ×${mine.length}` : line);
   }
 }
@@ -3096,19 +3133,16 @@ function runConfigAction(ctx: Ctx, t: HTMLElement): void {
   }
   const research = t.dataset.research;
   if (research && isResearchId(research)) {
-    const ids = selectedOfType(ctx, viewRef, configFocus)
-      .filter((ent) => ent.ownerId === ctx.match!.youPlayerId && !ent.wreck && canStartResearch(ent, RESEARCH[research]))
-      .map((ent) => ent.id);
+    const mine = selectedOfType(ctx, viewRef, configFocus).filter((ent) => ent.ownerId === ctx.match!.youPlayerId && !ent.wreck);
+    // A held upgrade resumes; otherwise it starts on each that can take it.
+    const held = mine.filter((ent) => ent.research?.id === research && ent.research.paused).map((ent) => ent.id);
+    if (held.length > 0) {
+      ctx.net.send({ type: "cmd.research", ids: held, research: null, paused: false });
+      return;
+    }
+    const ids = mine.filter((ent) => canStartResearch(ent, RESEARCH[research])).map((ent) => ent.id);
     if (ids.length === 0) return;
     ctx.net.send({ type: "cmd.research", ids, research });
-    return;
-  }
-  if (t.dataset.researchCancel) {
-    const ids = selectedOfType(ctx, viewRef, configFocus)
-      .filter((ent) => ent.ownerId === ctx.match!.youPlayerId && ent.research)
-      .map((ent) => ent.id);
-    if (ids.length === 0) return;
-    ctx.net.send({ type: "cmd.research", ids, research: null });
     return;
   }
   const reach = t.dataset.reach;

@@ -605,8 +605,8 @@ export interface Entity {
   roofFlak?: MawGun;
   /** Researched Sky Tracking (sim/research.ts): an Ion Turret that lays on aircraft too (catalog antiAirGun). */
   skySpines?: true;
-  /** Research running on this structure, for the side that started it; `paid` is the scrap it took. */
-  research?: { id: ResearchId; ownerId: string; progressTicks: number; totalTicks: number; paid: number };
+  /** Research running on this structure, for the side that started it; `paid` is the scrap it took. Held while `paused`. */
+  research?: { id: ResearchId; ownerId: string; progressTicks: number; totalTicks: number; paid: number; paused?: boolean };
   /** Shut-down Cyborg only: the Cyborg Commander taking him over, and ticks of uplink so far. */
   takeover?: { by: number; ticks: number };
   /** Cyborg only: fires on what his side's thermal and APS read, seen or not, inside his reach. */
