@@ -309,6 +309,12 @@ export function mountBattlefield(
   const view = new MapView(canvas, mini, ctx.match, zoomLevel);
   viewRef = view;
   view.onCommand = (msg) => ctx.net.send(msg);
+  view.onCheat = () => {
+    // Skirmish and Map Builder play tests only; the hub refuses it anywhere else too.
+    if (ctx.playMode !== "skirmish") return;
+    ctx.net.send({ type: "match.cheat" });
+    flashCheat(hiveHud(ctx.match) ? "CHEAT: +9999 ENERGY" : "CHEAT: 99999 SCRAP, +9999 POWER");
+  };
   view.onPlaceMode = () => paintBattleHud(ctx);
   view.onAttackMoveMode = () => paintQuickActions(ctx, view);
   let lastSelected = new Set<number>();
@@ -694,6 +700,20 @@ export function flashNoScrap(cameo?: HTMLElement | null): void {
     toast?.classList.remove("show");
     cameo?.classList.remove("scrap-denied");
   }, 900);
+}
+
+/** Show `text` in green on the top-bar toast for a moment, then put its usual words back. */
+function flashCheat(text: string): void {
+  const toast = document.getElementById("scrap-toast");
+  if (!toast) return;
+  const usual = toast.textContent;
+  toast.textContent = text;
+  toast.classList.add("cheat");
+  retrigger(toast, "show");
+  window.setTimeout(() => {
+    toast.classList.remove("show", "cheat");
+    toast.textContent = usual;
+  }, 1600);
 }
 
 const scrapYieldIndex = new WeakMap<readonly ScrapCell[], Map<string, number>>();
