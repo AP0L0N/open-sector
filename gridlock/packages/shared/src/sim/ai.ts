@@ -48,6 +48,7 @@ import {
   energySupplyOfEntity,
   FORCE_SHIELD_ENERGY,
   SKY_SPINES_ENERGY,
+  SHIELD_WALL_ENERGY,
   nextResearch,
   usesHiveEnergy,
   dockOf,
@@ -489,7 +490,9 @@ const XENO_RESEARCH_AFTER_NODES = 3;
 const XENO_SHIELDED: ReadonlySet<string> = new Set(["spineturret", "pulsespire", "energywall"]);
 
 /**
- * One upgrade at a time, once the build order stands. First the least upgraded Fusion Node, when the
+ * One upgrade at a time. The Shield Wall comes first, on the oldest Conversion Chamber, as soon as the
+ * hive keeps HIVE_ENERGY_LOW free after its draw: Drones and Lancers fight without walls until then.
+ * The rest waits for the build order to stand. First the least upgraded Fusion Node, when the
  * dip while it upgrades keeps the hive at zero or above (Ultra Fusion waits for a Neural Nexus); else,
  * once enemy fliers have been seen, the oldest Ion Turret still blind to them grows Sky Tracking; else
  * the oldest defence still bare gets its Force Shield. Either only when the hive keeps HIVE_ENERGY_LOW
@@ -499,17 +502,26 @@ function researchXeno(state: MatchState, p: SimPlayer): void {
   let node: Entity | undefined;
   let bare: Entity | undefined;
   let grounded: Entity | undefined;
+  let chamber: Entity | undefined;
+  let drilled = false;
   let nodes = 0;
   for (const e of state.entities.values()) {
     if (e.ownerId !== p.playerId || e.kind !== "building" || e.hp <= 0 || e.ruined) continue;
     if (e.research) return;
-    if (e.type === "fusionnode") {
+    if (e.type === "conversion") {
+      if (e.shieldWall) drilled = true;
+      else if (!chamber || e.id < chamber.id) chamber = e;
+    } else if (e.type === "fusionnode") {
       nodes++;
       if (nextResearch(e.type, e.level ?? 0) && (!node || (e.level ?? 0) < (node.level ?? 0))) node = e;
     } else {
       if (XENO_SHIELDED.has(e.type) && !e.forceShield && (!bare || e.id < bare.id)) bare = e;
       if (e.type === "spineturret" && !e.skySpines && (!grounded || e.id < grounded.id)) grounded = e;
     }
+  }
+  if (!drilled && chamber && hiveFreeAfterQueue(state, p) - SHIELD_WALL_ENERGY >= HIVE_ENERGY_LOW) {
+    applyCommand(state, p.playerId, { type: "cmd.research", ids: [chamber.id], research: "shieldwall" });
+    return;
   }
   if (nodes < XENO_RESEARCH_AFTER_NODES || xenoOrderNext(state, p) != null) return;
   // The least upgraded node is the one to go next; if its level is still locked (Ultra Fusion

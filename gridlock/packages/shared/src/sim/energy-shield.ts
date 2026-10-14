@@ -3,12 +3,14 @@ import {
   FORCE_SHIELD_MARGIN_TILES,
   MOTHERSHIP_DOME_DEPTH,
   NEUTRAL_OWNER,
+  SHIELD_WALL_UNITS,
   energyDomeOf,
   energyShieldOf,
   energyWallOf,
   isAircraftType,
   secondsToTicks,
   type EnergyDomeDef,
+  type EntityType,
   type EnergyWallDef,
 } from "../catalog.js";
 import { airAlt, entityHeight, weaponRangeWorld } from "./elevation.js";
@@ -18,7 +20,8 @@ import type { Entity, EnergyShield, MatchState, Projectile } from "./types.js";
 
 /**
  * Hive energy walls. A Behemoth, Drone, or Lancer fighting a target in reach
- * raises a curved wall across its front. The wall stays where it went up. Enemy
+ * raises a curved wall across its front. Drones and Lancers only know how once their side
+ * holds a standing Conversion Chamber with the Shield Wall researched (sim/research.ts). The wall stays where it went up. Enemy
  * rounds and beams that meet it stop there and take points off it; enemy ground
  * units cannot walk through it. Its own side walks and shoots through.
  * A Weaver throws smaller ones in front of friends under fire (sim/weaver.ts).
@@ -344,6 +347,17 @@ function canRaise(state: MatchState, e: Entity): boolean {
   return dx * dx + dy * dy <= reach * reach;
 }
 
+const DRILLED: ReadonlySet<EntityType> = new Set(SHIELD_WALL_UNITS);
+
+/** Sides holding a standing Conversion Chamber with the Shield Wall: their Drones and Lancers raise walls. */
+export function shieldWallSides(state: MatchState): Set<string> {
+  const sides = new Set<string>();
+  for (const e of state.entities.values()) {
+    if (e.shieldWall && e.kind === "building" && e.hp > 0 && !e.ruined && !e.wreck) sides.add(e.ownerId);
+  }
+  return sides;
+}
+
 /** A Siphon holds its dome whenever it is alive, running, and out in the open; a shielded defence while it stands online. */
 function canHoldDome(e: Entity): boolean {
   if (e.kind === "building") return !!e.forceShield && e.ownerId !== NEUTRAL_OWNER && e.hp > 0 && !e.ruined && !e.wreck && !e.unpowered;
@@ -495,6 +509,7 @@ export function tickEnergyShields(state: MatchState, dt: number): void {
   // A shielded Energy Wall holds its curtain and its dome at once: each is kept apart.
   const standing = new Set<number>();
   const domed = new Set<number>();
+  let drilled: Set<string> | undefined;
   for (const s of state.energyShields!) (s.dome ? domed : standing).add(s.fromId);
   for (const e of state.entities.values()) {
     if (e.forceShield && !domed.has(e.id) && canHoldDome(e) && (e.forceShieldReady == null || state.tick >= e.forceShieldReady)) {
@@ -514,6 +529,7 @@ export function tickEnergyShields(state: MatchState, dt: number): void {
     }
     const def = energyShieldOf(e.type);
     if (!def || !canRaise(state, e)) continue;
+    if (DRILLED.has(e.type) && !(drilled ??= shieldWallSides(state)).has(e.ownerId)) continue;
     const target = state.entities.get(e.attackTarget!)!;
     state.energyShields!.push({
       id: state.nextId++,

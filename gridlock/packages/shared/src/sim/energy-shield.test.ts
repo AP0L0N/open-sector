@@ -179,6 +179,56 @@ describe("hive energy wall", () => {
     assert.equal(energyShieldOf("thrall"), undefined);
   });
 
+  it("a Drone or Lancer raises its wall only while a Conversion Chamber with the Shield Wall stands", () => {
+    const state = field();
+    const ts = state.tileSize;
+    for (const e of [...state.entities.values()]) if (e.type === "conversion") destroyEntity(state, e);
+    const x = tileCenter(100, ts);
+    const y = tileCenter(120, ts);
+    const drone = makeEntity(state, "xenodrone", "B", x, y);
+    const lancer = makeEntity(state, "lancer", "B", x, y + 40 * ts);
+    const behemoth = makeEntity(state, "behemoth", "B", x, y + 80 * ts);
+    for (const u of [drone, lancer, behemoth]) {
+      u.attackTarget = makeEntity(state, "rifleman", "A", u.x + 4 * ts, u.y).id;
+      u.holdPosition = true;
+    }
+    const from = () => new Set((state.energyShields ?? []).map((s) => s.fromId));
+    tickEnergyShields(state, TICK_DT);
+    assert.deepEqual([...from()], [behemoth.id], "without the drill only the Behemoth walls up");
+
+    // A chamber that has not finished the research does not count; an enemy's never does.
+    const chamber = makeEntity(state, "conversion", "B", tileCenter(60, ts), tileCenter(60, ts));
+    const theirs = makeEntity(state, "conversion", "A", tileCenter(30, ts), tileCenter(30, ts));
+    theirs.shieldWall = true;
+    tickEnergyShields(state, TICK_DT);
+    assert.deepEqual([...from()], [behemoth.id]);
+
+    chamber.shieldWall = true;
+    tickEnergyShields(state, TICK_DT);
+    assert.ok(from().has(drone.id) && from().has(lancer.id), "both raise a wall once the drill stands");
+
+    // The chamber falls: the walls up now burn out, and none follow.
+    destroyEntity(state, chamber);
+    state.energyShields = [];
+    drone.shieldReady = undefined;
+    lancer.shieldReady = undefined;
+    tickEnergyShields(state, TICK_DT);
+    assert.ok(!from().has(drone.id) && !from().has(lancer.id));
+  });
+
+  it("the Conversion Chamber researches the Shield Wall and the snapshot shows it", () => {
+    const state = field();
+    const ts = state.tileSize;
+    const chamber = makeEntity(state, "conversion", "B", tileCenter(60, ts), tileCenter(60, ts));
+    const r = applyCommand(state, "B", { type: "cmd.research", ids: [chamber.id], research: "shieldwall" });
+    assert.equal(r.ok, true);
+    for (let i = 0; i < secondsToTicks(120) && !chamber.shieldWall; i++) step(state);
+    assert.equal(chamber.shieldWall, true);
+    assert.equal(chamber.research, undefined);
+    const view = snapshotFor(state, "B").entities.find((v) => v.id === chamber.id);
+    assert.equal(view?.shieldWall, true);
+  });
+
   it("stops a Cyborg Commander's beam line short", () => {
     const { state, b } = standoff();
     tickEnergyShields(state, TICK_DT);
