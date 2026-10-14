@@ -9,6 +9,12 @@ export const GAME_SPEED_DEFAULT = GAME_SPEED_MIN;
 export const START_SCRAP = 2200;
 /** Map Builder play tests start rich, so the tester can try anything at once. */
 export const PLAYTEST_START_SCRAP = 50000;
+/** Skirmish cheat (0 pressed five times): an Alliance side's scrap is topped up to this. */
+export const CHEAT_SCRAP = 99999;
+/** Skirmish cheat: power an Alliance side has on top of its buildings. */
+export const CHEAT_POWER = 9999;
+/** Skirmish cheat: hive energy a Xenite side holds on top of its Hive Core and Nodes. */
+export const CHEAT_ENERGY = 9999;
 /**
  * Gameplay tiles per original 32px cell. RA2 / Sudden Strike 2 maps feel
  * dense because the cell is small relative to a hill or a building; 4× turns
@@ -1269,11 +1275,23 @@ export function energySupplyOf(type: string): number {
  * on the structure for `seconds` at the owner's job pace and costs `cost` scrap as it goes (nothing
  * for the Xenite, who pay no scrap) and `energy` more hive energy for as long as it stands.
  */
-export type ResearchId = "advancedfusion" | "ultrafusion" | "fusionreactor" | "forceshield" | "flakmaw" | "skyspines" | "shieldwall" | "advancedassembly" | "neuralassembly";
+export type ResearchId =
+  | "advancedfusion"
+  | "ultrafusion"
+  | "fusionreactor"
+  | "forceshield"
+  | "flakmaw"
+  | "skyspines"
+  | "shieldwall"
+  | "advancedassembly"
+  | "neuralassembly"
+  | "scanrelay"
+  | "scanarray";
 export interface ResearchDef {
   id: ResearchId;
   name: string;
-  buildings: readonly BuildingType[];
+  /** Structures that offer it: the Hive Core's are its Ground Scan relays. */
+  buildings: readonly (BuildingType | HqBuildingType)[];
   /** The level the structure reaches once it is done. Unset for an upgrade that is not a level. */
   level?: number;
   /** What it grants instead of a level: the Force Shield's dome, the roof Ion Turret on a Fusion Core, Sky Tracking's reach on aircraft, or the Shield Wall drill. */
@@ -1317,7 +1335,41 @@ export const SKY_SPINES_ENERGY = 20;
 export const SHIELD_WALL_ENERGY = 20;
 /** The units that raise an energy wall only once their side holds the Shield Wall (wallsNeedDrill). */
 export const SHIELD_WALL_UNITS: readonly EntityType[] = ["xenodrone", "lancer"];
+/**
+ * The Xenite Ground Scan (sim/ground-scan.ts): a square of ground lit from orbit as if in daylight.
+ * Night does not shorten the side's sight over it. It can sit anywhere on the map. Moving it first
+ * folds it into its centre, then opens it again around the new one.
+ */
+export const GROUND_SCAN_SIDE_TILES = t(16);
+/** Seconds a scan takes to open from nothing to its full square. */
+export const GROUND_SCAN_OPEN_SECONDS = 6;
+/** Seconds a scan takes to fold from its full square into its centre. */
+export const GROUND_SCAN_FOLD_SECONDS = 4;
+/** Scans a Xenite side holds with a plain Hive Core; each Hive Core level adds one. */
+export const GROUND_SCAN_BASE = 1;
+export const GROUND_SCAN_MAX = 3;
 export const RESEARCH: Record<ResearchId, ResearchDef> = {
+  scanrelay: {
+    id: "scanrelay",
+    name: "Orbital Relay",
+    buildings: ["hivecore"],
+    level: 1,
+    seconds: 60,
+    effect: "2 Ground Scans",
+    cost: 0,
+    blurb: "Hangs a second relay in orbit over the hive: one more Ground Scan, two in all. Each lights a square of ground as if it were day, anywhere on the map.",
+  },
+  scanarray: {
+    id: "scanarray",
+    name: "Orbital Array",
+    buildings: ["hivecore"],
+    level: 2,
+    seconds: 90,
+    requires: ["nexus"],
+    effect: "3 Ground Scans",
+    cost: 0,
+    blurb: "Completes the ring of relays in orbit: a third Ground Scan. Needs a Neural Nexus.",
+  },
   advancedfusion: {
     id: "advancedfusion",
     name: "Advanced Fusion",
@@ -1506,7 +1558,8 @@ export function energySupplyOfEntity(e: { type: string; level?: number; research
   const levels = e.type === "fusionnode" ? FUSION_NODE_LEVEL_ENERGY : e.type === "fusioncore" ? FUSION_CORE_LEVEL_ENERGY : undefined;
   const base = levels ? (levels[Math.min(e.level ?? 0, levels.length - 1)] ?? energySupplyOf(e.type)) : energySupplyOf(e.type);
   const id = (e.research as { id?: ResearchId } | undefined)?.id;
-  const levelling = e.research != null && (id == null || RESEARCH[id]?.level != null);
+  // Only a structure whose level is its energy gives less while it climbs: the Hive Core's levels are its scans.
+  const levelling = levels != null && e.research != null && (id == null || RESEARCH[id]?.level != null);
   return levelling ? Math.floor(base * RESEARCH_OUTPUT_SHARE) : base;
 }
 /** Hive energy a structure's upgrades take on top of its own: a Force Shield's, a roof Ion Turret's, Sky Tracking's and a Shield Wall's, from the moment their research starts. */
@@ -5198,7 +5251,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "The Xenite hive, dropped from orbit onto the Deployment. It raises every Xenite structure and never packs up. Lose it and the collective falls.",
+    blurb: "The Xenite hive, dropped from orbit onto the Deployment. It raises every Xenite structure and never packs up. Its relay in orbit holds a Ground Scan: a square of ground anywhere on the map kept as bright as day. Research Orbital Relay, then Orbital Array once a Neural Nexus stands, for a second and a third. Lose it and the collective falls.",
   },
   core: {
     type: "core",
@@ -9651,9 +9704,9 @@ export function hasTracks(type: EntityType): boolean {
  * A side hit, blast, or mine can throw tracks. The Mammoth and aircraft have
  * none to lose. A rear hit can still wreck their engines.
  */
-/** The Juggernaut and the Titan have no engine a hit can break. */
+/** The Juggernaut, the Titan, and every Xenite unit have no engine a hit can break. */
 export function engineCritAllowed(type: EntityType): boolean {
-  return type !== "juggernaut" && type !== "titan";
+  return type !== "juggernaut" && type !== "titan" && factionOf(type) !== "xeno";
 }
 
 export function trackCritAllowed(type: EntityType): boolean {

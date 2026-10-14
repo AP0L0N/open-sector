@@ -311,6 +311,12 @@ export function mountBattlefield(
   const view = new MapView(canvas, mini, ctx.match, zoomLevel);
   viewRef = view;
   view.onCommand = (msg) => ctx.net.send(msg);
+  view.onCheat = () => {
+    // Skirmish and Map Builder play tests only; the hub refuses it anywhere else too.
+    if (ctx.playMode !== "skirmish") return;
+    ctx.net.send({ type: "match.cheat" });
+    flashCheat(hiveHud(ctx.match) ? "CHEAT: +9999 ENERGY" : "CHEAT: 99999 SCRAP, +9999 POWER");
+  };
   view.onPlaceMode = () => paintBattleHud(ctx);
   view.onAttackMoveMode = () => paintQuickActions(ctx, view);
   let lastSelected = new Set<number>();
@@ -700,6 +706,20 @@ export function flashNoScrap(cameo?: HTMLElement | null): void {
     toast?.classList.remove("show");
     cameo?.classList.remove("scrap-denied");
   }, 900);
+}
+
+/** Show `text` in green on the top-bar toast for a moment, then put its usual words back. */
+function flashCheat(text: string): void {
+  const toast = document.getElementById("scrap-toast");
+  if (!toast) return;
+  const usual = toast.textContent;
+  toast.textContent = text;
+  toast.classList.add("cheat");
+  retrigger(toast, "show");
+  window.setTimeout(() => {
+    toast.classList.remove("show", "cheat");
+    toast.textContent = usual;
+  }, 1600);
 }
 
 const scrapYieldIndex = new WeakMap<readonly ScrapCell[], Map<string, number>>();
@@ -2351,6 +2371,28 @@ interface QAct {
   badge?: string;
 }
 
+/** One button per Ground Scan the hive holds: press, then click the map to send it there. */
+function groundScanActs(m: MatchSnapshot, view: MapView | null): QAct[] {
+  const slots = m.you.groundScanSlots ?? 0;
+  const out: QAct[] = [];
+  for (let slot = 0; slot < slots; slot++) {
+    const placed = m.scans?.find((s) => s.ownerId === m.youPlayerId && s.slot === slot);
+    const n = slot + 1;
+    out.push({
+      slot: `ground-scan-${slot}`,
+      act: `ground-scan-${slot}`,
+      label: `Ground Scan ${n}`,
+      title: placed
+        ? `Move Ground Scan ${n}: click the map. It folds into its centre, then opens round the new spot. It keeps a square of ground as bright as day for your side.`
+        : `Place Ground Scan ${n}: click anywhere on the map. A square of ground lit from orbit, as bright as day for your side.`,
+      on: view?.scanSlot === slot,
+      icon: "ground-scan",
+      badge: String(n),
+    });
+  }
+  return out;
+}
+
 function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
   if (!ctx.match) return [];
   const out: QAct[] = [];
@@ -2372,6 +2414,8 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
   // A CIWS, a RAM, or a crewed gun aims its own gun: it takes Stop, Force attack, and Rotate like a unit.
   const mounts = buildings.filter((e) => aimsOwnGun(e.type));
   const lamps = buildings.filter((e) => hasSpotlight(e.type) && e.spotFacing != null);
+  // The Xenite Ground Scans answer to the hive, not to a selection: always on the bar.
+  out.push(...groundScanActs(ctx.match, view));
   if (units.length === 0 && buildings.length === 0 && houses.length === 0) return out;
 
   // A gate locks and unlocks. It is built from the Defences tab.
@@ -3145,6 +3189,11 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   if (!match) return;
   if (act === "confirm-field") {
     view.confirmField();
+    return;
+  }
+  if (act.startsWith("ground-scan-")) {
+    const slot = Number(act.slice("ground-scan-".length));
+    view.setScanMode(view.scanSlot === slot ? null : slot);
     return;
   }
   const selected = selectedViews(ctx, view);

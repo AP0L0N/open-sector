@@ -3,6 +3,7 @@ import {
   PROTOCOL_VERSION,
   SLOT_COUNT,
   getMap,
+  grantCheat,
   isPlaytestMapId,
   loadCustomMap,
   unregisterMap,
@@ -164,6 +165,9 @@ export class Hub {
         break;
       case "match.restart":
         this.onMatchRestart(session);
+        break;
+      case "match.cheat":
+        this.onMatchCheat(session);
         break;
       case "map.save":
         this.onMapSave(session, msg.map, msg.key);
@@ -603,6 +607,15 @@ export class Hub {
     if (!found) return;
     if (found.match.ended) return this.err(session, "ended", "Match is over.");
     found.match.paused = paused;
+    this.broadcastSnapshots(found.room.id);
+  }
+
+  private onMatchCheat(session: Session): void {
+    const found = this.skirmishMatch(session);
+    if (!found) return;
+    if (found.match.ended) return this.err(session, "ended", "Match is over.");
+    if (!grantCheat(found.match, session.playerId)) return;
+    log("match.cheat", { room: found.room.id, playerId: session.playerId });
     this.broadcastSnapshots(found.room.id);
   }
 

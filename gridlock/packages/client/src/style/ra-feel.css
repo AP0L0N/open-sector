@@ -484,6 +484,13 @@ input[type="range"] { padding: 0; }
 .scrap-toast.show {
   animation: scrap-toast-pop 0.9s ease;
 }
+.scrap-toast.cheat {
+  color: var(--ready);
+  text-shadow: 0 0 8px rgba(125, 255, 106, 0.6);
+}
+.scrap-toast.cheat.show {
+  animation-duration: 1.6s;
+}
 
 @keyframes scrap-shake {
   0%, 100% { transform: translateX(0); }

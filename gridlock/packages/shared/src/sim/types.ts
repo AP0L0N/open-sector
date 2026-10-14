@@ -1130,11 +1130,30 @@ export interface SimPlayer {
   hiveSwitchTick?: number;
   /** The seat's faction. Missing reads as Alliance (old saves, hand-built test players). */
   faction?: Faction;
+  /** Skirmish cheat on (sim/cheat.ts): CHEAT_POWER more power, or CHEAT_ENERGY more hive energy. Absent when off. */
+  cheat?: true;
   /**
    * Units this commander keeps training. Each of his producers for that unit
    * holds one job until he turns it off. Absent when none.
    */
   continuous?: TrainType[];
+  /** Xenite Ground Scans placed on the map (sim/ground-scan.ts). Absent until the first is placed. */
+  groundScans?: GroundScan[];
+}
+
+/**
+ * One Xenite Ground Scan: a square of ground lit from orbit. `open` runs 0–1 (folded to full);
+ * `dir` is 1 while it opens, -1 while it folds, 0 while it holds. `to` is where it opens next
+ * once it has folded away.
+ */
+export interface GroundScan {
+  slot: number;
+  /** Centre, world units. */
+  x: number;
+  y: number;
+  open: number;
+  dir: 1 | 0 | -1;
+  to?: { x: number; y: number };
 }
 
 export interface MatchState {

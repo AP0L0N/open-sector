@@ -47,6 +47,7 @@ export { armSightBlocks, clearSightBlocks };
 import { hiddenSubmarine, sonarSpotted } from "./naval.js";
 import { occupantEye, occupantSightTiles } from "./garrison.js";
 import { fillSmokeMask, smokeCloudTileBounds } from "./smoke.js";
+import { scanLightRects, scanRect, type ScanRect } from "./ground-scan.js";
 import {
   hasSpotlight,
   headlightLit,
@@ -101,13 +102,24 @@ export type SightSource = {
   garrison?: readonly unknown[] | { count: number };
 };
 
-/** Light at the moment sight is painted: how far it carries, whether lamps are lit, and match seconds for lamps that sweep. */
-export type SightLight = { mul: number; spots: boolean; sec: number };
+/**
+ * Light at the moment sight is painted: how far it carries, whether lamps are lit, and match seconds for lamps that sweep.
+ * `scans`: ground the side's Xenite Ground Scans keep as bright as day, set only while night cuts sight.
+ */
+export type SightLight = { mul: number; spots: boolean; sec: number; scans?: readonly ScanRect[] };
 
 const DAYLIGHT: SightLight = { mul: 1, spots: false, sec: 0 };
 
 export function sightLightAt(tick: number, alwaysNight = false): SightLight {
   return { mul: nightSightMul(tick, alwaysNight), spots: spotlightsOn(tick, alwaysNight), sec: tick * TICK_DT };
+}
+
+/** The light one side sees by: the hour's, plus the squares its Ground Scans light while it is dark. */
+function sideLightAt(state: MatchState, playerId: string): SightLight {
+  const light = sightLightAt(state.tick, getMap(state.mapId)?.night);
+  if (light.mul >= 1) return light;
+  const scans = scanLightRects(state, playerId);
+  return scans.length > 0 ? { ...light, scans } : light;
 }
 
 const SPOT_COS = Math.cos((SPOTLIGHT_HALF_DEG * Math.PI) / 180);
@@ -340,6 +352,9 @@ type SightParams = {
   /** A Titan aloft: the lamp lights one round pool this wide, `spa` tiles out along the heading, instead of a cone. */
   spr?: number;
   spa?: number;
+  /** Ground Scan squares in this eye's daylight reach `day`: over them the dark does not cut its sight. */
+  day?: number;
+  scans?: readonly ScanRect[];
 };
 
 type SpotPaint = {
@@ -354,6 +369,22 @@ type SpotPaint = {
 };
 
 const NO_SPOT: SpotPaint = { sr: 0, sdx: 0, sdy: 0, scos: 1, seye: 0 };
+
+/** The scan squares an eye at (ox, oy) with daylight reach `day` could see into, clipped to that reach. Empty by day. */
+function scanPaint(ox: number, oy: number, day: number, radius: number, light: SightLight): { day?: number; scans?: readonly ScanRect[] } {
+  const all = light.scans;
+  if (!all || day <= radius) return {};
+  let scans: ScanRect[] | undefined;
+  for (const r of all) {
+    const x0 = Math.max(r.x0, ox - day);
+    const y0 = Math.max(r.y0, oy - day);
+    const x1 = Math.min(r.x1, ox + day);
+    const y1 = Math.min(r.y1, oy + day);
+    if (x0 > x1 || y0 > y1) continue;
+    (scans ??= []).push({ x0, y0, x1, y1 });
+  }
+  return scans ? { day, scans } : {};
+}
 
 /** A held tower's spotlight, or a hull's headlight giving back its daylight sight down the nose. */
 function spotOf(e: SightSource, light: SightLight, daySight: number, eye: number): SpotPaint {
@@ -429,10 +460,15 @@ function sightParams(
         }
       }
     }
+    const ox = e.tileX + Math.floor(e.tileW / 2);
+    const oy = e.tileY + Math.floor(e.tileH / 2);
+    const day = e.sightTiles ?? lowPowerSight(sightTilesOf(e.type, maxH), sightDimmed(e));
+    const radius = nightTiles(day, light.mul);
     return {
-      ox: e.tileX + Math.floor(e.tileW / 2),
-      oy: e.tileY + Math.floor(e.tileH / 2),
-      radius: nightTiles(e.sightTiles ?? lowPowerSight(sightTilesOf(e.type, maxH), sightDimmed(e)), light.mul),
+      ox,
+      oy,
+      radius,
+      ...scanPaint(ox, oy, day, radius, light),
       eye,
       uphill,
       ignore,
@@ -448,10 +484,12 @@ function sightParams(
   const h = elev ? elevAtSafe(elev, width, height, tx, ty) : 0;
   const daySight =
     e.sightTiles ?? (entityIsScouting(e) ? sightTilesOf("rifleman", h) : sightTilesOf(e.type, h, liveSightExtra(e)));
+  const radius = nightTiles(daySight, light.mul);
   return {
     ox: tx,
     oy: ty,
-    radius: nightTiles(daySight, light.mul),
+    radius,
+    ...scanPaint(tx, ty, daySight, radius, light),
     eye,
     uphill,
     ignore,
@@ -482,8 +520,21 @@ function sameSightParams(a: SightParams, b: SightParams): boolean {
     a.seye === b.seye &&
     a.spr === b.spr &&
     a.spa === b.spa &&
-    sameFlanks(a.flanks, b.flanks)
+    a.day === b.day &&
+    sameFlanks(a.flanks, b.flanks) &&
+    sameScans(a.scans, b.scans)
   );
+}
+
+function sameScans(a: readonly ScanRect[] | undefined, b: readonly ScanRect[] | undefined): boolean {
+  if (a == null || b == null) return a == null && b == null;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const p = a[i]!;
+    const q = b[i]!;
+    if (p.x0 !== q.x0 || p.y0 !== q.y0 || p.x1 !== q.x1 || p.y1 !== q.y1) return false;
+  }
+  return true;
 }
 
 function sameFlanks(
@@ -502,6 +553,7 @@ function sameFlanks(
 function sightBoxRadius(p: SightParams, elev: boolean): number {
   let r = 0;
   if (p.radius > 0) r = !elev ? p.radius : p.radius + (p.uphill > 0 ? Math.min(SIGHT_UPHILL_MAX_TILES, HEIGHT_MAX * p.uphill) : 0);
+  if (p.scans && p.day != null) r = Math.max(r, !elev ? p.day : p.day + (p.uphill > 0 ? Math.min(SIGHT_UPHILL_MAX_TILES, HEIGHT_MAX * p.uphill) : 0));
   return Math.max(r, p.sr);
 }
 
@@ -574,6 +626,67 @@ function paintSpot(
   }
 }
 
+/**
+ * Inside a Ground Scan the eye sees as far as it would by day, uphill bonus and all; the ray and the
+ * smoke stop it as they always do. Ground within its night reach is the sweep's already.
+ */
+function scanLightsTile(
+  p: SightParams,
+  x: number,
+  y: number,
+  elev: ArrayLike<number> | undefined,
+  width: number,
+  height: number,
+  cover: CoverField | undefined,
+): boolean {
+  const scans = p.scans;
+  if (!scans || p.day == null) return false;
+  let inside = false;
+  for (let i = 0; i < scans.length; i++) {
+    const r = scans[i]!;
+    if (x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1) {
+      inside = true;
+      break;
+    }
+  }
+  if (!inside) return false;
+  const d = sightDist(x, y, p.ox, p.oy);
+  if (!elev) return d <= p.day;
+  const extra = p.uphill > 0 ? levelSightExtra(elevAtSafe(elev, width, height, p.ox, p.oy), elevAtSafe(elev, width, height, x, y), p.uphill) : 0;
+  if (d > p.day + extra) return false;
+  if (cover) cover.ignoreOccupyId = p.ignore;
+  if (!losClear(elev, width, height, p.ox, p.oy, x, y, cover, p.eye)) return false;
+  return !(cover && d > SMOKE_PEEK_TILES && coverSmokeAt(cover, width, height, x, y));
+}
+
+/** Ground the eye's Ground Scan squares give back to it: everything past its night reach and inside its daylight one. */
+function paintScan(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  p: SightParams,
+  elev?: ArrayLike<number>,
+  cover?: CoverField,
+  out?: LitList,
+): void {
+  const scans = p.scans;
+  if (!scans) return;
+  for (let i = 0; i < scans.length; i++) {
+    const r = scans[i]!;
+    for (let y = r.y0; y <= r.y1; y++) {
+      const row = y * width;
+      for (let x = r.x0; x <= r.x1; x++) {
+        if (mask[row + x]) continue;
+        // Within the night reach the sweep has answered already, with the same ray.
+        if (p.uphill <= 0 && sightDist(x, y, p.ox, p.oy) <= p.radius) continue;
+        if (!scanLightsTile(p, x, y, elev, width, height, cover)) continue;
+        mask[row + x] = 1;
+        if (out) litPush(out, row + x);
+      }
+    }
+  }
+}
+
 /** Paint one eye. With `out`, every tile it lights is listed too, lit already or not, so the list can be re-stamped later. */
 function paintSightParams(
   mask: Uint8Array,
@@ -594,6 +707,7 @@ function paintSightParams(
   }
   paintSight(mask, width, height, p.ox, p.oy, p.radius, elev, cover, p.eye, p.uphill, out);
   paintSpot(mask, width, height, p, elev, cover, out);
+  paintScan(mask, width, height, p, elev, cover, out);
 }
 
 export function paintEntitySight(
@@ -991,9 +1105,10 @@ function visionKeyNow(state: MatchState, playerId: string): number {
   let h = 2166136261;
   h = mix(h, state.clearedTrees.length);
   h = mix(h, state.digRev);
-  const light = sightLightAt(state.tick, getMap(state.mapId)?.night);
+  const light = sideLightAt(state, playerId);
   h = mix(h, Math.round(light.mul * 4096));
   h = mix(h, light.spots ? 1 : 0);
+  for (const r of light.scans ?? []) h = mix(mix(mix(mix(h, r.x0), r.y0), r.x1), r.y1);
   for (const e of state.entities.values()) {
     if (e.hp <= 0) continue;
     if (e.kind === "unit" && isArmoredType(e.type)) {
@@ -1158,6 +1273,8 @@ function sightReachKey(p: SightParams): number {
   h = mix(h, Math.round((p.spa ?? 0) * 64));
   const flanks = p.flanks;
   if (flanks) for (let i = 0; i < flanks.length; i++) h = mix(mix(h, Math.round(flanks[i]!.dx * 4096)), Math.round(flanks[i]!.dy * 4096));
+  h = mix(h, p.day ?? -1);
+  for (const r of p.scans ?? []) h = mix(mix(mix(mix(h, r.x0), r.y0), r.x1), r.y1);
   return h;
 }
 
@@ -1281,7 +1398,7 @@ function alliedSight(state: MatchState, playerId: string): { e: Entity; p: Sight
   const radius = new Map<number, number>();
   for (const e of observers) radius.set(e.id, observerRadius(state, e));
   observers.sort((a, b) => radius.get(b.id)! - radius.get(a.id)!);
-  const light = sightLightAt(state.tick, getMap(state.mapId)?.night);
+  const light = sideLightAt(state, playerId);
   return observers.map((e) => {
     const sightTiles = occupantSightTiles(state, e) ?? (entityIsScouting(e) ? sightTilesForEntity(state, e) : undefined);
     const observerEye = occupantEye(state, e);
@@ -1474,7 +1591,7 @@ function paramSeesTile(
       }
     }
   }
-  return spotLightsTile(p, x, y, elev, width, height, cover);
+  return spotLightsTile(p, x, y, elev, width, height, cover) || scanLightsTile(p, x, y, elev, width, height, cover);
 }
 
 /** One sight ray, on the flagged fast path when the cover carries `losFlags` (same test as `paintSightBox`). */
@@ -1857,7 +1974,16 @@ export function visionMaskFromSnapshot(
         smoke,
       }
     : undefined;
-  const light = sightLightAt(snap.tick, map?.night);
+  let light = sightLightAt(snap.tick, map?.night);
+  if (light.mul < 1 && snap.scans && snap.scans.length > 0) {
+    // The snapshot carries the side's own scans and its allies' only.
+    const scans: ScanRect[] = [];
+    for (const s of snap.scans) {
+      const r = scanRect(s, width, height, tileSize);
+      if (r) scans.push(r);
+    }
+    if (scans.length > 0) light = { ...light, scans };
+  }
   const allied: EntityView[] = [];
   for (const e of snap.entities) {
     if (e.wreck) continue;
