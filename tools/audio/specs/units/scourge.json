@@ -13,7 +13,7 @@
   },
   "lines": {
     "select": [
-      "Scourge circles.",
+      "Eclipse circles.",
       "Heavy wings.",
       "The payload waits."
     ],
@@ -28,7 +28,7 @@
       "Scour them clean."
     ],
     "ready": [
-      "Scourge is airborne."
+      "Eclipse is airborne."
     ]
   },
   "sfx": {

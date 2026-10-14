@@ -14,7 +14,7 @@
   "lines": {
     "select": [
       "The eye is open.",
-      "Gnat watching.",
+      "Probe watching.",
       "We see."
     ],
     "move": [
@@ -28,7 +28,7 @@
       "We circle."
     ],
     "ready": [
-      "Gnat hatched."
+      "Probe hatched."
     ]
   },
   "sfx": {
