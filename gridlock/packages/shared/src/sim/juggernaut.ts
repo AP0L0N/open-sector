@@ -139,7 +139,8 @@ function gapFrom(state: MatchState, x: number, y: number, o: Entity): number {
 /**
  * One blow lands at (x, y): every enemy soldier, hull, and building inside the blow's radius
  * takes it, full at the centre and falling off toward the rim. A held house loses walls and
- * the men behind them. `harmAllies` (a force-attack) brings friends in too; never itself.
+ * the men behind them. Wrecks in reach take the building blow. `harmAllies` (a force-attack)
+ * brings friends in too; never itself.
  */
 export function hammerBlast(
   state: MatchState,
@@ -156,7 +157,18 @@ export function hammerBlast(
   const src = (blow !== "throw" && state.entities.get(by.id)) || { x, y };
   const soaked = new Set<number>();
   for (const o of [...state.entities.values()]) {
-    if (o.id === by.id || o.hp <= 0 || o.wreck || o.garrisonedIn != null) continue;
+    if (o.id === by.id || o.hp <= 0 || o.garrisonedIn != null) continue;
+    // A hulk is dead plate: the blow smashes it like a wall, whoever's it was. A friend's
+    // fallen Juggernaut waiting to rise is spared.
+    if (o.wreck) {
+      if (o.kind !== "unit" || (o.reassembleAt != null && allies(state, by.ownerId, o.ownerId))) continue;
+      const gap = gapFrom(state, x, y, o);
+      if (gap > radius) continue;
+      const rand = 0.9 + 0.2 * nextRand(state);
+      o.hp = Math.max(0, o.hp - Math.max(1, Math.round(spec.building * mortarFalloff(gap, radius) * rand)));
+      if (kind === "miss") kind = "hit";
+      continue;
+    }
     // A submarine running below is under the blow.
     if (isAirborne(o) || isBridge(o.type) || isRubble(o) || diving(o)) continue;
     if (!harmAllies && allies(state, by.ownerId, o.ownerId)) continue;
