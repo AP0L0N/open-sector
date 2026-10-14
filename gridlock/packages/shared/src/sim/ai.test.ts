@@ -1685,6 +1685,17 @@ describe("Xenite CPU", () => {
     assert.equal(spine.research?.id, "forceshield");
   });
 
+  it("grows Sky Tracking on an Ion Turret before its Force Shield once enemy fliers are seen", () => {
+    const { state, aiId } = humanVsXeno();
+    waitCore(state, aiId);
+    standBy(state, aiId, [...BASE, "nexus", "fusionnode", "aerie", "fusionnode", "fusionnode", "fusionnode", "fusionnode", "fusionnode", "spineturret"]);
+    for (const e of state.entities.values()) if (e.ownerId === aiId && e.type === "fusionnode") e.level = 2;
+    aiPlanOf(state.players.get(aiId)!).airSeenTick = state.tick;
+    micro(state, aiId);
+    const spine = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "spineturret")!;
+    assert.equal(spine.research?.id, "skyspines");
+  });
+
   it("roots as many Ion Turrets as its type calls for", () => {
     for (const ai of ["defensive", "aggressive"] as const) {
       const { state, aiId } = humanVsXeno(ai);

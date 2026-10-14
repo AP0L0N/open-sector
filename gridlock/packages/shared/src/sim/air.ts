@@ -83,7 +83,7 @@ import {
   rocketRackFor,
   rocketsOf,
   airFirstOf,
-  antiAirGunOf,
+  antiAirGun,
   STUKA_MG,
   STUKA_MG_PER_TICK,
   STUKA_MG_ROUNDS,
@@ -195,7 +195,7 @@ export function isCrashing(e: { air?: { phase?: string } | null; jet?: { crash?:
  */
 export function reachesAircraft(e: Entity): boolean {
   // The Battle Ship reaches a plane with its CIWS mounts, not its main guns.
-  if (e.type === "walker" || radarLaidOf(e.type) || isBattleship(e.type) || antiAirGunOf(e.type)) return true;
+  if (e.type === "walker" || radarLaidOf(e.type) || isBattleship(e.type) || antiAirGun(e)) return true;
   // A launcher set to Air attacks lays on planes and nothing else.
   if (rocketsOf(e.type) && rocketRackFor(e).airOnly) return true;
   const gun = infantryGunFor(e);
