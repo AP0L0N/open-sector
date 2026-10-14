@@ -1191,7 +1191,7 @@ function arkLine(a: NonNullable<EntityView["ark"]>): string {
   const wasps = a.pods
     .map((p) => (p.docked ? "docked" : p.regrow != null ? `regrowing ${p.regrow}s` : "up"))
     .join(" / ");
-  return `  ·  ${cells}  ·  ${dome}  ·  Wasps ${wasps}`;
+  return `  ·  ${cells}  ·  ${dome}  ·  Interceptors ${wasps}`;
 }
 
 /** Mode, and for your own drone the battery and a recall. */
@@ -2700,8 +2700,8 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       act: "rally",
       label: "Rally here",
       title: set
-        ? "Click the ground: every Thrall this Assembler builds walks there. Click the Assembler itself to clear the point, and new Thralls stay beside it."
-        : "Click the ground: every Thrall this Assembler builds walks there. Unset, new Thralls stay beside it.",
+        ? "Click the ground: every Enforcer this Assembler builds walks there. Click the Assembler itself to clear the point, and new Enforcers stay beside it."
+        : "Click the ground: every Enforcer this Assembler builds walks there. Unset, new Enforcers stay beside it.",
       on: !!view?.rallyMode,
     });
   }

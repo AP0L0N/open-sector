@@ -618,6 +618,9 @@ const DROPPED_CANNON_FADE_MS = 8_000;
 const DROPPED_CANNON_CAP = 40;
 /** Screen px above a Weaver's feet where its nanite spindle sits: the thread to a wall starts there. */
 const WEAVER_SPINDLE_LIFT_PX = 12;
+/** How long a Mothership dome shows after a hit, ms, and how bright it is at the hit (0–1). */
+const AIR_DOME_FLASH_MS = 350;
+const AIR_DOME_FLASH_GLOW = 0.55;
 
 /** One bridge brick as it is drawn: where it lies, and how it meets its neighbours. */
 interface BridgeLook {
@@ -1239,6 +1242,8 @@ export class MapView {
   private infantryShotAt = new Map<number, number>();
   /** Energy wall id -> when it first showed (performance.now ms); kept for Weaver walls only. */
   private shieldBorn = new Map<number, number>();
+  /** When each Mothership dome was last seen struck (performance.now()): it shows only then. */
+  private airDomeHitAt = new Map<number, number>();
   /** Weaver id -> until when it holds its working pose for a wall it just threw. */
   private weaveUntil = new Map<number, number>();
   /** Fw 190 barrage streaks in flight, with the gun and impact heights (absolute elevation). */
@@ -10089,8 +10094,10 @@ export class MapView {
   }
 
   /**
-   * The Mothership's dome: a bubble round the hull, lifted with it (MapView.airLift). Its depth is
-   * the sim's (MOTHERSHIP_DOME_DEPTH of the height it flies at); it sorts with the fliers.
+   * The Mothership's dome: unseen while it stands quiet. A hit on it shows the bubble round the
+   * hull for a moment (AIR_DOME_FLASH_MS), faint and swelling a little as it fades; a dome that
+   * is down is not in the snapshot, so nothing shows. Lifted with the ship (MapView.airLift); its
+   * depth is the sim's (MOTHERSHIP_DOME_DEPTH of the height it flies at); it sorts with the fliers.
    */
   private collectAirDome(
     items: DrawItem[],
@@ -10115,14 +10122,23 @@ export class MapView {
     }
     const depth = airLiftPx(Math.max(1, (host.air?.alt ?? 0) * MOTHERSHIP_DOME_DEPTH));
     const rv = Math.hypot(ry, depth);
+    if (s.hit) this.airDomeHitAt.set(s.id, now);
+    const hitAt = this.airDomeHitAt.get(s.id);
+    if (hitAt == null) return;
+    const k = 1 - (now - hitAt) / AIR_DOME_FLASH_MS;
+    if (k <= 0) {
+      this.airDomeHitAt.delete(s.id);
+      return;
+    }
     if (c.x < -rx || c.y < -rv || c.x > w + rx || c.y > h + rv) return;
-    const glow = shieldGlow(s, now, s.id);
+    const swell = 1 + 0.04 * (1 - k);
+    const glow = AIR_DOME_FLASH_GLOW * k * k;
     items.push({
       layer: AIR_DRAW_LAYER,
       // Just in front of the ship it wraps.
       z: isoDepth(at.x, at.y) + 0.5,
       at,
-      run: () => drawAirDome(this.ctx, c, rx, rv, ry, glow),
+      run: () => drawAirDome(this.ctx, c, rx * swell, rv * swell, ry * swell, glow),
     });
   }
 

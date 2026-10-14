@@ -400,7 +400,7 @@ describe("rally point", () => {
     assert.equal(muster.rally, undefined);
   });
 
-  it("sends every Thrall an Assembler builds to its rally point, and clears it on the Assembler", () => {
+  it("sends every Enforcer an Assembler builds to its rally point, and clears it on the Assembler", () => {
     const { state } = twoPlayerMatch();
     seedCore(state);
     const ts = state.tileSize;
@@ -420,7 +420,7 @@ describe("rally point", () => {
     assert.equal(thrall.order?.kind, "move");
     ticks(state, 400);
     // Later Thralls pack in round the same point and nudge it aside.
-    assert.ok(Math.hypot(thrall.x - rx, thrall.y - ry) < 48, `Thrall parked ${Math.hypot(thrall.x - rx, thrall.y - ry)} away`);
+    assert.ok(Math.hypot(thrall.x - rx, thrall.y - ry) < 48, `Enforcer parked ${Math.hypot(thrall.x - rx, thrall.y - ry)} away`);
     applyCommand(state, "A", { type: "cmd.rally", ids: [forge.id], x: forge.x, y: forge.y });
     assert.equal(forge.rally, undefined);
     ticks(state, assemblyTicks() + 2);

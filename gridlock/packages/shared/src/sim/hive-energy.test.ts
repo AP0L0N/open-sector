@@ -274,10 +274,10 @@ describe("hive energy", () => {
   });
 });
 
-describe("Spine Turret cell", () => {
+describe("Ion Turret cell", () => {
   it("fires a burst, then slows to the pace its cell regrows", () => {
     const cell = catalog("spineturret").plasmaCell!;
-    assert.ok(cell, "the Spine Turret has a cell");
+    assert.ok(cell, "the Ion Turret has a cell");
     const state = field();
     at(state, "fusionnode", 40, 40);
     const turret = at(state, "spineturret", 30, 30);

@@ -6608,7 +6608,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
   thrall: {
     type: "thrall",
     kind: "unit",
-    name: "Thrall",
+    name: "Enforcer",
     letter: "a",
     cost: 0,
     energy: 30,
@@ -6683,13 +6683,13 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rocketAmmo: 5,
     rocketRack: BOMBARD_ROUND,
     plasmaCell: BOMBARD_CELL,
-    blurb: `A taken body on a heavy frame, hauling a long plasma cannon in both arms. It stands, braces, and throws one big plasma round on an arc from long reach (${BOMBARD_RANGE_TILES / TILE_SUBDIV} cells), then waits ${BOMBARD_ROUND.reload} seconds while the cannon charges. Every round drains its energy cell; the cell holds ${BOMBARD_CELL.shots} rounds and regrows one every ${BOMBARD_CELL.rechargeSeconds} seconds. The round bursts wide among soldiers and tells on armor too. Force attack sends it anywhere in that reach, seen or not. It cannot lay the cannon on anything inside ${BOMBARD_MIN_RANGE_TILES / TILE_SUBDIV} cells and must stop and face the target first. Attacked from inside that ring, it drops the cannon where it stands and fights on with two armoured fists like a Thrall's; the cannon is lost for good and it never picks it up again. Its fists only dent a hull; it does not detonate. No stance orders. Near death its legs are torn off and it crawls on, still fighting. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
+    blurb: `A taken body on a heavy frame, hauling a long plasma cannon in both arms. It stands, braces, and throws one big plasma round on an arc from long reach (${BOMBARD_RANGE_TILES / TILE_SUBDIV} cells), then waits ${BOMBARD_ROUND.reload} seconds while the cannon charges. Every round drains its energy cell; the cell holds ${BOMBARD_CELL.shots} rounds and regrows one every ${BOMBARD_CELL.rechargeSeconds} seconds. The round bursts wide among soldiers and tells on armor too. Force attack sends it anywhere in that reach, seen or not. It cannot lay the cannon on anything inside ${BOMBARD_MIN_RANGE_TILES / TILE_SUBDIV} cells and must stop and face the target first. Attacked from inside that ring, it drops the cannon where it stands and fights on with two armoured fists like an Enforcer's; the cannon is lost for good and it never picks it up again. Its fists only dent a hull; it does not detonate. No stance orders. Near death its legs are torn off and it crawls on, still fighting. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
   },
   /** Xenite cyborg: unarmed support, shields friends under fire and mends hive units. */
   weaver: {
     type: "weaver",
     kind: "unit",
-    name: "Weaver",
+    name: "Bulwark",
     letter: "w",
     cost: 0,
     energy: 100,
@@ -6708,13 +6708,13 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     plasmaCell: WEAVER_CELL,
-    blurb: `Support. No weapon. Four needle arms and a spindle of nanites on its back. When a unit of your side is under fire within ${WEAVER_SHIELD_REACH_TILES / TILE_SUBDIV} cells, the Weaver itself too, it throws a small energy wall in front of it, facing the fire: one soldier wide and ${WEAVER_SHIELD.hp} points strong, standing ${WEAVER_SHIELD.seconds} seconds unless shot down. Enemy rounds stop on it and enemies cannot walk through; your side shoots and walks through. Each wall takes a quarter of its energy cell, which regrows a quarter every ${WEAVER_CELL.rechargeSeconds} seconds. It does not stop shells lobbed from above. Its own energy shield it keeps up for free: a small dome over itself that stops every round, shell, and blast that comes in, while the Weaver walks and works inside. Force attack a unit of your side and the Weaver puts that dome over the friend instead, walking after it to keep it within ${WEAVER_SHIELD_REACH_TILES / TILE_SUBDIV} cells; force attack the Weaver, or Stop, to take it back. The dome's points are the energy cell (${WEAVER_DOME_POINTS_PER_SHOT} a quarter): each hit it absorbs drains the cell, and so does each wall. Drained, the dome is gone until the cell is full again. It also sends a mend every second into each hive unit of yours within ${WEAVER_REACH_TILES / TILE_SUBDIV} cells: ${WEAVER_MEND_CYBORG} HP to a cyborg, ${WEAVER_MEND_HEAVY} to a heavy assimilator or anything else the hive fields. Two Weavers on one unit mend it once. It cannot mend itself; another Weaver can. Torn legs grow back once the body is whole enough. No stance orders. It hears the hive through your Conversion Chamber's spire, and shields and mends nothing while dark.`,
+    blurb: `Support. No weapon. Four needle arms and a spindle of nanites on its back. When a unit of your side is under fire within ${WEAVER_SHIELD_REACH_TILES / TILE_SUBDIV} cells, the Bulwark itself too, it throws a small energy wall in front of it, facing the fire: one soldier wide and ${WEAVER_SHIELD.hp} points strong, standing ${WEAVER_SHIELD.seconds} seconds unless shot down. Enemy rounds stop on it and enemies cannot walk through; your side shoots and walks through. Each wall takes a quarter of its energy cell, which regrows a quarter every ${WEAVER_CELL.rechargeSeconds} seconds. It does not stop shells lobbed from above. Its own energy shield it keeps up for free: a small dome over itself that stops every round, shell, and blast that comes in, while the Bulwark walks and works inside. Force attack a unit of your side and the Bulwark puts that dome over the friend instead, walking after it to keep it within ${WEAVER_SHIELD_REACH_TILES / TILE_SUBDIV} cells; force attack the Bulwark, or Stop, to take it back. The dome's points are the energy cell (${WEAVER_DOME_POINTS_PER_SHOT} a quarter): each hit it absorbs drains the cell, and so does each wall. Drained, the dome is gone until the cell is full again. It also sends a mend every second into each hive unit of yours within ${WEAVER_REACH_TILES / TILE_SUBDIV} cells: ${WEAVER_MEND_CYBORG} HP to a cyborg, ${WEAVER_MEND_HEAVY} to a heavy assimilator or anything else the hive fields. Two Bulwarks on one unit mend it once. It cannot mend itself; another Bulwark can. Torn legs grow back once the body is whole enough. No stance orders. It hears the hive through your Conversion Chamber's spire, and shields and mends nothing while dark.`,
   },
   /** Xenite cyborg: cloaked spine sniper. */
   shade: {
     type: "shade",
     kind: "unit",
-    name: "Shade",
+    name: "Phantom",
     letter: "h",
     cost: 0,
     energy: 125,
@@ -6949,13 +6949,13 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: 0,
     leavesWreck: true,
     wreckHp: 35,
-    blurb: `A small nanite forge on four short legs. It carries no weapon. From the moment it leaves the Forge it builds Thralls by itself, ${ASSEMBLER_SPEEDUP} times as fast as a Forge, and sets each one down behind it. Every Thrall spends ${Math.round(100 / ASSEMBLER_THRALLS)}% of its energy, ${ASSEMBLER_THRALLS} at most. When one of its Thralls dies, that ${Math.round(100 / ASSEMBLER_THRALLS)}% slowly flows back over ${ASSEMBLER_REGEN_SECONDS} seconds, and it builds a new one. Its Thralls are Thralls like any other: they count against your units and run on the uplink. At the unit cap it holds the next one until there is room. Thick plate on every face. Keep it behind the line. Needs a Neural Nexus.`,
+    blurb: `A small nanite forge on four short legs. It carries no weapon. From the moment it leaves the Forge it builds Enforcers by itself, ${ASSEMBLER_SPEEDUP} times as fast as a Forge, and sets each one down behind it. Every Enforcer spends ${Math.round(100 / ASSEMBLER_THRALLS)}% of its energy, ${ASSEMBLER_THRALLS} at most. When one of its Enforcers dies, that ${Math.round(100 / ASSEMBLER_THRALLS)}% slowly flows back over ${ASSEMBLER_REGEN_SECONDS} seconds, and it builds a new one. Its Enforcers are Enforcers like any other: they count against your units and run on the uplink. At the unit cap it holds the next one until there is room. Thick plate on every face. Keep it behind the line. Needs a Neural Nexus.`,
   },
   /** Xenite heavy assimilator: spore-pod rocket artillery. */
   mawcaster: {
     type: "mawcaster",
     kind: "unit",
-    name: "Mawcaster",
+    name: "Nova Mortar",
     letter: "c",
     cost: 0,
     energy: 550,
@@ -7012,7 +7012,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `A low chitin dome ringed with glowing conversion pods, under a synapse spire. Taken bodies go into the pods and walk out as the hive's foot soldiers: the Drone, the Thrall, the Lancer, the Bombard, the Weaver, the Sim Unit II, and, with a Neural Nexus standing, the Shade. They hear the hive through its spire: if it falls, ${CYBORG_SHUTDOWN_SECONDS} seconds later every one of them on the field goes dark: still yours, but dead still and silent. Raise a new Chamber and they wake up, unless an enemy Cyborg Commander took them first.`,
+    blurb: `A low chitin dome ringed with glowing conversion pods, under a synapse spire. Taken bodies go into the pods and walk out as the hive's foot soldiers: the Drone, the Enforcer, the Lancer, the Bombard, the Bulwark, the Sim Unit II, and, with a Neural Nexus standing, the Phantom. They hear the hive through its spire: if it falls, ${CYBORG_SHUTDOWN_SECONDS} seconds later every one of them on the field goes dark: still yours, but dead still and silent. Raise a new Chamber and they wake up, unless an enemy Cyborg Commander took them first.`,
   },
   /** Xenite vehicle factory. */
   forge: {
@@ -7060,7 +7060,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "A neural core in a cage of ribs under a crown of sensor spines: the hive thinks here. It unlocks the Behemoth, the Pulse Spire, and the Energy Wall, and it lights the radar panel like a Radar Station: an enemy plane or drone nobody can see shows as a blinking contact on the panel. Takes a large share of the hive's energy.",
+    blurb: "A neural core in a cage of ribs under a crown of sensor spines: the hive thinks here. It unlocks the Behemoth, the Disruptor Pylon, and the Energy Wall, and it lights the radar panel like a Radar Station: an enemy plane or drone nobody can see shows as a blinking contact on the panel. Takes a large share of the hive's energy.",
   },
   /** Xenite power core: a fusion reactor on a caged plasma well, fed by the Fusion Nodes. Unarmed. */
   fusioncore: {
@@ -7089,7 +7089,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
   spineturret: {
     type: "spineturret",
     kind: "building",
-    name: "Spine Turret",
+    name: "Ion Turret",
     letter: "s",
     cost: 0,
     energy: 150,
@@ -7148,7 +7148,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
   pulsespire: {
     type: "pulsespire",
     kind: "building",
-    name: "Pulse Spire",
+    name: "Disruptor Pylon",
     letter: "q",
     cost: 0,
     energy: 450,
@@ -7206,13 +7206,13 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     // Squat: your own side's soldiers and hulls shoot over the core.
     coverHeight: ENERGY_WALL_COVER_HEIGHT,
     capturable: false,
-    blurb: `A squat emitter core with a fan of field vanes. It holds a curtain of green energy ${ENERGY_WALL.radiusTiles / TILE_SUBDIV} cells out across its front, far wider than a Behemoth's wall and as tall as a Pulse Spire. Enemy rounds and beams stop on it and enemy soldiers and hulls cannot walk through; shells and bombs lobbed from above fall over it. Your own side walks and shoots through, and over the low core. Each hit drains the curtain (${ENERGY_WALL.hp} points); it slowly mends while it stands, and once drained it is down for ${ENERGY_WALL.rechargeSeconds} seconds. Turn it before placing: it holds that way for good. Takes hive energy while it stands; offline, the curtain falls. Needs a Neural Nexus. Cannot move.`,
+    blurb: `A squat emitter core with a fan of field vanes. It holds a curtain of green energy ${ENERGY_WALL.radiusTiles / TILE_SUBDIV} cells out across its front, far wider than a Behemoth's wall and as tall as a Disruptor Pylon. Enemy rounds and beams stop on it and enemy soldiers and hulls cannot walk through; shells and bombs lobbed from above fall over it. Your own side walks and shoots through, and over the low core. Each hit drains the curtain (${ENERGY_WALL.hp} points); it slowly mends while it stands, and once drained it is down for ${ENERGY_WALL.rechargeSeconds} seconds. Turn it before placing: it holds that way for good. Takes hive energy while it stands; offline, the curtain falls. Needs a Neural Nexus. Cannot move.`,
   },
   /** Xenite shipyard: grows the Leech and the Lurker. Stands on open water like a Marine Base. */
   spawnpool: {
     type: "spawnpool",
     kind: "building",
-    name: "Spawning Pool",
+    name: "Tidal Dock",
     letter: "W",
     cost: 0,
     energy: 320,
@@ -7231,7 +7231,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     onWater: true,
-    blurb: "A ring of ribbed chitin around a glowing birthing pool. It can only grow on water: every tile under it must be open water. Grows the Leech and, with a Neural Nexus standing, the Lurker and the Hive Ark, which slip into the water beside it and never come ashore.",
+    blurb: "A ring of ribbed chitin around a glowing birthing pool. It can only grow on water: every tile under it must be open water. Grows the Skimmer and, with a Neural Nexus standing, the Lurker and the Hive Ark, which slip into the water beside it and never come ashore.",
   },
   /** Xenite flier hive: grows the fliers, which lift straight out of it. No strip, no pads; the Nanite Forge's footprint. */
   aerie: {
@@ -7255,13 +7255,13 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "A ribbed chitin hive where the fliers are grown. Grows the Wasp, the Gnat, and, with a Neural Nexus standing, the Scourge, the Overseer, and the Mothership. They lift straight up out of it and never come down: no runway and no fuel. Their weapons run on energy cells that drain as they fire and charge again by themselves. A Weaver mends them in the air.",
+    blurb: "A ribbed chitin hive where the fliers are grown. Grows the Interceptor, the Probe, and, with a Neural Nexus standing, the Eclipse, the Overseer, and the Mothership. They lift straight up out of it and never come down: no runway and no fuel. Their weapons run on energy cells that drain as they fire and charge again by themselves. A Bulwark mends them in the air.",
   },
   /** Xenite fast attack boat: a skimming chitin hull with a plasma cannon. */
   leech: {
     type: "leech",
     kind: "unit",
-    name: "Leech",
+    name: "Skimmer",
     letter: "h",
     cost: 0,
     energy: 160,
@@ -7362,13 +7362,13 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     naval: true,
     leavesWreck: true,
     wreckHp: 100,
-    blurb: `A round chitin carrier the hive grows in its pool, the Xenite answer to the Battle Ship. Water only. Round, it has no bow: it never turns, and moves straight off in any direction it is sent. Two plasma cannons, fore and aft, each throw one huge plasma ball on a high arc, out to ${ARK_RANGE_TILES / TILE_SUBDIV} tiles, well short of the Battle Ship's reach, but never inside ${ARK_MIN_RANGE_TILES / TILE_SUBDIV} tiles; the burst is wide and burns through soldiers, boats, and buildings alike. Each cannon draws on its own energy cell: ${ARK_CANNON_CELL} balls full, one regrown every ${ARK_CANNON_RECHARGE_SECONDS} seconds. Empty, that cannon falls silent until its cell is full again. An energy dome stands over the whole hull, the Siphon's dome made huge: everything that comes in from outside stops on it, rounds, rockets, beams and flame, shells and bombs falling from above, the blast of a burst outside it, and no enemy boat sails in under it. Every hit drains its ${ARK_DOME.energy} points; a standing dome slowly regains them, and drained, it is gone for ${ARK_DOME.rechargeSeconds} seconds before it rises again. Torpedoes run under it. Two Wasps sit on its landing pods: when an enemy unit shows inside its sight they lift by themselves, hunt it, and come home to their pods when nothing is left. Nobody commands them, and a lost Wasp regrows on its pod after ${ARK_WASP_REGROW_SECONDS} seconds. Needs a Neural Nexus. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.`,
+    blurb: `A round chitin carrier the hive grows in its pool, the Xenite answer to the Battle Ship. Water only. Round, it has no bow: it never turns, and moves straight off in any direction it is sent. Two plasma cannons, fore and aft, each throw one huge plasma ball on a high arc, out to ${ARK_RANGE_TILES / TILE_SUBDIV} tiles, well short of the Battle Ship's reach, but never inside ${ARK_MIN_RANGE_TILES / TILE_SUBDIV} tiles; the burst is wide and burns through soldiers, boats, and buildings alike. Each cannon draws on its own energy cell: ${ARK_CANNON_CELL} balls full, one regrown every ${ARK_CANNON_RECHARGE_SECONDS} seconds. Empty, that cannon falls silent until its cell is full again. An energy dome stands over the whole hull, the Siphon's dome made huge: everything that comes in from outside stops on it, rounds, rockets, beams and flame, shells and bombs falling from above, the blast of a burst outside it, and no enemy boat sails in under it. Every hit drains its ${ARK_DOME.energy} points; a standing dome slowly regains them, and drained, it is gone for ${ARK_DOME.rechargeSeconds} seconds before it rises again. Torpedoes run under it. Two Interceptors sit on its landing pods: when an enemy unit shows inside its sight they lift by themselves, hunt it, and come home to their pods when nothing is left. Nobody commands them, and a lost Interceptor regrows on its pod after ${ARK_WASP_REGROW_SECONDS} seconds. Needs a Neural Nexus. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.`,
   },
   /** Xenite fighter: insect wings, twin pulse cannons. Lives in an Aerie nest. */
   wasp: {
     type: "wasp",
     kind: "unit",
-    name: "Wasp",
+    name: "Interceptor",
     letter: "w",
     cost: 0,
     energy: 220,
@@ -7399,7 +7399,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
   scourge: {
     type: "scourge",
     kind: "unit",
-    name: "Scourge",
+    name: "Eclipse",
     letter: "g",
     cost: 0,
     energy: 450,
@@ -7459,7 +7459,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
   gnat: {
     type: "gnat",
     kind: "unit",
-    name: "Gnat",
+    name: "Probe",
     letter: "q",
     cost: 0,
     energy: 100,
@@ -7506,7 +7506,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     ...UNARMED,
     aircraft: true,
     wreckHp: 60,
-    blurb: `The hive's flying capital ship: a vast chitin saucer grown slowly in the Aerie on a great deal of hive energy, one at a time. It lifts out and cruises high, as high as the Wraith, where only anti-air guns reach it, and sees farther than anything else the hive has, ${(t(11.5) + HORTEN_FLYING_SIGHT_BONUS) / TILE_SUBDIV} tiles around it, nearly as far as the Wraith. It flies slowly and never lands. Four mounts work by themselves, each on its own energy cell, each the very gun it is named for: a Spine Turret's twin repeater cuts down soldiers below, a Pulse Spire's emitter drives pulses down through tank roofs, a Mawcaster's maw throws plasma salvos on the ground out to ${MAWCASTER_RANGE_TILES / TILE_SUBDIV} tiles but never inside ${MAWCASTER_MIN_RANGE_TILES / TILE_SUBDIV}, and a second maw spits balls at planes, Jump Jets, and low drones within ${MAWCASTER_AIR_RANGE_TILES / TILE_SUBDIV} tiles. Sent at a target it hangs off it and every mount that can hurt it joins in; otherwise each picks its own. An energy dome stands round the hull in the air: anti-air fire and air bursts from outside stop on it, draining its ${MOTHERSHIP_DOME.energy} points, and drained it is gone for ${MOTHERSHIP_DOME.rechargeSeconds} seconds. Fire on the ground passes under it. Needs a Neural Nexus.`,
+    blurb: `The hive's flying capital ship: a vast chitin saucer grown slowly in the Aerie on a great deal of hive energy, one at a time. It lifts out and cruises high, as high as the Wraith, where only anti-air guns reach it, and sees farther than anything else the hive has, ${(t(11.5) + HORTEN_FLYING_SIGHT_BONUS) / TILE_SUBDIV} tiles around it, nearly as far as the Wraith. It flies slowly and never lands. Four mounts work by themselves, each on its own energy cell, each the very gun it is named for: an Ion Turret's twin repeater cuts down soldiers below, a Disruptor Pylon's emitter drives pulses down through tank roofs, a Nova Mortar's cannon throws plasma salvos on the ground out to ${MAWCASTER_RANGE_TILES / TILE_SUBDIV} tiles but never inside ${MAWCASTER_MIN_RANGE_TILES / TILE_SUBDIV}, and a second Nova Mortar cannon spits balls at planes, Jump Jets, and low drones within ${MAWCASTER_AIR_RANGE_TILES / TILE_SUBDIV} tiles. Sent at a target it hangs off it and every mount that can hurt it joins in; otherwise each picks its own. Force attack lays the Ion Turret, the Disruptor Pylon, and the ground cannon on a point or anything on the ground there, and the air cannon on a flier. An unseen energy dome stands round the hull in the air and shimmers only when something strikes it: anti-air fire and air bursts from outside stop on it, draining its ${MOTHERSHIP_DOME.energy} points, and drained it is gone for ${MOTHERSHIP_DOME.rechargeSeconds} seconds. Fire on the ground passes under it. Needs a Neural Nexus.`,
   },
   // ── The Bloom ───────────────────────────────────────────────────────────────────────────
   /** Bloom HQ on the move: a fat seed-pod on root legs. */
@@ -7749,7 +7749,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     shotsPerTick: MG42.shotsPerTick,
     poweredGun: true,
     capturable: false,
-    blurb: "A bulb on a knotted root with a fan of quills round a puckered mouth. Nobody works it: it turns all the way round and spits quills at soldiers at an MG42's pace, a little short of a Spine Turret's reach. Tank plate turns the quills, and they do not bring a building down. The quills grow back, so it never runs dry. Short on power, it falls silent. Cannot move.",
+    blurb: "A bulb on a knotted root with a fan of quills round a puckered mouth. Nobody works it: it turns all the way round and spits quills at soldiers at an MG42's pace, a little short of an Ion Turret's reach. Tank plate turns the quills, and they do not bring a building down. The quills grow back, so it never runs dry. Short on power, it falls silent. Cannot move.",
   },
   /** Bloom anti-armour gun: crewless, runs on base power. */
   bilelance: {
@@ -9504,7 +9504,8 @@ export function isTrainType(type: string): type is TrainType {
 }
 
 export function fires(type: EntityType): boolean {
-  return catalog(type).damage > 0 || hasMg(type) || rocketsOf(type);
+  // The Mothership's guns are its four mounts (sim/mothership.ts), not the catalog's one gun.
+  return catalog(type).damage > 0 || hasMg(type) || rocketsOf(type) || type === "mothership";
 }
 
 /** Extra fog tiles from catalog optics. The sniper's scope; 0 on every other type. */

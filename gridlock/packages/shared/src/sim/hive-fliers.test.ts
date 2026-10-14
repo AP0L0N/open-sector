@@ -160,7 +160,7 @@ describe("Xenite fliers", () => {
     }
   });
 
-  it("a Gnat sent at a unit hangs over it", () => {
+  it("a Probe sent at a unit hangs over it", () => {
     const state = twoPlayerMatch();
     const g = grow(state, "gnat");
     const ts = state.tileSize;
@@ -173,7 +173,7 @@ describe("Xenite fliers", () => {
     assert.ok(wander(state, g, 60) < 1);
   });
 
-  it("a Wasp hangs far off its target, still in the air, and looses scattered energy bursts at the spot", () => {
+  it("an Interceptor hangs far off its target, still in the air, and looses scattered energy bursts at the spot", () => {
     const state = twoPlayerMatch();
     const w = grow(state, "wasp");
     const ts = state.tileSize;
@@ -221,7 +221,7 @@ describe("Xenite fliers", () => {
     assert.ok(settled > standoff * 0.6 && settled < standoff * 1.2, `it hangs far off (${settled.toFixed(0)} of ${standoff})`);
   });
 
-  it("a Wasp's cell drains with each burst and it waits in the air for the charge", () => {
+  it("an Interceptor's cell drains with each burst and it waits in the air for the charge", () => {
     const state = twoPlayerMatch();
     const w = grow(state, "wasp");
     const ts = state.tileSize;
@@ -246,7 +246,7 @@ describe("Xenite fliers", () => {
     assert.equal(w.energy, cell.shots, "it charges back up while it hangs");
   });
 
-  it("every armed Xenite flier carries an energy cell; the Gnat has nothing to draw on", () => {
+  it("every armed Xenite flier carries an energy cell; the Probe has nothing to draw on", () => {
     for (const t of ["wasp", "scourge", "overseer"] as const) {
       const cell = plasmaCellOf(t);
       assert.ok(cell && cell.shots >= 1 && cell.rechargeSeconds > 0, t);
@@ -279,7 +279,7 @@ describe("Xenite fliers", () => {
     assert.ok(late < 10 / OVERSEER_PULSE_SECONDS - 3, "slower than its full rate");
   });
 
-  it("a Scourge hangs off its target at cruise height and throws a big plasma bolt on it every few seconds", () => {
+  it("an Eclipse hangs off its target at cruise height and throws a big plasma bolt on it every few seconds", () => {
     const state = twoPlayerMatch();
     const s = grow(state, "scourge");
     const ts = state.tileSize;
@@ -357,7 +357,7 @@ describe("Xenite fliers", () => {
     }
   });
 
-  it("a Weaver mends them in the air", () => {
+  it("a Bulwark mends them in the air", () => {
     const state = twoPlayerMatch();
     const w = grow(state, "wasp");
     const weaver = makeEntity(state, "weaver", "A", w.x, w.y);

@@ -116,6 +116,22 @@ export function mountValue(m: MothershipMount, o: Entity, ordered: boolean): num
   return isInfantryType(o.type) ? 3 : 2;
 }
 
+/**
+ * A force attack: the spine, the pulse, and the maw all fire on a point on the ground or on
+ * anything standing there, armor and buildings too; the flak maw fires on anything flying it
+ * can reach.
+ */
+function forcedMount(m: MothershipMount, t: Entity | undefined): boolean {
+  const flying = !!t && (!!t.drone || isAirborne(t));
+  if (m === "flak") return !!t && flying && flakReaches(t) && !isCrashing(t);
+  return !flying;
+}
+
+/** Some mount can be forced onto `t`, friend or foe: the flak maw on a flier it reaches, the others on the ground. */
+export function mothershipForceReaches(t: Entity): boolean {
+  return MOTHERSHIP_MOUNTS.some((m) => forcedMount(m, t));
+}
+
 /** Some mount on this Mothership can hurt `t`: what it may be sent at. */
 export function mothershipHurts(state: MatchState, e: Entity, t: Entity): boolean {
   if (t.id === e.id || allies(state, e.ownerId, t.ownerId)) return false;
@@ -161,7 +177,7 @@ function mountAim(state: MatchState, e: Entity, m: MothershipMount, gun: Mothers
   const from = mothershipMountPoint(e, m);
   const order = ordered(state, e);
   if (order) {
-    const hurts = order.target ? mountValue(m, order.target, true) > 0 : m !== "flak";
+    const hurts = order.forced ? forcedMount(m, order.target) : !!order.target && mountValue(m, order.target, true) > 0;
     if (hurts && inBand(state, from, m, order.x, order.y)) return { ...order, fromOrder: true };
   }
   if (gun.targetId != null && (gun.salvo > 0 || m === "spine" || m === "pulse")) {

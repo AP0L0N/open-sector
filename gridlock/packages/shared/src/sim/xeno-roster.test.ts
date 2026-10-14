@@ -264,7 +264,7 @@ describe("Bombard drops its cannon", () => {
     assert.equal(s.fists, undefined);
   });
 
-  it("punches a hull for a share of the blow and never detonates like a Thrall", () => {
+  it("punches a hull for a share of the blow and never detonates like an Enforcer", () => {
     const state = field();
     uplink(state);
     const s = at(state, "bombard", "B", 20, 30);
@@ -279,8 +279,8 @@ describe("Bombard drops its cannon", () => {
   });
 });
 
-describe("Weaver", () => {
-  it("mends hurt hive units near it once a pulse, Weavers not stacking, never itself or the enemy", () => {
+describe("Bulwark", () => {
+  it("mends hurt hive units near it once a pulse, Bulwarks not stacking, never itself or the enemy", () => {
     const state = field();
     uplink(state);
     const w1 = at(state, "weaver", "B", 20, 30);
@@ -397,7 +397,7 @@ describe("Weaver", () => {
     assert.ok((w.energy ?? WEAVER_CELL.shots) < WEAVER_CELL.shots, "and the cell paid for them");
   });
 
-  it("force attack on a friend puts the dome on it; the Weaver follows; Stop takes it back", () => {
+  it("force attack on a friend puts the dome on it; the Bulwark follows; Stop takes it back", () => {
     const state = field();
     uplink(state);
     const w = at(state, "weaver", "B", 20, 30);
@@ -420,7 +420,7 @@ describe("Weaver", () => {
     assert.equal(applyCommand(state, "B", { type: "cmd.stop", ids: [w.id] }).ok, true);
     ticks(state, 1);
     assert.equal(w.weaveFor, undefined);
-    assert.equal(dome().forId, undefined, "back on the Weaver");
+    assert.equal(dome().forId, undefined, "back on the Bulwark");
   });
 
   it("mends nothing shut down", () => {
@@ -435,7 +435,7 @@ describe("Weaver", () => {
   });
 });
 
-describe("Shade cloak", () => {
+describe("Phantom cloak", () => {
   it("hides from the enemy until it fires, shows to its own side, and is seen up close", () => {
     const state = field();
     uplink(state);
@@ -506,7 +506,7 @@ describe("Siphon", () => {
 });
 
 describe("Assembler", () => {
-  it("builds a Thrall behind it three times as fast as the Forge, spending a tenth of its energy each", () => {
+  it("builds an Enforcer behind it three times as fast as the Forge, spending a tenth of its energy each", () => {
     const state = field();
     uplink(state);
     const a = still(at(state, "assembler", "B", 30, 30));
@@ -524,7 +524,7 @@ describe("Assembler", () => {
     assert.equal(snapshotFor(state, "A").entities.find((e) => e.id === a.id)?.energy, undefined, "the enemy does not");
   });
 
-  it("builds ten Thralls, then waits; a lost Thrall's tenth regrows slowly and a new one follows", () => {
+  it("builds ten Enforcers, then waits; a lost Enforcer's tenth regrows slowly and a new one follows", () => {
     const state = field();
     uplink(state);
     const a = still(at(state, "assembler", "B", 30, 30));
@@ -544,7 +544,7 @@ describe("Assembler", () => {
     destroyEntity(state, built()[0]!);
     ticks(state, secondsToTicks(ASSEMBLER_REGEN_SECONDS / 2));
     const half = a.energy!;
-    assert.ok(half > 0.4 && half < 0.6, `half a Thrall's worth after half the time: ${half}`);
+    assert.ok(half > 0.4 && half < 0.6, `half an Enforcer's worth after half the time: ${half}`);
     assert.equal(built().length, ASSEMBLER_THRALLS - 2, "not enough energy yet");
     // A whole Thrall's worth back, then one build time: one new Thrall.
     ticks(state, secondsToTicks(ASSEMBLER_REGEN_SECONDS / 2) + secondsToTicks(catalog("thrall").buildSeconds / ASSEMBLER_SPEEDUP) + 2);
@@ -555,7 +555,7 @@ describe("Assembler", () => {
   });
 });
 
-describe("Mawcaster", () => {
+describe("Nova Mortar", () => {
   it("is a laid spore launcher that throws a salvo and never runs dry", () => {
     const def = catalog("mawcaster");
     assert.equal(def.rocketRack, MAWCASTER_POD);
@@ -587,7 +587,7 @@ describe("Mawcaster", () => {
     assert.equal(snapshotFor(state, "A").entities.find((e) => e.id === n.id)?.airMode, undefined);
     assert.equal(applyCommand(state, "A", { type: "cmd.airmode", ids: [n.id], air: false }).ok, false, "not A's");
     const drone = at(state, "xenodrone", "B", 12, 30);
-    assert.equal(applyCommand(state, "B", { type: "cmd.airmode", ids: [drone.id], air: true }).ok, false, "only a Mawcaster");
+    assert.equal(applyCommand(state, "B", { type: "cmd.airmode", ids: [drone.id], air: true }).ok, false, "only a Nova Mortar");
     assert.equal(applyCommand(state, "B", { type: "cmd.airmode", ids: [n.id], air: false }).ok, true);
     assert.equal(n.airMode, undefined);
     assert.equal(rocketRackFor(n), MAWCASTER_POD);

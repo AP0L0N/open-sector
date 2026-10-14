@@ -44,7 +44,7 @@ describe("ammoBarRatios", () => {
     assert.deepEqual(ammoBarRatios({ type: "rifleman", clip: 3 }), []);
   });
 
-  it("shows no strip on a Thrall: its fists never run out", () => {
+  it("shows no strip on an Enforcer: its fists never run out", () => {
     assert.deepEqual(ammoBarRatios({ type: "thrall", clip: 1 }), []);
     assert.deepEqual(ammoBarRatios({ type: "thrall", clip: 0 }), []);
   });
