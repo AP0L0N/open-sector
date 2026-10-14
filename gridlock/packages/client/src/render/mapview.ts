@@ -9017,8 +9017,8 @@ export class MapView {
     if (!seat || !spriteReady(sheet)) return;
     const scale = footprintW / spr.padWidth;
     const size = footprintW * seat.cellPerPad;
-    const cx = southX + (seat.x - spr.padSouthX) * scale;
-    const cy = southY + (seat.y - spr.padSouthY) * scale;
+    const cx = southX + seat.dx * scale;
+    const cy = southY + seat.dy * scale;
     const cell = sheet.frameSize;
     const row = shipRow(facing, this.ts());
     this.ctx.drawImage(sheet.image, 0, row * cell, cell, cell, cx - size / 2, cy - size / 2, size, size);
