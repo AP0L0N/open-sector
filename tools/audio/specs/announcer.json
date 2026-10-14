@@ -38,6 +38,8 @@
     "cyborglinklost": ["Warning: cyborg link lost."],
     "cyborglinkrestored": ["Cyborg link restored."],
     "cyborgsoffline": ["Cyborgs offline."],
-    "cyborgacquired": ["Cyborg acquired."]
+    "cyborgacquired": ["Cyborg acquired."],
+    "researchstarted": ["Upgrade started."],
+    "researchcomplete": ["Upgrade complete."]
   }
 }

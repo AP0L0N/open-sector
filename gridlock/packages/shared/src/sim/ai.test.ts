@@ -1656,6 +1656,25 @@ describe("Xenite CPU", () => {
     assert.equal(nextStructure(state, aiId), "nexus", "the base lane is not stuck behind the turret");
   });
 
+  it("upgrades one Fusion Node at a time once its build order stands, and not before", () => {
+    const researching = (state: MatchState, aiId: string) =>
+      [...state.entities.values()].filter((e) => e.ownerId === aiId && e.type === "fusionnode" && e.research);
+    const early = humanVsXeno();
+    waitCore(early.state, early.aiId);
+    standBy(early.state, early.aiId, BASE);
+    micro(early.state, early.aiId);
+    assert.equal(researching(early.state, early.aiId).length, 0, "the build order comes first");
+
+    const { state, aiId } = humanVsXeno();
+    waitCore(state, aiId);
+    standBy(state, aiId, [...BASE, "nexus", "fusionnode", "aerie", "fusionnode", "fusionnode", "fusionnode", "fusionnode", "fusionnode", "fusionnode"]);
+    micro(state, aiId);
+    assert.equal(researching(state, aiId).length, 1);
+    assert.equal(researching(state, aiId)[0]!.research!.id, "advancedfusion");
+    micro(state, aiId);
+    assert.equal(researching(state, aiId).length, 1, "one at a time");
+  });
+
   it("roots as many Spine Turrets as its type calls for", () => {
     for (const ai of ["defensive", "aggressive"] as const) {
       const { state, aiId } = humanVsXeno(ai);

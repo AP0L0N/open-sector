@@ -522,6 +522,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       spotFacing: spotlightManned(e) ? spotFacingOf(e) : undefined,
       unpowered: e.kind === "building" && e.unpowered ? true : undefined,
       hiveDark: e.kind === "building" && e.hiveDark ? true : undefined,
+      level: e.kind === "building" && e.level ? e.level : undefined,
+      research: friendly && e.research ? { id: e.research.id, progress: Math.round((e.research.progressTicks / e.research.totalTicks) * 1000) / 1000 } : undefined,
       holdPosition: friendly && e.holdPosition ? true : undefined,
       patrol:
         friendly && e.order?.kind === "patrol" && e.order.route

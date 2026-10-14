@@ -45,6 +45,8 @@ import {
   buildRadiusOf,
   catalog,
   energyOf,
+  energySupplyOfEntity,
+  nextResearch,
   usesHiveEnergy,
   dockOf,
   costFor,
@@ -459,6 +461,7 @@ function thinkXeno(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): v
   trainXeno(state, p);
   if (state.tick >= (p.aiNextMicroTick ?? 0)) {
     p.aiNextMicroTick = state.tick + CPU_MICRO_EVERY_TICKS;
+    researchXeno(state, p);
     watchSky(state, p, plan);
     if (plan.posture === "fortify" && xenoFortified(state, p, hq, plan)) {
       plan.posture = "campaign";
@@ -473,6 +476,29 @@ function thinkXeno(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): v
     microUnits(state, p, hq, plan);
     scoutGnats(state, p, hq, plan);
   }
+}
+
+/** Fusion Nodes the Xenite CPU holds before it starts upgrading them. */
+const XENO_RESEARCH_AFTER_NODES = 3;
+
+/**
+ * One Fusion Node upgrade at a time, the least upgraded node first, once the build order stands and
+ * the dip while it upgrades keeps the hive at zero or above.
+ */
+function researchXeno(state: MatchState, p: SimPlayer): void {
+  let pick: Entity | undefined;
+  let nodes = 0;
+  for (const e of state.entities.values()) {
+    if (e.ownerId !== p.playerId || e.type !== "fusionnode" || e.hp <= 0 || e.ruined) continue;
+    if (e.research) return;
+    nodes++;
+    if (!nextResearch(e.type, e.level ?? 0)) continue;
+    if (!pick || (e.level ?? 0) < (pick.level ?? 0)) pick = e;
+  }
+  if (!pick || nodes < XENO_RESEARCH_AFTER_NODES || xenoOrderNext(state, p) != null) return;
+  const dip = energySupplyOfEntity(pick) - energySupplyOfEntity({ ...pick, research: true });
+  if (hiveFreeAfterQueue(state, p) - dip < 0) return;
+  applyCommand(state, p.playerId, { type: "cmd.research", ids: [pick.id], research: nextResearch(pick.type, pick.level ?? 0)!.id });
 }
 
 /** Hive energy free for a new unit or defence; Infinity for a side that pays scrap. */

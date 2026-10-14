@@ -1240,6 +1240,79 @@ export function energyOf(type: string): number {
 export function energySupplyOf(type: string): number {
   return type === "hivecore" ? HIVE_CORE_ENERGY : type === "fusionnode" ? FUSION_NODE_ENERGY : type === "fusioncore" ? FUSION_CORE_ENERGY : 0;
 }
+/**
+ * Research (sim/research.ts): a structure upgrades itself, one level at a time. Each entry lifts
+ * its `building` from `level - 1` to `level`; it runs on the structure for `seconds` at the
+ * owner's job pace and costs `cost` scrap up front (nothing for the Xenite, who pay no scrap).
+ */
+export type ResearchId = "advancedfusion" | "ultrafusion";
+export interface ResearchDef {
+  id: ResearchId;
+  name: string;
+  building: BuildingType;
+  /** The level the structure reaches once it is done. */
+  level: number;
+  seconds: number;
+  cost: number;
+  /** One short line for the button: what the structure gives once it is done. */
+  effect: string;
+  blurb: string;
+}
+/** Hive energy a Fusion Node holds at each level: plain, Advanced Fusion, Ultra Fusion. */
+export const FUSION_NODE_LEVEL_ENERGY: readonly number[] = [FUSION_NODE_ENERGY, 400, 600];
+/** While a structure researches its next level, it gives this share of what it gives now. */
+export const RESEARCH_OUTPUT_SHARE = 0.5;
+export const RESEARCH: Record<ResearchId, ResearchDef> = {
+  advancedfusion: {
+    id: "advancedfusion",
+    name: "Advanced Fusion",
+    building: "fusionnode",
+    level: 1,
+    seconds: 45,
+    effect: `${FUSION_NODE_LEVEL_ENERGY[1]} energy`,
+    cost: 0,
+    blurb: `Rebuilds the node's coils for a hotter core: ${FUSION_NODE_LEVEL_ENERGY[1]} energy instead of ${FUSION_NODE_LEVEL_ENERGY[0]}. While it upgrades the node holds only half its energy.`,
+  },
+  ultrafusion: {
+    id: "ultrafusion",
+    name: "Ultra Fusion",
+    building: "fusionnode",
+    level: 2,
+    seconds: 75,
+    effect: `${FUSION_NODE_LEVEL_ENERGY[2]} energy`,
+    cost: 0,
+    blurb: `A four-coil crown around a caged star: ${FUSION_NODE_LEVEL_ENERGY[2]} energy instead of ${FUSION_NODE_LEVEL_ENERGY[1]}. While it upgrades the node holds only half its energy.`,
+  },
+};
+export const RESEARCH_IDS = Object.keys(RESEARCH) as ResearchId[];
+export function isResearchId(id: unknown): id is ResearchId {
+  return typeof id === "string" && Object.prototype.hasOwnProperty.call(RESEARCH, id);
+}
+/** Every research `type` offers, in level order. */
+export function researchOf(type: string): ResearchDef[] {
+  return RESEARCH_IDS.map((id) => RESEARCH[id]).filter((r) => r.building === type).sort((a, b) => a.level - b.level);
+}
+/** The research a `type` structure at `level` may start next, if any. */
+export function nextResearch(type: string, level = 0): ResearchDef | undefined {
+  return researchOf(type).find((r) => r.level === level + 1);
+}
+/** The highest level `type` can be researched to; 0 when it has no research. */
+export function maxLevelOf(type: string): number {
+  return researchOf(type).reduce((n, r) => Math.max(n, r.level), 0);
+}
+/** Display names of a structure's levels, from "" at the base: the Fusion Node's are Advanced and Ultra. */
+export function levelNameOf(type: string, level = 0): string {
+  if (level <= 0) return "";
+  return researchOf(type).find((r) => r.level === level)?.name ?? `Level ${level}`;
+}
+/**
+ * Hive energy one standing structure adds: the Fusion Node by its level, and half of that while it
+ * researches the next one.
+ */
+export function energySupplyOfEntity(e: { type: string; level?: number; research?: unknown }): number {
+  const base = e.type === "fusionnode" ? (FUSION_NODE_LEVEL_ENERGY[Math.min(e.level ?? 0, FUSION_NODE_LEVEL_ENERGY.length - 1)] ?? FUSION_NODE_ENERGY) : energySupplyOf(e.type);
+  return e.research ? Math.floor(base * RESEARCH_OUTPUT_SHARE) : base;
+}
 /** Scrap `type` costs a player of `faction`. */
 export function costFor(type: EntityType, faction: Faction): number {
   return FACTION_COST[type]?.[faction] ?? catalog(type).cost;
@@ -4970,7 +5043,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `Twin coils around a caged plasma core. Feeds the hive: each Fusion Node adds ${FUSION_NODE_ENERGY} energy to the store your Hive Core starts with. Every Xenite unit, defence, and base structure takes a share while it stands. Below zero the hive builds and grows 70% slower, and its units and defences go offline one by one, the hungriest first, until it is back above zero; they wake again once there is room. Costs nothing to grow.`,
+    blurb: `Twin coils around a caged plasma core. Feeds the hive: each Fusion Node adds ${FUSION_NODE_ENERGY} energy to the store your Hive Core starts with. Every Xenite unit, defence, and base structure takes a share while it stands. Below zero the hive builds and grows 70% slower, and its units and defences go offline one by one, the hungriest first, until it is back above zero; they wake again once there is room. Costs nothing to grow. Select it to research Advanced Fusion, then Ultra Fusion, for more energy from the same node.`,
   },
   assimilator: {
     type: "assimilator",

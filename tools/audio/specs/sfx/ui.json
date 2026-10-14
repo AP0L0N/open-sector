@@ -9,6 +9,8 @@
     "place": {"prompt": "Heavy building foundation placed on ground, deep solid thud with metal clank, short, no music", "duration": 0.8, "variants": 2, "influence": 0.65},
     "build_start": {"prompt": "Industrial machinery starting up, short hydraulic hiss and heavy gear engaging clunk, short, no music", "duration": 1.0, "variants": 1, "influence": 0.65},
     "build_complete": {"prompt": "Heavy mechanical clunk of a steel lock engaging and a pneumatic release hiss, industrial, short, no chime, no music", "duration": 1.0, "variants": 1, "influence": 0.65},
+    "research_start": {"prompt": "Sci-fi reactor upgrade starting: a soft rising electric charge-up whine with a few quick electronic chirps and a low hum swelling under it, short, no music, no voice", "duration": 1.5, "variants": 1, "influence": 0.65},
+    "research_complete": {"prompt": "Sci-fi power upgrade finished: a bright electric surge that locks in with a resonant deep hum and a short crisp confirmation tone, clean, short, no music, no voice", "duration": 1.5, "variants": 1, "influence": 0.65},
     "train_start": {"prompt": "Short metal locker door clank and quick ratchet, military industrial, short, no music, no voice", "duration": 0.8, "variants": 1, "influence": 0.65},
     "power_down": {"prompt": "Electrical generator hum winding down and dying out, electric power failure drone pitching down, short, no music", "duration": 1.5, "variants": 1, "influence": 0.65},
     "radar_on": {"prompt": "Radar system powering up, rising electronic whine with short sweep blips and static, short, no music", "duration": 1.5, "variants": 1, "influence": 0.65},

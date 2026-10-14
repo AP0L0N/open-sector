@@ -144,6 +144,12 @@
       "influence": 0.6,
       "lufs": -10
     },
+    "upgrade_surge": {
+      "prompt": "A sci-fi plasma reactor powering up to a higher output: crackling electric arcs jumping between coils, a deep rising hum that swells into a heavy resonant thrum and settles, a short electric hiss at the end, no explosion, no music, no voice",
+      "duration": 2.5,
+      "variants": 2,
+      "influence": 0.6
+    },
     "energy_laser": {
       "prompt": "Short sci-fi laser beam sweeping across a target and burning it: a searing high electric zap with a hot sizzling burn hiss, quick sweep, close, no music, no voice",
       "duration": 1.0,

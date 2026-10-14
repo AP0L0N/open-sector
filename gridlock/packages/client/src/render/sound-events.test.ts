@@ -42,6 +42,31 @@ describe("SoundTracker", () => {
     assert.deepEqual(t.step(snap({ entities: [unit(1, "rifleman")] }), 100), []);
   });
 
+  it("hears research start, finish, and cancel on your Fusion Node, and only the finish on another's", () => {
+    const t = new SoundTracker();
+    const node = (extra: Partial<EntityView> = {}, owner = ME) => building(5, "fusionnode", owner, extra);
+    const announced = (evs: SoundEvent[]) => kinds(evs, "announce").map((e) => (e as { event: string }).event);
+    const cues = (evs: SoundEvent[]) => kinds(evs, "research").map((e) => (e as { cue: string }).cue);
+    t.step(snap({ entities: [node()] }), 0);
+    const started = t.step(snap({ entities: [node({ research: { id: "advancedfusion", progress: 0 } })] }), 100);
+    assert.deepEqual(cues(started), ["start"]);
+    assert.deepEqual(announced(started), ["researchstarted"]);
+    assert.deepEqual(t.step(snap({ entities: [node({ research: { id: "advancedfusion", progress: 0.5 } })] }), 200), []);
+    const done = t.step(snap({ entities: [node({ level: 1 })] }), 300);
+    assert.deepEqual(cues(done), ["complete"]);
+    assert.deepEqual(announced(done), ["researchcomplete"]);
+    t.step(snap({ entities: [node({ level: 1, research: { id: "ultrafusion", progress: 0 } })] }), 400);
+    const off = t.step(snap({ entities: [node({ level: 1 })] }), 500);
+    assert.deepEqual(cues(off), ["cancel"]);
+    assert.deepEqual(announced(off), ["cancelled"]);
+
+    const them = new SoundTracker();
+    them.step(snap({ entities: [node({}, "p2")] }), 0);
+    const theirs = them.step(snap({ entities: [node({ level: 1 }, "p2")] }), 100);
+    assert.deepEqual(cues(theirs), ["complete"], "an enemy node's surge is heard where it stands");
+    assert.deepEqual(announced(theirs), [], "the announcer says nothing of it");
+  });
+
   it("calls a sonar contact once when a new submarine is heard, not while it stays heard", () => {
     const t = new SoundTracker();
     const sonar = (ids: number[]) => ids.map((id) => ({ id, x: 0, y: 0, down: true }));

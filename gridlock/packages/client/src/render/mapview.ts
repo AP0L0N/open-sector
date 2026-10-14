@@ -4666,6 +4666,15 @@ export class MapView {
     this.onSelect([...this.selected]);
   }
 
+  /** Narrow the selection to `ids` (those still selected), as a fresh pick. */
+  selectOnly(ids: readonly number[]): void {
+    const keep = ids.filter((id) => this.selected.has(id));
+    if (keep.length === 0) return;
+    this.selected.clear();
+    for (const id of keep) this.selected.add(id);
+    this.onSelect([...this.selected]);
+  }
+
   private boxSelect(b: { x0: number; y0: number; x1: number; y1: number }, shift: boolean): void {
     const x0 = Math.min(b.x0, b.x1);
     const y0 = Math.min(b.y0, b.y1);
@@ -7569,7 +7578,7 @@ export class MapView {
     const ez = this.extrude(e.type);
     const elev = this.buildingElev(e);
     const hex = this.ownerColor(e);
-    const spr = buildingSpriteFor(e.type, e.facing);
+    const spr = buildingSpriteFor(e.type, e.facing, e.level);
     const south = this.toScreen(x + bw, y + bh, elev);
     const east = this.toScreen(x + bw, y, elev);
     const west = this.toScreen(x, y + bh, elev);
@@ -7907,7 +7916,7 @@ export class MapView {
       const east = this.toScreen(x + w, y, elev);
       const west = this.toScreen(x, y + h, elev);
       const south = this.toScreen(x + w, y + h, elev);
-      const spr = buildingSpriteFor(e.type, e.facing);
+      const spr = buildingSpriteFor(e.type, e.facing, e.level);
       const footprintW = east.x - west.x;
       out.push({
         x,
@@ -7949,7 +7958,7 @@ export class MapView {
     for (const e of drawList) {
       if (e.kind !== "building" || isBridge(e.type) || isFieldStructure(e.type) || isRubble(e)) continue;
       if (!this.knownRect(e)) continue;
-      const spr = buildingSpriteFor(e.type, e.facing);
+      const spr = buildingSpriteFor(e.type, e.facing, e.level);
       if (!spr || !spriteReady(spr)) continue;
       const x = e.tileX * ts;
       const y = e.tileY * ts;

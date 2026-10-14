@@ -79,6 +79,7 @@ import { tickMovement, repathIfBlocked } from "./orders.js";
 import { tickWalkerCharge } from "./walker-charge.js";
 import { tickOrderQueue } from "./commands.js";
 import { tickTrain } from "./train.js";
+import { tickResearch } from "./research.js";
 import { aimSpotlightPatrol, hasSpotlight, tickSpotlights } from "./night.js";
 import type { Entity, MatchState, SimPlayer } from "./types.js";
 import { leaveCorpse } from "./remains.js";
@@ -446,6 +447,7 @@ function stepHeld(state: MatchState, dt: number): void {
   tickSmelters(state, dt); lap("tickSmelters");
   tickBuild(state, dt); lap("tickBuild");
   tickTrain(state, dt); lap("tickTrain");
+  tickResearch(state); lap("tickResearch");
   state.phaseRev++;
   tickEnergyShields(state, dt); lap("tickEnergyShields");
   tickWeaverDomes(state); lap("tickWeaverDomes");
