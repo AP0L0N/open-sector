@@ -1764,13 +1764,14 @@ export const MOTHERSHIP_SPRITE: UnitSpriteDef = {
 bindMothershipSheets({ hull: MOTHERSHIP_SPRITE.image });
 
 /**
- * Where a researched Flak Maw (sim/roof-flak.ts) sits on its structure: its pivot in the building
- * sheet's pixels, and the mount cell's width as a share of the pad's (ROOF_FLAK_SHEET).
- * The Fusion Core's turret sits on the flat roof of its east tower (the "roof" spot in fusioncore.json). The
- * tower stands as tall on the Fusion Reactor's sheet, so the seat holds against the pad on both.
+ * Where a researched Flak Maw (sim/roof-flak.ts) sits on its structure: its pivot in sheet pixels
+ * from the pad's south corner (padSouthX/Y), and the mount cell's width as a share of the pad's
+ * (ROOF_FLAK_SHEET). Measured from the pad, not the sheet's top, so it holds on every level sheet.
+ * The Fusion Core's turret sits on the flat roof of its east tower (the "roof" spot in
+ * fusioncore.json less padSouth), which stands as tall on the Fusion Reactor's sheet.
  */
-export const ROOF_FLAK_SEAT: Partial<Record<EntityType, { x: number; y: number; cellPerPad: number }>> = {
-  fusioncore: { x: 320, y: 34, cellPerPad: 0.95 },
+export const ROOF_FLAK_SEAT: Partial<Record<EntityType, { dx: number; dy: number; cellPerPad: number }>> = {
+  fusioncore: { dx: 116, dy: -170, cellPerPad: 0.95 },
 };
 /** The Flak Maw on its 16 bearings (tools/sprites/render_flak_maw.py), on the Hive Ark's camera and cell. */
 export const ROOF_FLAK_SHEET: TurretSpriteDef = { image: new Image(), dirs: TANK_FACE_DIRS, frames: 1, frameSize: MOTHERSHIP_MODEL.cell };
