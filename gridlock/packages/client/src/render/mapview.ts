@@ -1158,6 +1158,8 @@ export class MapView {
   private zoomLabel: HTMLElement | null;
   private keys = new Set<string>();
   private panning = false;
+  /** Left button went down on the minimap and is still held: moves steer the view. */
+  private miniDrag = false;
   private lastMX = 0;
   private lastMY = 0;
   private mouseX = -1;
@@ -3303,23 +3305,33 @@ export class MapView {
     this.mini.addEventListener("mousedown", (e) => {
       // A dark panel is not a map: nothing to click until a Radar Station stands.
       if (!this.curr.you.radar) return;
-      const map = this.map();
-      const rect = this.mini.getBoundingClientRect();
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
-      const scale = Math.min(rect.width / map.width, rect.height / map.height);
-      const tileX = mx / scale;
-      const tileY = my / scale;
-      const view = this.viewSize();
-      const iso = worldToIso(tileX * map.tileSize, tileY * map.tileSize, map.tileSize);
-      this.camX = iso.x - view.w / 2;
-      this.camY = iso.y - view.h / 2;
-      this.clamp();
+      e.preventDefault();
+      this.lookAtMini(e.clientX, e.clientY);
+      // Held down, the view keeps following the pointer until the button comes up.
+      if (e.button === 0) this.miniDrag = true;
     });
+  }
+
+  /** Centre the view on the map tile under a minimap point; past the map's edge it pins to the edge. */
+  private lookAtMini(clientX: number, clientY: number): void {
+    const map = this.map();
+    const rect = this.mini.getBoundingClientRect();
+    const scale = Math.min(rect.width / map.width, rect.height / map.height);
+    const tileX = Math.max(0, Math.min(map.width, (clientX - rect.left) / scale));
+    const tileY = Math.max(0, Math.min(map.height, (clientY - rect.top) / scale));
+    const view = this.viewSize();
+    const iso = worldToIso(tileX * map.tileSize, tileY * map.tileSize, map.tileSize);
+    this.camX = iso.x - view.w / 2;
+    this.camY = iso.y - view.h / 2;
+    this.clamp();
   }
 
   private onUp = (e: MouseEvent): void => {
     if (e.button === 1) this.panning = false;
+    if (e.button === 0 && this.miniDrag) {
+      this.miniDrag = false;
+      return;
+    }
     if (e.button === 2 && this.moveFace) {
       this.commitMoveFace();
       return;
@@ -3399,6 +3411,11 @@ export class MapView {
     if (this.ctrlHeld !== e.ctrlKey) {
       this.ctrlHeld = e.ctrlKey;
       this.syncCursor();
+    }
+    if (this.miniDrag) {
+      // Radar knocked out mid-drag (the panel went dark) or the button came up outside the window: stop steering.
+      if (!this.curr.you.radar || !(e.buttons & 1)) this.miniDrag = false;
+      else this.lookAtMini(e.clientX, e.clientY);
     }
     if (this.panning) {
       this.camX -= (e.clientX - this.lastMX) / this.zoom;
@@ -4882,7 +4899,7 @@ export class MapView {
     if (this.keys.has("arrowleft")) vx -= 1;
     if (this.keys.has("d") || this.keys.has("arrowright")) vx += 1;
     const edge = 24;
-    if (edgeScroll && !this.panning && !this.box && this.winX >= 0 && !this.overControl) {
+    if (edgeScroll && !this.panning && !this.miniDrag && !this.box && this.winX >= 0 && !this.overControl) {
       const sw = window.innerWidth;
       const sh = window.innerHeight;
       if (this.winX < edge) vx -= 1;
