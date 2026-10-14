@@ -189,6 +189,7 @@ import {
   shieldHeightElev,
 } from "./energy-shield.js";
 import { drawScanEdge, drawScanGhost, drawScanLock, scanNow, scanOutline, scanWorldRect, sweepAt, tracePoly } from "./ground-scan.js";
+import { cutPulsarArea, drawPulsarArea, pulsarAreaStrength, pulsarRim } from "./pulsar-area.js";
 import { drawNuke, drawNukeFlash, drawNukeScorch, NUKE_FX_MS, NUKE_SCORCH_MS } from "./nuke-fx.js";
 import { drawShockwave, drawShockwaveScorch, SHOCKWAVE_FX_MS, SHOCKWAVE_SCORCH_MS } from "./shockwave-fx.js";
 import { drawTitanThrust } from "./titan-jet-fx.js";
@@ -5272,6 +5273,7 @@ export class MapView {
     this.xenoFrame = xenoGlow > 0 ? this.xenoPools(w, h) : [];
     this.beginGlowCut();
     this.cutScanLight();
+    this.collectPulsarAreas(items, w, h, now);
     if (this.xenoFrame.length) items.push({ layer: HOLE_DRAW_LAYER, z: Infinity, run: () => this.drawXenoGlow(xenoGlow) });
     this.collectRemains(items);
     this.collectUnitShadows(items);
@@ -7865,6 +7867,34 @@ export class MapView {
         c.stroke();
       }
     });
+  }
+
+  /**
+   * The ground under each standing Neural Pulsar dome: its rim and pulse on the ground under
+   * everything that stands, and by night the whole area lit as by day. Down, it shows nothing.
+   */
+  private collectPulsarAreas(items: DrawItem[], w: number, h: number, now: number): void {
+    const shields = this.curr.shields;
+    if (!shields || shields.length === 0) return;
+    const lamp = lampGlow(this.daylight());
+    for (const s of shields) {
+      if (!s.dome || s.fromId == null || s.hp <= 0) continue;
+      const host = this.currById.get(s.fromId);
+      if (!host || !isNeuralPulsar(host)) continue;
+      const span = this.groundSpan(s.x, s.y, s.r) * 2;
+      const foot = this.toScreen(s.x, s.y, this.elevAt(s.x, s.y));
+      if (foot.x < -span || foot.y < -span || foot.x > w + span || foot.y > h + span) continue;
+      // The rim follows the ground it crosses: over a hill it rides up.
+      const rim = pulsarRim(s.x, s.y, s.r).map((p) => this.toScreen(p.x, p.y, this.elevAt(p.x, p.y)));
+      if (lamp > 0) this.cutGlow((c) => cutPulsarArea(c, rim, foot));
+      const strength = pulsarAreaStrength(lamp);
+      const charge = s.hpMax > 0 ? s.hp / s.hpMax : 1;
+      items.push({
+        layer: GROUND_DECAL_DRAW_LAYER,
+        z: Infinity,
+        run: () => drawPulsarArea(this.ctx, rim, foot, strength, charge, now, s.id),
+      });
+    }
   }
 
   /** Every Ground Scan's faint energy edge and its sweep: only in the dark, coming up with the lamps at dusk. Only the side's own are sent. */

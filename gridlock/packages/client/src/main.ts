@@ -98,7 +98,6 @@ const ctx: Ctx = {
   room: null,
   match: null,
   chat: [],
-  inspect: null,
   connected: false,
   pendingJoin: roomParam,
   pendingSkirmish: false,
