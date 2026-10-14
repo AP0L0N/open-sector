@@ -118,7 +118,8 @@ describe("hive energy", () => {
 
   it("never refuses or waits on energy: it builds and trains below zero, and pays no scrap", () => {
     const state = field();
-    at(state, "conversion", 30, 30);
+    // Advanced Assembly unlocks the Bombard.
+    at(state, "conversion", 30, 30).level = 1;
     const scrap = state.players.get("B")!.scrap;
     // 60 left after the Chamber: five Bombards (112.5 each) take the hive below zero, and all five come out.
     for (let i = 0; i < 5; i++) assert.equal(applyCommand(state, "B", { type: "cmd.train", unit: "bombard" }).ok, true);

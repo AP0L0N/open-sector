@@ -1068,9 +1068,9 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly Bu
   simunit2: ["conversion", "nexus"],
   xenodrone: "conversion",
   thrall: "conversion",
-  lancer: ["conversion", "nexus"],
+  lancer: "conversion",
   bombard: "conversion",
-  weaver: ["conversion", "nexus"],
+  weaver: "conversion",
   shade: ["conversion", "nexus"],
   behemoth: "nexus",
   juggernaut: "nexus",
@@ -1214,7 +1214,7 @@ export const BLOOM_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([
 ]);
 /**
  * Built by the Alliance and the Xenite (not the Bloom). None today: the Cyborg Central is the
- * Alliance's, and the Xenite raise their infantry in the Conversion Chamber.
+ * Alliance's, and the Xenite raise their infantry in the Assembly.
  */
 export const SHARED_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([]);
 /**
@@ -1265,11 +1265,11 @@ export function energySupplyOf(type: string): number {
 /**
  * Research (sim/research.ts): a structure upgrades itself. A level entry lifts its `buildings` from
  * `level - 1` to `level`; a Force Shield entry gives the structure its own small energy dome; Shield
- * Wall on a Conversion Chamber lets its side's Drones and Lancers raise their energy walls. It runs
+ * Wall on an Assembly lets its side's Drones and Lancers raise their energy walls. It runs
  * on the structure for `seconds` at the owner's job pace and costs `cost` scrap as it goes (nothing
  * for the Xenite, who pay no scrap) and `energy` more hive energy for as long as it stands.
  */
-export type ResearchId = "advancedfusion" | "ultrafusion" | "fusionreactor" | "forceshield" | "flakmaw" | "skyspines" | "shieldwall";
+export type ResearchId = "advancedfusion" | "ultrafusion" | "fusionreactor" | "forceshield" | "flakmaw" | "skyspines" | "shieldwall" | "advancedassembly" | "neuralassembly";
 export interface ResearchDef {
   id: ResearchId;
   name: string;
@@ -1394,9 +1394,59 @@ export const RESEARCH: Record<ResearchId, ResearchDef> = {
     cost: 0,
     energy: SHIELD_WALL_ENERGY,
     effect: `Drone & Lancer walls · ${SHIELD_WALL_ENERGY} energy`,
-    blurb: `Teaches the side's Drones and Lancers to raise a curved energy wall across their front when they fight. Holds while a Conversion Chamber with it stands. Takes ${SHIELD_WALL_ENERGY} hive energy from the moment the research starts.`,
+    blurb: `Teaches the side's Drones and Lancers to raise a curved energy wall across their front when they fight. Holds while an Assembly with it stands. Takes ${SHIELD_WALL_ENERGY} hive energy from the moment the research starts.`,
+  },
+  advancedassembly: {
+    id: "advancedassembly",
+    name: "Advanced Assembly",
+    buildings: ["conversion"],
+    level: 1,
+    seconds: 45,
+    cost: 0,
+    effect: "Lancer, Bombard, Bulwark",
+    blurb: "Fits the pods with heavy frames and plasma lances. Your Assemblies train the Lancer, the Bombard, and the Bulwark while an Assembly of yours stands at this level.",
+  },
+  neuralassembly: {
+    id: "neuralassembly",
+    name: "Neural Assembly",
+    buildings: ["conversion"],
+    level: 2,
+    seconds: 75,
+    requires: ["nexus"],
+    cost: 0,
+    effect: "Sim Unit, Phantom",
+    blurb: "Wires the pods into the Neural Nexus. Your Assemblies train the Sim Unit II and the Phantom while an Assembly of yours stands at this level. Needs a Neural Nexus.",
   },
 };
+/**
+ * Units an Assembly's level unlocks: trained only while one of the side's standing Assemblies
+ * has reached that level (sim/train.ts levelMissing).
+ */
+export const TECH_LEVEL_REQUIRES: Partial<Record<TrainType, { type: BuildingType; level: number }>> = {
+  lancer: { type: "conversion", level: 1 },
+  bombard: { type: "conversion", level: 1 },
+  weaver: { type: "conversion", level: 1 },
+  simunit2: { type: "conversion", level: 2 },
+  shade: { type: "conversion", level: 2 },
+};
+/** The level research `unit` waits on (Advanced Assembly for a Lancer), or undefined when it needs none. */
+export function techLevelResearch(unit: TrainType): ResearchDef | undefined {
+  const need = TECH_LEVEL_REQUIRES[unit];
+  return need && researchOf(need.type).find((r) => r.level === need.level);
+}
+/** Does one of `ownerId`'s standing structures hold the level `unit` needs? True when it needs none. */
+export function hasTechLevel(
+  entities: Iterable<{ ownerId: string | null; type: string; level?: number; hp: number; wreck?: boolean; ruined?: boolean }>,
+  ownerId: string,
+  unit: TrainType,
+): boolean {
+  const need = TECH_LEVEL_REQUIRES[unit];
+  if (!need) return true;
+  for (const e of entities) {
+    if (e.ownerId === ownerId && e.type === need.type && e.hp > 0 && !e.wreck && !e.ruined && (e.level ?? 0) >= need.level) return true;
+  }
+  return false;
+}
 export const RESEARCH_IDS = Object.keys(RESEARCH) as ResearchId[];
 export function isResearchId(id: unknown): id is ResearchId {
   return typeof id === "string" && Object.prototype.hasOwnProperty.call(RESEARCH, id);
@@ -1573,7 +1623,7 @@ export const BUILD_REQUIRES: Partial<Record<BuildingType, readonly BuildingType[
 
 /** The Xenite vehicle factory: trains every Xenite unit that is not infantry. */
 export const XENO_FACTORY = "forge";
-/** The Xenite barracks: the Conversion Chamber turns out the hive's foot soldiers, and carries their link. */
+/** The Xenite barracks: the Assembly turns out the hive's foot soldiers, and carries their link. */
 export const XENO_BARRACKS = "conversion";
 /** The Bloom brood nest (infantry) and gestator (beasts). */
 export const BLOOM_NEST = "broodnest";
@@ -1653,7 +1703,7 @@ export const BROOD_GARRISON: readonly EntityType[] = ["spawnling", "gobber", "qu
 
 /**
  * Cyborg link. A Cyborg runs on the uplink from a standing, powered Cyborg Central (a
- * Xenite's on the synapse link from a Conversion Chamber),
+ * Xenite's on the synapse link from an Assembly),
  * or on a living Cyborg Commander of his own side. With neither, CYBORG_SHUTDOWN_SECONDS
  * after the link drops every Cyborg of that player on the field shuts down: still his,
  * but he stops where he stands, answers no orders, and fires at nothing. When that
@@ -2551,11 +2601,11 @@ export const THRALL_REACH_TILES = SIMUNIT_REACH_TILES;
 /** Share of a blow a wall or a building takes. */
 export const THRALL_BUILDING_MUL = 0.15;
 /** Blast radius when it detonates on a hull, in gameplay tiles. */
-export const THRALL_BLAST_TILES = t(1.25);
+export const THRALL_BLAST_TILES = t(1.75);
 /** HP at the centre against a hull heavier than light plate. */
-export const THRALL_BLAST_HEAVY = 35;
+export const THRALL_BLAST_HEAVY = 60;
 /** HP at the centre against soldiers, light hulls, buildings, and everything else. */
-export const THRALL_BLAST_SOFT = 55;
+export const THRALL_BLAST_SOFT = 85;
 /** Chance a bullet that lands staggers it. Not every round: now and then. */
 export const THRALL_STAGGER_CHANCE = 0.2;
 /** How long a stagger slows it, seconds. */
@@ -6651,7 +6701,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: DAGGERS.penetration,
     caliber: DAGGERS.caliber,
     spreadDeg: DAGGERS.spreadDeg,
-    blurb: `A light, fast cyborg built for the knife. An energy dagger in each hand: one slash kills a soldier, but only at arm's reach. He opens a Walker or a truck slowly and barely scratches a tank or a wall. A blink drive throws him up to ${SIMUNIT_BLINK_RANGE_TILES / TILE_SUBDIV} cells in an instant on one charge, back by itself in ${SIMUNIT_BLINK_RECHARGE_SECONDS} seconds: an enemy he goes for inside that reach, he blinks straight onto while the charge is up. Right-click an enemy structure or hull with soldiers inside and he blinks in among them, kills every soldier aboard in ${SIMUNIT_PURGE_SECONDS} seconds, and blinks back out; only a hostile garrison offers it. Like the Cyborg he can shut down where he stands: dark and still, he reads as no one's machine and enemy guns pass him by until he powers up. Near death his legs are torn off and he crawls on, still cutting. Medics heal him, engineers repair him. He hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
+    blurb: `A light, fast cyborg built for the knife. An energy dagger in each hand: one slash kills a soldier, but only at arm's reach. He opens a Walker or a truck slowly and barely scratches a tank or a wall. A blink drive throws him up to ${SIMUNIT_BLINK_RANGE_TILES / TILE_SUBDIV} cells in an instant on one charge, back by itself in ${SIMUNIT_BLINK_RECHARGE_SECONDS} seconds: an enemy he goes for inside that reach, he blinks straight onto while the charge is up. Right-click an enemy structure or hull with soldiers inside and he blinks in among them, kills every soldier aboard in ${SIMUNIT_PURGE_SECONDS} seconds, and blinks back out; only a hostile garrison offers it. Like the Cyborg he can shut down where he stands: dark and still, he reads as no one's machine and enemy guns pass him by until he powers up. Near death his legs are torn off and he crawls on, still cutting. Medics heal him, engineers repair him. He hears the hive through your Assembly's spire, and goes dark without it.`,
   },
   xenodrone: {
     type: "xenodrone",
@@ -6677,7 +6727,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: RIFLE.penetration,
     caliber: RIFLE.caliber,
     spreadDeg: RIFLE.spreadDeg,
-    blurb: `The hive's line soldier: a body taken and fitted with a pulse carbine in place of a forearm. It shoots like a rifle, a clip and then a short recharge. Several times a soldier's hit points for a few riflemen's price, but slower on its feet. No stance orders; it fights standing. Once a Conversion Chamber has researched the Shield Wall, in a fight it raises a small energy wall in front of it, like the Behemoth's but far weaker (${INFANTRY_SHIELD.hp} points): enemy rounds stop on it and enemies cannot walk through, while it and its side shoot and walk through. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
+    blurb: `The hive's line soldier: a body taken and fitted with a pulse carbine in place of a forearm. It shoots like a rifle, a clip and then a short recharge. Several times a soldier's hit points for a few riflemen's price, but slower on its feet. No stance orders; it fights standing. Once an Assembly has researched the Shield Wall, in a fight it raises a small energy wall in front of it, like the Behemoth's but far weaker (${INFANTRY_SHIELD.hp} points): enemy rounds stop on it and enemies cannot walk through, while it and its side shoot and walk through. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It hears the hive through your Assembly's spire, and goes dark without it.`,
   },
   thrall: {
     type: "thrall",
@@ -6703,7 +6753,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: FISTS.penetration,
     caliber: FISTS.caliber,
     spreadDeg: FISTS.spreadDeg,
-    blurb: "The hive's cheap brawler, quick off the line: a taken body on a heavy frame. It always runs, and it fights with two armoured fists: a soldier it reaches is pummelled down in a few fast blows. An armored hull it reaches, it does not punch: it detonates against the plate and is gone. Sandbags and walls do not stop it; it vaults them. Bullets do little to its plating, but now and then one catches a shoulder and staggers it for a moment. No stance orders. Near death its legs are torn off and it crawls on, still swinging. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.",
+    blurb: "The hive's cheap brawler, quick off the line: a taken body on a heavy frame. It always runs, and it fights with two armoured fists: a soldier it reaches is pummelled down in a few fast blows. An armored hull it reaches, it does not punch: it detonates against the plate and is gone. Sandbags and walls do not stop it; it vaults them. Bullets do little to its plating, but now and then one catches a shoulder and staggers it for a moment. No stance orders. Near death its legs are torn off and it crawls on, still swinging. Medics heal it, engineers repair it. It hears the hive through your Assembly's spire, and goes dark without it.",
   },
   lancer: {
     type: "lancer",
@@ -6729,7 +6779,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: LAUNCHER.penetration,
     caliber: LAUNCHER.caliber,
     spreadDeg: LAUNCHER.spreadDeg,
-    blurb: `Anti-armor cyborg. A plasma lance rides its shoulder and throws a burning bolt like a rocket: loose at full reach, tighter up close, a burst among soldiers that dents a tank. The capacitor on its back recharges the lance between shots. Heavy plating keeps it standing where a Rocketer would fall. Once a Conversion Chamber has researched the Shield Wall, in a fight it raises the Drone's small energy wall in front of it (${INFANTRY_SHIELD.hp} points). No stance orders. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
+    blurb: `Anti-armor cyborg. A plasma lance rides its shoulder and throws a burning bolt like a rocket: loose at full reach, tighter up close, a burst among soldiers that dents a tank. The capacitor on its back recharges the lance between shots. Heavy plating keeps it standing where a Rocketer would fall. Once an Assembly has researched the Shield Wall, in a fight it raises the Drone's small energy wall in front of it (${INFANTRY_SHIELD.hp} points). No stance orders. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It hears the hive through your Assembly's spire, and goes dark without it.`,
   },
   /** Xenite cyborg: a long plasma cannon for one big round from far off; dropped for its fists when closed with. */
   bombard: {
@@ -6757,7 +6807,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rocketAmmo: 5,
     rocketRack: BOMBARD_ROUND,
     plasmaCell: BOMBARD_CELL,
-    blurb: `A taken body on a heavy frame, hauling a long plasma cannon in both arms. It stands, braces, and throws one big plasma round on an arc from long reach (${BOMBARD_RANGE_TILES / TILE_SUBDIV} cells), then waits ${BOMBARD_ROUND.reload} seconds while the cannon charges. Every round drains its energy cell; the cell holds ${BOMBARD_CELL.shots} rounds and regrows one every ${BOMBARD_CELL.rechargeSeconds} seconds. The round bursts wide among soldiers and tells on armor too. Force attack sends it anywhere in that reach, seen or not. It cannot lay the cannon on anything inside ${BOMBARD_MIN_RANGE_TILES / TILE_SUBDIV} cells and must stop and face the target first. Attacked from inside that ring, it drops the cannon where it stands and fights on with two armoured fists like an Enforcer's; the cannon is lost for good and it never picks it up again. Its fists only dent a hull; it does not detonate. No stance orders. Near death its legs are torn off and it crawls on, still fighting. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
+    blurb: `A taken body on a heavy frame, hauling a long plasma cannon in both arms. It stands, braces, and throws one big plasma round on an arc from long reach (${BOMBARD_RANGE_TILES / TILE_SUBDIV} cells), then waits ${BOMBARD_ROUND.reload} seconds while the cannon charges. Every round drains its energy cell; the cell holds ${BOMBARD_CELL.shots} rounds and regrows one every ${BOMBARD_CELL.rechargeSeconds} seconds. The round bursts wide among soldiers and tells on armor too. Force attack sends it anywhere in that reach, seen or not. It cannot lay the cannon on anything inside ${BOMBARD_MIN_RANGE_TILES / TILE_SUBDIV} cells and must stop and face the target first. Attacked from inside that ring, it drops the cannon where it stands and fights on with two armoured fists like an Enforcer's; the cannon is lost for good and it never picks it up again. Its fists only dent a hull; it does not detonate. No stance orders. Near death its legs are torn off and it crawls on, still fighting. Medics heal it, engineers repair it. It hears the hive through your Assembly's spire, and goes dark without it.`,
   },
   /** Xenite cyborg: unarmed support, shields friends under fire and mends hive units. */
   weaver: {
@@ -6782,7 +6832,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     plasmaCell: WEAVER_CELL,
-    blurb: `Support. No weapon. Four needle arms and a spindle of nanites on its back. When a unit of your side is under fire within ${WEAVER_SHIELD_REACH_TILES / TILE_SUBDIV} cells, the Bulwark itself too, it throws a small energy wall in front of it, facing the fire: one soldier wide and ${WEAVER_SHIELD.hp} points strong, standing ${WEAVER_SHIELD.seconds} seconds unless shot down. Enemy rounds stop on it and enemies cannot walk through; your side shoots and walks through. Each wall takes a quarter of its energy cell, which regrows a quarter every ${WEAVER_CELL.rechargeSeconds} seconds. It does not stop shells lobbed from above. Its own energy shield it keeps up for free: a small dome over itself that stops every round, shell, and blast that comes in, while the Bulwark walks and works inside. Force attack a unit of your side and the Bulwark puts that dome over the friend instead, walking after it to keep it within ${WEAVER_SHIELD_REACH_TILES / TILE_SUBDIV} cells; force attack the Bulwark, or Stop, to take it back. The dome's points are the energy cell (${WEAVER_DOME_POINTS_PER_SHOT} a quarter): each hit it absorbs drains the cell, and so does each wall. Drained, the dome is gone until the cell is full again. It also sends a mend every second into each hive unit of yours within ${WEAVER_REACH_TILES / TILE_SUBDIV} cells: ${WEAVER_MEND_CYBORG} HP to a cyborg, ${WEAVER_MEND_HEAVY} to a heavy assimilator or anything else the hive fields. Two Bulwarks on one unit mend it once. It cannot mend itself; another Bulwark can. Torn legs grow back once the body is whole enough. No stance orders. It hears the hive through your Conversion Chamber's spire, and shields and mends nothing while dark.`,
+    blurb: `Support. No weapon. Four needle arms and a spindle of nanites on its back. When a unit of your side is under fire within ${WEAVER_SHIELD_REACH_TILES / TILE_SUBDIV} cells, the Bulwark itself too, it throws a small energy wall in front of it, facing the fire: one soldier wide and ${WEAVER_SHIELD.hp} points strong, standing ${WEAVER_SHIELD.seconds} seconds unless shot down. Enemy rounds stop on it and enemies cannot walk through; your side shoots and walks through. Each wall takes a quarter of its energy cell, which regrows a quarter every ${WEAVER_CELL.rechargeSeconds} seconds. It does not stop shells lobbed from above. Its own energy shield it keeps up for free: a small dome over itself that stops every round, shell, and blast that comes in, while the Bulwark walks and works inside. Force attack a unit of your side and the Bulwark puts that dome over the friend instead, walking after it to keep it within ${WEAVER_SHIELD_REACH_TILES / TILE_SUBDIV} cells; force attack the Bulwark, or Stop, to take it back. The dome's points are the energy cell (${WEAVER_DOME_POINTS_PER_SHOT} a quarter): each hit it absorbs drains the cell, and so does each wall. Drained, the dome is gone until the cell is full again. It also sends a mend every second into each hive unit of yours within ${WEAVER_REACH_TILES / TILE_SUBDIV} cells: ${WEAVER_MEND_CYBORG} HP to a cyborg, ${WEAVER_MEND_HEAVY} to a heavy assimilator or anything else the hive fields. Two Bulwarks on one unit mend it once. It cannot mend itself; another Bulwark can. Torn legs grow back once the body is whole enough. No stance orders. It hears the hive through your Assembly's spire, and shields and mends nothing while dark.`,
   },
   /** Xenite cyborg: cloaked spine sniper. */
   shade: {
@@ -6810,7 +6860,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: SCOPED.penetration,
     caliber: SCOPED.caliber,
     spreadDeg: SCOPED.spreadDeg,
-    blurb: `A lean hunter with a spine rifle grown along its forearm and a skin that drinks the light. The spine reaches as far as a sniper's scope; a hit takes most of a soldier's health, and the hive's spine never needs a truck. While its skin is settled no enemy sees it or can pick it, even on the move. Each shot, and any hit that hurts it, shows it for ${SHADE_REVEAL_SECONDS} seconds, and an enemy within ${SHADE_SPOT_TILES / TILE_SUBDIV} cells always sees it. Thin plating for a cyborg. No stance orders. Near death its legs are torn off and it crawls on, still firing. It hears the hive through your Conversion Chamber's spire, and goes dark without it. Needs a Neural Nexus.`,
+    blurb: `A lean hunter with a spine rifle grown along its forearm and a skin that drinks the light. The spine reaches as far as a sniper's scope; a hit takes most of a soldier's health, and the hive's spine never needs a truck. While its skin is settled no enemy sees it or can pick it, even on the move. Each shot, and any hit that hurts it, shows it for ${SHADE_REVEAL_SECONDS} seconds, and an enemy within ${SHADE_SPOT_TILES / TILE_SUBDIV} cells always sees it. Thin plating for a cyborg. No stance orders. Near death its legs are torn off and it crawls on, still firing. It hears the hive through your Assembly's spire, and goes dark without it. Needs Neural Assembly and a Neural Nexus.`,
   },
   /** Xenite heavy assimilator: four legs and a turreted disruptor, the hive's answer to the Tiger. */
   stalker: {
@@ -7068,7 +7118,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
   conversion: {
     type: "conversion",
     kind: "building",
-    name: "Conversion Chamber",
+    name: "Assembly",
     letter: "C",
     cost: 0,
     energy: 140,
@@ -9769,7 +9819,7 @@ export function isCyborg(type: EntityType): boolean {
 /**
  * Runs on a link and shuts down without it: every cyborg but the Commander himself. The
  * Alliance's run on a Cyborg Central or a living Cyborg Commander, the Xenite's on a
- * Conversion Chamber.
+ * Assembly.
  */
 export function onUplink(type: EntityType): boolean {
   return isCyborg(type) && type !== "cyborgcommander";

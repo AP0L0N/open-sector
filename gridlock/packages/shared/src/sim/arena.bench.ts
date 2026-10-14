@@ -6,7 +6,7 @@
  *
  * Env: SEC (cap on the fight, default 240), DIST (gameplay tiles apart, default 140: outside every
  * gun's reach), REPS (fights per matchup, default 2; each reseeds the sim), WATER=1 (an all-water
- * map, for boats), LINK=0 (no Cyborg Central / Conversion Chamber behind each side; cyborgs then
+ * map, for boats), LINK=0 (no Cyborg Central / Assembly behind each side; cyborgs then
  * shut down after CYBORG_SHUTDOWN_SECONDS). The Xenite side gets a 12-Fusion-Core store so nothing
  * starts offline for want of hive energy.
  *

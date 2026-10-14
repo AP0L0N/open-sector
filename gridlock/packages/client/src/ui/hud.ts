@@ -37,6 +37,8 @@ import {
   STRUCTURE_QUEUE_CAP,
   canQueueStructure,
   techNeeds,
+  techLevelResearch,
+  hasTechLevel,
   BUILD_REQUIRES,
   TRAIN_TYPES,
   TICK_DT,
@@ -621,12 +623,16 @@ function oneAtATimeHeld(m: MatchSnapshot, unit: TrainType): "alive" | "queued" |
   return mine.some((e) => e.trainQueue?.some((j) => j.type === unit)) ? "queued" : null;
 }
 
-/** First tech building this unit still needs you to have standing, or null. Mirrors the sim's techMissing. */
-function hudTechMissing(m: MatchSnapshot, unit: TrainType): BuildingType | null {
+/**
+ * Why this unit is still locked for you: the first tech building you still need standing, or the
+ * level research (Advanced Assembly) none of yours holds yet. Null once unlocked. Mirrors the sim's techBlocker.
+ */
+function hudTechMissing(m: MatchSnapshot, unit: TrainType): string | null {
   for (const need of techNeeds(unit)) {
-    if (!m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === need && e.hp > 0 && !e.wreck)) return need;
+    if (!m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === need && e.hp > 0 && !e.wreck)) return `Needs a ${catalog(need).name}.`;
   }
-  return null;
+  const level = hasTechLevel(m.entities, m.youPlayerId, unit) ? undefined : techLevelResearch(unit);
+  return level ? `Needs ${level.name} at your ${catalog(level.buildings[0]!).name}.` : null;
 }
 
 /** An Airfield with a hardstand left for one more plane (parked, flying, or queued). Other producers always pass. */
@@ -758,7 +764,7 @@ export function paintBattleHud(ctx: Ctx): void {
   if (power && !hive) {
     const spd = productionSpeed(m.you.provided, m.you.used);
     const slow = m.you.lowPower ? ` · SLOW ×${spd.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}` : "";
-    // No powered Cyborg Central (Conversion Chamber) and no Commander: your Cyborgs (hive soldiers) are about to go dark.
+    // No powered Cyborg Central (Assembly) and no Commander: your Cyborgs (hive soldiers) are about to go dark.
     const link = m.you.cyborgShutdownIn;
     const linked = viewerFaction(m) === "xeno" ? "HIVE LINK LOST" : "CYBORGS OFF";
     const cyborgs = link != null ? ` · <b class="cyborg-link">${linked} IN ${Math.ceil(link)}s</b>` : "";
@@ -849,6 +855,8 @@ export function paintBattleHud(ctx: Ctx): void {
     btn.classList.toggle("is-disabled", m.you.alive && blocked && looping);
     btn.setAttribute("aria-disabled", String(!m.you.alive || blocked));
     btn.classList.toggle("needs-tech", techMissing);
+    // Not on the sidebar until it is unlocked; a job still queued keeps it there to cancel.
+    btn.classList.toggle("hidden", techMissing && unitJobs.length === 0 && !looping);
     btn.classList.toggle("one-held", held != null);
     btn.classList.toggle("is-continuous", looping);
     const note = !hasProducer
@@ -856,7 +864,7 @@ export function paintBattleHud(ctx: Ctx): void {
       : padsFull
         ? "Every hardstand is taken. Build another Airfield."
         : techMissing
-          ? `Needs a ${catalog(tech).name}.`
+          ? tech
           : held === "alive"
             ? "Only one at a time. Yours is still in the field."
             : held === "queued"
