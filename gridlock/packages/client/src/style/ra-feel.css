@@ -438,7 +438,8 @@ input[type="range"] { padding: 0; }
 }
 #hud-scrap.scrap-denied b { color: var(--danger); }
 /* The Xenite hive's energy, where scrap sits for the other sides: a bar like a Cyborg Commander's field. */
-#hud-scrap .energy-bar {
+#hud-scrap .energy-bar,
+#hud-power .energy-bar {
   display: inline-block;
   vertical-align: middle;
   width: 7.5em;
@@ -449,7 +450,8 @@ input[type="range"] { padding: 0; }
   position: relative;
   overflow: hidden;
 }
-#hud-scrap .energy-bar i {
+#hud-scrap .energy-bar i,
+#hud-power .energy-bar i {
   position: absolute;
   inset: 0 auto 0 0;
   background: rgba(96, 226, 214, 0.95);
@@ -457,6 +459,11 @@ input[type="range"] { padding: 0; }
 }
 #hud-scrap .energy-bar.is-full i { background: var(--amber); }
 #hud-scrap.low-power .energy-bar i { background: var(--danger); }
+/* The grid's spare power, beside it for the scrap sides: blue while it holds, solid red once it runs short. */
+#hud-power .energy-bar { border-color: rgba(110, 180, 255, 0.6); background: rgba(8, 14, 26, 0.85); }
+#hud-power .energy-bar i { background: rgba(110, 180, 255, 0.95); }
+#hud-power .energy-bar.is-out { border-color: var(--danger); }
+#hud-power .energy-bar.is-out i { background: var(--danger); }
 /* The Smelters' pour, beside the scrap count. */
 #hud-scrap .pour {
   font-style: normal;
@@ -925,7 +932,8 @@ input[type="range"] { padding: 0; }
 .cameo .cameo-pow { font-size: 0.66rem; border-color: rgba(138, 122, 100, 0.5); }
 .cameo .cameo-pow::after { content: "\26A1\FE0E"; margin-left: 1px; }
 .cameo .cameo-pow.is-plus { color: var(--ready); }
-.cameo .cameo-pow.is-minus { color: #ff9a80; }
+/* What it draws from the grid: blue, so it never reads as "can't build". */
+.cameo .cameo-pow.is-minus { color: #8cc8ff; border-color: rgba(110, 180, 255, 0.5); }
 
 .cameo .pip {
   position: absolute;
