@@ -252,7 +252,7 @@ describe("cyborg crawl shield", () => {
     const ts = state.tileSize;
     const cy = makeEntity(state, "cyborg", a, tileCenter(12, ts), tileCenter(12, ts));
     const tick0 = state.tick;
-    const dealt = takeDamage(cy, cy.hpMax * 10, tick0);
+    const dealt = takeDamage(cy, cy.hpMax * 10, state);
     assert.equal(cy.hp, 1, "a killing blow on his legs leaves him crawling");
     assert.equal(dealt, cy.hpMax - 1);
     assert.equal(hasCrit(cy, "leg"), true);
@@ -264,10 +264,12 @@ describe("cyborg crawl shield", () => {
     assert.ok(foe);
     assert.equal(snapshotFor(state, a).entities.find((e) => e.id === cy.id)?.shielded, true);
     assert.equal(snapshotFor(state, b).entities.find((e) => e.id === cy.id)?.shielded, true);
-    assert.equal(takeDamage(cy, 500, tick0 + shield - 1), 0);
+    state.tick = tick0 + shield - 1;
+    assert.equal(takeDamage(cy, 500, state), 0);
     assert.equal(cy.hp, 1);
     assert.equal(cyborgShielded(cy, tick0 + shield), false);
-    assert.equal(takeDamage(cy, 500, tick0 + shield), 1);
+    state.tick = tick0 + shield;
+    assert.equal(takeDamage(cy, 500, state), 1);
     assert.equal(cy.hp, 0, "once the shield is down the next hit kills");
   });
 
@@ -275,13 +277,15 @@ describe("cyborg crawl shield", () => {
     const { state, a } = match();
     const ts = state.tileSize;
     const cy = makeEntity(state, "cyborg", a, tileCenter(12, ts), tileCenter(12, ts));
-    takeDamage(cy, Math.ceil(cy.hpMax * (1 - CYBORG_LEGS_LOST_HP)), 0);
+    state.tick = 0;
+    takeDamage(cy, Math.ceil(cy.hpMax * (1 - CYBORG_LEGS_LOST_HP)), state);
     assert.equal(hasCrit(cy, "leg"), true);
     assert.equal(cyborgShielded(cy, 0), true);
     const until = cy.shieldUntilTick;
     // Already legless: a later hit past the shield just hurts, no new window.
     const later = until! + 1;
-    takeDamage(cy, 2, later);
+    state.tick = later;
+    takeDamage(cy, 2, state);
     assert.equal(cy.shieldUntilTick, until);
     assert.equal(cyborgShielded(cy, later), false);
   });
@@ -329,7 +333,7 @@ describe("cyborg crawl shield", () => {
     const { state, a } = match();
     const ts = state.tileSize;
     const r = makeEntity(state, "rifleman", a, tileCenter(12, ts), tileCenter(12, ts));
-    assert.equal(takeDamage(r, 999, state.tick), catalog("rifleman").hp);
+    assert.equal(takeDamage(r, 999, state), catalog("rifleman").hp);
     assert.equal(r.hp, 0);
     assert.equal(cyborgShielded(r, state.tick), false);
   });

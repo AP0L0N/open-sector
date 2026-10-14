@@ -118,7 +118,7 @@ export function tickLaserFences(state: MatchState, dt: number): void {
       if (!hit) continue;
       const before = o.hp;
       o.fenceZapTick = state.tick;
-      takeDamage(o, Math.max(1, Math.round(Math.max(LASER_FENCE_BURN_MIN, o.hpMax * LASER_FENCE_BURN_SHARE) * dt)), state.tick);
+      takeDamage(o, Math.max(1, Math.round(Math.max(LASER_FENCE_BURN_MIN, o.hpMax * LASER_FENCE_BURN_SHARE) * dt)), state);
       if (before > 0 && o.hp <= 0 && isInfantryType(o.type)) o.fireDeath = true;
       if (o.hp <= 0 || state.tick % spark === o.id % spark) {
         const ux = b.x - a.x;

@@ -99,8 +99,8 @@ export function detonateNuke(state: MatchState, src: Entity): void {
     } else {
       dmg = Math.round(TITAN_NUKE.damage * fall);
     }
-    if (o.kind === "unit") coverStrike(o, dmg, state.tick, true);
-    else takeDamage(o, dmg, state.tick);
+    if (o.kind === "unit") coverStrike(o, dmg, state, true);
+    else takeDamage(o, dmg, state);
   }
   burnTreesInBlast(state, src.x, src.y, radius);
   blastClutter(state, src.x, src.y, radius);

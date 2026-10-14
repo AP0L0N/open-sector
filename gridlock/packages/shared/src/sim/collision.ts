@@ -745,7 +745,7 @@ export function tickCollision(state: MatchState, dt = TICK_DT): void {
       if (dx * dx + dy * dy >= need * need) continue;
       if (!canCrush(state, a, b)) continue;
       // The whole bar: a soldier dies, a hull goes flat, a cyborg on his legs is torn down to crawling.
-      takeDamage(b, b.hp, state.tick);
+      takeDamage(b, b.hp, state);
       if (b.hp > 0) continue;
       const flat = !isInfantryType(b.type);
       if (flat) flattened.add(b);

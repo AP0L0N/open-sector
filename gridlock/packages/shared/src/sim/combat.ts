@@ -232,7 +232,7 @@ import {
   weaponRangeWorld,
   worldTileHeight,
 } from "./elevation.js";
-import { absorbRound, aloftOver, aloftShelters, aloftSweep, catchLanding, domeShelters, overheadSweep, reflectRound, shieldSweep, soakShield } from "./energy-shield.js";
+import { absorbRound, aloftOver, aloftShelters, aloftSweep, catchLanding, domeShelters, overheadSweep, reflectRound, shieldFirst, shieldSweep, soakShield } from "./energy-shield.js";
 import { drawPlasma, plasmaShots } from "./hive-ammo.js";
 import {
   ownerless,
@@ -2300,7 +2300,7 @@ function burstFlak(state: MatchState, p: Projectile): void {
     if (aloftShelters(state, p.ownerId, p.x, p.y, z, { x: o.x, y: o.y, z: entityHeight(state, o) + airAlt(o) }, p.damage, soaked)) continue;
     const falloff = d <= inner ? 1 : 1 - (d - inner) / (FLAK_BURST_RADIUS - inner);
     const dmg = Math.max(1, Math.round(p.damage * falloff * (0.85 + nextRand(state) * 0.3)));
-    o.hp = Math.max(0, o.hp - dmg);
+    takeDamage(o, dmg, state);
   }
   state.impacts.push({
     id: state.nextId++,
@@ -3008,7 +3008,7 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
       // An air burst outside an enemy dome in the air does not reach the flier inside it.
       const at = { x: e.x, y: e.y, z: entityHeight(state, e) + airAlt(e) };
       if (aloftShelters(state, p.ownerId, p.x, p.y, p.z ?? at.z, at, p.damage, soaked)) continue;
-      e.hp = Math.max(0, e.hp - Math.max(1, Math.round(p.damage * rack.airMul * falloff)));
+      takeDamage(e, Math.max(1, Math.round(p.damage * rack.airMul * falloff)), state);
       continue;
     }
     if (e.kind === "unit" && isArmored(def)) {
@@ -3027,6 +3027,7 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
         if (rocket) nickDmg = Math.max(1, Math.round(nickDmg * WALL_COVER_DR));
         else if (nickDmg >= Math.max(0, e.hp - e.wallCover)) nickDmg = e.hp;
       }
+      if (shieldFirst(state, e, nickDmg)) continue;
       e.hp = Math.max(0, e.hp - nickDmg);
       if (e.hp > 0 && nick.throwTrack) addCrit(e, "tracks");
       damageMaulerCart(e, {
@@ -3058,7 +3059,7 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
     if (chipWalls) {
       const wallMul = e.kind !== "building" ? 1 : p.big ? ARTILLERY_BUILDING_MUL : rocket ? ROCKET_BUILDING_MUL : 1;
       const wallDmg = Math.round(res.damage * wallMul);
-      coverStrike(e, wallDmg, state.tick, !rocket);
+      coverStrike(e, wallDmg, state, !rocket);
       if (e.hp > 0) rollCrits(e, res.face, res.kind, res.damage, rand);
       const smoked = maybeHaulerSmokeScreen(state, e, p);
       if (e.hp > 0 && !smoked && res.kind !== "ricochet" && res.damage > 0) maybeWithdraw(state, e, p);
@@ -3387,7 +3388,7 @@ function slash(state: MatchState, e: Entity, target: Entity): void {
   } else if (target.kind === "building" && wallsShieldGarrison(state, target)) {
     woundGarrison(state, target, SIMUNIT_SLASH_DAMAGE, DAGGER_CALIBER);
   } else if (dmg > 0) {
-    takeDamage(target, dmg, state.tick);
+    takeDamage(target, dmg, state);
     if (target.hp <= 0) kind = "kill";
     else if (soldier) rollCrits(target, "none", "hit", dmg, rand);
   } else {
@@ -3434,7 +3435,7 @@ function bite(state: MatchState, e: Entity, target: Entity): void {
   } else if (target.kind === "building" && wallsShieldGarrison(state, target)) {
     woundGarrison(state, target, factionDamage(e.type, LURKER_BITE_SOLDIER_DAMAGE), BITE_CALIBER);
   } else {
-    takeDamage(target, dmg, state.tick);
+    takeDamage(target, dmg, state);
     if (target.hp <= 0) kind = "kill";
     else if (soldier) rollCrits(target, "none", "hit", dmg, rand);
   }
@@ -3733,7 +3734,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     if (blocker && (!struck || blocker.t <= struck.t)) {
       if (isConcreteLine(blocker.e.type)) {
         // A shell chips the concrete. Any round that stops on a manned Large wall reaches the slits.
-        if (isTankShell(p)) takeDamage(blocker.e, Math.max(1, Math.round(p.damage)), state.tick);
+        if (isTankShell(p)) takeDamage(blocker.e, Math.max(1, Math.round(p.damage)), state);
         if (wallsShieldGarrison(state, blocker.e)) woundGarrison(state, blocker.e, p.damage, p.caliber, false, isBulletRound(p));
         pushImpact(state, p, "hit", blocker.x, blocker.y);
         continue;
@@ -3892,8 +3893,8 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       // A wall takes its share of a fractional burn, not the whole-point floor coverStrike keeps.
       dealt =
         res.burn && !overhead && (e.wallCover ?? 0) > 0 && e.kind === "unit"
-          ? takeDamage(e, dealt * WALL_COVER_DR, state.tick)
-          : coverStrike(e, dealt, state.tick, overhead);
+          ? takeDamage(e, dealt * WALL_COVER_DR, state)
+          : coverStrike(e, dealt, state, overhead);
       if (res.burn) {
         // An energy burn on plate it did not pierce: no track or engine breaks.
       } else if (e.hp > 0 && roofHit) {
@@ -4100,7 +4101,7 @@ function cannonSplash(state: MatchState, p: Projectile): void {
     if (d > radius + e.radius) continue;
     const dmg = Math.max(1, Math.round(FW190_SPLASH_DAMAGE * mortarFalloff(Math.max(0, d - e.radius), radius)));
     if (domeShelters(state, p.ownerId, p.x, p.y, e, dmg, soaked)) continue;
-    const dealt = coverStrike(e, dmg, state.tick, true);
+    const dealt = coverStrike(e, dmg, state, true);
     if (e.hp > 0) rollCrits(e, "none", "hit", dealt, () => nextRand(state));
   }
   blastClutter(state, p.x, p.y, radius);

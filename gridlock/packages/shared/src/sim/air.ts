@@ -1386,8 +1386,8 @@ function detonateBomb(state: MatchState, p: Projectile): void {
     } else {
       dmg = Math.round(p.damage * fall);
     }
-    if (e.kind === "unit") coverStrike(e, dmg, state.tick, true);
-    else takeDamage(e, dmg, state.tick);
+    if (e.kind === "unit") coverStrike(e, dmg, state, true);
+    else takeDamage(e, dmg, state);
     if (e.hp <= 0) killed = true;
   }
   blastWrecks(state, p.x, p.y, radius, p.damage);
@@ -1558,8 +1558,8 @@ function crashHurt(state: MatchState, o: Entity): void {
     if (hasTracks(o.type) && trackCritAllowed(o.type)) addCrit(o, "tracks");
     hideScout(state, o);
   }
-  if (o.kind === "unit") coverStrike(o, dmg, state.tick, true);
-  else takeDamage(o, dmg, state.tick);
+  if (o.kind === "unit") coverStrike(o, dmg, state, true);
+  else takeDamage(o, dmg, state);
 }
 
 function burnTreesNear(state: MatchState, e: Entity, extra: number): void {
@@ -2291,18 +2291,18 @@ function firePulse(state: MatchState, e: Entity, x: number, y: number, target: E
     if (Math.hypot(o.x - x, o.y - y) > spot + o.radius) continue;
     if (!forced && allies(state, e.ownerId, o.ownerId)) continue;
     if (domeShelters(state, e.ownerId, x, y, o, base, soaked)) continue;
-    coverStrike(o, roll(), state.tick, true);
+    coverStrike(o, roll(), state, true);
     struck = true;
     if (o.hp <= 0) killed = true;
   }
   if (target && target.hp > 0 && !target.wreck && !isAirborne(target)) {
     if (target.kind === "building") {
       if (isGarrisonable(target.type) && livingGarrison(state, target).length > 0) woundGarrison(state, target, roll(), PULSE_CALIBER);
-      takeDamage(target, roll(OVERSEER_BUILDING_MUL), state.tick);
+      takeDamage(target, roll(OVERSEER_BUILDING_MUL), state);
     } else if (isInfantryType(target.type)) {
-      coverStrike(target, roll(), state.tick, true);
+      coverStrike(target, roll(), state, true);
     } else {
-      coverStrike(target, roll(OVERSEER_HULL_MUL), state.tick, true);
+      coverStrike(target, roll(OVERSEER_HULL_MUL), state, true);
     }
     struck = true;
     if (target.hp <= 0) killed = true;

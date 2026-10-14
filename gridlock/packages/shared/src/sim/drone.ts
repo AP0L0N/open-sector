@@ -520,8 +520,8 @@ function burst(state: MatchState, d: Entity, target: Entity): void {
     } else {
       dmg = Math.round(DRONE_WARHEAD.damage * fall);
     }
-    if (e.kind === "unit") coverStrike(e, dmg, state.tick, true);
-    else takeDamage(e, dmg, state.tick);
+    if (e.kind === "unit") coverStrike(e, dmg, state, true);
+    else takeDamage(e, dmg, state);
     if (e.hp <= 0) killed = true;
   }
   const impact: ImpactView = {

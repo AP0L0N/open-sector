@@ -831,7 +831,7 @@ describe("aircraft crash", () => {
     step(state, TICK_DT);
     assert.equal(plane.air?.phase, "crash");
     assert.equal(plane.hp, 1);
-    assert.equal(takeDamage(plane, 400, state.tick), 0);
+    assert.equal(takeDamage(plane, 400, state), 0);
     assert.equal(plane.hp, 1);
     const view = snapshotFor(state, "A").entities.find((e) => e.id === plane.id);
     assert.equal(view?.air?.phase, "crash");

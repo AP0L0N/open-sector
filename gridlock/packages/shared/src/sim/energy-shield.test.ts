@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
-import { ENERGY_WALL, TICK_DT, catalog, energyDomeOf, energyShieldOf, isCivilianType, secondsToTicks } from "../catalog.js";
+import { ENERGY_WALL, MOTHERSHIP_CRUISE_ALT, TICK_DT, catalog, energyDomeOf, energyShieldOf, isCivilianType, secondsToTicks } from "../catalog.js";
 import { allyInLine } from "./lineoffire.js";
 import { tickSpotlights } from "./night.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { tickProjectiles } from "./combat.js";
 import { domeCharge, holdShieldLines, shieldSweep, shieldWatch, tickEnergyShields } from "./energy-shield.js";
+import { takeDamage } from "./crits.js";
+import { coverStrike } from "./field.js";
 import { fireLaser } from "./laser.js";
 import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
@@ -565,5 +567,45 @@ describe("Energy Wall", () => {
     assert.equal(snap.shields?.[0]?.post, true);
     assert.equal(snap.shields?.[0]?.angle, 0);
     assert.equal(snap.entities.find((e) => e.id === post.id)?.spotFacing, undefined);
+  });
+});
+
+describe("the dome goes first", () => {
+  it("a hit that got inside a Siphon's dome drains the dome, not the Siphon", () => {
+    const { state, s, dome } = siphonUp();
+    takeDamage(s, 60, state);
+    assert.equal(s.hp, s.hpMax, "the Siphon untouched");
+    assert.equal(dome.hp, dome.hpMax - 60);
+  });
+
+  it("covers a friend under it too, but never an enemy standing inside", () => {
+    const { state, s, dome } = siphonUp();
+    const mate = makeEntity(state, "rifleman", "B", s.x + 20, s.y);
+    const foe = makeEntity(state, "rifleman", "A", s.x - 20, s.y);
+    coverStrike(mate, 30, state, false);
+    assert.equal(mate.hp, mate.hpMax);
+    assert.equal(dome.hp, dome.hpMax - 30);
+    takeDamage(foe, 30, state);
+    assert.equal(foe.hp, foe.hpMax - 30, "the enemy's dome is no cover for him");
+    assert.equal(dome.hp, dome.hpMax - 30);
+  });
+
+  it("a Mothership's hull takes nothing while its dome stands, then all once it is drained", () => {
+    const state = field();
+    const ts = state.tileSize;
+    const ship = makeEntity(state, "mothership", "B", tileCenter(100, ts), tileCenter(120, ts));
+    ship.air!.phase = "fly";
+    ship.air!.alt = MOTHERSHIP_CRUISE_ALT;
+    tickEnergyShields(state, TICK_DT);
+    const dome = state.energyShields!.find((w) => w.fromId === ship.id)!;
+    assert.ok(dome?.aloft, "dome up in the air");
+    // A jet that flew inside the bubble before it fired: its rounds never crossed the dome.
+    const hp = ship.hp;
+    takeDamage(ship, 40, state);
+    assert.equal(ship.hp, hp);
+    assert.equal(dome.hp, dome.hpMax - 40);
+    dome.hp = 0;
+    takeDamage(ship, 40, state);
+    assert.equal(ship.hp, hp - 40, "the dome is down: the hull pays");
   });
 });

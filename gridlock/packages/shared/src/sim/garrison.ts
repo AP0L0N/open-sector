@@ -195,11 +195,11 @@ export function woundGarrison(
   }
   const heavy = caliber >= GARRISON_STRUCTURAL_CALIBER;
   const primary = units[Math.floor(nextRand(state) * units.length)]!;
-  woundOccupant(primary, incoming * (heavy ? 0.5 + nextRand(state) * 0.7 : 0.4 + nextRand(state) * 0.7), state.tick);
+  woundOccupant(primary, incoming * (heavy ? 0.5 + nextRand(state) * 0.7 : 0.4 + nextRand(state) * 0.7), state);
   for (const u of units) {
     if (u.id === primary.id || u.hp <= 0) continue;
     if (nextRand(state) > (heavy ? 0.5 : 0.18)) continue;
-    woundOccupant(u, incoming * (0.12 + nextRand(state) * (heavy ? 0.45 : 0.25)), state.tick);
+    woundOccupant(u, incoming * (0.12 + nextRand(state) * (heavy ? 0.45 : 0.25)), state);
   }
 }
 
@@ -212,12 +212,12 @@ export function woundDeckGunners(state: MatchState, ship: Entity, incoming: numb
   const crew = deckGunners(state, ship);
   if (crew.length === 0 || nextRand(state) >= LST_TUB_EXPOSURE) return;
   const u = crew[Math.floor(nextRand(state) * crew.length)]!;
-  woundOccupant(u, incoming * garrisonWoundMulOf(ship.type) * (0.4 + nextRand(state) * 0.7), state.tick);
+  woundOccupant(u, incoming * garrisonWoundMulOf(ship.type) * (0.4 + nextRand(state) * 0.7), state);
 }
 
-function woundOccupant(unit: Entity, raw: number, tick: number): void {
+function woundOccupant(unit: Entity, raw: number, state: MatchState): void {
   const dmg = Math.max(1, Math.round(raw));
-  takeDamage(unit, dmg, tick);
+  takeDamage(unit, dmg, state);
   if (unit.hp > 0) return;
   unit.state = "dead";
   unit.order = null;
@@ -474,7 +474,7 @@ export function spillGarrison(state: MatchState, house: Entity, opts?: { damage?
     u.garrisonedIn = null;
     if (hurt) {
       const frac = nextRand(state);
-      takeDamage(u, Math.round(u.hpMax * frac), state.tick);
+      takeDamage(u, Math.round(u.hpMax * frac), state);
     }
     u.order = null;
     u.waypoints = [];

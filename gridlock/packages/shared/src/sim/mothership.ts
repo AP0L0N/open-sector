@@ -588,8 +588,8 @@ export function mothershipShockwave(state: MatchState, src: Entity): void {
     } else {
       dmg = Math.round(S.damage * fall);
     }
-    if (o.kind === "unit") coverStrike(o, dmg, state.tick, true);
-    else takeDamage(o, dmg, state.tick);
+    if (o.kind === "unit") coverStrike(o, dmg, state, true);
+    else takeDamage(o, dmg, state);
   }
   blastClutter(state, src.x, src.y, radius);
   state.impacts.push({

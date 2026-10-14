@@ -179,10 +179,10 @@ export function hammerBlast(
     const rand = 0.9 + 0.2 * nextRand(state);
     if (o.kind === "building") {
       if (wallsShieldGarrison(state, o)) woundGarrison(state, o, factionDamage("juggernaut", spec.soldier * fall), HAMMER_CALIBER);
-      takeDamage(o, factionDamage("juggernaut", Math.max(1, Math.round(spec.building * fall * rand))), state.tick);
+      takeDamage(o, factionDamage("juggernaut", Math.max(1, Math.round(spec.building * fall * rand))), state);
     } else {
       const soldier = isInfantryType(o.type);
-      takeDamage(o, factionDamage("juggernaut", Math.max(1, Math.round((soldier ? spec.soldier : spec.hull) * fall * rand))), state.tick);
+      takeDamage(o, factionDamage("juggernaut", Math.max(1, Math.round((soldier ? spec.soldier : spec.hull) * fall * rand))), state);
     }
     kind = o.hp <= 0 ? "kill" : kind === "kill" ? "kill" : "hit";
   }
@@ -470,7 +470,7 @@ function trample(state: MatchState, e: Entity, x0: number, y0: number, mark: Ent
     const base = isInfantryType(o.type) ? JUGGERNAUT_RAM_TRAMPLE_SOLDIER : JUGGERNAUT_RAM_TRAMPLE_HULL;
     // An enemy dome round them takes it, while the giant is still outside it.
     if (domeShelters(state, e.ownerId, x0, y0, o, base)) continue;
-    takeDamage(o, factionDamage("juggernaut", Math.round(base * (0.9 + 0.2 * nextRand(state)))), state.tick);
+    takeDamage(o, factionDamage("juggernaut", Math.round(base * (0.9 + 0.2 * nextRand(state)))), state);
     ramImpact(state, e, o.x, o.y, "trample", o.hp <= 0 ? "kill" : "hit");
   }
 }
@@ -487,9 +487,9 @@ function slam(state: MatchState, e: Entity, t: Entity): void {
   }
   if (t.kind === "building") {
     if (wallsShieldGarrison(state, t)) woundGarrison(state, t, factionDamage("juggernaut", JUGGERNAUT_THROW_SOLDIER), HAMMER_CALIBER);
-    takeDamage(t, factionDamage("juggernaut", Math.round(JUGGERNAUT_RAM_BUILDING * rand)), state.tick);
+    takeDamage(t, factionDamage("juggernaut", Math.round(JUGGERNAUT_RAM_BUILDING * rand)), state);
   } else {
-    takeDamage(t, factionDamage("juggernaut", Math.round(JUGGERNAUT_RAM_HULL * rand)), state.tick);
+    takeDamage(t, factionDamage("juggernaut", Math.round(JUGGERNAUT_RAM_HULL * rand)), state);
     const ts = state.tileSize;
     const shove = JUGGERNAUT_RAM_SHOVE_TILES * ts;
     // As far as there is ground for it to land on.

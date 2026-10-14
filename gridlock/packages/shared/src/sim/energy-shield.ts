@@ -229,6 +229,45 @@ export function overheadSweep(state: MatchState, ownerId: string, x0: number, y0
   return shieldSweep(state, ownerId, x0, y0, x1, y1, true);
 }
 
+/**
+ * The standing dome round `e`: its own (a Siphon's, a Mothership's, a Force Shield's), or a
+ * friend's it stands under or, flying, is inside. Walls face one way and are left out.
+ */
+export function shelterOf(state: MatchState, e: Entity): EnergyShield | null {
+  const shields = state.energyShields;
+  if (!shields || shields.length === 0 || e.wreck) return null;
+  const flying = airAlt(e) > 0.5;
+  let z: number | undefined;
+  for (const s of shields) {
+    if (!s.dome || s.hp <= 0) continue;
+    if (s.fromId === e.id) return s;
+    if (!allies(state, s.ownerId, e.ownerId)) continue;
+    if (s.aloft) {
+      if (!flying) continue;
+      z ??= entityHeight(state, e) + airAlt(e);
+      if (insideAloft(s, e.x, e.y, z)) return s;
+    } else if (!flying) {
+      const dx = e.x - s.x;
+      const dy = e.y - s.y;
+      if (dx * dx + dy * dy < s.r * s.r) return s;
+    }
+  }
+  return null;
+}
+
+/**
+ * Whatever reached `e` past the shield lines (fired from inside the dome, a blow, a crush) still
+ * meets the dome round it first: the dome takes all of it, and none reaches the hull. True when it did.
+ */
+export function shieldFirst(state: MatchState, e: Entity, damage: number): boolean {
+  if (damage <= 0) return false;
+  const s = shelterOf(state, e);
+  if (!s) return false;
+  s.hp = Math.max(0, s.hp - damage);
+  s.hitTick = state.tick;
+  return true;
+}
+
 /** The wall or dome takes `damage` off its points and flares. */
 export function soakShield(state: MatchState, s: EnergyShield, damage: number): void {
   s.hp = Math.max(0, s.hp - Math.max(1, damage));

@@ -103,10 +103,10 @@ describe("cyborg commander", () => {
     const { state, a } = match();
     const cmd = makeEntity(state, "cyborgcommander", a, tileCenter(20, state.tileSize), tileCenter(20, state.tileSize));
     const hp0 = cmd.hp;
-    assert.equal(takeDamage(cmd, 150, state.tick), 0);
+    assert.equal(takeDamage(cmd, 150, state), 0);
     assert.equal(cmd.hp, hp0);
     assert.equal(cmd.field, FORCE_FIELD_HP - 150);
-    assert.equal(takeDamage(cmd, 100, state.tick), 100 - (FORCE_FIELD_HP - 150));
+    assert.equal(takeDamage(cmd, 100, state), 100 - (FORCE_FIELD_HP - 150));
     assert.equal(cmd.field, 0);
     assert.equal(cmd.hp, hp0 - (100 - (FORCE_FIELD_HP - 150)));
 
@@ -134,7 +134,7 @@ describe("cyborg commander", () => {
   it("still loses his legs and crawls once the plating is badly cut", () => {
     const { state, a } = match();
     const cmd = makeEntity(state, "cyborgcommander", a, tileCenter(20, state.tileSize), tileCenter(20, state.tileSize));
-    takeDamage(cmd, FORCE_FIELD_HP + cmd.hpMax * (1 - CYBORG_LEGS_LOST_HP) + 5, state.tick);
+    takeDamage(cmd, FORCE_FIELD_HP + cmd.hpMax * (1 - CYBORG_LEGS_LOST_HP) + 5, state);
     assert.ok(cmd.hp > 0);
     assert.equal(hasCrit(cmd, "leg"), true);
     assert.equal(stanceOf(cmd), "crawl");
@@ -346,7 +346,7 @@ describe("cyborg commander", () => {
 
     // A hit the normal field could not hold stays off his HP.
     const hp0 = cmd.hp;
-    assert.equal(takeDamage(cmd, FORCE_FIELD_HP * 3, state.tick), 0);
+    assert.equal(takeDamage(cmd, FORCE_FIELD_HP * 3, state), 0);
     assert.equal(cmd.hp, hp0);
 
     // Back to the laser: the surplus bleeds off at once, and the normal rate returns.

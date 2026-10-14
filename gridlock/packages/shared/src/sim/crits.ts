@@ -40,7 +40,8 @@ import { artilleryHaulMul, gunCrewOf } from "./artillery.js";
 import { juggernautPaceMul } from "./juggernaut.js";
 import type { ArmorFace } from "./ballistics.js";
 import { hasHeadlight, hasSpotlight } from "./night.js";
-import type { Entity } from "./types.js";
+import { shieldFirst } from "./energy-shield.js";
+import type { Entity, MatchState } from "./types.js";
 
 export function moveSpeedMul(e: Entity, swimming = false): number {
   // A bullet in the shoulder: the Thrall's run falters for a moment.
@@ -105,11 +106,15 @@ export function cyborgShielded(e: { type: Entity["type"]; shieldUntilTick?: numb
  * while shielded nothing lands, and the hit that tears his legs off (even one
  * that would have killed him) leaves at least 1 HP and starts the shield.
  * The Cyborg Commander's force field soaks what it can before any of that.
+ * Ahead of everything, a standing energy dome round the unit (its own or a
+ * friend's) takes the whole hit, however it got in.
  */
-export function takeDamage(e: Entity, damage: number, tick: number): number {
+export function takeDamage(e: Entity, damage: number, state: MatchState): number {
   if (damage <= 0 || e.hp <= 0) return 0;
   // A plane already falling cannot be shot out of the crash.
   if (e.air?.phase === "crash") return 0;
+  if (shieldFirst(state, e, damage)) return 0;
+  const tick = state.tick;
   const before = e.hp;
   if (isCyborg(e.type)) {
     if (cyborgShielded(e, tick)) return 0;

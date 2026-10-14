@@ -301,7 +301,7 @@ function burnSoldiersAlong(state: MatchState, e: Entity, angle: number, len: num
 /** The sweep passes a soldier: he burns where he stands. A cyborg's plating takes a heavy cut instead. */
 function burnSoldier(state: MatchState, e: Entity, o: Entity, ux: number, uy: number): void {
   const before = o.hp;
-  takeDamage(o, isCyborg(o.type) ? factionDamage(e.type, LASER_SWEEP_CYBORG_DAMAGE) : o.hp, state.tick);
+  takeDamage(o, isCyborg(o.type) ? factionDamage(e.type, LASER_SWEEP_CYBORG_DAMAGE) : o.hp, state);
   if (before > 0 && o.hp <= 0 && !isCyborg(o.type)) o.fireDeath = true;
   state.impacts.push({
     id: state.nextId++,
@@ -340,7 +340,7 @@ function strikeLine(state: MatchState, e: Entity, target: Entity, bearing: numbe
   if (target.kind === "building" && livingGarrison(state, target).length > 0 && garrisonIsHostile(state, e.ownerId, target)) {
     woundGarrison(state, target, factionDamage(e.type, LASER_LINE_DAMAGE), LASER.caliber);
   } else {
-    coverStrike(target, factionDamage(e.type, target.kind === "unit" ? LASER_ARMOR_DAMAGE : LASER_LINE_DAMAGE), state.tick, false);
+    coverStrike(target, factionDamage(e.type, target.kind === "unit" ? LASER_ARMOR_DAMAGE : LASER_LINE_DAMAGE), state, false);
   }
   const lethal = before > 0 && target.hp <= 0;
   state.impacts.push({

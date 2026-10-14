@@ -236,7 +236,7 @@ function burnJetSoldiers(state: MatchState, e: Entity, ox: number, oy: number, u
     if (along < 0 || along > len) continue;
     if (Math.abs(dx * uy - dy * ux) > o.radius + FLAMER_SPLASH) continue;
     const before = o.hp;
-    takeDamage(o, isCyborg(o.type) ? LASER_SWEEP_CYBORG_DAMAGE : o.hp, state.tick);
+    takeDamage(o, isCyborg(o.type) ? LASER_SWEEP_CYBORG_DAMAGE : o.hp, state);
     markFireKill(o, before);
   }
 }
@@ -353,7 +353,7 @@ function landFlame(state: MatchState, p: Projectile): void {
     const d = Math.hypot(e.x - p.x, e.y - p.y);
     if (d > FLAMER_SPLASH + e.radius * 0.5) continue;
     const before = e.hp;
-    coverStrike(e, p.damage * share, state.tick, false);
+    coverStrike(e, p.damage * share, state, false);
     markFireKill(e, before);
   }
   igniteAt(state, p.x, p.y, p.ownerId);
@@ -441,7 +441,7 @@ export function tickFires(state: MatchState, dt: number): void {
     const heat = heatAt(state, e.x, e.y, e.radius * 0.3);
     if (heat <= 0) continue;
     const before = e.hp;
-    coverStrike(e, FIRE_BURN_DPS * share * heat * dt, state.tick, false);
+    coverStrike(e, FIRE_BURN_DPS * share * heat * dt, state, false);
     markFireKill(e, before);
     if (e.hp > 0 && isInfantryType(e.type) && !isCyborg(e.type) && e.type !== "pyro") stepOutOfFire(state, e);
   }
@@ -532,7 +532,7 @@ export function cookOff(state: MatchState, e: Entity): void {
     const dmg = PYRO_COOKOFF_DAMAGE * falloff * mul;
     if (o.kind === "building" && livingGarrison(state, o).length > 0) woundGarrison(state, o, dmg * 0.5, FLAMER.caliber);
     const before = o.hp;
-    coverStrike(o, dmg, state.tick, false);
+    coverStrike(o, dmg, state, false);
     markFireKill(o, before);
   }
   igniteAt(state, e.x, e.y, e.ownerId);

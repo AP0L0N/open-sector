@@ -975,10 +975,10 @@ describe("concrete wall", () => {
     assert.equal(tank.wallCover, tankBonus);
 
     const before = man.hp;
-    coverStrike(man, 40, state.tick, false);
+    coverStrike(man, 40, state, false);
     assert.equal(man.hp, before - Math.round(40 * WALL_COVER_DR));
     const tankBefore = tank.hp;
-    coverStrike(tank, 10, state.tick, true);
+    coverStrike(tank, 10, state, true);
     assert.equal(tank.hp, tankBefore - 10);
 
     man.hp = man.hpMax;

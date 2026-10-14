@@ -556,7 +556,7 @@ function detonateWaterMine(state: MatchState, m: Mine): void {
     if (d > reach + e.radius) continue;
     const fall = mortarFalloff(Math.max(0, d - e.radius), reach);
     const dmg = WATER_MINE_DAMAGE * fall;
-    coverStrike(e, Math.max(1, Math.round(dmg)), state.tick, false);
+    coverStrike(e, Math.max(1, Math.round(dmg)), state, false);
     if (e.hp <= 0) killed = true;
   }
   const impact: ImpactView = {
@@ -592,7 +592,7 @@ function detonateMine(state: MatchState, ownerId: string, x: number, y: number):
     } else {
       dmg = e.hpMax * MINE_SOFT_SHARE * fall;
     }
-    coverStrike(e, Math.max(1, Math.round(dmg)), state.tick, false);
+    coverStrike(e, Math.max(1, Math.round(dmg)), state, false);
     if (e.hp <= 0) killed = true;
   }
   const impact: ImpactView = {

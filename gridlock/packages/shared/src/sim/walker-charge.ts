@@ -166,7 +166,7 @@ function detonateWalker(state: MatchState, walker: Entity): void {
     const heavy = o.kind === "unit" && catalog(o.type).armorFront > PTRD_LIGHT_FRONT;
     const raw = (heavy ? WALKER_BLAST_HEAVY : WALKER_BLAST_SOFT) * mortarFalloff(dist, radius);
     if (domeShelters(state, walker.ownerId, walker.x, walker.y, o, raw, soaked)) continue;
-    takeDamage(o, Math.max(1, Math.round(raw)), state.tick);
+    takeDamage(o, Math.max(1, Math.round(raw)), state);
   }
   state.impacts.push({
     id: state.nextId++,

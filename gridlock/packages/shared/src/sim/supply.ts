@@ -321,7 +321,7 @@ export function noteSupplyHit(
   const driverId = truck.crew ? null : riders[0]?.id;
   for (const rider of riders) {
     const dmg = Math.max(1, Math.round(dealt * share));
-    takeDamage(rider, dmg, state.tick);
+    takeDamage(rider, dmg, state);
     if (rider.hp > 0) continue;
     if (rider.id === driverId) {
       const rest = riders.filter((r) => r.id !== rider.id);

@@ -1174,16 +1174,16 @@ export function wallCoverBonus(state: MatchState, e: Entity): number {
  * Overhead damage (mortar, bomb, a shot from the air) ignores the extra health
  * and the reduction: the bonus cannot keep him alive.
  */
-export function coverStrike(e: Entity, damage: number, tick: number, overhead: boolean): number {
+export function coverStrike(e: Entity, damage: number, state: MatchState, overhead: boolean): number {
   const bonus = e.wallCover ?? 0;
-  if (bonus <= 0 || e.kind !== "unit") return takeDamage(e, damage, tick);
+  if (bonus <= 0 || e.kind !== "unit") return takeDamage(e, damage, state);
   if (overhead) {
     const base = Math.max(0, e.hp - bonus);
-    if (damage >= base) return takeDamage(e, Math.max(damage, e.hp), tick);
+    if (damage >= base) return takeDamage(e, Math.max(damage, e.hp), state);
   } else if (damage > 0) {
     damage = Math.max(1, Math.round(damage * WALL_COVER_DR));
   }
-  return takeDamage(e, damage, tick);
+  return takeDamage(e, damage, state);
 }
 
 function applyCoverHp(state: MatchState): void {
@@ -1304,7 +1304,7 @@ export function woundBehindSandbags(state: MatchState, bag: Entity, fromX: numbe
     if (depth < -6 || depth > SANDBAG_COVER_DEPTH) continue;
     const side = Math.sign(across) || -originSide;
     if (side === originSide) continue;
-    takeDamage(u, hit, state.tick);
+    takeDamage(u, hit, state);
   }
 }
 
