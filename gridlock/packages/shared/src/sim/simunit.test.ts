@@ -71,7 +71,7 @@ function unit(state: MatchState, type: "simunit2" | "cyborg" | "rifleman" | "wal
 }
 
 describe("Sim Unit II catalog", () => {
-  it("is a trainable cyborg-class soldier with the daggers, gated on the Conversion Chamber and the Neural Nexus", () => {
+  it("is a trainable cyborg-class soldier with the daggers, gated on the Assembly and the Neural Nexus", () => {
     assert.ok(TRAIN_TYPES.includes("simunit2"));
     assert.equal(catalog("simunit2").name, "Sim Unit II");
     assert.equal(isInfantryType("simunit2"), true);

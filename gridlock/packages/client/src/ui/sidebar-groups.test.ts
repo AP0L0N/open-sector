@@ -32,6 +32,8 @@ describe("sidebarGroupOf", () => {
     assert.deepEqual(g.structures.map((e) => e.type).sort(), ["aerie", "conversion", "forge", "fusioncore", "fusionnode", "nexus", "spawnpool"]);
     assert.deepEqual(g.defences.map((e) => e.type).sort(), ["energywall", "laserfence", "pulsespire", "spineturret"]);
     assert.deepEqual(g.infantry.map((e) => e.type).sort(), ["bombard", "lancer", "shade", "simunit2", "thrall", "weaver", "xenodrone"]);
+    // Cheapest first; the Lancer comes before the Sim Unit II at the same price.
+    assert.deepEqual(g.infantry.map((e) => e.type), ["thrall", "xenodrone", "bombard", "weaver", "lancer", "simunit2", "shade"]);
     assert.deepEqual(g.tanks.map((e) => e.type).sort(), ["assembler", "behemoth", "juggernaut", "mawcaster", "ravager", "siphon", "stalker"]);
     assert.deepEqual(g.naval.map((e) => e.type).sort(), ["hiveark", "leech", "lurker"]);
     assert.deepEqual(g.aircraft.map((e) => e.type).sort(), ["gnat", "mothership", "overseer", "scourge", "wasp"]);
