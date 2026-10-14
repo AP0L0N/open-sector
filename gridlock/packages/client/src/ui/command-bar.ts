@@ -90,6 +90,7 @@ const ICONS: Record<string, string> = {
   hold: '<circle cx="8" cy="5" r="3"/><path d="M8 8v6.5M4 14.5h8"/>',
   engage: CROSSHAIR + '<path d="M3 1.5c1 1 1 2 0 3M13 11.5c1 1 1 2 0 3"/>',
   rotate: '<path d="M13 8a5 5 0 11-1.5-3.6"/><path d="M12 1.5V5H8.5"/>',
+  "ground-scan": '<path d="M3 4.5h10v10H3z" stroke-dasharray="2 1.5"/><path d="M3 9.5h10"/><path d="M8 4.5V1.5M6 2.5h4"/>',
   "rotate-light": '<path d="M1.5 6.5h3v3h-3zM4.5 6.2l3-2v7.6l-3-2"/><path d="M10 5.5l4.5-2M10 8h5M10 10.5l4.5 2"/>',
   "stance-stand":
     '<circle cx="8" cy="2.5" r="1.6" fill="currentColor"/><path d="M8 4.6v5.2M8 9.8l-2.2 4.7M8 9.8l2.2 4.7M4.8 6.8h6.4"/>',

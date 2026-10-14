@@ -74,7 +74,8 @@ describe("research", () => {
     assert.equal(nextResearch("fusionnode", 0)?.id, "advancedfusion");
     assert.equal(nextResearch("fusionnode", 1)?.id, "ultrafusion");
     assert.equal(nextResearch("fusionnode", 2), undefined);
-    assert.equal(nextResearch("hivecore", 0), undefined);
+    assert.equal(nextResearch("hivecore", 0)?.id, "scanrelay");
+    assert.equal(nextResearch("core", 0), undefined);
     assert.ok(FUSION_NODE_LEVEL_ENERGY[0]! < FUSION_NODE_LEVEL_ENERGY[1]! && FUSION_NODE_LEVEL_ENERGY[1]! < FUSION_NODE_LEVEL_ENERGY[2]!);
   });
 

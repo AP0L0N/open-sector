@@ -508,6 +508,8 @@ export interface YouState {
    * Omitted for sides that pay scrap.
    */
   energy?: { cap: number; used: number; offline: number };
+  /** Xenite Ground Scans you may hold now (1 + Hive Core level, at most 3). Omitted for other sides. */
+  groundScanSlots?: number;
   structureQueue: StructureQueueView | null;
   /** Guns and garrisons build beside `structureQueue`. Null when that lane is idle. */
   defenceQueue: StructureQueueView | null;
@@ -782,6 +784,21 @@ export interface SmokeCloudView {
  * either side of `angle`. Stationary. Sent to its side and to whoever sees it.
  * A dome (`dome`) is the whole circle and rides on the unit `fromId`.
  */
+/** A Xenite Ground Scan (sim/ground-scan.ts): a square of ground lit from orbit. */
+export interface GroundScanView {
+  ownerId: string;
+  slot: number;
+  /** Centre, world units. */
+  x: number;
+  y: number;
+  /** 0 folded away, 1 fully open. */
+  open: number;
+  /** 1 opening, -1 folding, 0 holding. */
+  dir: 1 | 0 | -1;
+  /** Where it opens next, once folded. */
+  to?: { x: number; y: number };
+}
+
 export interface EnergyShieldView {
   id: number;
   ownerId: string;
@@ -861,6 +878,8 @@ export interface MatchSnapshot {
   smoke: SmokeCloudView[];
   /** Hive energy walls you can see. Omitted when there are none. */
   shields?: EnergyShieldView[];
+  /** Your side's Xenite Ground Scans, yours and your allies'. Omitted when there are none. */
+  scans?: GroundScanView[];
   /** Burning ground on tiles you can see, and fires your side lit. Empty until the first flamethrower burst. */
   fires: GroundFireView[];
   /** Mines you can see. Empty until the first cluster drop. */
@@ -990,6 +1009,8 @@ export type ClientMessage =
   | { type: "cmd.cloak"; ids: number[] }
   /** Sim Unit II: blink to (x, y). Past his reach he walks until it is in reach, then blinks. */
   | { type: "cmd.blink"; ids: number[]; x: number; y: number; queue?: boolean }
+  /** Send Xenite Ground Scan `slot` to the world point (x, y). */
+  | { type: "cmd.groundscan"; slot: number; x: number; y: number }
   /** Sim Unit II: blink into a hostile garrison (`targetId`), kill every soldier aboard, and blink back out. */
   | { type: "cmd.purge"; ids: number[]; targetId: number; queue?: boolean }
   | { type: "cmd.rockets"; ids: number[]; on: boolean }
