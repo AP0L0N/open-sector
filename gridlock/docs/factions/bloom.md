@@ -60,7 +60,7 @@ Costs and numbers live in `packages/shared/src/catalog.ts`; this table is the in
 | `broodnest` | Brood Nest | Infantry producer (Barracks / Cyborg Central), 2.5×2.5 | A mound of leathery egg-sacs under a chitin awning, one sac splitting open |
 | `gestator` | Gestator | Beast producer (Machine Shop / Forge), 3×3 | A long ribbed womb-hall, a huge translucent sac with a shape inside, a birthing slit at the front |
 | `braincoral` | Brain Coral | Tech + radar (Research / Nexus), 2×2 | A folded brain-coral dome crowned with feeler stalks that glow at the tips |
-| `tidewomb` | Tide Womb | Shipyard on water (Marine Base / Spawning Pool), 2.5×2.5 | A ring of fleshy lily-pads around an amber pool, tendrils trailing in the water |
+| `tidewomb` | Tide Womb | Shipyard on water (Marine Base / Tidal Dock), 2.5×2.5 | A ring of fleshy lily-pads around an amber pool, tendrils trailing in the water |
 | `roost` | Roost | Airfield, 4 nests (Airfield / Aerie) | A long arching bone spine with four cup-shaped nests of woven sinew beside it |
 
 ### Defences

@@ -35,7 +35,7 @@ describe("energy wall drawing", () => {
     assert.ok(domeHeightElev(96) > domeHeightElev(48));
   });
 
-  it("an Energy Wall's curtain stands as tall as a Pulse Spire, however wide, with more panels to bend on", () => {
+  it("an Energy Wall's curtain stands as tall as a Disruptor Pylon, however wide, with more panels to bend on", () => {
     assert.equal(curtainHeightElev() * ISO_ELEVATION, PULSE_SPIRE_TOP_PX);
     assert.equal(shieldCurve({ x: 0, y: 0, angle: 0, half: 1, r: 96 }, CURTAIN_PANELS).length, CURTAIN_PANELS + 1);
     assert.ok(CURTAIN_PANELS > SHIELD_PANELS);

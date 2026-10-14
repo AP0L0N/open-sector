@@ -327,7 +327,7 @@ describe("a Xenite seat", () => {
     assert.equal(eu.ok, false);
   });
 
-  it("raises a Pulse Spire only with a Neural Nexus standing", () => {
+  it("raises a Disruptor Pylon only with a Neural Nexus standing", () => {
     const state = match();
     unpack(state, "B");
     const ts = state.tileSize;
@@ -349,7 +349,7 @@ describe("a Xenite seat", () => {
     assert.equal(radarOnline(state, "B"), true);
   });
 
-  it("fires a crewless Spine Turret while the hive has energy for it, and silences it when the hive runs short", () => {
+  it("fires a crewless Ion Turret while the hive has energy for it, and silences it when the hive runs short", () => {
     const fight = (powered: boolean): number => {
       const state = openField();
       const ts = state.tileSize;
@@ -383,7 +383,7 @@ describe("a Xenite seat", () => {
     for (const e of [stalker, ravager, cyborg]) {
       assert.equal(supplyShortOf(e.type, e.ammo, e.mgAmmo, e.clip, e.rockets, e.heavy, e.minePacks), false, e.type);
     }
-    assert.deepEqual({ bombs: scourge.air!.bombs, rounds: scourge.air!.rounds }, airLoadoutOf("scourge"), "the Scourge's pod and belts are full");
+    assert.deepEqual({ bombs: scourge.air!.bombs, rounds: scourge.air!.rounds }, airLoadoutOf("scourge"), "the Eclipse's pod and belts are full");
     assert.equal((tiger.ammo.ap ?? 0) + (tiger.ammo.he ?? 0), 0, "an Alliance rack still waits for a truck");
   });
 
@@ -407,7 +407,7 @@ describe("a Xenite seat", () => {
     assert.equal(shot, factionDamage("xenodrone", RIFLE.damage), "the drone's round leaves at the Xenite damage");
   });
 
-  it("grows ships at a Spawning Pool and fliers at an Aerie, which lift straight out of it", () => {
+  it("grows ships at a Tidal Dock and fliers at an Aerie, which lift straight out of it", () => {
     assert.equal(producerType("leech"), "spawnpool");
     assert.equal(producerType("lurker"), "spawnpool");
     assert.equal(producerType("wasp"), "aerie");
@@ -432,12 +432,12 @@ describe("a Xenite seat", () => {
     if (!locked.ok) assert.equal(locked.message, "Need a Neural Nexus.");
     for (let i = 0; i < secondsToTicks(catalog("wasp").buildSeconds) * 3 && aerie.queue.length > 0; i++) step(state, TICK_DT);
     const wasp = [...state.entities.values()].find((e) => e.type === "wasp");
-    assert.ok(wasp, "the Wasp is grown");
+    assert.ok(wasp, "the Interceptor is grown");
     assert.equal(wasp!.air?.homeId, null, "no nest to go home to");
     assert.notEqual(wasp!.air?.phase, "parked", "it lifts off at once");
     const ship = applyCommand(state, "B", { type: "cmd.train", unit: "leech" });
     assert.equal(ship.ok, false);
-    if (!ship.ok) assert.equal(ship.message, "Need a Spawning Pool.");
+    if (!ship.ok) assert.equal(ship.message, "Need a Tidal Dock.");
   });
 
   it("flags every Xenite shot and hit as energy, and no Alliance one", () => {

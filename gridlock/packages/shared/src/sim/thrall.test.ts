@@ -82,11 +82,11 @@ function fortLine(state: MatchState, type: "sandbags" | "wall", tx: number): voi
   restampForts(state);
 }
 
-describe("Thrall catalog", () => {
+describe("Enforcer catalog", () => {
   it("is a cheap, quick, tanky Xenite cyborg with fists, gated on the Conversion Chamber", () => {
     const d = catalog("thrall");
     assert.ok(TRAIN_TYPES.includes("thrall"));
-    assert.equal(d.name, "Thrall");
+    assert.equal(d.name, "Enforcer");
     assert.ok(isInfantryType("thrall") && isCyborg("thrall") && meleeOf("thrall") && vaultsWalls("thrall"));
     assert.equal(TECH_REQUIRES.thrall, "conversion");
     assert.equal(infantryGunFor({ type: "thrall", crits: [] })?.id, "fists");
@@ -97,7 +97,7 @@ describe("Thrall catalog", () => {
   });
 });
 
-describe("Thrall fists", () => {
+describe("Enforcer fists", () => {
   it("pummels a soldier down in a few blows and stays standing", () => {
     const { state, a, b } = match();
     const th = unit(state, "thrall", a, 40, 40);
@@ -145,7 +145,7 @@ describe("Thrall fists", () => {
   });
 });
 
-describe("Thrall stagger", () => {
+describe("Enforcer stagger", () => {
   it("staggers on a bullet only on a lucky roll, slows, and shakes it off", () => {
     const { state, a } = match();
     const th = unit(state, "thrall", a, 40, 40);
@@ -164,7 +164,7 @@ describe("Thrall stagger", () => {
     assert.equal(th.staggered, undefined, "a short guard before the next");
     const rifle = makeEntity(state, "rifleman", "B", th.x + 20, th.y);
     maybeStagger(state, rifle, 8, () => 0);
-    assert.equal(rifle.staggered, undefined, "only the Thrall");
+    assert.equal(rifle.staggered, undefined, "only the Enforcer");
   });
 
   it("is staggered now and then under rifle fire, not by every hit", () => {
@@ -194,7 +194,7 @@ describe("Thrall stagger", () => {
   });
 });
 
-describe("Thrall vault", () => {
+describe("Enforcer vault", () => {
   for (const type of ["sandbags", "wall"] as const) {
     it(`runs across a line of ${type} that holds a rifleman back`, () => {
       const { state, a } = match();

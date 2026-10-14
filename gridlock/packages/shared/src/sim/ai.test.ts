@@ -1637,7 +1637,7 @@ describe("Xenite CPU", () => {
     }
   }
 
-  it("roots a Spine Turret toward the enemy and moves on to the Neural Nexus", () => {
+  it("roots an Ion Turret toward the enemy and moves on to the Neural Nexus", () => {
     const { state, aiId } = humanVsXeno();
     waitCore(state, aiId);
     standBy(state, aiId, BASE);
@@ -1685,7 +1685,7 @@ describe("Xenite CPU", () => {
     assert.equal(spine.research?.id, "forceshield");
   });
 
-  it("roots as many Spine Turrets as its type calls for", () => {
+  it("roots as many Ion Turrets as its type calls for", () => {
     for (const ai of ["defensive", "aggressive"] as const) {
       const { state, aiId } = humanVsXeno(ai);
       waitCore(state, aiId);
@@ -1708,7 +1708,7 @@ describe("Xenite CPU", () => {
     assert.ok(Math.hypot(wall.x - foe.x, wall.y - foe.y) < Math.hypot(hq.x - foe.x, hq.y - foe.y), "on the side facing the enemy");
   });
 
-  it("lays a Laser Fence across the approach once the front Spine Turret stands, unless Aggressive", () => {
+  it("lays a Laser Fence across the approach once the front Ion Turret stands, unless Aggressive", () => {
     for (const ai of ["balanced", "aggressive"] as const) {
       const { state, aiId } = humanVsXeno(ai);
       waitCore(state, aiId);
@@ -1754,7 +1754,7 @@ describe("Xenite CPU", () => {
     assert.ok(forces.every((f) => f.goal === "enemy"));
   });
 
-  it("walks its Weavers and Siphons out beside the wave", () => {
+  it("walks its Bulwarks and Siphons out beside the wave", () => {
     const { state, aiId } = humanVsXeno();
     waitCore(state, aiId);
     standBy(state, aiId, BASE);
@@ -1873,7 +1873,7 @@ describe("CPU unit tricks", () => {
     assert.notEqual(state.entities.get(siphon.id)!.burrow?.phase, "down", "rising");
   });
 
-  it("switches a Mawcaster to Air attacks for a flier with nothing on the ground to shell", () => {
+  it("switches a Nova Mortar to Air attacks for a flier with nothing on the ground to shell", () => {
     const { state, aiId } = xenoVsHuman();
     const { at, dir } = field(state, aiId);
     const maw = put(state, "mawcaster", aiId, at);
@@ -1923,7 +1923,7 @@ describe("CPU unit tricks", () => {
     assert.equal(state.entities.get(j.id)!.order!.targetId, target.id);
   });
 
-  it("keeps the Gnat out of the strike and flies it ahead as a scout", () => {
+  it("keeps the Probe out of the strike and flies it ahead as a scout", () => {
     const { state, aiId } = xenoVsHuman();
     const hq = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "hivecore")!;
     const gnat = put(state, "gnat", aiId, { x: hq.x, y: hq.y + 10 * state.tileSize });

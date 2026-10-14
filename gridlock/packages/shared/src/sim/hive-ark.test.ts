@@ -94,7 +94,7 @@ function balls(state: MatchState, arkId: number): Projectile[] {
 }
 
 describe("Hive Ark catalog", () => {
-  it("is a Xenite hull grown at the Spawning Pool with a Neural Nexus, and leaves a hulk", () => {
+  it("is a Xenite hull grown at the Tidal Dock with a Neural Nexus, and leaves a hulk", () => {
     assert.ok(TRAIN_TYPES.includes("hiveark"));
     assert.equal(catalog("hiveark").name, "Hive Ark");
     assert.equal(factionOf("hiveark"), "xeno");
@@ -289,7 +289,7 @@ describe("Hive Ark dome", () => {
   });
 });
 
-describe("Hive Ark Wasps", () => {
+describe("Hive Ark Interceptors", () => {
   function contact(): { state: MatchState; ark: Entity; foe: Entity } {
     const { state, x0, y0 } = bay();
     const ark = spawn(state, "hiveark", "A", x0 + 20, y0 + 10);
@@ -329,7 +329,7 @@ describe("Hive Ark Wasps", () => {
     assert.equal([...state.entities.values()].filter((e) => e.arkOf === ark.id).length, 0);
   });
 
-  it("a Wasp shot down regrows on its pod", () => {
+  it("an Interceptor shot down regrows on its pod", () => {
     const { state, ark } = contact();
     ticks(state, 4);
     podWasp(state, ark, 0)!.hp = 0;
@@ -339,7 +339,7 @@ describe("Hive Ark Wasps", () => {
     assert.ok(podWasp(state, ark, 0), "regrown and up again at the enemy still in sight");
   });
 
-  it("a Wasp downed over the deck does not hurt its own Ark", () => {
+  it("an Interceptor downed over the deck does not hurt its own Ark", () => {
     const { state, ark } = contact();
     ticks(state, 4);
     podWasp(state, ark, 0)!.hp = 0;

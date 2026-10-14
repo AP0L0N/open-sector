@@ -1486,7 +1486,7 @@ function cmdRockets(state: MatchState, playerId: string, ids: number[], on: bool
  */
 function cmdAirMode(state: MatchState, playerId: string, ids: number[], air: boolean): CmdResult {
   const units = owned(state, playerId, ids).filter((e) => airRackOf(e.type) != null);
-  if (units.length === 0) return fail("not_yours", "Select a Mawcaster.");
+  if (units.length === 0) return fail("not_yours", "Select a Nova Mortar.");
   for (const e of units) {
     if (!!e.airMode === air) continue;
     e.airMode = air ? true : undefined;

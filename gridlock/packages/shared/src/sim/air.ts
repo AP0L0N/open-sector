@@ -163,7 +163,7 @@ import { canSeeEntity } from "./vision.js";
 import { blastWrecks, toWreck } from "./wreck.js";
 import { blastClutter } from "./clutter.js";
 import { catchLanding, domeOver, domeShelters, soakEnergyStrike } from "./energy-shield.js";
-import { mothershipHurts } from "./mothership.js";
+import { mothershipForceReaches, mothershipHurts } from "./mothership.js";
 import type { AirState, Entity, MatchState, Order, Projectile } from "./types.js";
 
 /** Runway heading of an unturned Airfield, world radians: the strip runs east–west. A turned one adds its facing. */
@@ -1889,7 +1889,7 @@ function hoverStrike(state: MatchState, e: Entity): HoverStrike | null {
   if (o.kind === "forceattack" && o.x != null && o.y != null) {
     const t = o.targetId != null ? state.entities.get(o.targetId) : undefined;
     // Only the Wasp's cannon, or the Mothership's flak maw, reach a plane in the air.
-    const reachesAir = isMothership(e.type) ? !!t && mothershipHurts(state, e, t) : isFighterType(e.type) && !!t && gunsHurt(e, t);
+    const reachesAir = isMothership(e.type) ? !!t && mothershipForceReaches(t) : isFighterType(e.type) && !!t && gunsHurt(e, t);
     if (o.targetId != null && (!t || t.hp <= 0 || isCrashing(t) || (isAirborne(t) && !reachesAir))) {
       e.order = null;
       return null;
