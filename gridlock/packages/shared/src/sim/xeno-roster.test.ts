@@ -28,6 +28,7 @@ import {
   WEAVER_PULSE_SECONDS,
   WEAVER_CELL,
   WEAVER_DOME_POINTS_PER_SHOT,
+  WEAVER_FULL_SHIELD_PX,
   FISTS,
   WEAVER_SHIELD,
   WEAVER_SHIELD_GAP_SECONDS,
@@ -424,6 +425,34 @@ describe("Bulwark", () => {
     ticks(state, 1);
     assert.equal(w.weaveFor, undefined);
     assert.equal(dome().forId, undefined, "back on the Bulwark");
+  });
+
+  it("fits its wall and dome to a big unit, which then hold fewer points", () => {
+    const state = field();
+    uplink(state);
+    const w = still(at(state, "weaver", "B", 20, 30));
+    const big = still(at(state, "behemoth", "B", 25, 30));
+    const foe = still(at(state, "rifleman", "A", 33, 30));
+    foe.attackTarget = big.id;
+    ticks(state, 2);
+    const r = big.radius + 5;
+    assert.ok(r > WEAVER_FULL_SHIELD_PX);
+    const wall = state.energyShields!.find((s) => s.fromId === w.id && !s.dome)!;
+    assert.equal(wall.forId, big.id);
+    assert.equal(wall.r, r, "the wall stands clear of the hull");
+    assert.ok(Math.abs(wall.hpMax - (WEAVER_SHIELD.hp * WEAVER_FULL_SHIELD_PX) / r) < 1e-9, `thinner: ${wall.hpMax}`);
+    foe.attackTarget = null;
+    ticks(state, secondsToTicks(WEAVER_CELL.rechargeSeconds) + 2);
+    assert.equal(applyCommand(state, "B", { type: "cmd.forceattack", ids: [w.id], x: big.x, y: big.y, targetId: big.id }).ok, true);
+    ticks(state, 2);
+    const dome = () => state.energyShields!.find((s) => s.weave && s.fromId === w.id)!;
+    const perShot = (WEAVER_DOME_POINTS_PER_SHOT * WEAVER_FULL_SHIELD_PX) / r;
+    assert.equal(dome().r, r);
+    assert.ok(Math.abs(dome().hpMax - WEAVER_CELL.shots * perShot) < 1e-9, `the big dome holds less: ${dome().hpMax}`);
+    const before = w.energy ?? WEAVER_CELL.shots;
+    dome().hp -= perShot;
+    ticks(state, 1);
+    assert.ok(Math.abs(before - w.energy! - 1) < 0.01, `a hit worth one big-dome quarter costs a full quarter: ${before - w.energy!}`);
   });
 
   it("mends nothing shut down", () => {
