@@ -6577,11 +6577,11 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: 95,
     caliber: 75,
     spreadDeg: 3,
-    ammo: { ap: 12, he: 6 },
+    ammo: { ap: 12 },
     defaultShell: "ap",
     leavesWreck: true,
     wreckHp: 35,
-    blurb: `Heavy assimilator on four long legs, a domed turret on its back. The disruptor throws a piercing plasma bolt about as hard as a Warden's shell, or a scattering burst for soldiers, from a little less reach. Thinner in front than a Warden, but its legs turn it quicker. No tracks to lose. Cloak bends the light round it for ${STALKER_CLOAK_SECONDS} seconds: no enemy sees it or can pick it, and it walks unseen. Cloaked, it fires only at what you name, and that shot drops the cloak; then it needs ${STALKER_CLOAK_COOLDOWN_SECONDS} seconds before it can cloak again. Each bolt draws on an energy cell that holds 4 and regrows one every 12 seconds: a short burst, then it waits on the cell.`,
+    blurb: `Heavy assimilator on four long legs, a domed turret on its back. The disruptor throws one kind of shot: a piercing plasma bolt about as hard as a Warden's shell, from a little less reach. Thinner in front than a Warden, but its legs turn it quicker. No tracks to lose. Cloak bends the light round it for ${STALKER_CLOAK_SECONDS} seconds: no enemy sees it or can pick it, and it walks unseen. Cloaked, it fires only at what you name, and that shot drops the cloak; then it needs ${STALKER_CLOAK_COOLDOWN_SECONDS} seconds before it can cloak again. Each bolt draws on an energy cell that holds 4 and regrows one every 12 seconds: a short burst, then it waits on the cell.`,
   },
   /** Xenite heavy assimilator: fast raptor hull, spine gatling turret, nanite flamer in the jaw. */
   ravager: {

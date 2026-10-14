@@ -51,6 +51,7 @@ import {
   armorLabel,
   beltOf,
   carriesShell,
+  endlessAmmo,
   airLoadoutOf,
   staysAloft,
   AIR_DROPS,
@@ -1681,14 +1682,17 @@ function buildConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
       body.append(el("div", { class: "tiny", text: "Pulse" }), rack);
     }
   } else if (hasAmmo(focus.type)) {
-    const rack = el("div", { class: "shell-rack" });
-    const table = shellsFor(focus.type);
-    for (const id of SHELL_TYPES) {
-      if (!carriesShell(focus.type, id)) continue;
-      const s = table[id];
-      rack.append(loadoutButton({ attr: "data-shell", id, name: s.name, blurb: s.blurb, count: "0", on: false }));
+    const carried = SHELL_TYPES.filter((id) => carriesShell(focus.type, id));
+    // One shell that the hive refills every tick (a Stalker's bolt) is no choice and no count: no rack.
+    if (carried.length > 1 || !endlessAmmo(focus.type)) {
+      const rack = el("div", { class: "shell-rack" });
+      const table = shellsFor(focus.type);
+      for (const id of carried) {
+        const s = table[id];
+        rack.append(loadoutButton({ attr: "data-shell", id, name: s.name, blurb: s.blurb, count: "0", on: false }));
+      }
+      body.append(el("div", { class: "tiny", text: "Shell" }), rack);
     }
-    body.append(el("div", { class: "tiny", text: "Shell" }), rack);
     if (rocketsOf(focus.type) && mine.length > 0) appendRocketRack(body, focus.type);
   } else if (launcherOnlyOf(focus.type) && !isInfantryType(focus.type)) {
     // A Bombard is a soldier first: its cannon has no switch, so it keeps the infantry panel.
