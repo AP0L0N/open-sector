@@ -1130,6 +1130,8 @@ export interface SimPlayer {
   hiveSwitchTick?: number;
   /** The seat's faction. Missing reads as Alliance (old saves, hand-built test players). */
   faction?: Faction;
+  /** Skirmish cheat on (sim/cheat.ts): CHEAT_POWER more power, or CHEAT_ENERGY more hive energy. Absent when off. */
+  cheat?: true;
   /**
    * Units this commander keeps training. Each of his producers for that unit
    * holds one job until he turns it off. Absent when none.

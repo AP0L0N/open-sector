@@ -1,4 +1,4 @@
-import { energyOf, energySupplyOfEntity, HIVE_SHORT_SPEED, HIVE_SWITCH_SECONDS, isDefenceStructure, isMothership, secondsToTicks, upgradeEnergyOf, usesHiveEnergy } from "../catalog.js";
+import { CHEAT_ENERGY, energyOf, energySupplyOfEntity, HIVE_SHORT_SPEED, HIVE_SWITCH_SECONDS, isDefenceStructure, isMothership, secondsToTicks, upgradeEnergyOf, usesHiveEnergy } from "../catalog.js";
 import { isAirborne } from "./air.js";
 import { clearOrder } from "./geo.js";
 import { fenceLinkEnergy, laserFenceLinks, laserFenceReach, totalFenceLinkEnergy, type FencePost } from "./laser-fence.js";
@@ -28,7 +28,7 @@ function live(e: Entity): boolean {
 
 /** Energy the hive of `playerId` holds: its Hive Core and every standing Fusion Node, by its level (half while it researches). */
 export function hiveEnergyCap(state: MatchState, playerId: string): number {
-  let cap = 0;
+  let cap = state.players.get(playerId)?.cheat ? CHEAT_ENERGY : 0;
   for (const e of state.entities.values()) {
     if (e.ownerId !== playerId || e.kind !== "building" || !live(e) || e.ruined) continue;
     cap += energySupplyOfEntity(e);

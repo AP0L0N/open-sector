@@ -55,6 +55,7 @@ export {
 } from "./garrison.js";
 export { wantsCapture, captureDurationSec } from "./capture.js";
 export { powerOf, productionSpeed, tickPower } from "./power.js";
+export { grantCheat } from "./cheat.js";
 export { radarContacts, radarOnline, radarStations } from "./radar.js";
 export { cyborgCentralOnline, cyborgCommanderAlive, cyborgLinked, cyborgShutdownIn, shutDownCyborg } from "./cyborg-link.js";
 export { producerType } from "./train.js";

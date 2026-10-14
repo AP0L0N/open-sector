@@ -775,6 +775,8 @@ export const STOP_HOTKEY = "s";
 export const DELETE_HOTKEY = "delete";
 export const ATTACK_MOVE_HOTKEY = "a";
 export const PATROL_HOTKEY = "y";
+/** Presses of 0 in a row that turn on the skirmish cheat. */
+export const CHEAT_ZEROS = 5;
 /** Click this close to a placed spot, in view pixels, to close the loop on it. */
 const PATROL_CONNECT_PX = 20;
 export const ROTATE_HOTKEY = "r";
@@ -1481,6 +1483,9 @@ export class MapView {
   private queuedFromMode = false;
   onSelect: (ids: number[]) => void = () => {};
   onCommand: (msg: ClientMessage) => void = () => {};
+  /** 0 pressed CHEAT_ZEROS times in a row. */
+  onCheat: () => void = () => {};
+  private cheatZeros = 0;
 
   private command(msg: ClientMessage): void {
     this.onCommand(withQueue(msg, this.shiftHeld));
@@ -3442,6 +3447,15 @@ export class MapView {
     // The Delete / Sell warning owns the keyboard until it is answered.
     if (confirmOpen()) return;
     const k = e.key.toLowerCase();
+    // 0 five times in a row turns on the skirmish cheat; any other key starts the count over.
+    if (k === "0") {
+      if (!e.repeat && ++this.cheatZeros >= CHEAT_ZEROS) {
+        this.cheatZeros = 0;
+        this.onCheat();
+      }
+    } else {
+      this.cheatZeros = 0;
+    }
     if (k === "control") {
       this.ctrlHeld = true;
       this.syncCursor();

@@ -9,6 +9,12 @@ export const GAME_SPEED_DEFAULT = GAME_SPEED_MIN;
 export const START_SCRAP = 2200;
 /** Map Builder play tests start rich, so the tester can try anything at once. */
 export const PLAYTEST_START_SCRAP = 50000;
+/** Skirmish cheat (0 pressed five times): an Alliance side's scrap is topped up to this. */
+export const CHEAT_SCRAP = 99999;
+/** Skirmish cheat: power an Alliance side has on top of its buildings. */
+export const CHEAT_POWER = 9999;
+/** Skirmish cheat: hive energy a Xenite side holds on top of its Hive Core and Nodes. */
+export const CHEAT_ENERGY = 9999;
 /**
  * Gameplay tiles per original 32px cell. RA2 / Sudden Strike 2 maps feel
  * dense because the cell is small relative to a hill or a building; 4× turns

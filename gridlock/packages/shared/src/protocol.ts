@@ -20,7 +20,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 165;
+export const PROTOCOL_VERSION = 166;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -1141,7 +1141,9 @@ export type ClientMessage =
   /** Skirmish only. Replaces the current fight, or opens one from the menu. */
   | { type: "match.load"; save: SaveGame }
   /** Skirmish only. Throw the fight away and start it again from the room's setup. */
-  | { type: "match.restart" };
+  | { type: "match.restart" }
+  /** Skirmish and play test only. The sender's side gets the cheat (sim/cheat.ts). */
+  | { type: "match.cheat" };
 
 export type ServerMessage =
   | { type: "welcome"; playerId: string; protocol: number }
