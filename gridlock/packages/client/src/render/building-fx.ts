@@ -526,6 +526,8 @@ export function drawBuildingAnim(
   southY: number,
   footprintW: number,
   nowMs: number,
+  /** Told where each light burns this frame, its radius on screen, and its strength 0–1: so the night can leave it bright. */
+  onLight?: (x: number, y: number, r: number, a: number) => void,
 ): void {
   if (!buildingAnimActive(e) || footprintW <= 0 || def.padWidth <= 0) return;
   const spots = animDefFor(e);
@@ -541,6 +543,7 @@ export function drawBuildingAnim(
         : 0.4 + 0.6 * sinePulse(nowMs, light.period, light.phase + drift);
     const r = Math.max(1.2, light.r * p.scale);
     drawGlow(ctx, p.x, p.y, r, light.color, gain * wave);
+    onLight?.(p.x, p.y, r, gain * wave);
   }
 
   if (spots.smoke) {

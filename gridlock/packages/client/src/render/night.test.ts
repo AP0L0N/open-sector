@@ -7,7 +7,6 @@ import {
   LIGHT_HEADROOM,
   LIGHT_STACK_KNEE,
   LIGHT_STACK_MAX,
-  WORK_LIGHT_TURN,
   STREET_LAMPS,
   beamBlobs,
   beamPolygon,
@@ -19,7 +18,6 @@ import {
   nightFog,
   nightShade,
   stackedLight,
-  workLightBearings,
   wreckNightAlpha,
   xenoGlowPulse,
   xenoGlowRadius,
@@ -101,14 +99,6 @@ describe("night render", () => {
     assert.ok(spot.a > 0 && spot.a < 0.4, "only a hint");
     const up = missileSpot(0, 0, 0, 10, 8);
     assert.ok(up.y < 0, "behind a northbound missile");
-  });
-
-  it("drifts work lights very slowly, each on its own arc", () => {
-    const a = workLightBearings(7, 2, 100);
-    const b = workLightBearings(7, 2, 101);
-    for (let i = 0; i < a.length; i++) assert.ok(Math.abs(b[i]! - a[i]!) < WORK_LIGHT_TURN * 2, "a few degrees a second at most");
-    assert.notEqual(a[0], a[1]);
-    assert.notDeepEqual(workLightBearings(8, 2, 100), a, "neighbours out of step");
   });
 });
 

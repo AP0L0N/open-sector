@@ -2,7 +2,8 @@ import type { LampType } from "@gridlock/shared";
 
 /**
  * Night over the field, and the lamps that cut it: tower spotlights, hull
- * headlights, and the slow work lights around a base. Drawing only: the sim
+ * headlights, and street lamps. A structure's own lit windows and panels
+ * shine through the dark by themselves (building-glow.ts). Drawing only: the sim
  * decides what each side sees (shared/sim/night.ts); this just shades the
  * picture to match.
  */
@@ -156,29 +157,6 @@ export function missileSpot(
     r: tile * 1.15,
     a: 0.22,
   };
-}
-
-/** Slow work lights around a structure: how many, by footprint. */
-export function workLightCount(tileW: number, tileH: number, subdiv: number): number {
-  return Math.max(tileW, tileH) >= 3 * subdiv ? 3 : 2;
-}
-
-/** Radians a second a work light drifts round its structure. Deliberately slow. */
-export const WORK_LIGHT_TURN = 0.05;
-
-/**
- * Bearing of each work light at `nowSec`. Each lamp drifts back and forth over
- * its own arc of the yard, so neighbours never sweep in step.
- */
-export function workLightBearings(id: number, count: number, nowSec: number): number[] {
-  const out: number[] = [];
-  for (let k = 0; k < count; k++) {
-    const base = ((id * 2.399 + (k * Math.PI * 2) / count) % (Math.PI * 2));
-    const phase = id * 1.7 + k * 2.1;
-    const swing = (0.9 * Math.PI) / count;
-    out.push(base + swing * Math.sin(nowSec * WORK_LIGHT_TURN * (1 + 0.15 * k) + phase));
-  }
-  return out;
 }
 
 /** A map's street lamp: how it draws, how far its pool reaches, and its light. */
