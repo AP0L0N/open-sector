@@ -7068,7 +7068,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     power: 0,
     tileW: 1,
     tileH: 1,
-    radius: 13,
+    radius: 16,
     moveTilesPerSec: paced(1.15),
     turnDegPerSec: 480,
     rangeTiles: JUGGERNAUT_REACH_TILES,
