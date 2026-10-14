@@ -1281,6 +1281,8 @@ export interface ResearchDef {
   cost: number;
   /** Hive energy the upgrade takes from the moment it starts, for as long as the structure stands. */
   energy?: number;
+  /** Buildings the owner needs standing before the research can start. */
+  requires?: readonly BuildingType[];
   /** One short line for the button: what the structure gives once it is done. */
   effect: string;
   blurb: string;
@@ -1313,9 +1315,10 @@ export const RESEARCH: Record<ResearchId, ResearchDef> = {
     buildings: ["fusionnode"],
     level: 2,
     seconds: 75,
+    requires: ["nexus"],
     effect: `${FUSION_NODE_LEVEL_ENERGY[2]} energy`,
     cost: 0,
-    blurb: `A four-coil crown around a caged star: ${FUSION_NODE_LEVEL_ENERGY[2]} energy instead of ${FUSION_NODE_LEVEL_ENERGY[1]}. While it upgrades the node holds only half its energy.`,
+    blurb: `A four-coil crown around a caged star: ${FUSION_NODE_LEVEL_ENERGY[2]} energy instead of ${FUSION_NODE_LEVEL_ENERGY[1]}. While it upgrades the node holds only half its energy. Needs a Neural Nexus.`,
   },
   forceshield: {
     id: "forceshield",
@@ -1359,6 +1362,10 @@ export function researchDone(e: ResearchSubject, r: ResearchDef): boolean {
 export function canStartResearch(e: ResearchSubject, r: ResearchDef): boolean {
   if (!r.buildings.includes(e.type as BuildingType) || e.research || researchDone(e, r)) return false;
   return r.level == null || (e.level ?? 0) === r.level - 1;
+}
+/** Buildings `r` still needs standing (ResearchDef.requires), given what the owner has standing. */
+export function researchTechMissing(r: ResearchDef, standing: (type: BuildingType) => boolean): BuildingType[] {
+  return (r.requires ?? []).filter((t) => !standing(t));
 }
 /** The highest level `type` can be researched to; 0 when it has no level research. */
 export function maxLevelOf(type: string): number {
@@ -5161,7 +5168,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `Twin coils around a caged plasma core. Feeds the hive: each Fusion Node adds ${FUSION_NODE_ENERGY} energy to the store your Hive Core starts with. Every Xenite unit, defence, and base structure takes a share while it stands. Below zero the hive builds and grows 70% slower, and its units and defences go offline one by one, the hungriest first, until it is back above zero; they wake again once there is room. Costs nothing to grow. Select it to research Advanced Fusion, then Ultra Fusion, for more energy from the same node.`,
+    blurb: `Twin coils around a caged plasma core. Feeds the hive: each Fusion Node adds ${FUSION_NODE_ENERGY} energy to the store your Hive Core starts with. Every Xenite unit, defence, and base structure takes a share while it stands. Below zero the hive builds and grows 70% slower, and its units and defences go offline one by one, the hungriest first, until it is back above zero; they wake again once there is room. Costs nothing to grow. Select it to research Advanced Fusion, then Ultra Fusion once a Neural Nexus stands, for more energy from the same node.`,
   },
   assimilator: {
     type: "assimilator",

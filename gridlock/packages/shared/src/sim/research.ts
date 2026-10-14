@@ -1,4 +1,4 @@
-import { canStartResearch, catalog, RESEARCH, researchDone, secondsToTicks, type BuildingType, type ResearchId } from "../catalog.js";
+import { canStartResearch, catalog, RESEARCH, researchDone, researchTechMissing, secondsToTicks, type BuildingType, type ResearchId } from "../catalog.js";
 import { advancePaidJob, jobFullyPaid } from "./production.js";
 import { jobBill, jobSpeed, refundJob } from "./hive-energy.js";
 import type { Entity, MatchState } from "./types.js";
@@ -28,7 +28,16 @@ export function researchBlocker(state: MatchState, playerId: string, e: Entity, 
   if (researchDone(e, def)) return "Already researched.";
   if (!canStartResearch(e, def)) return "Research the level before it first.";
   if (!state.players.get(playerId)) return "No such player.";
+  const missing = researchTechMissing(def, (t) => hasStanding(state, playerId, t));
+  if (missing.length > 0) return `Needs a ${catalog(missing[0]!).name}.`;
   return null;
+}
+
+function hasStanding(state: MatchState, playerId: string, type: BuildingType): boolean {
+  for (const e of state.entities.values()) {
+    if (e.ownerId === playerId && e.type === type && e.hp > 0 && !e.wreck) return true;
+  }
+  return false;
 }
 
 /** Start `id` on each of `ids` that can take it. */

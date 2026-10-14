@@ -12,6 +12,7 @@ import {
   energySupplyOfEntity,
   levelNameOf,
   canStartResearch,
+  researchTechMissing,
   RESEARCH,
   researchDone,
   researchOf,
@@ -1768,7 +1769,7 @@ function buildConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
   if (mine.length > 0 && researchOf(focus.type).length > 0) appendResearch(body, focus.type);
 }
 
-function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[], wrecks: EntityView[], you: string): void {
+function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[], wrecks: EntityView[], you: string, m: MatchSnapshot): void {
   if (live.length === 0 && wrecks.length > 0) {
     setField(body, "kicker", catalog(focus.type).name + " wreck");
     return;
@@ -1986,7 +1987,7 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
     const ready = live.some((e) => specialReady(e.type, e.state, e.specialCooldown ?? 0));
     setField(body, "special", ready ? `${spec}  (${SPECIAL_HOTKEY.toUpperCase()} / click)` : spec);
   }
-  if (researchOf(focus.type).length > 0) updateResearch(body, focus.type, live.filter((e) => e.ownerId === you));
+  if (researchOf(focus.type).length > 0) updateResearch(body, focus.type, live.filter((e) => e.ownerId === you), m);
 }
 
 /** Research: one button per level of the structure's upgrades, a bar while one runs, and Cancel. */
@@ -2010,14 +2011,15 @@ function appendResearch(body: HTMLElement, type: EntityType): void {
   body.append(bar, cancel);
 }
 
-function updateResearch(body: HTMLElement, type: EntityType, mine: EntityView[]): void {
+function updateResearch(body: HTMLElement, type: EntityType, mine: EntityView[], m: MatchSnapshot): void {
   const running = mine.filter((e) => e.research);
   for (const r of researchOf(type)) {
     const btn = body.querySelector(`[data-research="${r.id}"]`);
     if (!(btn instanceof HTMLElement)) continue;
     const done = mine.length > 0 && mine.every((e) => researchDone(e, r));
     const on = running.filter((e) => e.research!.id === r.id);
-    const ready = mine.filter((e) => canStartResearch(e, r));
+    const need = researchTechMissing(r, (t) => m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === t && e.hp > 0 && !e.wreck));
+    const ready = need.length > 0 ? [] : mine.filter((e) => canStartResearch(e, r));
     const pct = on.length > 0 ? Math.floor((on.reduce((n, e) => n + e.research!.progress, 0) / on.length) * 100) : 0;
     const before = r.level != null ? researchOf(type).find((x) => x.level === r.level! - 1) : undefined;
     updateLoadoutButton(btn, {
@@ -2026,9 +2028,11 @@ function updateResearch(body: HTMLElement, type: EntityType, mine: EntityView[])
       empty: !done && on.length === 0 && ready.length === 0,
       locked: ready.length === 0,
       title:
-        ready.length === 0 && !done && on.length === 0 && before
+        ready.length === 0 && !done && on.length === 0 && before && mine.some((e) => !researchDone(e, before))
           ? `${r.name} — Research ${before.name} first. ${r.blurb}`
-          : `${r.name} — ${r.blurb}`,
+          : ready.length === 0 && !done && on.length === 0 && need.length > 0
+            ? `${r.name} — Build a ${catalog(need[0]!).name} first. ${r.blurb}`
+            : `${r.name} — ${r.blurb}`,
     });
   }
   const bar = body.querySelector('[data-field="research-bar"]');
@@ -2113,7 +2117,7 @@ function paintConfig(ctx: Ctx, view: MapView | null): void {
     buildConfigBody(body, focus, live, wrecks, you);
     body.dataset.layout = layout;
   }
-  patchConfigBody(body, focus, live, wrecks, you);
+  patchConfigBody(body, focus, live, wrecks, you, ctx.match);
 }
 
 function paintGarrisonRoster(ctx: Ctx, view: MapView | null): void {
