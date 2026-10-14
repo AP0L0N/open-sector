@@ -168,11 +168,8 @@ import {
   MAMMOTH_MINE_RANGE_TILES,
   SIMUNIT_BLINK_RANGE_TILES,
   isSimUnit,
-<<<<<<< HEAD
   MOTHERSHIP_DOME_DEPTH,
-=======
   RESEARCH,
->>>>>>> worktree-research-progress-bar
 } from "@gridlock/shared";
 import {
   CURTAIN_PANELS,
