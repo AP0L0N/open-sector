@@ -271,6 +271,7 @@ import {
   HIVEARK_CANNON,
   HIVEARK_SPRITE,
   MOTHERSHIP_MOUNT_SHEETS,
+  ROOF_FLAK_SEAT,
   MOTHERSHIP_SPRITE,
   FEUERWIRBEL_CIWS_SHEET,
   FEUERWIRBEL_SPRITE,
@@ -403,6 +404,7 @@ import {
   shipBarrelMuzzle,
   shipCiwsMuzzle,
   shipLampMount,
+  shipRow,
 } from "./battleship.js";
 import {
   drawMuzzleSmoke,
@@ -7805,6 +7807,7 @@ export class MapView {
             performance.now() * (this.curr.gameSpeed || 1),
             lit ? (lx, ly, lr, la) => this.cutLight(lx, ly, lr, la * lit.a) : undefined,
           );
+          if (e.roofFlak) this.drawRoofFlak(e.type, e.roofFlak.facing, spr, south.x, south.y, footprintW);
         }
       });
       if (lit) this.drawBuildingBloom(lit);
@@ -8803,6 +8806,20 @@ export class MapView {
       const cell = sheet.frameSize;
       this.ctx.drawImage(sheet.image, 0, l.row * cell, cell, cell, left + l.dx, top + l.dy, size, size);
     }
+  }
+
+  /** A Fusion Core's Flak Maw on its seat (ROOF_FLAK_SEAT), turned to its own bearing: the Mothership's flak sheet. */
+  private drawRoofFlak(type: EntityType, facing: number, spr: BuildingSpriteDef, southX: number, southY: number, footprintW: number): void {
+    const seat = ROOF_FLAK_SEAT[type];
+    const sheet = MOTHERSHIP_MOUNT_SHEETS.flak;
+    if (!seat || !spriteReady(sheet)) return;
+    const scale = footprintW / spr.padWidth;
+    const size = footprintW * seat.cellPerPad;
+    const cx = southX + (seat.x - spr.padSouthX) * scale;
+    const cy = southY + (seat.y - spr.padSouthY) * scale;
+    const cell = sheet.frameSize;
+    const row = shipRow(facing, this.ts());
+    this.ctx.drawImage(sheet.image, 0, row * cell, cell, cell, cx - size / 2, cy - size / 2, size, size);
   }
 
   /** The Feuerwirbel's two CIWS mounts, each on its ring and its own facing row, far one first. */
