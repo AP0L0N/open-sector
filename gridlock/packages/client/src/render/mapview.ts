@@ -370,7 +370,8 @@ import {
 import { followCart, type CartPose } from "./mauler-cart.js";
 import { AMMO_PRIMARY_FILL, AMMO_SECONDARY_FILL, ENERGY_FILL, ammoBarRatios, outOfAmmo } from "./ammo-bars.js";
 import { hiveRecoilColumn, noteHiveGunShots, type HiveGunRecoil } from "./hive-gun-recoil.js";
-import { drawFenceBeam, drawFenceZap } from "./laser-fence-beam.js";
+import { drawFenceBeam, drawFenceZap, fenceBeamFlicker } from "./laser-fence-beam.js";
+import { bloomRect, buildingGlow, type BuildingGlow } from "./building-glow.js";
 import { OUT_OF_AMMO_SIZE, drawOutOfAmmo } from "./out-of-ammo.js";
 import {
   backtrackPoints,
@@ -675,8 +676,6 @@ import {
   aimedLampGround,
   streetLampFlicker,
   type StreetLampSpec,
-  workLightBearings,
-  workLightCount,
   wreckNightAlpha,
   XENO_GLOW_RGB,
   BLOOM_GLOW_RGB,
@@ -738,6 +737,9 @@ function fillPool(c: CanvasRenderingContext2D, p: NightPool, rgb: string, a: num
  * A live Xenite or Bloom unit or structure out in the open: it glows. Not a wreck, a ruin, a passenger, or a burrowed or submerged body,
  * nor one powered down (offline for want of hive energy), nor any structure of a hive below zero.
  */
+/** A structure's lit parts this frame: the sprite's box on screen, and how much of it is in sight. */
+type GlowEntry = { glow: BuildingGlow; x: number; y: number; w: number; h: number; a: number };
+
 function xenoGlows(e: EntityView): boolean {
   if (factionOf(e.type) === "alliance" || e.hp <= 0 || e.wreck || e.ruined) return false;
   if (e.shutdown || e.unpowered || e.hiveDark) return false;
@@ -745,15 +747,6 @@ function xenoGlows(e: EntityView): boolean {
   return e.kind === "unit" || e.kind === "building";
 }
 
-/** Built structures that keep work lights burning round the yard. Not bunkers, guns, walls, or the towers, which have their own lamps. */
-function workLit(e: EntityView): boolean {
-  if (e.kind !== "building" || e.hp <= 0 || e.wreck || e.ruined) return false;
-  if (!e.ownerId || e.ownerId === NEUTRAL_OWNER || e.unpowered) return false;
-  if (isGarrisonable(e.type)) return false;
-  // The Xenite and the Bloom light nothing.
-  if (factionOf(e.type) !== "alliance") return false;
-  return isHqBuilding(e.type) || (BUILDING_TYPES as readonly string[]).includes(e.type);
-}
 import {
   blitTerrain,
   bakeMini,
@@ -1209,6 +1202,14 @@ export class MapView {
   private lightLayer: HTMLCanvasElement | null = null;
   /** This frame's Xenite glow pools: drawn on the ground, and cut from the night layer. */
   private xenoFrame: NightPool[] = [];
+  /**
+   * What of the night is cut away this frame, built in the depth sort: each
+   * structure's lit parts and the fence beams, less whatever stands in front
+   * of them. Null by day. drawNight takes it out of the dark.
+   */
+  private glowCut: CanvasRenderingContext2D | null = null;
+  private glowCutLayer: HTMLCanvasElement | null = null;
+  private glowCutUsed = false;
   /** Lamp heading on screen per tower, eased toward the snapshot. */
   private spotShown = new Map<number, number>();
   /** Last heading each lamp showed, kept while it is dark so it does not snap. */
@@ -5167,6 +5168,7 @@ export class MapView {
     // The Xenite glow lights the ground they stand on: over craters and shadows, under everything that stands.
     const xenoGlow = lampGlow(this.daylight());
     this.xenoFrame = xenoGlow > 0 ? this.xenoPools(w, h) : [];
+    this.beginGlowCut();
     if (this.xenoFrame.length) items.push({ layer: HOLE_DRAW_LAYER, z: Infinity, run: () => this.drawXenoGlow(xenoGlow) });
     this.collectRemains(items);
     this.collectUnitShadows(items);
@@ -5447,7 +5449,8 @@ export class MapView {
 
   /**
    * Every lamp burning this frame as soft pools on the ground, in screen
-   * space: tower beams, hull headlights, and the slow work lights round a base.
+   * space: tower beams, hull headlights, gate and street lamps. Structures
+   * throw no pools: their own lit parts shine through the dark (glowCut).
    * `rx` is the pool's half-width on screen; it is half as tall (2:1 iso).
    */
   private nightPools(lamps: { e: EntityView; facing: number }[], w: number, h: number): NightPool[] {
@@ -5508,15 +5511,6 @@ export class MapView {
       lay(spot.x, spot.y, spot.r, spot.a, "missile");
     }
     const nowSec = performance.now() / 1000;
-    for (const e of this.curr.entities) {
-      if (!workLit(e)) continue;
-      const n = workLightCount(e.tileW, e.tileH, TILE_SUBDIV);
-      const orbit = (Math.max(e.tileW, e.tileH) / 2 + TILE_SUBDIV * 1.3) * ts;
-      const r = TILE_SUBDIV * 1.7 * ts;
-      for (const b of workLightBearings(e.id, n, nowSec)) {
-        lay(e.x + Math.cos(b) * orbit, e.y + Math.sin(b) * orbit, r, 0.8, "work");
-      }
-    }
     // The Xenite glow, laid this frame under the units (drawXenoGlow); here it only cuts the dark.
     out.push(...this.xenoFrame);
     // Gate lamps: a small pool off each post, on both sides of the boom.
@@ -5549,8 +5543,8 @@ export class MapView {
   }
 
   /**
-   * The Xenite carry no lamps: every live unit and structure of theirs gives off
-   * a blue glow, sized to it, as pools in screen space like nightPools.
+   * The Xenite carry no lamps: every live unit of theirs gives off a blue glow,
+   * sized to it, as pools in screen space like nightPools. The Bloom's structures glow amber too.
    */
   private xenoPools(w: number, h: number): NightPool[] {
     const ts = this.ts();
@@ -5566,6 +5560,8 @@ export class MapView {
       if (!xenoGlows(e)) continue;
       // Blue off the hive, amber off the Bloom's sacs.
       const kind = factionOf(e.type) === "bloom" ? "bloom" : "xeno";
+      // A hive structure's own panels glow instead (glowCut); only its units cast the blue.
+      if (kind === "xeno" && e.kind === "building") continue;
       const at = e.kind === "unit" ? this.lerpEnt(e) : e;
       const r = xenoGlowRadius(e, catalog(e.type).radius, ts);
       const a = xenoGlowPulse(e.id, nowSec);
@@ -5757,22 +5753,11 @@ export class MapView {
           n.globalCompositeOperation = "destination-out";
           for (const p of pools) fillPool(n, p, "0,0,0", POOL_CUT[p.kind] * p.a * glow);
         }
-        // The fence beams are drawn under the units now, so the dark is cut along them to keep them lit.
-        const beams = this.fenceBeamLines();
-        if (beams.length) {
-          n.setTransform(ctx.getTransform());
+        // Lit windows and panels, and the fence beams, keep their full colour through the dark.
+        if (this.glowCut && this.glowCutUsed && this.glowCutLayer) {
+          n.setTransform(1, 0, 0, 1, 0, 0);
           n.globalCompositeOperation = "destination-out";
-          n.lineCap = "round";
-          for (const l of beams) {
-            for (const [width, a] of [[10, 0.25], [3, 0.9]] as const) {
-              n.strokeStyle = `rgba(0, 0, 0, ${a})`;
-              n.lineWidth = width;
-              n.beginPath();
-              n.moveTo(l.from.x, l.from.y);
-              n.lineTo(l.to.x, l.to.y);
-              n.stroke();
-            }
-          }
+          n.drawImage(this.glowCutLayer, 0, 0);
         }
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -7444,7 +7429,9 @@ export class MapView {
         z: isoDepth(wx, wy),
         at: { x: wx, y: wy },
         run: () => {
-          if (spr) drawPropSprite(this.ctx, spr, p.x, p.y, drawH, false, veil);
+          if (!spr) return;
+          drawPropSprite(this.ctx, spr, p.x, p.y, drawH, false, veil);
+          this.uncutGlow((c) => void drawPropSprite(c, spr, p.x, p.y, drawH, false, 0));
         },
       });
     }
@@ -7479,6 +7466,7 @@ export class MapView {
         at: { x: wx, y: wy },
         run: () => {
           drawPropSprite(this.ctx, spr, p.x, p.y, it.drawH, it.flip, veil);
+          this.uncutGlow((c) => void drawPropSprite(c, spr, p.x, p.y, it.drawH, it.flip, 0));
         },
       });
     }
@@ -7549,6 +7537,116 @@ export class MapView {
     });
     const base = alphas.reduce((s, a) => s + a, 0) / Math.max(1, alphas.length);
     this.buildingVeil.end(main, bounds, columns, base);
+  }
+
+  /**
+   * Keeps a structure's lit parts for the night pass (drawNight). Dark when it is
+   * dead, powered down, or its hive is starved; faded as it slips out of sight.
+   */
+  private noteBuildingGlow(e: EntityView, image: HTMLImageElement, bounds: { x: number; y: number; w: number; h: number }): GlowEntry | null {
+    if (this.daylight() >= 1 || e.hp <= 0 || e.wreck || e.ruined || e.unpowered || e.shutdown || e.hiveDark) return null;
+    const glow = buildingGlow(image);
+    if (!glow) return null;
+    const field = this.fogField;
+    let a = 1;
+    if (field) {
+      const now = performance.now();
+      const cells = veilCells(e.tileX, e.tileY, e.tileW, e.tileH);
+      a = 1 - cells.reduce((sum, c) => sum + field.veil(c.cu, c.cv, now), 0) / Math.max(1, cells.length);
+    }
+    if (a <= 0.02) return null;
+    const lit = { glow, ...bounds, a };
+    this.cutGlow((c) => {
+      c.globalAlpha = a;
+      c.drawImage(glow.mask, lit.x, lit.y, lit.w, lit.h);
+    });
+    return lit;
+  }
+
+  /** A structure's blinking or pulsing light: a soft disc out of the dark, as strong as the light is now. */
+  private cutLight(x: number, y: number, r: number, a: number): void {
+    if (a <= 0.01) return;
+    this.cutGlow((c) => {
+      const g = c.createRadialGradient(x, y, 0, x, y, r * 1.6);
+      g.addColorStop(0, `rgba(0, 0, 0, ${Math.min(1, a * 2)})`);
+      g.addColorStop(1, "rgba(0, 0, 0, 0)");
+      c.fillStyle = g;
+      c.beginPath();
+      c.arc(x, y, r * 1.6, 0, Math.PI * 2);
+      c.fill();
+    });
+  }
+
+  /** A fresh cut layer for this frame, when it is dark enough to need one. */
+  private beginGlowCut(): void {
+    this.glowCutUsed = false;
+    if (nightShade(this.daylight()) <= 0.001) {
+      this.glowCut = null;
+      return;
+    }
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    this.glowCutLayer ??= document.createElement("canvas");
+    const layer = this.glowCutLayer;
+    if (layer.width !== w || layer.height !== h) {
+      layer.width = w;
+      layer.height = h;
+    }
+    this.glowCut = layer.getContext("2d");
+    this.glowCut?.setTransform(1, 0, 0, 1, 0, 0);
+    this.glowCut?.clearRect(0, 0, w, h);
+  }
+
+  /** Adds to the cut layer, in the main view's transform. */
+  private cutGlow(draw: (c: CanvasRenderingContext2D) => void): void {
+    const c = this.glowCut;
+    if (!c) return;
+    c.save();
+    c.setTransform(this.ctx.getTransform());
+    c.globalCompositeOperation = "source-over";
+    c.imageSmoothingEnabled = true;
+    draw(c);
+    c.restore();
+    this.glowCutUsed = true;
+  }
+
+  /** Takes what is drawn here back out of the cut layer: a tree or a prop standing in front of a lit window stays dark. */
+  private uncutGlow(draw: (c: CanvasRenderingContext2D) => void): void {
+    const c = this.glowCut;
+    if (!c || !this.glowCutUsed) return;
+    c.save();
+    c.setTransform(this.ctx.getTransform());
+    c.globalCompositeOperation = "destination-out";
+    draw(c);
+    c.restore();
+  }
+
+  /**
+   * How much to lift light laid in the depth sort so it still reads at full
+   * strength once the night layer goes over it (drawNight). 0 by day.
+   */
+  private nightLift(): number {
+    const daylight = this.daylight();
+    const glow = lampGlow(daylight);
+    if (glow <= 0) return 0;
+    return glow / Math.max(0.3, 1 - nightShade(daylight));
+  }
+
+  /**
+   * The soft bloom round a structure's lit parts, laid just over its sprite in the
+   * depth sort, so a tree or a unit standing in front covers it.
+   */
+  private drawBuildingBloom(lit: GlowEntry): void {
+    const lift = this.nightLift();
+    if (lift <= 0) return;
+    const ctx = this.ctx;
+    const r = bloomRect(lit.x, lit.y, lit.w, lit.h, lit.glow);
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.imageSmoothingEnabled = true;
+    ctx.globalAlpha = Math.min(1, 0.7 * lift * lit.a);
+    ctx.drawImage(lit.glow.bloom, r.x, r.y, r.w, r.h);
+    ctx.restore();
   }
 
   /** The flat part of a building (Airfield strip and hardstands), with its selection frame. */
@@ -7664,6 +7762,7 @@ export class MapView {
         h: spr.image.naturalHeight * scale,
       };
       const rise = buildingOccludeEz(spr, footprintW, ez);
+      const lit = ghost ? null : this.noteBuildingGlow(e, spr.image, bounds);
       this.drawVeiled(e, elev, rise, bounds, () => {
         const c = this.ctx;
         drawBuildingSprite(c, spr, south.x, south.y, footprintW);
@@ -7707,9 +7806,11 @@ export class MapView {
             south.y,
             footprintW,
             performance.now() * (this.curr.gameSpeed || 1),
+            lit ? (lx, ly, lr, la) => this.cutLight(lx, ly, lr, la * lit.a) : undefined,
           );
         }
       });
+      if (lit) this.drawBuildingBloom(lit);
       stack = buildingStackAt(spr, south.x, south.y, footprintW);
     } else {
       const north = this.toScreen(x, y, elev);
@@ -9789,7 +9890,38 @@ export class MapView {
 
   /** The fence beams, laid in the depth sort under every standing unit (FENCE_BEAM_DRAW_LAYER). */
   private drawLaserFences(now: number): void {
-    for (const l of this.fenceBeamLines()) drawFenceBeam(this.ctx, l.from, l.to, now, l.seed);
+    const lift = this.nightLift();
+    const ctx = this.ctx;
+    for (const l of this.fenceBeamLines()) {
+      if (lift > 0) {
+        // At night a wide cyan halo along the beam, so the fence stands out in the dark.
+        const k = fenceBeamFlicker(now, l.seed) * lift;
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.lineCap = "round";
+        for (const [width, a] of [[18, 0.06], [8, 0.12]] as const) {
+          ctx.strokeStyle = `rgba(60, 230, 200, ${Math.min(1, a * k)})`;
+          ctx.lineWidth = width;
+          ctx.beginPath();
+          ctx.moveTo(l.from.x, l.from.y);
+          ctx.lineTo(l.to.x, l.to.y);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+      drawFenceBeam(ctx, l.from, l.to, now, l.seed);
+      this.cutGlow((c) => {
+        c.lineCap = "round";
+        for (const [width, a] of [[10, 0.3], [4, 1]] as const) {
+          c.strokeStyle = `rgba(0, 0, 0, ${a})`;
+          c.lineWidth = width;
+          c.beginPath();
+          c.moveTo(l.from.x, l.from.y);
+          c.lineTo(l.to.x, l.to.y);
+          c.stroke();
+        }
+      });
+    }
   }
 
   /**
