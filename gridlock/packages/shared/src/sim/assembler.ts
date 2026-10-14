@@ -12,7 +12,7 @@ import type { Entity, MatchState } from "./types.js";
  * whole Thrall's worth is back it starts building again. So it never holds more energy than its
  * living Thralls leave room for. Its Thralls are Thralls like any other: its side's, under the unit
  * cap, on the uplink. At the cap the Assembler holds the next one (and its energy) until there is room.
- * With a rally point set ("Rally here"), each new Thrall walks to it.
+ * With a rally point set ("Rally here"), each new Thrall walks to it; without one it guards the Assembler.
  *
  * `energy` counts the Thralls it can build, fractional while it regrows (undefined = full).
  */
@@ -55,6 +55,10 @@ export function assembleThrall(state: MatchState, forge: Entity): Entity {
     u.order = { kind: "move", x: to.x, y: to.y };
     u.state = "move";
     setPath(state, u, to.x, to.y);
+  } else if (!state.players.get(forge.ownerId)?.ai) {
+    // No rally point: the Thrall guards its Assembler, as if told to Guard it. A CPU side's are
+    // left without an order so its planner can still send them out with the waves.
+    u.order = { kind: "guard", targetId: forge.id };
   }
   return u;
 }

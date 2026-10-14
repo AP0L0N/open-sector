@@ -12,7 +12,7 @@
   },
   "lines": {
     "select": [
-      "Leech skims.",
+      "Skimmer on the water.",
       "The swarm hears.",
       "We glide."
     ],
@@ -27,7 +27,7 @@
       "Latch on."
     ],
     "ready": [
-      "Leech spawned."
+      "Skimmer spawned."
     ]
   },
   "sfx": {

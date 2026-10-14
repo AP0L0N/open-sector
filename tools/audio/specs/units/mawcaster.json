@@ -13,12 +13,12 @@
   },
   "lines": {
     "select": [
-      "Mawcaster.",
+      "Nova Mortar.",
       "The pods are ripe.",
       "Give us a horizon."
     ],
     "move": [
-      "Relocating the maw.",
+      "Relocating the mortar.",
       "Moving. Pods sealed.",
       "The hive directs."
     ],
@@ -28,7 +28,7 @@
       "Full salvo. Seed the ground."
     ],
     "ready": [
-      "Mawcaster grown. Pods swelling."
+      "Nova Mortar grown. Pods swelling."
     ]
   },
   "sfx": {

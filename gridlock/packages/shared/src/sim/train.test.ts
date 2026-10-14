@@ -429,6 +429,23 @@ describe("rally point", () => {
     for (const t of next) assert.notEqual(t.order?.kind, "move");
   });
 
+  it("has every Enforcer an Assembler builds without a rally point guard the Assembler", () => {
+    const { state } = twoPlayerMatch();
+    seedCore(state);
+    const ts = state.tileSize;
+    makeEntity(state, "cyborgcommander", "A", tileCenter(6, ts), tileCenter(12, ts));
+    const forge = makeEntity(state, "assembler", "A", tileCenter(20, ts), tileCenter(20, ts));
+    ticks(state, assemblyTicks() + 2);
+    const made = [...state.entities.values()].filter((e) => e.assembledBy === forge.id);
+    assert.ok(made.length > 0);
+    for (const t of made) assert.deepEqual(t.order, { kind: "guard", targetId: forge.id });
+    // It follows when the Assembler walks off.
+    applyCommand(state, "A", { type: "cmd.move", ids: [forge.id], x: tileCenter(32, ts), y: tileCenter(20, ts) });
+    ticks(state, 300);
+    assert.ok(forge.x > tileCenter(28, ts), "the Assembler walked off");
+    for (const t of made) assert.ok(Math.hypot(t.x - forge.x, t.y - forge.y) < 3 * ts, `Enforcer ${Math.hypot(t.x - forge.x, t.y - forge.y)} away`);
+  });
+
   it("ignores buildings that do not train units", () => {
     const { state } = twoPlayerMatch();
     seedCore(state);

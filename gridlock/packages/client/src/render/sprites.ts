@@ -1423,7 +1423,7 @@ export const MAWCASTER_SPRITE = xenoWalker(mawcasterLegsUrl, mawcasterTurretUrl,
  * (frame 0 is the hit); throw plays once.
  */
 const JUGGERNAUT_CELL = 192;
-const JUGGERNAUT_DRAW = Math.round(77.5 * UNIT_VISUAL_SCALE);
+const JUGGERNAUT_DRAW = Math.round(93 * UNIT_VISUAL_SCALE);
 function juggernautSheet(src: string, frames: number, contactY = 0.82): UnitSpriteDef {
   return { image: loadSheet(src), dirs: 16, frames, frameSize: JUGGERNAUT_CELL, fps: 8, drawSize: JUGGERNAUT_DRAW, contactY, facingSpace: "world" };
 }
@@ -2374,7 +2374,12 @@ for (const type of FORT_TYPES) {
  * Structures that look different once researched (sim/research.ts): each level past the base is its
  * own sheet, <type>-<name>.png with its pad metrics in <type>-<name>.json (tools/sprites/render_xeno_base.py).
  */
-export const LEVEL_SHEETS: Partial<Record<EntityType, readonly string[]>> = { fusionnode: ["advanced", "ultra"], fusioncore: ["reactor"] };
+export const LEVEL_SHEETS: Partial<Record<EntityType, readonly string[]>> = {
+  fusionnode: ["advanced", "ultra"],
+  fusioncore: ["reactor"],
+  conversion: ["advanced", "neural"],
+  forge: ["advanced", "neural"],
+};
 const LEVEL_SPRITES: Partial<Record<EntityType, BuildingSpriteDef[]>> = {};
 for (const [type, names] of Object.entries(LEVEL_SHEETS) as [EntityType, readonly string[]][]) {
   const defs: BuildingSpriteDef[] = [];
