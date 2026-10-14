@@ -213,7 +213,7 @@ export function mountBattlefield(
   top.append(
     el("span", { attrs: { id: "hud-scrap" }, html: "SCRAP <b>0</b>" }),
     el("span", { class: "scrap-toast", attrs: { id: "scrap-toast" }, text: hiveHud(ctx.match) ? "INSUFFICIENT ENERGY" : "INSUFFICIENT SCRAP" }),
-    el("span", { attrs: { id: "hud-power" }, html: "POWER <b>0 / 0</b>" }),
+    el("span", { attrs: { id: "hud-power" }, html: `POWER <span class="energy-bar"><i style="width:0%"></i></span> <b>0 / 0</b>` }),
     el("span", { attrs: { id: "hud-speed" }, html: "SPEED <b>×1</b>" }),
     el("span", { class: "tiny", attrs: { id: "hud-map" }, text: getMap(ctx.match.mapId)?.name ?? ctx.match.mapId }),
   );
@@ -762,7 +762,13 @@ export function paintBattleHud(ctx: Ctx): void {
     const link = m.you.cyborgShutdownIn;
     const linked = viewerFaction(m) === "xeno" ? "HIVE LINK LOST" : "CYBORGS OFF";
     const cyborgs = link != null ? ` · <b class="cyborg-link">${linked} IN ${Math.ceil(link)}s</b>` : "";
-    const next = `POWER <b>${m.you.used} / ${m.you.provided}</b>${slow}${cyborgs}`;
+    // Like the hive's energy bar: blue for the power still spare, solid red once the base draws more than it makes.
+    const spare = m.you.provided > 0 ? Math.max(0, Math.min(1, (m.you.provided - m.you.used) / m.you.provided)) : 0;
+    const out = m.you.lowPower;
+    const bar =
+      `<span class="energy-bar${out ? " is-out" : ""}" role="meter" aria-valuemin="0" aria-valuemax="${m.you.provided}" aria-valuenow="${m.you.provided - m.you.used}">` +
+      `<i style="width:${out ? 100 : Math.round(spare * 100)}%"></i></span>`;
+    const next = `POWER ${bar} <b>${m.you.used} / ${m.you.provided}</b>${slow}${cyborgs}`;
     if (power.innerHTML !== next) power.innerHTML = next;
     power.classList.toggle("low-power", m.you.lowPower || link != null);
   }
