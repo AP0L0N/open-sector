@@ -48,6 +48,7 @@ import researchUrl from "../assets/buildings/research.png";
 import cyborgCentralUrl from "../assets/buildings/cyborgcentral.png";
 import hiveCoreUrl from "../assets/buildings/hivecore.png";
 import fusionNodeUrl from "../assets/buildings/fusionnode.png";
+import fusionCoreUrl from "../assets/buildings/fusioncore.png";
 import forgeUrl from "../assets/buildings/forge.png";
 import nexusUrl from "../assets/buildings/nexus.png";
 import conversionUrl from "../assets/buildings/conversion.png";
@@ -425,6 +426,7 @@ import {
   bindNavalSheets,
   bindBattleshipSheets,
   bindHiveArkSheets,
+  bindFlakMawSheet,
   bindMothershipSheets,
   bindApocalypseSheets,
   bindPlaneSheets,
@@ -1746,8 +1748,8 @@ export const HIVEARK_CANNON: TurretSpriteDef = { image: new Image(), dirs: TANK_
 bindHiveArkSheets({ hull: HIVEARK_SPRITE.image, cannon: HIVEARK_CANNON.image });
 
 /**
- * Mothership hull, without its mounts: render/mothership.ts lays the four mounts over it, each on
- * its own pivot and bearing. Drawn at the sim's width, not UNIT_VISUAL_SCALE, lifted to its height.
+ * Mothership: one plated cube, no mounts. Drawn at the sim's width, not UNIT_VISUAL_SCALE, lifted
+ * to its height; render/mothership.ts draws its tractor beams.
  */
 export const MOTHERSHIP_SPRITE: UnitSpriteDef = {
   image: new Image(),
@@ -1759,25 +1761,20 @@ export const MOTHERSHIP_SPRITE: UnitSpriteDef = {
   contactY: MOTHERSHIP_MODEL.cyFrac,
   facingSpace: "world",
 };
-const mothershipMount = (): TurretSpriteDef => ({ image: new Image(), dirs: TANK_FACE_DIRS, frames: 1, frameSize: MOTHERSHIP_MODEL.cell });
-/** The Mothership's mount sheets: the Spine Turret's head, the Pulse Spire's, and the two maws. */
-export const MOTHERSHIP_MOUNT_SHEETS = { spine: mothershipMount(), pulse: mothershipMount(), maw: mothershipMount(), flak: mothershipMount() };
-bindMothershipSheets({
-  hull: MOTHERSHIP_SPRITE.image,
-  spine: MOTHERSHIP_MOUNT_SHEETS.spine.image,
-  pulse: MOTHERSHIP_MOUNT_SHEETS.pulse.image,
-  maw: MOTHERSHIP_MOUNT_SHEETS.maw.image,
-  flak: MOTHERSHIP_MOUNT_SHEETS.flak.image,
-});
+bindMothershipSheets({ hull: MOTHERSHIP_SPRITE.image });
 
 /**
  * Where a researched Flak Maw (sim/roof-flak.ts) sits on its structure: its pivot in the building
- * sheet's pixels, and the mount cell's width as a share of the pad's. The Mothership's flak sheet.
- * The Fusion Core still wears the Assimilator's art: the maw rides on the silo's cap.
+ * sheet's pixels, and the mount cell's width as a share of the pad's (ROOF_FLAK_SHEET).
+ * The Fusion Core's turret sits on the flat roof of its east tower (the "roof" spot in fusioncore.json). The
+ * tower stands as tall on the Fusion Reactor's sheet, so the seat holds against the pad on both.
  */
 export const ROOF_FLAK_SEAT: Partial<Record<EntityType, { x: number; y: number; cellPerPad: number }>> = {
-  fusioncore: { x: 323.6, y: 95, cellPerPad: 0.95 },
+  fusioncore: { x: 320, y: 34, cellPerPad: 0.95 },
 };
+/** The Flak Maw on its 16 bearings (tools/sprites/render_flak_maw.py), on the Hive Ark's camera and cell. */
+export const ROOF_FLAK_SHEET: TurretSpriteDef = { image: new Image(), dirs: TANK_FACE_DIRS, frames: 1, frameSize: MOTHERSHIP_MODEL.cell };
+bindFlakMawSheet(ROOF_FLAK_SHEET.image);
 
 /** Wing-stroke frames a second on the Xenite insects: a blur of a beat at play size. */
 export const WING_BEAT_FPS = 24;
@@ -2317,8 +2314,8 @@ const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   forge: building(forgeUrl, 384, 204, 232.2, 188, 22.2),
   // Neural core in a rib cage under a sensor crown: Xenite tech and radar, t(2).
   nexus: building(nexusUrl, 384, 210, 322.9, 210, 19.9),
-  // Fusion reactor on a caged plasma well: the Xenite power core, t(3). PLACEHOLDER: the Assimilator's art until its own sheet is rendered.
-  fusioncore: building(assimilatorUrl, 384, 204, 256.2, 204, 54.2),
+  // A shut reactor lid on a caged plasma well, coil pylons, a roof tower: the Xenite power core, t(3). Lit by the Fusion Reactor (LEVEL_SHEETS).
+  fusioncore: building(fusionCoreUrl, 384, 204, 204, 204, 4),
   // Chitin dome, a ring of conversion pods, synapse spire: the Xenite barracks, t(2) like the Barracks.
   conversion: building(conversionUrl, 384, 210, 299.2, 216, 8.2),
   // Ops hut, lattice mast, dish. Metrics from tools/sprites/render_radar.py (radar.json); the stack hangs over the dish.
@@ -2376,7 +2373,7 @@ for (const type of FORT_TYPES) {
  * Structures that look different once researched (sim/research.ts): each level past the base is its
  * own sheet, <type>-<name>.png with its pad metrics in <type>-<name>.json (tools/sprites/render_xeno_base.py).
  */
-export const LEVEL_SHEETS: Partial<Record<EntityType, readonly string[]>> = { fusionnode: ["advanced", "ultra"] };
+export const LEVEL_SHEETS: Partial<Record<EntityType, readonly string[]>> = { fusionnode: ["advanced", "ultra"], fusioncore: ["reactor"] };
 const LEVEL_SPRITES: Partial<Record<EntityType, BuildingSpriteDef[]>> = {};
 for (const [type, names] of Object.entries(LEVEL_SHEETS) as [EntityType, readonly string[]][]) {
   const defs: BuildingSpriteDef[] = [];

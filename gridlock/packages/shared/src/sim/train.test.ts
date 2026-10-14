@@ -9,7 +9,7 @@ import { createMatch, step } from "./match.js";
 import { paidForProgress } from "./production.js";
 import { snapshotFor } from "./snapshot.js";
 import { makeEntity, tileCenter } from "./geo.js";
-import { oneAtATimeTaken, producerType, techMissing } from "./train.js";
+import { levelMissing, oneAtATimeTaken, producerType, techMissing } from "./train.js";
 import type { MatchState } from "./types.js";
 
 function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
@@ -526,13 +526,13 @@ describe("research gate", () => {
     assert.equal(techMissing(state, "A", "warden"), null);
     assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "warden" }).ok, true);
     assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "droneop" }).ok, true);
-    // Every cyborg wants only its own side's barracks (a Cyborg Central, a Conversion Chamber); the lab does not unlock them.
+    // Every cyborg wants only its own side's barracks (a Cyborg Central, an Assembly); the lab does not unlock them.
     for (const unit of cyborgs) assert.equal(techMissing(state, "A", unit), factionOf(unit) === "xeno" ? "conversion" : "cyborgcentral", unit);
 
     makeEntity(state, "cyborgcentral", "A", tileCenter(30, ts), tileCenter(14, ts), { tileX: 30, tileY: 14 });
     makeEntity(state, "conversion", "A", tileCenter(36, ts), tileCenter(14, ts), { tileX: 36, tileY: 14 });
-    // The Shade, Sim Unit II, the Lancer and the Weaver also want a Neural Nexus.
-    const nexusToo = new Set<TrainType>(["simunit2", "lancer", "weaver"]);
+    // The Shade and Sim Unit II also want a Neural Nexus.
+    const nexusToo = new Set<TrainType>(["simunit2"]);
     assert.equal(techMissing(state, "A", "shade"), "nexus");
     for (const unit of cyborgs) assert.equal(techMissing(state, "A", unit), nexusToo.has(unit) ? "nexus" : null, unit);
     makeEntity(state, "nexus", "A", tileCenter(42, ts), tileCenter(14, ts), { tileX: 42, tileY: 14 });
@@ -541,8 +541,29 @@ describe("research gate", () => {
     lab.hp = 0;
     assert.equal(techMissing(state, "A", "titan"), "research");
     assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "titan" }).ok, false);
-    // The Central, the Chamber and the Nexus keep every cyborg unlocked without the lab.
+    // The Central, the Assembly and the Nexus keep every cyborg unlocked without the lab.
     for (const unit of cyborgs) assert.equal(techMissing(state, "A", unit), null, unit);
+  });
+
+  it("locks the Lancer, Bombard and Bulwark behind Advanced Assembly, the Sim Unit II and Phantom behind Neural Assembly", () => {
+    const { state } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const chamber = makeEntity(state, "conversion", "A", tileCenter(36, ts), tileCenter(14, ts), { tileX: 36, tileY: 14 });
+    makeEntity(state, "nexus", "A", tileCenter(42, ts), tileCenter(14, ts), { tileX: 42, tileY: 14 });
+    const first = ["lancer", "bombard", "weaver"] as const;
+    const second = ["simunit2", "shade"] as const;
+    assert.equal(levelMissing(state, "A", "xenodrone"), null);
+    assert.equal(levelMissing(state, "A", "thrall"), null);
+    for (const u of first) assert.equal(levelMissing(state, "A", u)?.id, "advancedassembly", u);
+    for (const u of second) assert.equal(levelMissing(state, "A", u)?.id, "neuralassembly", u);
+    chamber.level = 1;
+    for (const u of first) assert.equal(levelMissing(state, "A", u), null, u);
+    for (const u of second) assert.equal(levelMissing(state, "A", u)?.id, "neuralassembly", u);
+    chamber.level = 2;
+    for (const u of [...first, ...second]) assert.equal(levelMissing(state, "A", u), null, u);
+    // A ruined Assembly holds no level.
+    chamber.hp = 0;
+    assert.equal(levelMissing(state, "A", "lancer")?.id, "advancedassembly");
   });
 
   it("does not count another player's Research Facility", () => {

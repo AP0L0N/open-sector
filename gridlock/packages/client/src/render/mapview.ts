@@ -271,8 +271,8 @@ import {
   BATTLESHIP_SPRITE,
   HIVEARK_CANNON,
   HIVEARK_SPRITE,
-  MOTHERSHIP_MOUNT_SHEETS,
   ROOF_FLAK_SEAT,
+  ROOF_FLAK_SHEET,
   MOTHERSHIP_SPRITE,
   FEUERWIRBEL_CIWS_SHEET,
   FEUERWIRBEL_SPRITE,
@@ -398,7 +398,7 @@ import { bumpTilt, crushBump } from "./crush-bump.js";
 import { drawFieldGunSmoke, fieldGunSmokePose, spawnFieldGunSmoke, type FieldGunSmokePuff } from "./field-gun-smoke.js";
 import { emplacementShotLook, facingConeDegOf, PAK43_FX_CALIBER_MUL } from "./emplacement-fx.js";
 import { drawArkCharge, drawArkPlasmaBall, hiveArkLayers, hiveArkMuzzle } from "./hive-ark.js";
-import { mothershipLayers } from "./mothership.js";
+import { TRACTOR_POOL_SCALE, TRACTOR_RGB, absorbFade, drawAbsorbFx, drawTractorBeam, mothershipEmitterDrop } from "./mothership.js";
 import {
   BATTLESHIP_WORLD_PER_UNIT,
   battleshipLayers,
@@ -687,7 +687,7 @@ import {
   xenoGlowUnderShade,
 } from "./night.js";
 
-type NightPool = { x: number; y: number; rx: number; a: number; kind: "tower" | "head" | "work" | "missile" | "xeno" | "bloom" | LampType };
+type NightPool = { x: number; y: number; rx: number; a: number; kind: "tower" | "head" | "work" | "missile" | "xeno" | "bloom" | "tractor" | LampType };
 /** How much of the night tint each kind of pool lifts, per pool (they overlap), and how much it warms. */
 const streetLampPools = <K extends "cut" | "warm" | "rgb">(key: K) =>
   Object.fromEntries(LAMP_TYPES.map((t) => [t, STREET_LAMPS[t][key]])) as Record<LampType, StreetLampSpec[K]>;
@@ -698,6 +698,7 @@ const POOL_CUT: Record<NightPool["kind"], number> = {
   missile: 0.4,
   xeno: 0.45,
   bloom: 0.4,
+  tractor: 0.9,
   ...streetLampPools("cut"),
 };
 const POOL_WARM: Record<NightPool["kind"], number> = {
@@ -707,6 +708,7 @@ const POOL_WARM: Record<NightPool["kind"], number> = {
   missile: 0.14,
   xeno: 0.7,
   bloom: 0.8,
+  tractor: 0.6,
   ...streetLampPools("warm"),
 };
 const POOL_RGB: Record<NightPool["kind"], string> = {
@@ -716,6 +718,7 @@ const POOL_RGB: Record<NightPool["kind"], string> = {
   missile: "255, 214, 150",
   xeno: XENO_GLOW_RGB,
   bloom: BLOOM_GLOW_RGB,
+  tractor: TRACTOR_RGB,
   ...streetLampPools("rgb"),
 };
 
@@ -1159,6 +1162,8 @@ export class MapView {
   private zoomLabel: HTMLElement | null;
   private keys = new Set<string>();
   private panning = false;
+  /** Left button went down on the minimap and is still held: moves steer the view. */
+  private miniDrag = false;
   private lastMX = 0;
   private lastMY = 0;
   private mouseX = -1;
@@ -3352,23 +3357,33 @@ export class MapView {
     this.mini.addEventListener("mousedown", (e) => {
       // A dark panel is not a map: nothing to click until a Radar Station stands.
       if (!this.curr.you.radar) return;
-      const map = this.map();
-      const rect = this.mini.getBoundingClientRect();
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
-      const scale = Math.min(rect.width / map.width, rect.height / map.height);
-      const tileX = mx / scale;
-      const tileY = my / scale;
-      const view = this.viewSize();
-      const iso = worldToIso(tileX * map.tileSize, tileY * map.tileSize, map.tileSize);
-      this.camX = iso.x - view.w / 2;
-      this.camY = iso.y - view.h / 2;
-      this.clamp();
+      e.preventDefault();
+      this.lookAtMini(e.clientX, e.clientY);
+      // Held down, the view keeps following the pointer until the button comes up.
+      if (e.button === 0) this.miniDrag = true;
     });
+  }
+
+  /** Centre the view on the map tile under a minimap point; past the map's edge it pins to the edge. */
+  private lookAtMini(clientX: number, clientY: number): void {
+    const map = this.map();
+    const rect = this.mini.getBoundingClientRect();
+    const scale = Math.min(rect.width / map.width, rect.height / map.height);
+    const tileX = Math.max(0, Math.min(map.width, (clientX - rect.left) / scale));
+    const tileY = Math.max(0, Math.min(map.height, (clientY - rect.top) / scale));
+    const view = this.viewSize();
+    const iso = worldToIso(tileX * map.tileSize, tileY * map.tileSize, map.tileSize);
+    this.camX = iso.x - view.w / 2;
+    this.camY = iso.y - view.h / 2;
+    this.clamp();
   }
 
   private onUp = (e: MouseEvent): void => {
     if (e.button === 1) this.panning = false;
+    if (e.button === 0 && this.miniDrag) {
+      this.miniDrag = false;
+      return;
+    }
     if (e.button === 2 && this.moveFace) {
       this.commitMoveFace();
       return;
@@ -3448,6 +3463,11 @@ export class MapView {
     if (this.ctrlHeld !== e.ctrlKey) {
       this.ctrlHeld = e.ctrlKey;
       this.syncCursor();
+    }
+    if (this.miniDrag) {
+      // Radar knocked out mid-drag (the panel went dark) or the button came up outside the window: stop steering.
+      if (!this.curr.you.radar || !(e.buttons & 1)) this.miniDrag = false;
+      else this.lookAtMini(e.clientX, e.clientY);
     }
     if (this.panning) {
       this.camX -= (e.clientX - this.lastMX) / this.zoom;
@@ -4937,7 +4957,7 @@ export class MapView {
     if (this.keys.has("arrowleft")) vx -= 1;
     if (this.keys.has("d") || this.keys.has("arrowright")) vx += 1;
     const edge = 24;
-    if (edgeScroll && !this.panning && !this.box && this.winX >= 0 && !this.overControl) {
+    if (edgeScroll && !this.panning && !this.miniDrag && !this.box && this.winX >= 0 && !this.overControl) {
       const sw = window.innerWidth;
       const sh = window.innerHeight;
       if (this.winX < edge) vx -= 1;
@@ -5366,6 +5386,7 @@ export class MapView {
     this.drawPurgeMarks();
     this.drawBlinkFlashes();
     this.drawHiveFx();
+    this.drawTractorBeams();
     this.drawSonarContacts();
     this.drawThermalContacts();
     this.drawHiveDrops();
@@ -5588,6 +5609,12 @@ export class MapView {
       const wy = prev ? prev.y + (p.y - prev.y) * blend : p.y;
       const spot = missileSpot(wx, wy, p.vx, p.vy, ts);
       lay(spot.x, spot.y, spot.r, spot.a, "missile");
+    }
+    // A Mothership's tractor light: a blue pool a little wider than the unit it holds.
+    for (const e of this.curr.entities) {
+      if (!e.absorb || e.hp <= 0) continue;
+      const p = this.lerpEnt(e);
+      lay(p.x, p.y, catalog(e.type).radius * TRACTOR_POOL_SCALE * 1.25, Math.min(1, e.absorb.light * 3), "tractor");
     }
     const nowSec = performance.now() / 1000;
     // The Bloom glow, laid this frame under the units (drawXenoGlow); here it only cuts the dark.
@@ -6277,6 +6304,42 @@ export class MapView {
       const tip = this.toScreen(f.x + f.dx, f.y + f.dy);
       const back = this.toScreen(f.x - f.dx, f.y - f.dy);
       drawBite(this.ctx, at, { x: tip.x - back.x, y: tip.y - back.y }, (now - f.at) * speed, 2 * UNIT_SPRITE_DRAW_SIZE * this.zoom, f.id);
+    }
+  }
+
+  /**
+   * Mothership tractor beams: the cone of blue light from under each cube down to a pool a little
+   * wider than the unit it holds, and the unit coming apart into light as it is absorbed.
+   */
+  private drawTractorBeams(): void {
+    const now = performance.now();
+    const blend = Math.min(1, (now - this.snapAt) / 100);
+    for (const e of this.curr.entities) {
+      const ab = e.absorb;
+      if (!ab || e.hp <= 0) continue;
+      const ship = this.currById.get(ab.by);
+      if (!ship) continue;
+      const p = this.lerpEnt(e);
+      const sp = this.lerpEnt(ship);
+      const alt = lerpAirAlt(this.prevById.get(ship.id), ship, blend);
+      const mid = this.toScreen(sp.x, sp.y, this.elevAt(sp.x, sp.y) + alt);
+      const top = { x: mid.x, y: mid.y + mothershipEmitterDrop(MOTHERSHIP_SPRITE.drawSize) * this.zoom };
+      const elev = this.elevAt(p.x, p.y);
+      const ground = this.toScreen(p.x, p.y, elev);
+      const r = catalog(e.type).radius * TRACTOR_POOL_SCALE;
+      let rx = 0;
+      let ry = 0;
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        const q = this.toScreen(p.x + Math.cos(a) * r, p.y + Math.sin(a) * r, elev);
+        rx = Math.max(rx, Math.abs(q.x - ground.x));
+        ry = Math.max(ry, Math.abs(q.y - ground.y));
+      }
+      drawTractorBeam(this.ctx, top, ground, rx, ry, ab.light, ab.u, now, e.id);
+      if (ab.u > 0) {
+        const body = (this.spriteOf(e)?.drawSize ?? 32) * this.zoom * 0.55;
+        drawAbsorbFx(this.ctx, ground.x, ground.y - body * 0.45, body, ab.u, now, e.id);
+      }
     }
   }
 
@@ -8791,6 +8854,8 @@ export class MapView {
       // Your own submarine running submerged shows faint under the surface.
       const prev = this.ctx.globalAlpha;
       if (e.submerged && !e.wreck) this.ctx.globalAlpha = prev * SUBMERGED_ALPHA;
+      // A unit in a Mothership's beam thins away as it is absorbed.
+      if (e.absorb && e.absorb.u > 0 && !e.wreck) this.ctx.globalAlpha *= absorbFade(e.absorb.u);
       this.drawSpritedUnit(e, spr);
       this.ctx.globalAlpha = prev;
       // A cloak going on or off: the scan band, sparks, and ripple over the body.
@@ -8961,24 +9026,10 @@ export class MapView {
     }
   }
 
-  /** The Mothership's four mounts over its hull, far first, each on its own bearing. (ox, oy) is the model origin on screen. */
-  private drawMothershipLayers(e: EntityView, facing: number, ox: number, oy: number, size: number): void {
-    const ship = e.mothership;
-    if (!ship) return;
-    const left = ox - size / 2;
-    const top = oy - size * MOTHERSHIP_SPRITE.contactY;
-    for (const l of mothershipLayers(facing, ship.mounts.map((m) => m.facing), size, this.ts())) {
-      const sheet = MOTHERSHIP_MOUNT_SHEETS[l.mount];
-      if (!spriteReady(sheet)) continue;
-      const cell = sheet.frameSize;
-      this.ctx.drawImage(sheet.image, 0, l.row * cell, cell, cell, left + l.dx, top + l.dy, size, size);
-    }
-  }
-
-  /** A Fusion Core's Flak Maw on its seat (ROOF_FLAK_SEAT), turned to its own bearing: the Mothership's flak sheet. */
+  /** A Fusion Core's Flak Maw on its seat (ROOF_FLAK_SEAT), turned to its own bearing (ROOF_FLAK_SHEET). */
   private drawRoofFlak(type: EntityType, facing: number, spr: BuildingSpriteDef, southX: number, southY: number, footprintW: number): void {
     const seat = ROOF_FLAK_SEAT[type];
-    const sheet = MOTHERSHIP_MOUNT_SHEETS.flak;
+    const sheet = ROOF_FLAK_SHEET;
     if (!seat || !spriteReady(sheet)) return;
     const scale = footprintW / spr.padWidth;
     const size = footprintW * seat.cellPerPad;
@@ -9123,7 +9174,7 @@ export class MapView {
     // A map's neutral unit is grey: no one's colours, everyone's enemy.
     else if (!e.wreck && !e.ownerId) ctx.filter = NEUTRAL_UNIT_FILTER;
     // The ship's mounts are placed on the sim's own spots: no ground sink under the hull.
-    if (e.ship || def === BATTLESHIP_SPRITE || e.ark || def === HIVEARK_SPRITE || e.mothership || def === MOTHERSHIP_SPRITE) hullShiftY -= unitGroundSink(size);
+    if (e.ship || def === BATTLESHIP_SPRITE || e.ark || def === HIVEARK_SPRITE || def === MOTHERSHIP_SPRITE) hullShiftY -= unitGroundSink(size);
     const stepping = unitStepping({ type: e.type, state: e.state, swimming: e.swimming, prev: this.prevById.get(e.id), curr: e });
     if (e.type === "juggernaut" && !e.wreck) {
       const pose = this.juggernautPose(e);
@@ -9181,7 +9232,6 @@ export class MapView {
     // A sunk hulk has its superstructure and turrets baked in; the grey stand-in still needs them.
     if (drawn && e.ship && (!e.wreck || sheet === def)) this.drawShipLayers(e, p.facing, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size);
     if (drawn && e.ark && (!e.wreck || sheet === def)) this.drawArkLayers(e, p.facing, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size);
-    if (drawn && e.mothership && (!e.wreck || sheet === def)) this.drawMothershipLayers(e, p.facing, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size);
     // A wrecked Feuerwirbel's mounts are torn off; its hulk sheet shows the empty rings.
     if (drawn && e.mounts && !e.wreck) this.drawTwinMounts(e.mounts, p.facing, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size);
     if (drawn && e.type === "titan" && !e.wreck) this.drawTitanLamp(e, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size, def);

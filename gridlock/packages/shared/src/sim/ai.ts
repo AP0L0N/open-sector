@@ -38,6 +38,7 @@ import {
   STUKA_BOMBS,
   SUPPLY_CARGO,
   techNeeds,
+  hasTechLevel,
   TICK_HZ,
   UNIT_CAP,
   anchorsBuildRange,
@@ -385,7 +386,7 @@ function thinkCpu(state: MatchState, p: SimPlayer): void {
 }
 
 /**
- * Xenite base, on the yard's base lane: Fusion Node, Conversion Chamber, a second Fusion Node, the
+ * Xenite base, on the yard's base lane: Fusion Node, Assembly, a second Fusion Node, the
  * Nanite Forge, a third Node, the Neural Nexus (it opens the Sim Unit II, Lancer, Weaver, Shade, the
  * big heavies, the Pulse Spire, and the Energy Wall), a fourth Node, then the Aerie. Campaigning, the
  * Spawning Pool goes up where water by the hive reaches the enemy or the middle, and more Chambers and
@@ -404,7 +405,7 @@ const XENO_BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
   { type: "fusionnode", n: 4 },
   { type: "aerie", n: 1 },
 ];
-/** The Xenite foot soldiers, from the Conversion Chamber. Drones and Lancers rise when enemy planes are about. */
+/** The Xenite foot soldiers, from the Assembly. Drones and Lancers rise when enemy planes are about. */
 export const XENO_ARMY: readonly { unit: TrainType; want: number }[] = [
   { unit: "xenodrone", want: 10 },
   { unit: "thrall", want: 4 },
@@ -530,8 +531,9 @@ const XENO_RESEARCH_AFTER_NODES = 3;
 const XENO_SHIELDED: ReadonlySet<string> = new Set(["spineturret", "pulsespire", "energywall"]);
 
 /**
- * One upgrade at a time. The Shield Wall comes first, on the oldest Conversion Chamber, as soon as the
+ * One upgrade at a time. The Shield Wall comes first, on the oldest Assembly, as soon as the
  * hive keeps HIVE_ENERGY_LOW free after its draw: Drones and Lancers fight without walls until then.
+ * Then the most levelled Assembly takes its next level (Neural Assembly once a Neural Nexus stands).
  * The rest waits for the build order to stand. First the least upgraded Fusion Node, when the
  * dip while it upgrades keeps the hive at zero or above (Ultra Fusion waits for a Neural Nexus); else,
  * once enemy fliers have been seen, the oldest Ion Turret still blind to them grows Sky Tracking; else
@@ -545,6 +547,7 @@ function researchXeno(state: MatchState, p: SimPlayer): void {
   let grounded: Entity | undefined;
   let chamber: Entity | undefined;
   let hive: Entity | undefined;
+  let assembly: Entity | undefined;
   let drilled = false;
   let nodes = 0;
   for (const e of state.entities.values()) {
@@ -554,7 +557,8 @@ function researchXeno(state: MatchState, p: SimPlayer): void {
       continue;
     }
     if (e.research) return;
-    else if (e.type === "conversion") {
+    if (e.type === "conversion") {
+      if (!assembly || (e.level ?? 0) > (assembly.level ?? 0)) assembly = e;
       if (e.shieldWall) drilled = true;
       else if (!chamber || e.id < chamber.id) chamber = e;
     } else if (e.type === "fusionnode") {
@@ -568,6 +572,15 @@ function researchXeno(state: MatchState, p: SimPlayer): void {
   if (!drilled && chamber && hiveFreeAfterQueue(state, p) - SHIELD_WALL_ENERGY >= HIVE_ENERGY_LOW) {
     applyCommand(state, p.playerId, { type: "cmd.research", ids: [chamber.id], research: "shieldwall" });
     return;
+  }
+  // The Assembly's levels unlock the Lancer, Bombard, and Bulwark, then the Sim Unit and Phantom.
+  // They take no energy, so the most levelled Assembly goes on as soon as its next level may start.
+  if (assembly) {
+    const next = nextResearch(assembly.type, assembly.level ?? 0);
+    if (next && !researchBlocker(state, p.playerId, assembly, next.id)) {
+      applyCommand(state, p.playerId, { type: "cmd.research", ids: [assembly.id], research: next.id });
+      return;
+    }
   }
   if (nodes < XENO_RESEARCH_AFTER_NODES || xenoOrderNext(state, p) != null) return;
   // The Hive Core's relays cost nothing and take nothing from the hive: they go up beside the rest.
@@ -725,7 +738,7 @@ const XENO_SPINE_TILES = 28;
 const XENO_SPIRE_TILES = 20;
 
 /**
- * The Xenite defence lane: the Spine Turrets once the Conversion Chamber stands, then the Pulse
+ * The Xenite defence lane: the Spine Turrets once the Assembly stands, then the Pulse
  * Spires and the Energy Wall (they wait on the Neural Nexus). Each waits for the energy it takes.
  */
 function* xenoDefences(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): Generator<{ type: BuildingType; site?: Site }> {
@@ -1054,6 +1067,7 @@ function neediest(
   for (const row of army) {
     // A locked rank is not needy yet: saving for it would stall the whole factory.
     if (techNeeds(row.unit).some((tech) => !ownsLive(state, p.playerId, tech))) continue;
+    if (!hasTechLevel(state.entities.values(), p.playerId, row.unit)) continue;
     const want = wantOf(state, p, row.unit, row.want);
     const share = countType(state, p.playerId, row.unit) / want;
     if (share >= 1 || share >= (best?.share ?? Infinity)) continue;

@@ -2658,7 +2658,7 @@ function fireRockets(
  * bursts in the air beside it. On anything else it is fused on the ground.
  * A rack with an apex lobs it over whatever stands between. `side` is the
  * launch offset off the aim line, world pixels. `mount` launches it from a gun that is not the
- * unit's own rack (a Mothership's maw): from that point and height, as that launcher's ball.
+ * unit's own rack (a Fusion Core's Flak Maw): from that point and height, as that launcher's ball.
  */
 export function launchRocket(
   state: MatchState,
@@ -2987,6 +2987,8 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
   const soaked = new Set<number>();
   for (const e of blast) {
     if (e.hp <= 0 || e.wreck || e.id === p.fromId || e.garrisonedIn != null || isRubble(e)) continue;
+    // A Mothership sunk on the water lies under it, out of the blast.
+    if (e.mothership?.sunk) continue;
     // A ground burst never reaches a plane; an air burst only catches planes.
     // A drone is caught by a burst near its height, air or ground, or when the rocket meets it.
     if (e.drone ? e !== direct && !rocketCatchesDrone(state, p, e) : isAirborne(e) !== inAir) continue;
@@ -4131,8 +4133,8 @@ function nearestSweepHit(
   for (const e of poolSegment(state, x0, y0, p.x, p.y)) {
     if (e.hp <= 0 || isCrashing(e)) continue;
     if (e.id === p.ignoreId) continue;
-    // A rubble heap is too low to catch a round: everything flies over it.
-    if (isRubble(e)) continue;
+    // A rubble heap is too low to catch a round: everything flies over it. So is a Mothership sunk on the water.
+    if (isRubble(e) || e.mothership?.sunk) continue;
     // A pilot strafes the enemy's line, not his own side's, unless he was told to (force-attack).
     if (p.fromAbove && !p.harmAllies && e.ownerId && allies(state, p.ownerId, e.ownerId)) continue;
     if (e.garrisonedIn != null) continue;

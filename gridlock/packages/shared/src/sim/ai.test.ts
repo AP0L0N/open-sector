@@ -26,7 +26,7 @@ import {
 } from "./ai.js";
 import { TILE_EMPTY, TILE_SCRAP, TILE_WATER, unregisterMap } from "../maps.js";
 import { encodeRuns, loadCustomMap } from "../custom-maps.js";
-import { HEIGHT_BASE } from "../catalog.js";
+import { HEIGHT_BASE, maxLevelOf } from "../catalog.js";
 import { hasCore, hqOf, inBuildRadius, isWater, makeEntity, scrapAt } from "./geo.js";
 import { createMatch, stepMatch } from "./match.js";
 import { smelterRateOn } from "./smelter.js";
@@ -1596,7 +1596,7 @@ describe("Xenite CPU", () => {
     assert.ok(hiveOf(state, aiId));
   });
 
-  it("raises a Fusion Node, then the Conversion Chamber, and never an Assimilator", () => {
+  it("raises a Fusion Node, then the Assembly, and never an Assimilator", () => {
     const { state, aiId } = humanVsXeno();
     waitCore(state, aiId);
     assert.equal(nextStructure(state, aiId), "fusionnode");
@@ -1604,7 +1604,7 @@ describe("Xenite CPU", () => {
     assert.equal(nextStructure(state, aiId), "conversion");
   });
 
-  it("trains its army at the Conversion Chamber", () => {
+  it("trains its army at the Assembly", () => {
     const { state, aiId } = humanVsXeno();
     waitCore(state, aiId);
     standBy(state, aiId, ["fusionnode", "assimilator", "conversion", "fusionnode"]);
@@ -1656,21 +1656,44 @@ describe("Xenite CPU", () => {
     assert.equal(nextStructure(state, aiId), "nexus", "the base lane is not stuck behind the turret");
   });
 
-  /** The CPU's Conversion Chambers already hold the Shield Wall, so its other research is free to run. */
+  /** The CPU's Assemblies already hold the Shield Wall, so its other research is free to run. */
   function drilled(state: MatchState, aiId: string): void {
-    for (const e of state.entities.values()) if (e.ownerId === aiId && e.type === "conversion") e.shieldWall = true;
+    for (const e of state.entities.values()) {
+      if (e.ownerId === aiId && e.type === "conversion") {
+        e.shieldWall = true;
+        e.level = maxLevelOf("conversion");
+      }
+    }
   }
 
-  it("researches the Shield Wall on a Conversion Chamber first, before its build order stands", () => {
+  it("researches the Shield Wall on an Assembly first, before its build order stands", () => {
     const { state, aiId } = humanVsXeno();
     waitCore(state, aiId);
     standBy(state, aiId, BASE);
     micro(state, aiId);
     const chambers = [...state.entities.values()].filter((e) => e.ownerId === aiId && e.type === "conversion");
-    assert.ok(chambers.length > 0, "the build order has a Conversion Chamber");
+    assert.ok(chambers.length > 0, "the build order has an Assembly");
     assert.equal(chambers.filter((e) => e.research?.id === "shieldwall").length, 1);
     const nodes = [...state.entities.values()].filter((e) => e.ownerId === aiId && e.research && e.type !== "conversion");
     assert.equal(nodes.length, 0, "one at a time");
+  });
+
+  it("levels its Assembly once the Shield Wall is in: Advanced Assembly, then Neural Assembly once a Nexus stands", () => {
+    const { state, aiId } = humanVsXeno();
+    waitCore(state, aiId);
+    standBy(state, aiId, BASE);
+    const chamber = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "conversion")!;
+    const job = () => chamber.research?.id;
+    chamber.shieldWall = true;
+    micro(state, aiId);
+    assert.equal(job(), "advancedassembly");
+    chamber.research = undefined;
+    chamber.level = 1;
+    micro(state, aiId);
+    assert.equal(job(), undefined, "Neural Assembly waits on a Neural Nexus");
+    standBy(state, aiId, [...BASE, "nexus"]);
+    micro(state, aiId);
+    assert.equal(job(), "neuralassembly");
   });
 
   it("upgrades one Fusion Node at a time once its build order stands, and not before", () => {

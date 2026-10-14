@@ -50,7 +50,6 @@ import {
   hasForceField,
   TICK_DT,
   ARK_CANNON_CELL,
-  MOTHERSHIP_MOUNTS,
   MAWCASTER_CELL,
   ARK_CANNON_CHARGE_SECONDS,
 } from "../catalog.js";
@@ -82,7 +81,7 @@ import { ramCharge } from "./juggernaut.js";
 import { cloakCharge } from "./cloak.js";
 import { hiddenBurrowed } from "./burrow.js";
 import { hiddenCloaked } from "./shade.js";
-import { mountCharge } from "./mothership.js";
+import { beamOn, beamProgress } from "./mothership.js";
 import { isSimUnit, onUplink, usesHiveEnergy, vaultsWalls } from "../catalog.js";
 import { onFortTop } from "./thrall.js";
 import { aswDeckView, sonarContacts } from "./destroyer.js";
@@ -192,23 +191,11 @@ function arkView(state: MatchState, e: Entity, friendly: boolean): EntityView["a
   };
 }
 
-/** Mothership mounts. Cell charge and the dome's clock only for its own side. */
-function mothershipView(state: MatchState, e: Entity, friendly: boolean): EntityView["mothership"] {
-  const ship = e.mothership;
-  if (!ship) return undefined;
-  const window = Math.max(1, clampGameSpeed(state.gameSpeed));
-  return {
-    mounts: MOTHERSHIP_MOUNTS.map((m) => {
-      const g = ship[m];
-      return {
-        facing: g.facing,
-        ...(!e.wreck && g.firedTick != null && state.tick - g.firedTick < window ? { fire: true as const } : {}),
-        ...(friendly ? { energy: mountCharge(g, m) } : {}),
-        ...(friendly && g.drained ? { drained: true as const } : {}),
-      };
-    }),
-    ...(friendly && e.shieldReady != null && state.tick < e.shieldReady ? { domeDown: Math.ceil((e.shieldReady - state.tick) * TICK_DT) } : {}),
-  };
+/** A unit in a Mothership's tractor beam: whose, and how far along. Everyone who sees the unit sees the light. */
+function absorbView(state: MatchState, e: Entity): EntityView["absorb"] {
+  const on = beamOn(state, e);
+  if (!on) return undefined;
+  return { by: on.ship.id, ...beamProgress(on.beam) };
 }
 
 /** A Fusion Core's Flak Maw. Cell charge only for its own side. */
@@ -471,6 +458,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
     if (e.garrisonedIn && !friendly) continue;
     // A submerged boat shows only to an enemy whose Destroyer sonar hears it, fog or not.
     if (!friendly && hiddenSubmarine(state, youPlayerId, e)) continue;
+    // A Mothership sunk on the water shows to no enemy.
+    if (!friendly && e.mothership?.sunk) continue;
     // A Stalker down under the ground shows to no enemy.
     if (hiddenBurrowed(state, youPlayerId, e)) continue;
     // A Shade with its skin settled shows to no enemy.
@@ -542,7 +531,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       swimming: isInfantryType(e.type) && unitInWater(state, e) ? true : undefined,
       wading: !isInfantryType(e.type) && unitInWater(state, e) ? true : undefined,
       // A Lurker shows surfaced only while a bite still gives it away.
-      submerged: friendly && (neverSurfacesOf(e.type) ? submerged(state, e) : diving(e)) ? true : undefined,
+      submerged: friendly && (neverSurfacesOf(e.type) ? submerged(state, e) : diving(e) || !!e.mothership?.sunk) ? true : undefined,
       dive:
         friendly && submergesOf(e.type) && !neverSurfacesOf(e.type) && !e.wreck
           ? { air: e.dive?.air ?? SUB_DIVE_SECONDS, airMax: SUB_DIVE_SECONDS, winded: e.dive?.winded || undefined }
@@ -628,7 +617,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       mounts: twinCiwsView(state, e, friendly),
       ship: shipView(state, e, friendly),
       ark: arkView(state, e, friendly),
-      mothership: mothershipView(state, e, friendly),
+      absorb: absorbView(state, e),
       arkOf: e.arkOf,
       reload: friendly && (isInfantryType(e.type) || beltOf(e.type)) && e.reload > 0 ? e.reload : undefined,
       bipod: plantRemaining(e, friendly),

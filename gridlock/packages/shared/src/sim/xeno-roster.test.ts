@@ -107,7 +107,7 @@ const CYBORGS = ["bombard", "weaver", "shade"] as const;
 const HEAVIES = ["siphon", "assembler", "mawcaster"] as const;
 
 describe("new Xenite roster", () => {
-  it("trains the three cyborgs at the Conversion Chamber and the three heavies at the Forge", () => {
+  it("trains the three cyborgs at the Assembly and the three heavies at the Forge", () => {
     for (const t of CYBORGS) {
       assert.ok(TRAIN_TYPES.includes(t), t);
       assert.equal(factionOf(t), "xeno");

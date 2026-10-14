@@ -1068,9 +1068,9 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly Bu
   simunit2: ["conversion", "nexus"],
   xenodrone: "conversion",
   thrall: "conversion",
-  lancer: ["conversion", "nexus"],
+  lancer: "conversion",
   bombard: "conversion",
-  weaver: ["conversion", "nexus"],
+  weaver: "conversion",
   shade: ["conversion", "nexus"],
   behemoth: "nexus",
   juggernaut: "nexus",
@@ -1214,7 +1214,7 @@ export const BLOOM_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([
 ]);
 /**
  * Built by the Alliance and the Xenite (not the Bloom). None today: the Cyborg Central is the
- * Alliance's, and the Xenite raise their infantry in the Conversion Chamber.
+ * Alliance's, and the Xenite raise their infantry in the Assembly.
  */
 export const SHARED_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([]);
 /**
@@ -1265,11 +1265,22 @@ export function energySupplyOf(type: string): number {
 /**
  * Research (sim/research.ts): a structure upgrades itself. A level entry lifts its `buildings` from
  * `level - 1` to `level`; a Force Shield entry gives the structure its own small energy dome; Shield
- * Wall on a Conversion Chamber lets its side's Drones and Lancers raise their energy walls. It runs
+ * Wall on an Assembly lets its side's Drones and Lancers raise their energy walls. It runs
  * on the structure for `seconds` at the owner's job pace and costs `cost` scrap as it goes (nothing
  * for the Xenite, who pay no scrap) and `energy` more hive energy for as long as it stands.
  */
-export type ResearchId = "advancedfusion" | "ultrafusion" | "fusionreactor" | "forceshield" | "flakmaw" | "skyspines" | "shieldwall" | "scanrelay" | "scanarray";
+export type ResearchId =
+  | "advancedfusion"
+  | "ultrafusion"
+  | "fusionreactor"
+  | "forceshield"
+  | "flakmaw"
+  | "skyspines"
+  | "shieldwall"
+  | "advancedassembly"
+  | "neuralassembly"
+  | "scanrelay"
+  | "scanarray";
 export interface ResearchDef {
   id: ResearchId;
   name: string;
@@ -1277,7 +1288,7 @@ export interface ResearchDef {
   buildings: readonly (BuildingType | HqBuildingType)[];
   /** The level the structure reaches once it is done. Unset for an upgrade that is not a level. */
   level?: number;
-  /** What it grants instead of a level: the Force Shield's dome, the Flak Maw on a Fusion Core's roof, Sky Tracking's reach on aircraft, or the Shield Wall drill. */
+  /** What it grants instead of a level: the Force Shield's dome, the roof Ion Turret on a Fusion Core, Sky Tracking's reach on aircraft, or the Shield Wall drill. */
   grants?: "forceShield" | "roofFlak" | "skySpines" | "shieldWall";
   seconds: number;
   cost: number;
@@ -1298,7 +1309,7 @@ export const FUSION_CORE_LEVEL_ENERGY: readonly number[] = [FUSION_CORE_ENERGY, 
 /** Every Xenite defence can research a Force Shield, and so can the Fusion Core. */
 export const FORCE_SHIELD_BUILDINGS: readonly BuildingType[] = ["spineturret", "pulsespire", "energywall", "laserfence", "fusioncore"];
 /**
- * The Flak Maw (sim/roof-flak.ts): a small anti-air maw grown on a Fusion Core's roof. It is the
+ * The roof Ion Turret (research "flakmaw", once the Flak Maw; sim/roof-flak.ts): a small anti-air maw grown on a Fusion Core's roof. It is the
  * Mothership's flak mount: the Mawcaster's maw on Air attacks (MAWCASTER_AIR_BALL), on the
  * Mawcaster's cell, laying itself on planes, Jump Jets, and low drones in its reach.
  */
@@ -1397,7 +1408,7 @@ export const RESEARCH: Record<ResearchId, ResearchDef> = {
   },
   flakmaw: {
     id: "flakmaw",
-    name: "Flak Maw",
+    name: "Ion Turret",
     buildings: ROOF_FLAK_BUILDINGS,
     grants: "roofFlak",
     seconds: 40,
@@ -1406,7 +1417,7 @@ export const RESEARCH: Record<ResearchId, ResearchDef> = {
     effect: `Anti-air · ${ROOF_FLAK_ENERGY} energy`,
     // A getter: the Mawcaster's numbers are declared further down this module.
     get blurb() {
-      return `Grows a small maw on the core's roof that spits plasma balls at planes, Jump Jets, and low drones within ${MAWCASTER_AIR_RANGE_TILES / TILE_SUBDIV} cells, ${MAWCASTER_AIR_SALVO} at a time, each bursting at the flier's height: the Mawcaster's Air attack. It lays itself and leaves the ground alone, firing off an energy cell that holds ${MAWCASTER_CELL.shots} and regrows one every ${MAWCASTER_CELL.rechargeSeconds} seconds. Takes ${ROOF_FLAK_ENERGY} hive energy from the moment the research starts.`;
+      return `Grows a small ion turret on the core's roof that spits plasma balls at planes, Jump Jets, and low drones within ${MAWCASTER_AIR_RANGE_TILES / TILE_SUBDIV} cells, ${MAWCASTER_AIR_SALVO} at a time, each bursting at the flier's height: the Mawcaster's Air attack. It lays itself and leaves the ground alone, firing off an energy cell that holds ${MAWCASTER_CELL.shots} and regrows one every ${MAWCASTER_CELL.rechargeSeconds} seconds. Takes ${ROOF_FLAK_ENERGY} hive energy from the moment the research starts.`;
     },
   },
   skyspines: {
@@ -1429,9 +1440,59 @@ export const RESEARCH: Record<ResearchId, ResearchDef> = {
     cost: 0,
     energy: SHIELD_WALL_ENERGY,
     effect: `Drone & Lancer walls · ${SHIELD_WALL_ENERGY} energy`,
-    blurb: `Teaches the side's Drones and Lancers to raise a curved energy wall across their front when they fight. Holds while a Conversion Chamber with it stands. Takes ${SHIELD_WALL_ENERGY} hive energy from the moment the research starts.`,
+    blurb: `Teaches the side's Drones and Lancers to raise a curved energy wall across their front when they fight. Holds while an Assembly with it stands. Takes ${SHIELD_WALL_ENERGY} hive energy from the moment the research starts.`,
+  },
+  advancedassembly: {
+    id: "advancedassembly",
+    name: "Advanced Assembly",
+    buildings: ["conversion"],
+    level: 1,
+    seconds: 45,
+    cost: 0,
+    effect: "Lancer, Bombard, Bulwark",
+    blurb: "Fits the pods with heavy frames and plasma lances. Your Assemblies train the Lancer, the Bombard, and the Bulwark while an Assembly of yours stands at this level.",
+  },
+  neuralassembly: {
+    id: "neuralassembly",
+    name: "Neural Assembly",
+    buildings: ["conversion"],
+    level: 2,
+    seconds: 75,
+    requires: ["nexus"],
+    cost: 0,
+    effect: "Sim Unit, Phantom",
+    blurb: "Wires the pods into the Neural Nexus. Your Assemblies train the Sim Unit II and the Phantom while an Assembly of yours stands at this level. Needs a Neural Nexus.",
   },
 };
+/**
+ * Units an Assembly's level unlocks: trained only while one of the side's standing Assemblies
+ * has reached that level (sim/train.ts levelMissing).
+ */
+export const TECH_LEVEL_REQUIRES: Partial<Record<TrainType, { type: BuildingType; level: number }>> = {
+  lancer: { type: "conversion", level: 1 },
+  bombard: { type: "conversion", level: 1 },
+  weaver: { type: "conversion", level: 1 },
+  simunit2: { type: "conversion", level: 2 },
+  shade: { type: "conversion", level: 2 },
+};
+/** The level research `unit` waits on (Advanced Assembly for a Lancer), or undefined when it needs none. */
+export function techLevelResearch(unit: TrainType): ResearchDef | undefined {
+  const need = TECH_LEVEL_REQUIRES[unit];
+  return need && researchOf(need.type).find((r) => r.level === need.level);
+}
+/** Does one of `ownerId`'s standing structures hold the level `unit` needs? True when it needs none. */
+export function hasTechLevel(
+  entities: Iterable<{ ownerId: string | null; type: string; level?: number; hp: number; wreck?: boolean; ruined?: boolean }>,
+  ownerId: string,
+  unit: TrainType,
+): boolean {
+  const need = TECH_LEVEL_REQUIRES[unit];
+  if (!need) return true;
+  for (const e of entities) {
+    if (e.ownerId === ownerId && e.type === need.type && e.hp > 0 && !e.wreck && !e.ruined && (e.level ?? 0) >= need.level) return true;
+  }
+  return false;
+}
 export const RESEARCH_IDS = Object.keys(RESEARCH) as ResearchId[];
 export function isResearchId(id: unknown): id is ResearchId {
   return typeof id === "string" && Object.prototype.hasOwnProperty.call(RESEARCH, id);
@@ -1495,7 +1556,7 @@ export function energySupplyOfEntity(e: { type: string; level?: number; research
   const levelling = levels != null && e.research != null && (id == null || RESEARCH[id]?.level != null);
   return levelling ? Math.floor(base * RESEARCH_OUTPUT_SHARE) : base;
 }
-/** Hive energy a structure's upgrades take on top of its own: a Force Shield's, a Flak Maw's, Sky Tracking's and a Shield Wall's, from the moment their research starts. */
+/** Hive energy a structure's upgrades take on top of its own: a Force Shield's, a roof Ion Turret's, Sky Tracking's and a Shield Wall's, from the moment their research starts. */
 export function upgradeEnergyOf(e: ResearchSubject): number {
   let n = (e.forceShield ? FORCE_SHIELD_ENERGY : 0) + (e.roofFlak ? ROOF_FLAK_ENERGY : 0) + (e.skySpines ? SKY_SPINES_ENERGY : 0) + (e.shieldWall ? SHIELD_WALL_ENERGY : 0);
   const running = e.research ? RESEARCH[e.research.id] : undefined;
@@ -1609,7 +1670,7 @@ export const BUILD_REQUIRES: Partial<Record<BuildingType, readonly BuildingType[
 
 /** The Xenite vehicle factory: trains every Xenite unit that is not infantry. */
 export const XENO_FACTORY = "forge";
-/** The Xenite barracks: the Conversion Chamber turns out the hive's foot soldiers, and carries their link. */
+/** The Xenite barracks: the Assembly turns out the hive's foot soldiers, and carries their link. */
 export const XENO_BARRACKS = "conversion";
 /** The Bloom brood nest (infantry) and gestator (beasts). */
 export const BLOOM_NEST = "broodnest";
@@ -1689,7 +1750,7 @@ export const BROOD_GARRISON: readonly EntityType[] = ["spawnling", "gobber", "qu
 
 /**
  * Cyborg link. A Cyborg runs on the uplink from a standing, powered Cyborg Central (a
- * Xenite's on the synapse link from a Conversion Chamber),
+ * Xenite's on the synapse link from an Assembly),
  * or on a living Cyborg Commander of his own side. With neither, CYBORG_SHUTDOWN_SECONDS
  * after the link drops every Cyborg of that player on the field shuts down: still his,
  * but he stops where he stands, answers no orders, and fires at nothing. When that
@@ -2587,11 +2648,11 @@ export const THRALL_REACH_TILES = SIMUNIT_REACH_TILES;
 /** Share of a blow a wall or a building takes. */
 export const THRALL_BUILDING_MUL = 0.15;
 /** Blast radius when it detonates on a hull, in gameplay tiles. */
-export const THRALL_BLAST_TILES = t(1.25);
+export const THRALL_BLAST_TILES = t(1.75);
 /** HP at the centre against a hull heavier than light plate. */
-export const THRALL_BLAST_HEAVY = 35;
+export const THRALL_BLAST_HEAVY = 60;
 /** HP at the centre against soldiers, light hulls, buildings, and everything else. */
-export const THRALL_BLAST_SOFT = 55;
+export const THRALL_BLAST_SOFT = 85;
 /** Chance a bullet that lands staggers it. Not every round: now and then. */
 export const THRALL_STAGGER_CHANCE = 0.2;
 /** How long a stagger slows it, seconds. */
@@ -5083,44 +5144,38 @@ export const ARK_WASP_LEASH_TILES = t(5);
 export const ARK_WASP_DOCK_TILES = t(0.8);
 
 /**
- * Mothership (sim/mothership.ts). The hive's flying capital ship: a vast chitin saucer that
- * lifts out of the Aerie and cruises high (MOTHERSHIP_CRUISE_ALT, over AIR_HIGH_ALT), so only
- * anti-air guns reach it, and sees far. Four mounts work on their own, each with its own cell,
- * each the very gun it is named for:
- *   spine  a Spine Turret's twin pulse repeater (catalog spineturret): soldiers first;
- *   pulse  a Pulse Spire's emitter (catalog pulsespire): armor first;
- *   maw    a Mawcaster's maw on Ground attacks (MAWCASTER_POD), out of the same band;
- *   flak   a Mawcaster's maw on Air attacks (MAWCASTER_AIR_BALL): planes, Jump Jets, low drones.
- * The spine and pulse rounds come down from its height onto roofs. An energy dome rides round
- * the hull in the air (MOTHERSHIP_DOME): rounds climbing at the ship stop on it and air bursts
- * outside it do not reach in, but ground fire passes under it and nobody is fenced off below.
+ * Mothership (sim/mothership.ts). The hive's flying capital ship: a vast plated cube that lifts
+ * out of the Aerie and cruises high (MOTHERSHIP_CRUISE_ALT, over AIR_HIGH_ALT), so only anti-air
+ * guns reach it, and sees far. It carries no guns: it takes what it fights. Up to MOTHERSHIP_BEAMS
+ * enemy units at once in MOTHERSHIP_BEAM_TILES, each first lit by a blue tractor light for
+ * MOTHERSHIP_LIGHT_SECONDS, then drawn up and absorbed over MOTHERSHIP_ABSORB_BASE_SECONDS plus
+ * MOTHERSHIP_ABSORB_SECONDS_PER_PX for every px of its radius: the bigger, the slower. An
+ * absorbed unit is gone with nothing left behind, and fills the dome by its full hit points
+ * times MOTHERSHIP_ABSORB_ENERGY_PER_HP. An energy dome rides round the hull in the air
+ * (MOTHERSHIP_DOME). Short of hive power it goes offline like any other unit: it comes down
+ * (MOTHERSHIP_FALL_PER_SEC) to the ground, where ground fire reaches it, and over water it sinks
+ * out of sight. With the power back it lifts and carries on.
  */
-export type MothershipMount = "spine" | "pulse" | "maw" | "flak";
-export const MOTHERSHIP_MOUNTS: readonly MothershipMount[] = ["spine", "pulse", "maw", "flak"];
-/** The hull's radius in world px: its hitbox, and the scale the art and the mounts are laid on. */
+/** The hull's radius in world px: its hitbox, and the scale the art is laid on. */
 export const MOTHERSHIP_HULL_RADIUS = 40;
 /** Height it cruises at: above AIR_HIGH_ALT, the Gnat's and the Horten's height. */
 export const MOTHERSHIP_CRUISE_ALT = 40;
-/** Sent at a target it hangs this far off it, inside the spine's reach and short of the pulse's. */
-export const MOTHERSHIP_STANDOFF_TILES = t(9);
+/** Sent at a target it hangs this far off it, well inside its beam's reach. */
+export const MOTHERSHIP_STANDOFF_TILES = t(5);
+/** How far from under the hull a tractor beam reaches, and how many it holds at once. */
+export const MOTHERSHIP_BEAM_TILES = t(9);
+export const MOTHERSHIP_BEAMS = 3;
+/** Seconds the light shines on a unit before it starts to be absorbed. */
+export const MOTHERSHIP_LIGHT_SECONDS = 2;
+/** Seconds to absorb a unit: this, plus this many for each world px of its radius. */
+export const MOTHERSHIP_ABSORB_BASE_SECONDS = 0.5;
+export const MOTHERSHIP_ABSORB_SECONDS_PER_PX = 0.35;
+/** Dome points an absorbed unit gives back, per point of its full hit points. */
+export const MOTHERSHIP_ABSORB_ENERGY_PER_HP = 3;
+/** Offline, it comes down this many height units a second. */
+export const MOTHERSHIP_FALL_PER_SEC = 10;
 /** The dome round the hull reaches this share of its cruise height above and below it. */
 export const MOTHERSHIP_DOME_DEPTH = 0.55;
-/** Each mount's cell: the gun's own on the ground. */
-export const MOTHERSHIP_CELLS: Record<MothershipMount, PlasmaCellDef> = {
-  spine: SPINE_TURRET_CELL,
-  pulse: PULSE_SPIRE_CELL,
-  maw: MAWCASTER_CELL,
-  flak: MAWCASTER_CELL,
-};
-/** Where each mount sits on the hull: along the nose and across to starboard, as shares of MOTHERSHIP_HULL_RADIUS. */
-export const MOTHERSHIP_MOUNT_AT: Record<MothershipMount, { along: number; across: number }> = {
-  spine: { along: 0.62, across: 0 },
-  pulse: { along: -0.55, across: 0 },
-  maw: { along: 0, across: -0.5 },
-  flak: { along: 0, across: 0.5 },
-};
-/** Degrees a second each mount slews: the gun's own. The maw lays as the Mawcaster's does. */
-export const MOTHERSHIP_MAW_TURN_DEG_PER_SEC = 50;
 
 const ENTRIES: Record<EntityType, CatalogEntry> = {
   rig: {
@@ -6693,7 +6748,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: DAGGERS.penetration,
     caliber: DAGGERS.caliber,
     spreadDeg: DAGGERS.spreadDeg,
-    blurb: `A light, fast cyborg built for the knife. An energy dagger in each hand: one slash kills a soldier, but only at arm's reach. He opens a Walker or a truck slowly and barely scratches a tank or a wall. A blink drive throws him up to ${SIMUNIT_BLINK_RANGE_TILES / TILE_SUBDIV} cells in an instant on one charge, back by itself in ${SIMUNIT_BLINK_RECHARGE_SECONDS} seconds: an enemy he goes for inside that reach, he blinks straight onto while the charge is up. Right-click an enemy structure or hull with soldiers inside and he blinks in among them, kills every soldier aboard in ${SIMUNIT_PURGE_SECONDS} seconds, and blinks back out; only a hostile garrison offers it. Like the Cyborg he can shut down where he stands: dark and still, he reads as no one's machine and enemy guns pass him by until he powers up. Near death his legs are torn off and he crawls on, still cutting. Medics heal him, engineers repair him. He hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
+    blurb: `A light, fast cyborg built for the knife. An energy dagger in each hand: one slash kills a soldier, but only at arm's reach. He opens a Walker or a truck slowly and barely scratches a tank or a wall. A blink drive throws him up to ${SIMUNIT_BLINK_RANGE_TILES / TILE_SUBDIV} cells in an instant on one charge, back by itself in ${SIMUNIT_BLINK_RECHARGE_SECONDS} seconds: an enemy he goes for inside that reach, he blinks straight onto while the charge is up. Right-click an enemy structure or hull with soldiers inside and he blinks in among them, kills every soldier aboard in ${SIMUNIT_PURGE_SECONDS} seconds, and blinks back out; only a hostile garrison offers it. Like the Cyborg he can shut down where he stands: dark and still, he reads as no one's machine and enemy guns pass him by until he powers up. Near death his legs are torn off and he crawls on, still cutting. Medics heal him, engineers repair him. He hears the hive through your Assembly's spire, and goes dark without it.`,
   },
   xenodrone: {
     type: "xenodrone",
@@ -6719,7 +6774,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: RIFLE.penetration,
     caliber: RIFLE.caliber,
     spreadDeg: RIFLE.spreadDeg,
-    blurb: `The hive's line soldier: a body taken and fitted with a pulse carbine in place of a forearm. It shoots like a rifle, a clip and then a short recharge. Several times a soldier's hit points for a few riflemen's price, but slower on its feet. No stance orders; it fights standing. Once a Conversion Chamber has researched the Shield Wall, in a fight it raises a small energy wall in front of it, like the Behemoth's but far weaker (${INFANTRY_SHIELD.hp} points): enemy rounds stop on it and enemies cannot walk through, while it and its side shoot and walk through. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
+    blurb: `The hive's line soldier: a body taken and fitted with a pulse carbine in place of a forearm. It shoots like a rifle, a clip and then a short recharge. Several times a soldier's hit points for a few riflemen's price, but slower on its feet. No stance orders; it fights standing. Once an Assembly has researched the Shield Wall, in a fight it raises a small energy wall in front of it, like the Behemoth's but far weaker (${INFANTRY_SHIELD.hp} points): enemy rounds stop on it and enemies cannot walk through, while it and its side shoot and walk through. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It hears the hive through your Assembly's spire, and goes dark without it.`,
   },
   thrall: {
     type: "thrall",
@@ -6745,7 +6800,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: FISTS.penetration,
     caliber: FISTS.caliber,
     spreadDeg: FISTS.spreadDeg,
-    blurb: "The hive's cheap brawler, quick off the line: a taken body on a heavy frame. It always runs, and it fights with two armoured fists: a soldier it reaches is pummelled down in a few fast blows. An armored hull it reaches, it does not punch: it detonates against the plate and is gone. Sandbags and walls do not stop it; it vaults them. Bullets do little to its plating, but now and then one catches a shoulder and staggers it for a moment. No stance orders. Near death its legs are torn off and it crawls on, still swinging. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.",
+    blurb: "The hive's cheap brawler, quick off the line: a taken body on a heavy frame. It always runs, and it fights with two armoured fists: a soldier it reaches is pummelled down in a few fast blows. An armored hull it reaches, it does not punch: it detonates against the plate and is gone. Sandbags and walls do not stop it; it vaults them. Bullets do little to its plating, but now and then one catches a shoulder and staggers it for a moment. No stance orders. Near death its legs are torn off and it crawls on, still swinging. Medics heal it, engineers repair it. It hears the hive through your Assembly's spire, and goes dark without it.",
   },
   lancer: {
     type: "lancer",
@@ -6771,7 +6826,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: LAUNCHER.penetration,
     caliber: LAUNCHER.caliber,
     spreadDeg: LAUNCHER.spreadDeg,
-    blurb: `Anti-armor cyborg. A plasma lance rides its shoulder and throws a burning bolt like a rocket: loose at full reach, tighter up close, a burst among soldiers that dents a tank. The capacitor on its back recharges the lance between shots. Heavy plating keeps it standing where a Rocketer would fall. Once a Conversion Chamber has researched the Shield Wall, in a fight it raises the Drone's small energy wall in front of it (${INFANTRY_SHIELD.hp} points). No stance orders. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
+    blurb: `Anti-armor cyborg. A plasma lance rides its shoulder and throws a burning bolt like a rocket: loose at full reach, tighter up close, a burst among soldiers that dents a tank. The capacitor on its back recharges the lance between shots. Heavy plating keeps it standing where a Rocketer would fall. Once an Assembly has researched the Shield Wall, in a fight it raises the Drone's small energy wall in front of it (${INFANTRY_SHIELD.hp} points). No stance orders. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It hears the hive through your Assembly's spire, and goes dark without it.`,
   },
   /** Xenite cyborg: a long plasma cannon for one big round from far off; dropped for its fists when closed with. */
   bombard: {
@@ -6799,7 +6854,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rocketAmmo: 5,
     rocketRack: BOMBARD_ROUND,
     plasmaCell: BOMBARD_CELL,
-    blurb: `A taken body on a heavy frame, hauling a long plasma cannon in both arms. It stands, braces, and throws one big plasma round on an arc from long reach (${BOMBARD_RANGE_TILES / TILE_SUBDIV} cells), then waits ${BOMBARD_ROUND.reload} seconds while the cannon charges. Every round drains its energy cell; the cell holds ${BOMBARD_CELL.shots} rounds and regrows one every ${BOMBARD_CELL.rechargeSeconds} seconds. The round bursts wide among soldiers and tells on armor too. Force attack sends it anywhere in that reach, seen or not. It cannot lay the cannon on anything inside ${BOMBARD_MIN_RANGE_TILES / TILE_SUBDIV} cells and must stop and face the target first. Attacked from inside that ring, it drops the cannon where it stands and fights on with two armoured fists like an Enforcer's; the cannon is lost for good and it never picks it up again. Its fists only dent a hull; it does not detonate. No stance orders. Near death its legs are torn off and it crawls on, still fighting. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
+    blurb: `A taken body on a heavy frame, hauling a long plasma cannon in both arms. It stands, braces, and throws one big plasma round on an arc from long reach (${BOMBARD_RANGE_TILES / TILE_SUBDIV} cells), then waits ${BOMBARD_ROUND.reload} seconds while the cannon charges. Every round drains its energy cell; the cell holds ${BOMBARD_CELL.shots} rounds and regrows one every ${BOMBARD_CELL.rechargeSeconds} seconds. The round bursts wide among soldiers and tells on armor too. Force attack sends it anywhere in that reach, seen or not. It cannot lay the cannon on anything inside ${BOMBARD_MIN_RANGE_TILES / TILE_SUBDIV} cells and must stop and face the target first. Attacked from inside that ring, it drops the cannon where it stands and fights on with two armoured fists like an Enforcer's; the cannon is lost for good and it never picks it up again. Its fists only dent a hull; it does not detonate. No stance orders. Near death its legs are torn off and it crawls on, still fighting. Medics heal it, engineers repair it. It hears the hive through your Assembly's spire, and goes dark without it.`,
   },
   /** Xenite cyborg: unarmed support, shields friends under fire and mends hive units. */
   weaver: {
@@ -6824,7 +6879,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     plasmaCell: WEAVER_CELL,
-    blurb: `Support. No weapon. Four needle arms and a spindle of nanites on its back. When a unit of your side is under fire within ${WEAVER_SHIELD_REACH_TILES / TILE_SUBDIV} cells, the Bulwark itself too, it throws a small energy wall in front of it, facing the fire: one soldier wide and ${WEAVER_SHIELD.hp} points strong, standing ${WEAVER_SHIELD.seconds} seconds unless shot down. Enemy rounds stop on it and enemies cannot walk through; your side shoots and walks through. Each wall takes a quarter of its energy cell, which regrows a quarter every ${WEAVER_CELL.rechargeSeconds} seconds. It does not stop shells lobbed from above. Its own energy shield it keeps up for free: a small dome over itself that stops every round, shell, and blast that comes in, while the Bulwark walks and works inside. Force attack a unit of your side and the Bulwark puts that dome over the friend instead, walking after it to keep it within ${WEAVER_SHIELD_REACH_TILES / TILE_SUBDIV} cells; force attack the Bulwark, or Stop, to take it back. The dome's points are the energy cell (${WEAVER_DOME_POINTS_PER_SHOT} a quarter): each hit it absorbs drains the cell, and so does each wall. Drained, the dome is gone until the cell is full again. It also sends a mend every second into each hive unit of yours within ${WEAVER_REACH_TILES / TILE_SUBDIV} cells: ${WEAVER_MEND_CYBORG} HP to a cyborg, ${WEAVER_MEND_HEAVY} to a heavy assimilator or anything else the hive fields. Two Bulwarks on one unit mend it once. It cannot mend itself; another Bulwark can. Torn legs grow back once the body is whole enough. No stance orders. It hears the hive through your Conversion Chamber's spire, and shields and mends nothing while dark.`,
+    blurb: `Support. No weapon. Four needle arms and a spindle of nanites on its back. When a unit of your side is under fire within ${WEAVER_SHIELD_REACH_TILES / TILE_SUBDIV} cells, the Bulwark itself too, it throws a small energy wall in front of it, facing the fire: one soldier wide and ${WEAVER_SHIELD.hp} points strong, standing ${WEAVER_SHIELD.seconds} seconds unless shot down. Enemy rounds stop on it and enemies cannot walk through; your side shoots and walks through. Each wall takes a quarter of its energy cell, which regrows a quarter every ${WEAVER_CELL.rechargeSeconds} seconds. It does not stop shells lobbed from above. Its own energy shield it keeps up for free: a small dome over itself that stops every round, shell, and blast that comes in, while the Bulwark walks and works inside. Force attack a unit of your side and the Bulwark puts that dome over the friend instead, walking after it to keep it within ${WEAVER_SHIELD_REACH_TILES / TILE_SUBDIV} cells; force attack the Bulwark, or Stop, to take it back. The dome's points are the energy cell (${WEAVER_DOME_POINTS_PER_SHOT} a quarter): each hit it absorbs drains the cell, and so does each wall. Drained, the dome is gone until the cell is full again. It also sends a mend every second into each hive unit of yours within ${WEAVER_REACH_TILES / TILE_SUBDIV} cells: ${WEAVER_MEND_CYBORG} HP to a cyborg, ${WEAVER_MEND_HEAVY} to a heavy assimilator or anything else the hive fields. Two Bulwarks on one unit mend it once. It cannot mend itself; another Bulwark can. Torn legs grow back once the body is whole enough. No stance orders. It hears the hive through your Assembly's spire, and shields and mends nothing while dark.`,
   },
   /** Xenite cyborg: cloaked spine sniper. */
   shade: {
@@ -6852,7 +6907,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: SCOPED.penetration,
     caliber: SCOPED.caliber,
     spreadDeg: SCOPED.spreadDeg,
-    blurb: `A lean hunter with a spine rifle grown along its forearm and a skin that drinks the light. The spine reaches as far as a sniper's scope; a hit takes most of a soldier's health, and the hive's spine never needs a truck. While its skin is settled no enemy sees it or can pick it, even on the move. Each shot, and any hit that hurts it, shows it for ${SHADE_REVEAL_SECONDS} seconds, and an enemy within ${SHADE_SPOT_TILES / TILE_SUBDIV} cells always sees it. Thin plating for a cyborg. No stance orders. Near death its legs are torn off and it crawls on, still firing. It hears the hive through your Conversion Chamber's spire, and goes dark without it. Needs a Neural Nexus.`,
+    blurb: `A lean hunter with a spine rifle grown along its forearm and a skin that drinks the light. The spine reaches as far as a sniper's scope; a hit takes most of a soldier's health, and the hive's spine never needs a truck. While its skin is settled no enemy sees it or can pick it, even on the move. Each shot, and any hit that hurts it, shows it for ${SHADE_REVEAL_SECONDS} seconds, and an enemy within ${SHADE_SPOT_TILES / TILE_SUBDIV} cells always sees it. Thin plating for a cyborg. No stance orders. Near death its legs are torn off and it crawls on, still firing. It hears the hive through your Assembly's spire, and goes dark without it. Needs Neural Assembly and a Neural Nexus.`,
   },
   /** Xenite heavy assimilator: four legs and a turreted disruptor, the hive's answer to the Tiger. */
   stalker: {
@@ -7110,7 +7165,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
   conversion: {
     type: "conversion",
     kind: "building",
-    name: "Conversion Chamber",
+    name: "Assembly",
     letter: "C",
     cost: 0,
     energy: 140,
@@ -7199,7 +7254,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `A fusion reactor on a caged plasma well, bigger than a Neural Nexus. It takes as long to raise as eight Fusion Nodes and stores ${FUSION_CORE_ENERGY} energy for the hive, four Fusion Nodes' worth, while it stands. It can research a Fusion Reactor for twice that, a Force Shield of its own, and a Flak Maw on its roof against aircraft. Destroyed, it goes up in the same nuclear blast as a Titan: everything round it is hurt, friend or foe, and small things are levelled. Needs a Neural Nexus to build.`,
+    blurb: `A fusion reactor on a caged plasma well, bigger than a Neural Nexus. It takes as long to raise as eight Fusion Nodes and stores ${FUSION_CORE_ENERGY} energy for the hive, four Fusion Nodes' worth, while it stands. It can research a Fusion Reactor for twice that, a Force Shield of its own, and an Ion Turret on its roof against aircraft. Destroyed, it goes up in the same nuclear blast as a Titan: everything round it is hurt, friend or foe, and small things are levelled. Needs a Neural Nexus to build.`,
   },
   /** Xenite anti-infantry gun: crewless, runs on base power. */
   spineturret: {
@@ -7622,7 +7677,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     ...UNARMED,
     aircraft: true,
     wreckHp: 60,
-    blurb: `The hive's flying capital ship: a vast chitin saucer grown slowly in the Aerie on a great deal of hive energy, one at a time. It lifts out and cruises high, as high as the Wraith, where only anti-air guns reach it, and sees farther than anything else the hive has, ${(t(11.5) + HORTEN_FLYING_SIGHT_BONUS) / TILE_SUBDIV} tiles around it, nearly as far as the Wraith. It flies slowly and never lands. Four mounts work by themselves, each on its own energy cell, each the very gun it is named for: an Ion Turret's twin repeater cuts down soldiers below, a Disruptor Pylon's emitter drives pulses down through tank roofs, a Nova Mortar's cannon throws plasma salvos on the ground out to ${MAWCASTER_RANGE_TILES / TILE_SUBDIV} tiles but never inside ${MAWCASTER_MIN_RANGE_TILES / TILE_SUBDIV}, and a second Nova Mortar cannon spits balls at planes, Jump Jets, and low drones within ${MAWCASTER_AIR_RANGE_TILES / TILE_SUBDIV} tiles. Sent at a target it hangs off it and every mount that can hurt it joins in; otherwise each picks its own. Force attack lays the Ion Turret, the Disruptor Pylon, and the ground cannon on a point or anything on the ground there, and the air cannon on a flier. An unseen energy dome stands round the hull in the air and shimmers only when something strikes it: anti-air fire and air bursts from outside stop on it, draining its ${MOTHERSHIP_DOME.energy} points, and drained it is gone for ${MOTHERSHIP_DOME.rechargeSeconds} seconds. Fire on the ground passes under it. Needs a Neural Nexus.`,
+    blurb: `The hive's flying capital ship: a vast plated cube grown slowly in the Aerie on a great deal of hive energy, one at a time. It lifts out and cruises high, as high as the Wraith, where only anti-air guns reach it, and sees farther than anything else the hive has, ${(t(11.5) + HORTEN_FLYING_SIGHT_BONUS) / TILE_SUBDIV} tiles around it, nearly as far as the Wraith. It flies slowly and carries no guns: it takes what it fights. Up to ${MOTHERSHIP_BEAMS} enemy units at once within ${MOTHERSHIP_BEAM_TILES / TILE_SUBDIV} tiles are first lit by a blue tractor light, bright even at night, and after ${MOTHERSHIP_LIGHT_SECONDS} seconds drawn up into the hull: a soldier in a few seconds, a tank in about five, a ship far longer. Nothing is left behind, and what it absorbs refills its energy dome. A unit that gets out of reach or out of sight before the end breaks free. Sent at a unit it hangs off it and takes it first; otherwise it takes the nearest. An unseen energy dome stands round the hull in the air and shimmers only when something strikes it: anti-air fire and air bursts from outside stop on it, draining its ${MOTHERSHIP_DOME.energy} points, and drained it is gone for ${MOTHERSHIP_DOME.rechargeSeconds} seconds. Fire on the ground passes under it. It is the hungriest thing the hive runs, so when the hive is short of energy it is the first to go offline: it comes down to the ground, where anything can shoot it, or over water sinks out of sight, and lifts again when the power is back. Needs a Neural Nexus.`,
   },
   // ── The Bloom ───────────────────────────────────────────────────────────────────────────
   /** Bloom HQ on the move: a fat seed-pod on root legs. */
@@ -9811,7 +9866,7 @@ export function isCyborg(type: EntityType): boolean {
 /**
  * Runs on a link and shuts down without it: every cyborg but the Commander himself. The
  * Alliance's run on a Cyborg Central or a living Cyborg Commander, the Xenite's on a
- * Conversion Chamber.
+ * Assembly.
  */
 export function onUplink(type: EntityType): boolean {
   return isCyborg(type) && type !== "cyborgcommander";

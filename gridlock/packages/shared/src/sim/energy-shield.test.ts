@@ -179,7 +179,7 @@ describe("hive energy wall", () => {
     assert.equal(energyShieldOf("thrall"), undefined);
   });
 
-  it("a Drone or Lancer raises its wall only while a Conversion Chamber with the Shield Wall stands", () => {
+  it("a Drone or Lancer raises its wall only while an Assembly with the Shield Wall stands", () => {
     const state = field();
     const ts = state.tileSize;
     for (const e of [...state.entities.values()]) if (e.type === "conversion") destroyEntity(state, e);
@@ -216,7 +216,7 @@ describe("hive energy wall", () => {
     assert.ok(!from().has(drone.id) && !from().has(lancer.id));
   });
 
-  it("the Conversion Chamber researches the Shield Wall and the snapshot shows it", () => {
+  it("the Assembly researches the Shield Wall and the snapshot shows it", () => {
     const state = field();
     const ts = state.tileSize;
     const chamber = makeEntity(state, "conversion", "B", tileCenter(60, ts), tileCenter(60, ts));

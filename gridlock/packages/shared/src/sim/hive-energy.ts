@@ -1,4 +1,4 @@
-import { energyOf, energySupplyOfEntity, HIVE_SHORT_SPEED, HIVE_SWITCH_SECONDS, isDefenceStructure, secondsToTicks, upgradeEnergyOf, usesHiveEnergy } from "../catalog.js";
+import { energyOf, energySupplyOfEntity, HIVE_SHORT_SPEED, HIVE_SWITCH_SECONDS, isDefenceStructure, isMothership, secondsToTicks, upgradeEnergyOf, usesHiveEnergy } from "../catalog.js";
 import { isAirborne } from "./air.js";
 import { clearOrder } from "./geo.js";
 import { fenceLinkEnergy, laserFenceLinks, laserFenceReach, totalFenceLinkEnergy, type FencePost } from "./laser-fence.js";
@@ -136,9 +136,13 @@ export function refundJob(p: SimPlayer, job: { paid: number }): void {
   job.paid = 0;
 }
 
-/** May go offline when the hive runs short: a unit on the ground or a defence. Base structures and planes aloft never do. */
+/**
+ * May go offline when the hive runs short: a unit on the ground or a defence. Base structures and
+ * planes aloft never do, but the Mothership does, in the air too: it comes down (sim/mothership.ts).
+ */
 function switchable(e: Entity): boolean {
   if (e.kind === "building") return isDefenceStructure(e.type);
+  if (isMothership(e.type)) return true;
   return !isAirborne(e);
 }
 

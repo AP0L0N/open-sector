@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Xenite base buildings: Hive Core, Fusion Node, Assimilator, Conversion Chamber,
+"""Xenite base buildings: Hive Core, Fusion Node, Assimilator, Assembly,
 Nanite Forge, Neural Nexus, Aerie.
 
 Each writes <id>.png, <id>-cameo.png (96 px), and <id>.json (pad metrics plus
@@ -39,6 +39,14 @@ pad, like core.png, smelter.png, and dynamo.png.
   fusionnode-advanced / fusionnode-ultra: the Fusion Node after Advanced and Ultra Fusion research
   (sim/research.ts). Same plinth and pad; taller, denser coils, a bigger core in gyro hoops, more
   capacitors and vents, and for Ultra a crown of four spires under a glowing ring.
+
+  fusioncore   t(3) x t(3)  the Xenite power core: a shut, ribbed reactor lid on a
+                            caged plasma well, four short coil pylons, a roof
+                            tower on the east corner (the roof Ion Turret's seat)
+  fusioncore-reactor: after Fusion Reactor research. Same plinth, pad and tower; the lid opens on
+  a caged star in a lit torus fed by a plasma stream, the pylons grow into glowing coil spires.
+
+  python tools/sprites/render_xeno_base.py --out ... --only fusioncore fusioncore-reactor
 """
 
 from __future__ import annotations
@@ -681,6 +689,154 @@ def assimilator_spots() -> dict:
     }
 
 
+# ---------------------------------------------------------------- Fusion Core, t(3) x t(3)
+
+FC = 96.0
+FC_C = (44.0, 44.0)
+# The tower on the east corner: its flat roof seats the roof Ion Turret (sim/roof-flak.ts), at the
+# same height on every level so the turret never moves when the reactor lights.
+FC_TOWER = (78.0, 20.0)
+FC_TOWER_TOP = 38.0
+# Research levels (sim/research.ts): plain, and Fusion Reactor. Same plinth, pad and tower, so the
+# core reads as the same building lit: the shut lid opens on a caged star in a lit torus.
+FC_LEVELS = {
+    0: dict(pylon_top=24.0, orb_z=0.0, orb_r=0.0),
+    1: dict(pylon_top=60.0, orb_z=50.0, orb_r=12.0),
+}
+
+
+def flat_ring(m: ra.Mesh, c, r: float, tube: float, mat: str, segs: int = 32) -> None:
+    """A level torus around `c`: short fat rods round a circle."""
+    cx, cy, cz = c
+    pts = [(cx + r * math.cos(2 * math.pi * i / segs), cy + r * math.sin(2 * math.pi * i / segs), cz) for i in range(segs)]
+    for i in range(segs):
+        m.cyl(pts[i], pts[(i + 1) % segs], tube, tube, mat, n=8)
+
+
+def fc_pylons() -> list[tuple[float, float]]:
+    cx, cy = FC_C
+    o = 25.0
+    # On the plinth's side midpoints, two either side of the well, so none stands in front of it.
+    return [(cx + o, cy), (cx, cy + o), (cx - o, cy), (cx, cy - o)]
+
+
+def build_fusioncore(with_pad: bool) -> ra.Mesh:
+    return build_fusioncore_level(with_pad, 0)
+
+
+def build_fusioncore_level(with_pad: bool, level: int) -> ra.Mesh:
+    global RIB_C
+    RIB_C = FC_C
+    L = FC_LEVELS[level]
+    m = ra.Mesh()
+    if with_pad:
+        pad(m, FC, FC)
+    cx, cy = FC_C
+    # Heavy octagonal plinth, a glowing seam, a deck. The Reactor lights a second seam.
+    m.cyl((cx, cy, 1.0), (cx, cy, 5.0), 36.0, 35.0, "steel_dark", n=8)
+    m.cyl((cx, cy, 5.0), (cx, cy, 5.6), 34.6, 34.6, "glow", n=8, caps=False)
+    m.cyl((cx, cy, 5.6), (cx, cy, 9.0), 34.0, 31.0, "steel", n=8)
+    if level >= 1:
+        m.cyl((cx, cy, 8.0), (cx, cy, 8.5), 31.6, 31.6, "glow", n=8, caps=False)
+    # The caged plasma well: a glowing column in a ring of bars.
+    m.cyl((cx, cy, 9.0), (cx, cy, 12.0), 17.0, 16.0, "steel_dark", n=20)
+    well_top = 28.0
+    m.cyl((cx, cy, 12.0), (cx, cy, well_top), 8.0, 7.0, "core", n=20)
+    bars = 10 if level == 0 else 14
+    for k in range(bars):
+        a = 2 * math.pi * k / bars + math.pi / 10
+        b = (cx + 11.0 * math.cos(a), cy + 11.0 * math.sin(a), 12.0)
+        t = (cx + 9.6 * math.cos(a), cy + 9.6 * math.sin(a), well_top)
+        m.cyl(b, t, 1.0, 0.8, "spine", n=6)
+    m.cyl((cx, cy, well_top), (cx, cy, well_top + 3.0), 14.0, 13.0, "steel_dark", n=20)
+    if level == 0:
+        # Shut: a ribbed reactor lid over the well, a cold containment torus round its waist.
+        dome(m, cx, cy, well_top + 3.0, 12.5, 11.0, 3, "ribbed", "glow", n=24)
+        flat_ring(m, (cx, cy, 20.0), 14.5, 2.4, "steel_dark")
+        ball(m, (cx, cy, well_top + 14.5), 2.2, "core", rings=5, n=10)
+    else:
+        orb_z, orb_r = L["orb_z"], L["orb_r"]
+        # Open: the lid gone to a ring, a plasma stream climbing into a caged star.
+        m.cyl((cx, cy, well_top + 3.0), (cx, cy, well_top + 5.0), 12.5, 11.0, "ribbed", n=24, caps=False)
+        m.cyl((cx, cy, well_top + 5.0), (cx, cy, orb_z - orb_r + 1.0), 2.0, 2.8, "hot", n=12)
+        flat_ring(m, (cx, cy, 20.0), 14.5, 2.4, "glow")
+        ball(m, (cx, cy, orb_z), orb_r, "core", rings=12, n=24)
+        hr = orb_r + 1.2
+        # The tokamak: a lit torus under the star's waist on a dark yoke, so the star bulges out of
+        # it, gyro hoops across it.
+        ring_z = orb_z - orb_r * 0.55
+        ring_r = orb_r * 0.84 + 3.0
+        flat_ring(m, (cx, cy, ring_z), ring_r, 1.6, "glow", segs=36)
+        flat_ring(m, (cx, cy, ring_z - 1.4), ring_r + 0.4, 1.1, "steel_dark", segs=36)
+        hoop(m, (cx, cy, orb_z), hr + 0.8, (1.0, -1.0, 0.0), "glow")
+        hoop(m, (cx, cy, orb_z), hr + 1.4, (1.0, 1.0, 0.0), "spine")
+        m.cyl((cx, cy, orb_z + orb_r + 0.5), (cx, cy, orb_z + orb_r + 4.0), 1.6, 0.4, "spine", n=10)
+    # Coil pylons round the well: short and dark while shut, tall glowing spires once lit.
+    top = L["pylon_top"]
+    for sx, sy in fc_pylons():
+        m.box((sx - 4.5, sy - 4.5, 9.0), (sx + 4.5, sy + 4.5, 12.0), "steel_dark", top="roof")
+        m.cyl((sx, sy, 12.0), (sx, sy, top), 3.4, 1.6 if level else 2.6, "ribbed", n=10)
+        step = 4.6 if level == 0 else 3.2
+        for z in np.arange(14.0, top - 4.0, step):
+            r = 3.4 + ((1.6 if level else 2.6) - 3.4) * (z - 12.0) / (top - 12.0)
+            m.cyl((sx, sy, z), (sx, sy, z + step * 0.62), r + 1.3, r + 1.1, "coil", n=12)
+            if level >= 1:
+                m.cyl((sx, sy, z + step * 0.62), (sx, sy, z + step * 0.74), r + 0.8, r + 0.8, "glow", n=12, caps=False)
+        if level == 0:
+            m.cyl((sx, sy, top), (sx, sy, top + 1.5), 2.6, 1.0, "steel_dark", n=10)
+        else:
+            ball(m, (sx, sy, top + 1.4), 2.2, "core", rings=5, n=10)
+            # Prongs into the star from two heights.
+            orb_z = L["orb_z"]
+            m.cyl((sx, sy, orb_z + 3.0), (cx + (sx - cx) * 0.55, cy + (sy - cy) * 0.55, orb_z + 0.6), 1.0, 0.4, "spine", n=6)
+            m.cyl((sx, sy, orb_z - 9.0), (cx + (sx - cx) * 0.6, cy + (sy - cy) * 0.6, orb_z - 6.0), 0.9, 0.35, "spine", n=6)
+        # Conduit from the well's foot to the pylon.
+        m.cyl((cx, cy, 10.0), (sx, sy, 10.6), 1.3, 1.3, "pipe", n=8)
+    # The east tower: ribbed shaft, glowing bands, a flat roof (the Ion Turret's seat).
+    tx, ty = FC_TOWER
+    m.cyl((tx, ty, 1.0), (tx, ty, 4.0), 11.0, 10.5, "steel_dark", n=16)
+    m.cyl((tx, ty, 4.0), (tx, ty, FC_TOWER_TOP - 3.0), 8.6, 7.6, "ribbed", n=16)
+    bands = (12.0, 22.0) if level == 0 else (9.0, 15.0, 21.0, 27.0, 33.0)
+    for z in bands:
+        m.cyl((tx, ty, z), (tx, ty, z + 0.7), 8.5, 8.5, "glow", n=16, caps=False)
+    m.cyl((tx, ty, FC_TOWER_TOP - 3.0), (tx, ty, FC_TOWER_TOP), 9.2, 9.2, "steel_dark", n=16)
+    m.cyl((tx, ty, FC_TOWER_TOP - 0.3), (tx, ty, FC_TOWER_TOP), 9.4, 9.4, "glow" if level else "steel", n=16, caps=False)
+    m.cyl((tx - 5.0, ty + 6.0, 14.0), (cx + 10.0, cy - 12.0, 10.0), 2.0, 2.0, "pipe", n=8)
+    # Capacitor banks on the west: one while shut, three with core caps once lit.
+    caps_at = [(14.0, 74.0)] if level == 0 else [(12.0, 66.0), (18.0, 78.0), (28.0, 84.0)]
+    for px_, py_ in caps_at:
+        h = 16.0 if level == 0 else 20.0
+        m.cyl((px_, py_, 1.0), (px_, py_, h), 4.4, 3.8, "steel", n=12)
+        for z in np.arange(6.0, h - 1.0, 4.0 if level == 0 else 3.0):
+            m.cyl((px_, py_, z), (px_, py_, z + 0.7), 4.2, 4.2, "glow", n=12, caps=False)
+        m.cyl((px_, py_, h), (px_, py_, h + 1.5), 3.8, 1.8, "steel_dark", n=12)
+        if level >= 1:
+            ball(m, (px_, py_, h + 2.3), 1.5, "core", rings=4, n=8)
+    # Glowing vents in the deck toward the camera.
+    vents = (-1, 1) if level == 0 else (-2, -1, 0, 1, 2)
+    for k in vents:
+        vx, vy = cx + 22.0 + k * 4.0, cy + 22.0 - k * 4.0
+        m.box((vx - 1.8, vy - 1.8, 9.0), (vx + 1.8, vy + 1.8, 9.4), "glow")
+    return m
+
+
+def fusioncore_spots() -> dict:
+    return fusioncore_level_spots(0)
+
+
+def fusioncore_level_spots(level: int) -> dict:
+    cx, cy = FC_C
+    L = FC_LEVELS[level]
+    tx, ty = FC_TOWER
+    core_z = L["orb_z"] if level else 20.0
+    return {
+        "core": (cx, cy, core_z),
+        "well": (cx + 6.0, cy + 6.0, 18.0),
+        "roof": (tx, ty, FC_TOWER_TOP),
+        "stack": (cx, cy, (L["orb_z"] + L["orb_r"] + 6.0) if level else 48.0),
+    }
+
+
 # ---------------------------------------------------------------- extra materials (Forge, Nexus)
 
 # The Forge's maw and the Nexus brain: frames set by their builders, read by the texture.
@@ -1179,7 +1335,7 @@ def aerie_spots() -> dict:
     }
 
 
-# ---------------------------------------------------------------- Conversion Chamber, t(2) x t(2)
+# ---------------------------------------------------------------- Assembly, t(2) x t(2)
 
 CC = 64.0
 CC_C = (30.0, 28.0)
@@ -1326,6 +1482,8 @@ BUILDINGS = {
     "fusionnode-advanced": (FN, FN, 3.0, lambda pad_: build_fusionnode_level(pad_, 1), lambda: fusionnode_level_spots(1)),
     "fusionnode-ultra": (FN, FN, 3.0, lambda pad_: build_fusionnode_level(pad_, 2), lambda: fusionnode_level_spots(2)),
     "assimilator": (AS, AS, 2.0, build_assimilator, assimilator_spots),
+    "fusioncore": (FC, FC, 2.0, build_fusioncore, fusioncore_spots),
+    "fusioncore-reactor": (FC, FC, 2.0, lambda pad_: build_fusioncore_level(pad_, 1), lambda: fusioncore_level_spots(1)),
     "forge": (NF, NF, 2.0, build_forge, forge_spots),
     "nexus": (NX, NX, 3.0, build_nexus, nexus_spots),
     "aerie": (AE, AE, 2.0, build_aerie, aerie_spots),

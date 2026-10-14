@@ -37,6 +37,8 @@ import {
   STRUCTURE_QUEUE_CAP,
   canQueueStructure,
   techNeeds,
+  techLevelResearch,
+  hasTechLevel,
   BUILD_REQUIRES,
   TRAIN_TYPES,
   TICK_DT,
@@ -213,7 +215,7 @@ export function mountBattlefield(
   top.append(
     el("span", { attrs: { id: "hud-scrap" }, html: "SCRAP <b>0</b>" }),
     el("span", { class: "scrap-toast", attrs: { id: "scrap-toast" }, text: hiveHud(ctx.match) ? "INSUFFICIENT ENERGY" : "INSUFFICIENT SCRAP" }),
-    el("span", { attrs: { id: "hud-power" }, html: "POWER <b>0 / 0</b>" }),
+    el("span", { attrs: { id: "hud-power" }, html: `POWER <span class="energy-bar"><i style="width:0%"></i></span> <b>0 / 0</b>` }),
     el("span", { attrs: { id: "hud-speed" }, html: "SPEED <b>×1</b>" }),
     el("span", { class: "tiny", attrs: { id: "hud-map" }, text: getMap(ctx.match.mapId)?.name ?? ctx.match.mapId }),
   );
@@ -621,12 +623,16 @@ function oneAtATimeHeld(m: MatchSnapshot, unit: TrainType): "alive" | "queued" |
   return mine.some((e) => e.trainQueue?.some((j) => j.type === unit)) ? "queued" : null;
 }
 
-/** First tech building this unit still needs you to have standing, or null. Mirrors the sim's techMissing. */
-function hudTechMissing(m: MatchSnapshot, unit: TrainType): BuildingType | null {
+/**
+ * Why this unit is still locked for you: the first tech building you still need standing, or the
+ * level research (Advanced Assembly) none of yours holds yet. Null once unlocked. Mirrors the sim's techBlocker.
+ */
+function hudTechMissing(m: MatchSnapshot, unit: TrainType): string | null {
   for (const need of techNeeds(unit)) {
-    if (!m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === need && e.hp > 0 && !e.wreck)) return need;
+    if (!m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === need && e.hp > 0 && !e.wreck)) return `Needs a ${catalog(need).name}.`;
   }
-  return null;
+  const level = hasTechLevel(m.entities, m.youPlayerId, unit) ? undefined : techLevelResearch(unit);
+  return level ? `Needs ${level.name} at your ${catalog(level.buildings[0]!).name}.` : null;
 }
 
 /** An Airfield with a hardstand left for one more plane (parked, flying, or queued). Other producers always pass. */
@@ -758,11 +764,17 @@ export function paintBattleHud(ctx: Ctx): void {
   if (power && !hive) {
     const spd = productionSpeed(m.you.provided, m.you.used);
     const slow = m.you.lowPower ? ` · SLOW ×${spd.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}` : "";
-    // No powered Cyborg Central (Conversion Chamber) and no Commander: your Cyborgs (hive soldiers) are about to go dark.
+    // No powered Cyborg Central (Assembly) and no Commander: your Cyborgs (hive soldiers) are about to go dark.
     const link = m.you.cyborgShutdownIn;
     const linked = viewerFaction(m) === "xeno" ? "HIVE LINK LOST" : "CYBORGS OFF";
     const cyborgs = link != null ? ` · <b class="cyborg-link">${linked} IN ${Math.ceil(link)}s</b>` : "";
-    const next = `POWER <b>${m.you.used} / ${m.you.provided}</b>${slow}${cyborgs}`;
+    // Like the hive's energy bar: blue for the power still spare, solid red once the base draws more than it makes.
+    const spare = m.you.provided > 0 ? Math.max(0, Math.min(1, (m.you.provided - m.you.used) / m.you.provided)) : 0;
+    const out = m.you.lowPower;
+    const bar =
+      `<span class="energy-bar${out ? " is-out" : ""}" role="meter" aria-valuemin="0" aria-valuemax="${m.you.provided}" aria-valuenow="${m.you.provided - m.you.used}">` +
+      `<i style="width:${out ? 100 : Math.round(spare * 100)}%"></i></span>`;
+    const next = `POWER ${bar} <b>${m.you.used} / ${m.you.provided}</b>${slow}${cyborgs}`;
     if (power.innerHTML !== next) power.innerHTML = next;
     power.classList.toggle("low-power", m.you.lowPower || link != null);
   }
@@ -843,6 +855,8 @@ export function paintBattleHud(ctx: Ctx): void {
     btn.classList.toggle("is-disabled", m.you.alive && blocked && looping);
     btn.setAttribute("aria-disabled", String(!m.you.alive || blocked));
     btn.classList.toggle("needs-tech", techMissing);
+    // Not on the sidebar until it is unlocked; a job still queued keeps it there to cancel.
+    btn.classList.toggle("hidden", techMissing && unitJobs.length === 0 && !looping);
     btn.classList.toggle("one-held", held != null);
     btn.classList.toggle("is-continuous", looping);
     const note = !hasProducer
@@ -850,7 +864,7 @@ export function paintBattleHud(ctx: Ctx): void {
       : padsFull
         ? "Every hardstand is taken. Build another Airfield."
         : techMissing
-          ? `Needs a ${catalog(tech).name}.`
+          ? tech
           : held === "alive"
             ? "Only one at a time. Yours is still in the field."
             : held === "queued"
@@ -2005,7 +2019,7 @@ function appendResearch(body: HTMLElement, type: EntityType): void {
   bar.append(el("span"));
   const cancel = el("button", {
     class: "shell research-cancel hidden",
-    attrs: { type: "button", "data-research-cancel": "1", title: "Cancel the upgrade. A Fusion Node or Fusion Core goes back to its full output; a Force Shield or Flak Maw gives its energy back." },
+    attrs: { type: "button", "data-research-cancel": "1", title: "Cancel the upgrade. A Fusion Node or Fusion Core goes back to its full output; a Force Shield or Ion Turret gives its energy back." },
   });
   cancel.append(el("span", { class: "shell-row", text: "Cancel upgrade" }));
   body.append(bar, cancel);

@@ -1,21 +1,38 @@
 import { MAWCASTER_AIR_BALL, MAWCASTER_AIR_RANGE_TILES, MAWCASTER_CELL, NEUTRAL_OWNER, ROOF_FLAK_TURN_DEG_PER_SEC } from "../catalog.js";
 import { launchRocket } from "./combat.js";
+import { isAirborne, isCrashing, planeIsHigh } from "./air.js";
+import { droneIsHigh } from "./drone.js";
 import { muzzleHeight } from "./elevation.js";
+import { allies } from "./geo.js";
 import { resumeShots } from "./hive-ammo.js";
-import { fairGame, mountValue } from "./mothership.js";
 import { nextRand } from "./rng.js";
-import type { Entity, MatchState, MothershipGun } from "./types.js";
+import { hiddenFromAuto } from "./simunit.js";
+import type { Entity, MatchState, MawGun } from "./types.js";
+import { canSeeEntity } from "./vision.js";
 
 /**
  * The Flak Maw (catalog ROOF_FLAK_*, research "flakmaw"): a small anti-air maw on a Fusion Core's
- * roof. It is the Mothership's flak mount on the ground: the Mawcaster's maw on Air attacks
+ * roof: the Mawcaster's maw on Air attacks
  * (MAWCASTER_AIR_BALL), on the Mawcaster's cell. It lays itself on the best flier its side can
  * see in reach, the one it holds first, and leaves the ground alone. The balls leave from the
  * roof as the Mawcaster's own (launcher "mawcaster"), so they home on a flier and burst at its height.
  */
 
+/** A flier the maw reaches: a plane, a Jump Jet, or a drone, low enough. As on the Mawcaster. */
+function flierInReach(o: Entity): boolean {
+  if (o.hp <= 0 || o.wreck || isCrashing(o) || o.garrisonedIn != null) return false;
+  if (o.drone) return !droneIsHigh(o);
+  return isAirborne(o) && !planeIsHigh(o);
+}
+
+/** An enemy the maw may pick for itself: seen by its side, in the open, not hidden. */
+function fairGame(state: MatchState, e: Entity, o: Entity): boolean {
+  if (o.id === e.id || o.ownerId === "" || allies(state, e.ownerId, o.ownerId) || hiddenFromAuto(o) || o.dormant) return false;
+  return canSeeEntity(state, e.ownerId, o);
+}
+
 /** A fresh Flak Maw: its cell full, laid on `facing`. */
-export function newRoofFlak(facing: number): MothershipGun {
+export function newRoofFlak(facing: number): MawGun {
   return { facing, cooldown: 0, energy: MAWCASTER_CELL.shots, drained: false, targetId: null, salvo: 0 };
 }
 
@@ -26,7 +43,7 @@ function angleOff(a: number, b: number): number {
   return d;
 }
 
-function canDraw(gun: MothershipGun): boolean {
+function canDraw(gun: MawGun): boolean {
   return !gun.drained && gun.energy >= 1;
 }
 
@@ -35,8 +52,8 @@ function live(e: Entity): boolean {
 }
 
 /** The flier the maw lays on: the one it holds while it still may, else the nearest in reach. */
-function pick(state: MatchState, e: Entity, gun: MothershipGun, reach: number): Entity | undefined {
-  const ok = (o: Entity) => mountValue("flak", o, false) > 0 && fairGame(state, e, o) && Math.hypot(o.x - e.x, o.y - e.y) <= reach;
+function pick(state: MatchState, e: Entity, gun: MawGun, reach: number): Entity | undefined {
+  const ok = (o: Entity) => flierInReach(o) && fairGame(state, e, o) && Math.hypot(o.x - e.x, o.y - e.y) <= reach;
   if (gun.targetId != null) {
     const held = state.entities.get(gun.targetId);
     if (held && ok(held)) return held;
@@ -56,7 +73,7 @@ function pick(state: MatchState, e: Entity, gun: MothershipGun, reach: number): 
 }
 
 /** One launch of the salvo, the Mawcaster's ripple on Air attacks, then its reload. */
-function fire(state: MatchState, e: Entity, gun: MothershipGun, t: Entity, reach: number): void {
+function fire(state: MatchState, e: Entity, gun: MawGun, t: Entity, reach: number): void {
   const rack = MAWCASTER_AIR_BALL;
   if (gun.salvo <= 0) gun.salvo = rack.salvo;
   const most = rack.volleyMax ?? 1;

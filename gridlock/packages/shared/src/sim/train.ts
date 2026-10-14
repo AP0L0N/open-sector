@@ -1,4 +1,4 @@
-import { AIRFIELD_PADS, BLOOM_GESTATOR, BLOOM_NEST, XENO_BARRACKS, XENO_FACTORY, airfieldOf, canContinuousTrain, catalog, dockOf, isDockType, factionOf, inFaction, isAirfieldType, isAircraftType, isCyborg, isInfantryType, isNavalType, isOneAtATime, secondsToTicks, staysAloft, techNeeds, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, type BuildingType, type TrainType } from "../catalog.js";
+import { AIRFIELD_PADS, hasTechLevel, techLevelResearch, type ResearchDef, BLOOM_GESTATOR, BLOOM_NEST, XENO_BARRACKS, XENO_FACTORY, airfieldOf, canContinuousTrain, catalog, dockOf, isDockType, factionOf, inFaction, isAirfieldType, isAircraftType, isCyborg, isInfantryType, isNavalType, isOneAtATime, secondsToTicks, staysAloft, techNeeds, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, type BuildingType, type TrainType } from "../catalog.js";
 import { airfieldPadWorld, freePad, padsSpoken, parkHeading } from "./air.js";
 import { isAssembler } from "./assembler.js";
 import { makeEntity, newAirState, ownedUnits, rallyPoint, worldToTile } from "./geo.js";
@@ -16,7 +16,7 @@ export type ProducerType = "muster" | "armory" | "airfield" | "aerie" | "roost" 
 
 export function producerType(unit: TrainType): ProducerType {
   const faction = factionOf(unit);
-  // Xenite foot soldiers come out of the Conversion Chamber; the Alliance's cyborgs out of the Cyborg Central.
+  // Xenite foot soldiers come out of the Assembly; the Alliance's cyborgs out of the Cyborg Central.
   if (isCyborg(unit)) return faction === "xeno" ? XENO_BARRACKS : "cyborgcentral";
   if (isAircraftType(unit)) return airfieldOf(faction);
   if (isNavalType(unit)) return dockOf(faction);
@@ -56,6 +56,20 @@ export function techMissing(state: MatchState, playerId: string, unit: TrainType
     if (!have) return need;
   }
   return null;
+}
+
+/** The level research this unit still waits on (Advanced Assembly for a Lancer), or null once one of the player's structures has it. */
+export function levelMissing(state: MatchState, playerId: string, unit: TrainType): ResearchDef | null {
+  if (hasTechLevel(state.entities.values(), playerId, unit)) return null;
+  return techLevelResearch(unit) ?? null;
+}
+
+/** Why `unit` is still locked for the player: a tech building to raise, or a level to research. Null once it is unlocked. */
+function techBlocker(state: MatchState, playerId: string, unit: TrainType): string | null {
+  const tech = techMissing(state, playerId, unit);
+  if (tech) return `Need a ${catalog(tech).name}.`;
+  const level = levelMissing(state, playerId, unit);
+  return level ? `Research ${level.name} at your ${catalog(level.buildings[0]!).name}.` : null;
 }
 
 /**
@@ -113,8 +127,8 @@ export function startTrain(state: MatchState, playerId: string, unit: TrainType)
     if (busy) return "Queue is full.";
     return needProducer(want);
   }
-  const tech = techMissing(state, playerId, unit);
-  if (tech) return `Need a ${catalog(tech).name}.`;
+  const tech = techBlocker(state, playerId, unit);
+  if (tech) return tech;
   pushTrainJob(state, best, unit);
   return null;
 }
@@ -155,8 +169,8 @@ function queueOn(state: MatchState, playerId: string, unit: TrainType, building:
   if (building.ownerId !== playerId || building.hp <= 0 || building.type !== producerType(unit)) return producerNeeded(unit);
   if (building.queue.length >= TRAIN_QUEUE_CAP) return "Queue is full.";
   if (isAirfieldType(building.type) && padsSpoken(state, building) >= AIRFIELD_PADS) return padsFull(building.type);
-  const tech = techMissing(state, playerId, unit);
-  if (tech) return `Need a ${catalog(tech).name}.`;
+  const tech = techBlocker(state, playerId, unit);
+  if (tech) return tech;
   pushTrainJob(state, building, unit);
   return null;
 }

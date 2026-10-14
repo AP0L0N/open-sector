@@ -21,7 +21,7 @@ import type { Entity, EnergyShield, MatchState, Projectile } from "./types.js";
 /**
  * Hive energy walls. A Behemoth, Drone, or Lancer fighting a target in reach
  * raises a curved wall across its front. Drones and Lancers only know how once their side
- * holds a standing Conversion Chamber with the Shield Wall researched (sim/research.ts). The wall stays where it went up. Enemy
+ * holds a standing Assembly with the Shield Wall researched (sim/research.ts). The wall stays where it went up. Enemy
  * rounds and beams that meet it stop there and take points off it; enemy ground
  * units cannot walk through it. Its own side walks and shoots through.
  * A Weaver throws smaller ones in front of friends under fire (sim/weaver.ts).
@@ -349,7 +349,7 @@ function canRaise(state: MatchState, e: Entity): boolean {
 
 const DRILLED: ReadonlySet<EntityType> = new Set(SHIELD_WALL_UNITS);
 
-/** Sides holding a standing Conversion Chamber with the Shield Wall: their Drones and Lancers raise walls. */
+/** Sides holding a standing Assembly with the Shield Wall: their Drones and Lancers raise walls. */
 export function shieldWallSides(state: MatchState): Set<string> {
   const sides = new Set<string>();
   for (const e of state.entities.values()) {
