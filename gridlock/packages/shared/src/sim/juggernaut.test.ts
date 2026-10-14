@@ -126,6 +126,31 @@ describe("Juggernaut", () => {
     assert.equal(j.fists, undefined);
   });
 
+  it("smashes a tank wreck it is ordered onto", () => {
+    const state = field();
+    const j = at(state, "juggernaut", "B", 28, 30);
+    const tank = at(state, "warden", "A", 31, 30);
+    tank.hp = 0;
+    ticks(state, 1);
+    assert.equal(tank.wreck, true);
+    assert.equal(applyCommand(state, "B", { type: "cmd.attack", ids: [j.id], targetId: tank.id }).ok, true);
+    ticks(state, secondsToTicks(4));
+    assert.equal(state.entities.has(tank.id), false, "the hulk is gone");
+  });
+
+  it("its blows break up the wrecks beside what it hits", () => {
+    const state = field();
+    const j = at(state, "juggernaut", "B", 30, 30);
+    const truck = at(state, "supply", "A", 31.5, 30);
+    const hulks = [at(state, "warden", "A", 32, 30.8), at(state, "apocalypse", "A", 32, 29.2)];
+    for (const h of hulks) h.hp = 0;
+    ticks(state, 1);
+    for (const h of hulks) assert.equal(h.wreck, true);
+    assert.equal(applyCommand(state, "B", { type: "cmd.attack", ids: [j.id], targetId: truck.id }).ok, true);
+    ticks(state, secondsToTicks(JUGGERNAUT_HAMMER_SECONDS) + 5);
+    for (const h of hulks) assert.equal(state.entities.has(h.id), false, `${h.type} wreck is gone`);
+  });
+
   it("knocks walls out of a building", () => {
     const state = field();
     const ts = state.tileSize;
