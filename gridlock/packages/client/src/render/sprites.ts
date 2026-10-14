@@ -1423,7 +1423,7 @@ export const MAWCASTER_SPRITE = xenoWalker(mawcasterLegsUrl, mawcasterTurretUrl,
  * (frame 0 is the hit); throw plays once.
  */
 const JUGGERNAUT_CELL = 192;
-const JUGGERNAUT_DRAW = Math.round(77.5 * UNIT_VISUAL_SCALE);
+const JUGGERNAUT_DRAW = Math.round(93 * UNIT_VISUAL_SCALE);
 function juggernautSheet(src: string, frames: number, contactY = 0.82): UnitSpriteDef {
   return { image: loadSheet(src), dirs: 16, frames, frameSize: JUGGERNAUT_CELL, fps: 8, drawSize: JUGGERNAUT_DRAW, contactY, facingSpace: "world" };
 }
