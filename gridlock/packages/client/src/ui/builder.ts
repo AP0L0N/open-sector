@@ -38,8 +38,10 @@ import {
   MAP_BASE_TYPES,
   MAP_DEFENCE_TYPES,
   MAP_UNIT_TYPES,
+  HIDDEN_FACTIONS,
   PATROL_POINTS_MAX,
   catalog,
+  factionOf,
   colorHex,
   connectPatrolPoints,
   copyMapUnit,
@@ -3225,6 +3227,8 @@ function toolsPanel(ctx: Ctx): HTMLElement {
   const unitPal = el("div", { class: "bld-palette three" });
   for (const type of MAP_UNIT_TYPES) {
     if (sidebarGroupOf(type) !== unitTab) continue;
+    // A shelved faction's units stay off the palette; maps that already hold them still load.
+    if (HIDDEN_FACTIONS.has(factionOf(type))) continue;
     const def = catalog(type);
     const art = el("span", { class: "prod-job bld-unit-art", attrs: { "data-type": type } });
     unitPal.append(

@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
   catalog,
+  structureBuildSeconds,
   GAME_SPEED_MIN,
   LOW_POWER_MIN_SPEED,
   TANK_MG,
@@ -163,7 +164,7 @@ describe("construction", () => {
     ticks(state, 10);
     assert.equal(job.progressTicks, frozen);
     state.players.get("A")!.scrap = catalog("dynamo").cost;
-    ticks(state, catalog("dynamo").buildSeconds * 10 + 2);
+    ticks(state, structureBuildSeconds("dynamo") * 10 + 2);
     assert.equal(state.players.get("A")!.structure?.ready, true);
     assert.equal(state.players.get("A")!.scrap, 10);
   });
@@ -177,7 +178,7 @@ describe("construction", () => {
     const b = applyCommand(state, "A", { type: "cmd.build", building: "dynamo" });
     assert.equal(b.ok, true, !b.ok ? b.message : "");
     assert.equal(state.players.get("A")!.scrap, before);
-    ticks(state, catalog("dynamo").buildSeconds * 10 + 2);
+    ticks(state, structureBuildSeconds("dynamo") * 10 + 2);
     const p = state.players.get("A")!;
     assert.equal(p.structure?.ready, true);
     assert.equal(p.structure?.paid, catalog("dynamo").cost);
@@ -288,7 +289,7 @@ describe("construction", () => {
     const again = applyCommand(state, "A", { type: "cmd.build", building: "tower" });
     assert.equal(again.ok, true, !again.ok ? again.message : "");
     applyCommand(state, "A", { type: "cmd.pause", what: "structure", paused: false, building: "dynamo" });
-    ticks(state, catalog("dynamo").buildSeconds * 10);
+    ticks(state, structureBuildSeconds("dynamo") * 10);
     const built = state.players.get("A")!;
     assert.equal(built.structure?.ready, true);
     assert.equal(built.placingType, "dynamo");
@@ -308,7 +309,7 @@ describe("construction", () => {
     assert.equal(built.structure, null);
     assert.equal(built.placingType, null);
     assert.equal(built.defence?.type, "tower");
-    ticks(state, catalog("tower").buildSeconds * 10);
+    ticks(state, structureBuildSeconds("tower") * 10);
     assert.equal(built.defence?.ready, true);
     assert.equal(built.placingType, null);
     const placeTower = applyCommand(state, "A", {
@@ -330,7 +331,7 @@ describe("construction", () => {
     ticks(state, 35);
     const before = state.players.get("A")!.scrap;
     applyCommand(state, "A", { type: "cmd.build", building: "dynamo" });
-    ticks(state, catalog("dynamo").buildSeconds * 10 + 2);
+    ticks(state, structureBuildSeconds("dynamo") * 10 + 2);
     const job = state.players.get("A")!.structure!;
     assert.equal(job.ready, true);
     const pause = applyCommand(state, "A", { type: "cmd.pause", what: "structure", paused: true });
@@ -361,7 +362,7 @@ describe("construction", () => {
     applyCommand(state, "A", { type: "cmd.deploy", id: rig.id });
     ticks(state, 35);
     applyCommand(state, "A", { type: "cmd.build", building: "dynamo" });
-    ticks(state, catalog("dynamo").buildSeconds * 10 + 2);
+    ticks(state, structureBuildSeconds("dynamo") * 10 + 2);
     const core = [...state.entities.values()].find((e) => e.type === "core" && e.ownerId === "A")!;
     applyCommand(state, "A", { type: "cmd.place", building: "dynamo", tx: core.tileX + core.tileW, ty: core.tileY });
     const dyn = [...state.entities.values()].find((e) => e.type === "dynamo")!;
@@ -378,7 +379,7 @@ describe("construction", () => {
     applyCommand(state, "A", { type: "cmd.deploy", id: rig.id });
     ticks(state, 35);
     applyCommand(state, "A", { type: "cmd.build", building: "dynamo" });
-    ticks(state, catalog("dynamo").buildSeconds * 10 + 2);
+    ticks(state, structureBuildSeconds("dynamo") * 10 + 2);
     const core = [...state.entities.values()].find((e) => e.type === "core" && e.ownerId === "A")!;
     applyCommand(state, "A", { type: "cmd.place", building: "dynamo", tx: core.tileX + core.tileW, ty: core.tileY });
     const dyn = [...state.entities.values()].find((e) => e.type === "dynamo")!;
@@ -405,7 +406,7 @@ describe("construction", () => {
     const core = [...state.entities.values()].find((e) => e.type === "core" && e.ownerId === "A")!;
     const b = applyCommand(state, "A", { type: "cmd.build", building: "armory" });
     assert.equal(b.ok, true, !b.ok ? b.message : "");
-    ticks(state, catalog("armory").buildSeconds * 10 + 2);
+    ticks(state, structureBuildSeconds("armory") * 10 + 2);
     const place = applyCommand(state, "A", {
       type: "cmd.place",
       building: "armory",
@@ -420,7 +421,7 @@ describe("construction", () => {
     state.players.get("A")!.scrap += catalog("research").cost;
     const r = applyCommand(state, "A", { type: "cmd.build", building: "research" });
     assert.equal(r.ok, true, !r.ok ? r.message : "");
-    ticks(state, catalog("research").buildSeconds * 10 + 2);
+    ticks(state, structureBuildSeconds("research") * 10 + 2);
     const placeR = applyCommand(state, "A", {
       type: "cmd.place",
       building: "research",
@@ -865,7 +866,7 @@ describe("low power", () => {
     assert.ok(job.progressTicks > 0, "production must keep moving");
     assert.ok(job.progressTicks < 40, `should be slower than full speed, got ${job.progressTicks}`);
     assert.equal(job.ready, false);
-    ticks(state, catalog("dynamo").buildSeconds * 10 * Math.ceil(1 / LOW_POWER_MIN_SPEED) + 8);
+    ticks(state, structureBuildSeconds("dynamo") * 10 * Math.ceil(1 / LOW_POWER_MIN_SPEED) + 8);
     assert.equal(state.players.get("A")!.structure?.ready, true);
   });
 });

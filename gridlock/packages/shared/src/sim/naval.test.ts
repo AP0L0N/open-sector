@@ -15,6 +15,7 @@ import {
   TILE_SUBDIV,
   TRAIN_TYPES,
   catalog,
+  engineerBuildSeconds,
   isEngineerBuilding,
   isNavalType,
   isTorpedoBody,
@@ -220,7 +221,7 @@ describe("engineer raises a Marine Base", () => {
     }
     assert.ok(paidAt >= 0, "the cost was taken");
     assert.ok(builtAt > paidAt, `Marine Base never rose (paid=${paidAt} built=${builtAt})`);
-    assert.ok(builtAt - paidAt >= def.buildSeconds / TICK_DT - 2, `worked ${(builtAt - paidAt) * TICK_DT}s, wants ${def.buildSeconds}s`);
+    assert.ok(builtAt - paidAt >= engineerBuildSeconds("dock") / TICK_DT - 2, `worked ${(builtAt - paidAt) * TICK_DT}s, wants ${engineerBuildSeconds("dock")}s`);
     const dock = [...state.entities.values()].find((e) => e.type === "dock" && e.ownerId === "A")!;
     assert.equal(dock.tileX, tx);
     assert.equal(dock.tileY, ty);

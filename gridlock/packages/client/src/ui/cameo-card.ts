@@ -6,6 +6,8 @@ import {
   canLunge,
   canQueueStructure,
   catalog,
+  isBuildingType,
+  isFieldStructure,
   costFor,
   endlessAmmo,
   energyDomeOf,
@@ -24,6 +26,7 @@ import {
   isTrainType,
   isTransportType,
   isYardField,
+  structureBuildSeconds,
   plasmaCellOf,
   primaryInfantryGun,
   producerType,
@@ -231,7 +234,9 @@ function traitsOf(type: EntityType): string[] {
 export function cameoCard(type: EntityType, faction: Faction): CameoCard {
   const c = catalog(type);
   const meta: CardStat[] = [];
-  if (c.buildSeconds > 0) meta.push({ label: "Build", value: fmtNum(c.buildSeconds), unit: "s" });
+  const isStructure = isBuildingType(type) || isFieldStructure(type) || isYardField(type);
+  const buildSeconds = isStructure ? structureBuildSeconds(type) : c.buildSeconds;
+  if (buildSeconds > 0) meta.push({ label: "Build", value: fmtNum(buildSeconds), unit: "s" });
   if (!usesHiveEnergy(faction) && c.power !== 0) meta.push({ label: "Power", value: c.power > 0 ? `+${c.power}` : `−${-c.power}` });
 
   const body: CardStat[] = [{ label: "HP", value: fmtNum(c.hp) }];

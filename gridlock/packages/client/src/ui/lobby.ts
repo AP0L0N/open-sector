@@ -2,7 +2,7 @@ import {
   AI_DIFFICULTIES,
   AI_PROFILES,
   COLORS,
-  FACTIONS,
+  PICKABLE_FACTIONS,
   FACTION_NAMES,
   getMap,
   listMaps,
@@ -83,7 +83,7 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
     const factionTd = el("td");
     if (occupied(slot)) {
       const sel = el("select", { class: "faction-select", attrs: { "data-slot": String(slot.index) } });
-      for (const f of FACTIONS) {
+      for (const f of PICKABLE_FACTIONS) {
         const o = el("option", { text: FACTION_NAMES[f], attrs: { value: f } });
         if ((slot.faction ?? "alliance") === f) o.selected = true;
         sel.append(o);
