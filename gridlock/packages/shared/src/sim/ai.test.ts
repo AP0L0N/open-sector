@@ -1656,18 +1656,37 @@ describe("Xenite CPU", () => {
     assert.equal(nextStructure(state, aiId), "nexus", "the base lane is not stuck behind the turret");
   });
 
+  /** The CPU's Conversion Chambers already hold the Shield Wall, so its other research is free to run. */
+  function drilled(state: MatchState, aiId: string): void {
+    for (const e of state.entities.values()) if (e.ownerId === aiId && e.type === "conversion") e.shieldWall = true;
+  }
+
+  it("researches the Shield Wall on a Conversion Chamber first, before its build order stands", () => {
+    const { state, aiId } = humanVsXeno();
+    waitCore(state, aiId);
+    standBy(state, aiId, BASE);
+    micro(state, aiId);
+    const chambers = [...state.entities.values()].filter((e) => e.ownerId === aiId && e.type === "conversion");
+    assert.ok(chambers.length > 0, "the build order has a Conversion Chamber");
+    assert.equal(chambers.filter((e) => e.research?.id === "shieldwall").length, 1);
+    const nodes = [...state.entities.values()].filter((e) => e.ownerId === aiId && e.research && e.type !== "conversion");
+    assert.equal(nodes.length, 0, "one at a time");
+  });
+
   it("upgrades one Fusion Node at a time once its build order stands, and not before", () => {
     const researching = (state: MatchState, aiId: string) =>
       [...state.entities.values()].filter((e) => e.ownerId === aiId && e.type === "fusionnode" && e.research);
     const early = humanVsXeno();
     waitCore(early.state, early.aiId);
     standBy(early.state, early.aiId, BASE);
+    drilled(early.state, early.aiId);
     micro(early.state, early.aiId);
     assert.equal(researching(early.state, early.aiId).length, 0, "the build order comes first");
 
     const { state, aiId } = humanVsXeno();
     waitCore(state, aiId);
     standBy(state, aiId, [...BASE, "nexus", "fusionnode", "aerie", "fusionnode", "fusionnode", "fusionnode", "fusionnode", "fusionnode", "fusionnode"]);
+    drilled(state, aiId);
     micro(state, aiId);
     assert.equal(researching(state, aiId).length, 1);
     assert.equal(researching(state, aiId)[0]!.research!.id, "advancedfusion");
@@ -1680,6 +1699,7 @@ describe("Xenite CPU", () => {
     waitCore(state, aiId);
     standBy(state, aiId, [...BASE, "nexus", "fusionnode", "aerie", "fusionnode", "fusionnode", "fusionnode", "fusionnode", "fusionnode", "spineturret"]);
     for (const e of state.entities.values()) if (e.ownerId === aiId && e.type === "fusionnode") e.level = 2;
+    drilled(state, aiId);
     micro(state, aiId);
     const spine = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "spineturret")!;
     assert.equal(spine.research?.id, "forceshield");

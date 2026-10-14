@@ -345,6 +345,8 @@ export interface EntityView {
   research?: { id: ResearchId; progress: number };
   /** Researched Force Shield: the structure holds its own small dome. Everyone sees it. */
   forceShield?: true;
+  /** Researched Shield Wall (a Conversion Chamber): the side's Drones and Lancers raise energy walls. Everyone sees it. */
+  shieldWall?: true;
   /** Force Shield points and full charge (0 while it recharges), drawn as a pale blue bar under the health bar. */
   shield?: { hp: number; max: number };
   /** Titan pods switched off. Friendly snapshots; omitted while on. */

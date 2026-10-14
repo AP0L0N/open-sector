@@ -595,6 +595,8 @@ export interface Entity {
   level?: number;
   /** Researched Force Shield (sim/research.ts): the structure holds its own small energy dome (sim/energy-shield.ts). */
   forceShield?: true;
+  /** Researched Shield Wall on a Conversion Chamber (sim/research.ts): while it stands, the side's Drones and Lancers raise energy walls. */
+  shieldWall?: true;
   /** Force Shield charge kept while its dome is lowered (offline); unset is full. */
   forceShieldHp?: number;
   /** Tick a drained Force Shield dome comes back. */

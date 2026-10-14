@@ -1264,19 +1264,20 @@ export function energySupplyOf(type: string): number {
 }
 /**
  * Research (sim/research.ts): a structure upgrades itself. A level entry lifts its `buildings` from
- * `level - 1` to `level`; a Force Shield entry gives the structure its own small energy dome. It runs
+ * `level - 1` to `level`; a Force Shield entry gives the structure its own small energy dome; Shield
+ * Wall on a Conversion Chamber lets its side's Drones and Lancers raise their energy walls. It runs
  * on the structure for `seconds` at the owner's job pace and costs `cost` scrap as it goes (nothing
  * for the Xenite, who pay no scrap) and `energy` more hive energy for as long as it stands.
  */
-export type ResearchId = "advancedfusion" | "ultrafusion" | "forceshield";
+export type ResearchId = "advancedfusion" | "ultrafusion" | "forceshield" | "shieldwall";
 export interface ResearchDef {
   id: ResearchId;
   name: string;
   buildings: readonly BuildingType[];
   /** The level the structure reaches once it is done. Unset for an upgrade that is not a level. */
   level?: number;
-  /** What it grants instead of a level: the Force Shield's dome. */
-  grants?: "forceShield";
+  /** What it grants instead of a level: the Force Shield's dome, or the Shield Wall drill. */
+  grants?: "forceShield" | "shieldWall";
   seconds: number;
   cost: number;
   /** Hive energy the upgrade takes from the moment it starts, for as long as the structure stands. */
@@ -1296,6 +1297,10 @@ export const FORCE_SHIELD_ENERGY = 30;
 /** The Force Shield dome: a small store, mended while it holds; its radius comes from the footprint (FORCE_SHIELD_MARGIN_TILES past it). */
 export const FORCE_SHIELD_DOME: EnergyDomeDef = { energy: 150, radiusTiles: 0, rechargeSeconds: 15, regenPerSecond: 6 };
 export const FORCE_SHIELD_MARGIN_TILES = 1.5;
+/** Hive energy the Shield Wall drill takes, from the moment its research starts. */
+export const SHIELD_WALL_ENERGY = 20;
+/** The units that raise an energy wall only once their side holds the Shield Wall (wallsNeedDrill). */
+export const SHIELD_WALL_UNITS: readonly EntityType[] = ["xenodrone", "lancer"];
 export const RESEARCH: Record<ResearchId, ResearchDef> = {
   advancedfusion: {
     id: "advancedfusion",
@@ -1328,6 +1333,17 @@ export const RESEARCH: Record<ResearchId, ResearchDef> = {
     effect: `Dome · ${FORCE_SHIELD_ENERGY} energy`,
     blurb: `Wraps the defence in its own energy dome. The dome stops what comes in from outside until its ${FORCE_SHIELD_DOME.energy} points are gone, mends while it holds, and comes back a while after it breaks. Takes ${FORCE_SHIELD_ENERGY} hive energy from the moment the research starts.`,
   },
+  shieldwall: {
+    id: "shieldwall",
+    name: "Shield Wall",
+    buildings: ["conversion"],
+    grants: "shieldWall",
+    seconds: 40,
+    cost: 0,
+    energy: SHIELD_WALL_ENERGY,
+    effect: `Drone & Lancer walls · ${SHIELD_WALL_ENERGY} energy`,
+    blurb: `Teaches the side's Drones and Lancers to raise a curved energy wall across their front when they fight. Holds while a Conversion Chamber with it stands. Takes ${SHIELD_WALL_ENERGY} hive energy from the moment the research starts.`,
+  },
 };
 export const RESEARCH_IDS = Object.keys(RESEARCH) as ResearchId[];
 export function isResearchId(id: unknown): id is ResearchId {
@@ -1348,12 +1364,14 @@ export interface ResearchSubject {
   type: string;
   level?: number;
   forceShield?: boolean;
+  shieldWall?: boolean;
   research?: { id: ResearchId };
 }
 /** Has `e` got what `r` gives? */
 export function researchDone(e: ResearchSubject, r: ResearchDef): boolean {
   if (r.level != null) return (e.level ?? 0) >= r.level;
-  return r.grants === "forceShield" ? !!e.forceShield : false;
+  if (r.grants === "forceShield") return !!e.forceShield;
+  return r.grants === "shieldWall" ? !!e.shieldWall : false;
 }
 /** May `e` start `r` now: its own research, not done, the level before it reached, nothing running. */
 export function canStartResearch(e: ResearchSubject, r: ResearchDef): boolean {
@@ -1379,9 +1397,9 @@ export function energySupplyOfEntity(e: { type: string; level?: number; research
   const levelling = e.research != null && (id == null || RESEARCH[id]?.level != null);
   return levelling ? Math.floor(base * RESEARCH_OUTPUT_SHARE) : base;
 }
-/** Hive energy a structure's upgrades take on top of its own: a Force Shield's, from the moment its research starts. */
+/** Hive energy a structure's upgrades take on top of its own: a Force Shield's or Shield Wall's, from the moment its research starts. */
 export function upgradeEnergyOf(e: ResearchSubject): number {
-  let n = e.forceShield ? FORCE_SHIELD_ENERGY : 0;
+  let n = (e.forceShield ? FORCE_SHIELD_ENERGY : 0) + (e.shieldWall ? SHIELD_WALL_ENERGY : 0);
   const running = e.research ? RESEARCH[e.research.id] : undefined;
   if (running?.energy && !researchDone(e, running)) n += running.energy;
   return n;
@@ -6603,7 +6621,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: RIFLE.penetration,
     caliber: RIFLE.caliber,
     spreadDeg: RIFLE.spreadDeg,
-    blurb: `The hive's line soldier: a body taken and fitted with a pulse carbine in place of a forearm. It shoots like a rifle, a clip and then a short recharge. Several times a soldier's hit points for a few riflemen's price, but slower on its feet. No stance orders; it fights standing. In a fight it raises a small energy wall in front of it, like the Behemoth's but far weaker (${INFANTRY_SHIELD.hp} points): enemy rounds stop on it and enemies cannot walk through, while it and its side shoot and walk through. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
+    blurb: `The hive's line soldier: a body taken and fitted with a pulse carbine in place of a forearm. It shoots like a rifle, a clip and then a short recharge. Several times a soldier's hit points for a few riflemen's price, but slower on its feet. No stance orders; it fights standing. Once a Conversion Chamber has researched the Shield Wall, in a fight it raises a small energy wall in front of it, like the Behemoth's but far weaker (${INFANTRY_SHIELD.hp} points): enemy rounds stop on it and enemies cannot walk through, while it and its side shoot and walk through. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
   },
   thrall: {
     type: "thrall",
@@ -6655,7 +6673,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: LAUNCHER.penetration,
     caliber: LAUNCHER.caliber,
     spreadDeg: LAUNCHER.spreadDeg,
-    blurb: `Anti-armor cyborg. A plasma lance rides its shoulder and throws a burning bolt like a rocket: loose at full reach, tighter up close, a burst among soldiers that dents a tank. The capacitor on its back recharges the lance between shots. Heavy plating keeps it standing where a Rocketer would fall. In a fight it raises the Drone's small energy wall in front of it (${INFANTRY_SHIELD.hp} points). No stance orders. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
+    blurb: `Anti-armor cyborg. A plasma lance rides its shoulder and throws a burning bolt like a rocket: loose at full reach, tighter up close, a burst among soldiers that dents a tank. The capacitor on its back recharges the lance between shots. Heavy plating keeps it standing where a Rocketer would fall. Once a Conversion Chamber has researched the Shield Wall, in a fight it raises the Drone's small energy wall in front of it (${INFANTRY_SHIELD.hp} points). No stance orders. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It hears the hive through your Conversion Chamber's spire, and goes dark without it.`,
   },
   /** Xenite cyborg: a long plasma cannon for one big round from far off; dropped for its fists when closed with. */
   bombard: {

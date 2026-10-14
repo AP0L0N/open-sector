@@ -15,6 +15,7 @@ import {
   energyShieldOf,
   energySupplyOf,
   energyWallOf,
+  SHIELD_WALL_UNITS,
   factionDamage,
   factionOf,
   hasForceField,
@@ -217,7 +218,7 @@ function traitsOf(type: EntityType): string[] {
   add(c.poweredGun, "No crew needed");
   add(c.armorFirst, "Picks armour first");
   add(c.shellResist, "Shrugs off big guns");
-  add(energyShieldOf(type), "Energy shield");
+  add(energyShieldOf(type), SHIELD_WALL_UNITS.includes(type) ? "Energy shield (Shield Wall)" : "Energy shield");
   add(energyDomeOf(type), "Energy dome");
   add(energyWallOf(type), "Energy curtain");
   add(canBurrow(type), "Burrows");
