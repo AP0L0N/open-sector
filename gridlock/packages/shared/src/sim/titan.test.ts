@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   catalog,
+  XENO_TYPES,
   hpMaxOf,
   MORTAR_FLIGHT_NEAR,
   TITAN_ROCKET,
@@ -663,6 +664,19 @@ describe("titan and juggernaut crits", () => {
     const tiger = makeEntity(state, "warden", "A", tileCenter(84, ts), tileCenter(40, ts));
     rollCrits(tiger, "rear", "pen", 10, () => 0);
     assert.equal(tiger.crits.includes("engine"), true, "other hulls still lose theirs");
+  });
+
+  it("no Xenite unit ever takes a broken engine", () => {
+    const { state } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const xenoUnits = [...XENO_TYPES].filter((t) => catalog(t).kind === "unit");
+    assert.ok(xenoUnits.length > 0);
+    for (const type of xenoUnits) {
+      const e = makeEntity(state, type, "A", tileCenter(80, ts), tileCenter(40, ts));
+      for (let i = 0; i < 50; i++) rollCrits(e, "rear", "pen", 10, () => 0);
+      addCrit(e, "engine");
+      assert.equal(e.crits.includes("engine"), false, type);
+    }
   });
 
   it("a titan's smashed lamp comes back on by itself", () => {

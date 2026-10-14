@@ -9651,9 +9651,9 @@ export function hasTracks(type: EntityType): boolean {
  * A side hit, blast, or mine can throw tracks. The Mammoth and aircraft have
  * none to lose. A rear hit can still wreck their engines.
  */
-/** The Juggernaut and the Titan have no engine a hit can break. */
+/** The Juggernaut, the Titan, and every Xenite unit have no engine a hit can break. */
 export function engineCritAllowed(type: EntityType): boolean {
-  return type !== "juggernaut" && type !== "titan";
+  return type !== "juggernaut" && type !== "titan" && factionOf(type) !== "xeno";
 }
 
 export function trackCritAllowed(type: EntityType): boolean {
