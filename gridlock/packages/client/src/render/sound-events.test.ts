@@ -60,6 +60,13 @@ describe("SoundTracker", () => {
     assert.deepEqual(cues(off), ["cancel"]);
     assert.deepEqual(announced(off), ["cancelled"]);
 
+    const spine = (extra: Partial<EntityView> = {}) => building(6, "spineturret", ME, extra);
+    const ward = new SoundTracker();
+    ward.step(snap({ entities: [spine({ research: { id: "forceshield", progress: 0.9 } })] }), 0);
+    const up = ward.step(snap({ entities: [spine({ forceShield: true, shield: { hp: 150, max: 150 } })] }), 100);
+    assert.deepEqual(cues(up), ["complete"], "a Force Shield coming up is an upgrade landing");
+    assert.deepEqual(announced(up), ["researchcomplete"]);
+
     const them = new SoundTracker();
     them.step(snap({ entities: [node({}, "p2")] }), 0);
     const theirs = them.step(snap({ entities: [node({ level: 1 }, "p2")] }), 100);

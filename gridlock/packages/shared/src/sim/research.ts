@@ -1,11 +1,12 @@
-import { catalog, nextResearch, RESEARCH, secondsToTicks, type ResearchId } from "../catalog.js";
+import { canStartResearch, catalog, RESEARCH, researchDone, secondsToTicks, type BuildingType, type ResearchId } from "../catalog.js";
 import { advancePaidJob, jobFullyPaid } from "./production.js";
 import { jobBill, jobSpeed, refundJob } from "./hive-energy.js";
 import type { Entity, MatchState } from "./types.js";
 
 /**
  * Research. A structure that offers it (catalog RESEARCH) upgrades itself one level at a time:
- * the Fusion Node to Advanced Fusion, then to Ultra Fusion. The job runs on the structure itself,
+ * the Fusion Node to Advanced Fusion, then to Ultra Fusion; a Xenite defence to its Force Shield
+ * (a small dome of its own, sim/energy-shield.ts). The job runs on the structure itself,
  * at the owner's job pace (power, or the hive's energy), and takes its scrap as it goes, like a
  * yard job. While it runs a Fusion Node holds only RESEARCH_OUTPUT_SHARE of its energy
  * (energySupplyOfEntity). Cancelled, it gives the scrap back; captured, the job is dropped and
@@ -22,9 +23,10 @@ export type ResearchResult = { ok: true } | { ok: false; reason: string };
 export function researchBlocker(state: MatchState, playerId: string, e: Entity, id: ResearchId): string | null {
   const def = RESEARCH[id];
   if (e.ownerId !== playerId || e.kind !== "building" || !live(e)) return "Select your own structure.";
-  if (def.building !== e.type) return `${catalog(e.type).name} cannot research ${def.name}.`;
+  if (!def.buildings.includes(e.type as BuildingType)) return `${catalog(e.type).name} cannot research ${def.name}.`;
   if (e.research) return "Already researching.";
-  if (nextResearch(e.type, e.level ?? 0)?.id !== id) return (e.level ?? 0) >= def.level ? "Already researched." : "Research the level before it first.";
+  if (researchDone(e, def)) return "Already researched.";
+  if (!canStartResearch(e, def)) return "Research the level before it first.";
   if (!state.players.get(playerId)) return "No such player.";
   return null;
 }
@@ -83,7 +85,8 @@ export function tickResearch(state: MatchState): void {
     const cost = jobBill(p, def.cost);
     advancePaidJob(p, job, cost, speed);
     if (!jobFullyPaid(job, cost)) continue;
-    e.level = def.level;
+    if (def.level != null) e.level = def.level;
+    if (def.grants === "forceShield") e.forceShield = true;
     e.research = undefined;
   }
 }

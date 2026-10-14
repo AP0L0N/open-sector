@@ -11,7 +11,9 @@ import {
   energySupplyOf,
   energySupplyOfEntity,
   levelNameOf,
-  nextResearch,
+  canStartResearch,
+  RESEARCH,
+  researchDone,
   researchOf,
   hiveSpeed,
   usesHiveEnergy,
@@ -1997,7 +1999,7 @@ function appendResearch(body: HTMLElement, type: EntityType): void {
   bar.append(el("span"));
   const cancel = el("button", {
     class: "shell research-cancel hidden",
-    attrs: { type: "button", "data-research-cancel": "1", title: "Cancel the upgrade. The node goes back to its full output." },
+    attrs: { type: "button", "data-research-cancel": "1", title: "Cancel the upgrade. A Fusion Node goes back to its full output; a Force Shield gives its energy back." },
   });
   cancel.append(el("span", { class: "shell-row", text: "Cancel upgrade" }));
   body.append(bar, cancel);
@@ -2008,11 +2010,11 @@ function updateResearch(body: HTMLElement, type: EntityType, mine: EntityView[])
   for (const r of researchOf(type)) {
     const btn = body.querySelector(`[data-research="${r.id}"]`);
     if (!(btn instanceof HTMLElement)) continue;
-    const done = mine.length > 0 && mine.every((e) => (e.level ?? 0) >= r.level);
+    const done = mine.length > 0 && mine.every((e) => researchDone(e, r));
     const on = running.filter((e) => e.research!.id === r.id);
-    const ready = mine.filter((e) => !e.research && nextResearch(e.type, e.level ?? 0)?.id === r.id);
+    const ready = mine.filter((e) => canStartResearch(e, r));
     const pct = on.length > 0 ? Math.floor((on.reduce((n, e) => n + e.research!.progress, 0) / on.length) * 100) : 0;
-    const before = researchOf(type).find((x) => x.level === r.level - 1);
+    const before = r.level != null ? researchOf(type).find((x) => x.level === r.level! - 1) : undefined;
     updateLoadoutButton(btn, {
       count: done ? "Done" : on.length > 0 ? `${pct}%` : ready.length > 0 ? (ready.length > 1 ? `${r.seconds}s ×${ready.length}` : `${r.seconds}s`) : "",
       on: done || on.length > 0,
@@ -2039,7 +2041,11 @@ function updateResearch(body: HTMLElement, type: EntityType, mine: EntityView[])
     const energy = energySupplyOfEntity(focus);
     const line = energySupplyOf(type) > 0
       ? `${name}  ·  ${energy} energy${focus.research ? "  (upgrading)" : ""}`
-      : name;
+      : focus.shield
+        ? `Force Shield  ${focus.shield.hp}/${focus.shield.max}${focus.shield.hp <= 0 ? "  recharging" : ""}`
+        : focus.research
+          ? "Raising its Force Shield"
+          : "No shield";
     setField(body, "level", mine.length > 1 ? `${line}  ·  ×${mine.length}` : line);
   }
 }
@@ -3032,7 +3038,7 @@ function runConfigAction(ctx: Ctx, t: HTMLElement): void {
   const research = t.dataset.research;
   if (research && isResearchId(research)) {
     const ids = selectedOfType(ctx, viewRef, configFocus)
-      .filter((ent) => ent.ownerId === ctx.match!.youPlayerId && !ent.wreck && !ent.research && nextResearch(ent.type, ent.level ?? 0)?.id === research)
+      .filter((ent) => ent.ownerId === ctx.match!.youPlayerId && !ent.wreck && canStartResearch(ent, RESEARCH[research]))
       .map((ent) => ent.id);
     if (ids.length === 0) return;
     ctx.net.send({ type: "cmd.research", ids, research });

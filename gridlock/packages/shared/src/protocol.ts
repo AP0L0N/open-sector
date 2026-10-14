@@ -20,7 +20,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 158;
+export const PROTOCOL_VERSION = 159;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -334,6 +334,10 @@ export interface EntityView {
   level?: number;
   /** Research running on the structure, 0..1 done. Friendly snapshots. */
   research?: { id: ResearchId; progress: number };
+  /** Researched Force Shield: the structure holds its own small dome. Everyone sees it. */
+  forceShield?: true;
+  /** Force Shield points and full charge (0 while it recharges), drawn as a pale blue bar under the health bar. */
+  shield?: { hp: number; max: number };
   /** Titan pods switched off. Friendly snapshots; omitted while on. */
   rocketsOff?: boolean;
   /** Mawcaster set to Air attacks. Friendly snapshots; omitted on Ground attacks. */

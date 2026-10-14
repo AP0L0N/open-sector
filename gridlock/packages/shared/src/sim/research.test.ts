@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
+  FORCE_SHIELD_DOME,
+  FORCE_SHIELD_ENERGY,
   FUSION_NODE_LEVEL_ENERGY,
   HIVE_CORE_ENERGY,
   RESEARCH,
@@ -10,12 +12,14 @@ import {
   TILE_SUBDIV,
   isCivilianType,
   nextResearch,
+  researchOf,
   secondsToTicks,
   type EntityType,
 } from "../catalog.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { destroyEntity, hasCore, hqOf, makeEntity, tileCenter } from "./geo.js";
+import { domeOver } from "./energy-shield.js";
 import { hiveEnergyOf } from "./hive-energy.js";
 import { createMatch, step } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
@@ -126,5 +130,84 @@ describe("research", () => {
     node.ownerId = "A";
     ticks(state, 1);
     assert.equal(node.research, undefined);
+  });
+
+  describe("Force Shield", () => {
+    const domeOf = (state: MatchState, e: Entity) => state.energyShields?.find((d) => d.dome && d.fromId === e.id);
+    const shield = (state: MatchState, e: Entity) => {
+      applyCommand(state, "B", { type: "cmd.research", ids: [e.id], research: "forceshield" });
+      ticks(state, secondsToTicks(RESEARCH.forceshield.seconds) + 2);
+    };
+
+    it("is offered on every Xenite defence and on nothing else", () => {
+      for (const t of ["spineturret", "pulsespire", "energywall", "laserfence"] as const) {
+        assert.ok(researchOf(t).some((r) => r.id === "forceshield"), t);
+      }
+      assert.ok(!researchOf("fusionnode").some((r) => r.id === "forceshield"));
+      assert.ok(!researchOf("hivecore").some((r) => r.id === "forceshield"));
+    });
+
+    it("takes its energy from the moment it starts, and raises a small dome over the defence once done", () => {
+      const state = field();
+      at(state, "fusionnode", 30, 30);
+      const spine = at(state, "spineturret", 40, 40);
+      ticks(state, 1);
+      const before = hiveEnergyOf(state, "B").used;
+      applyCommand(state, "B", { type: "cmd.research", ids: [spine.id], research: "forceshield" });
+      ticks(state, 1);
+      assert.equal(hiveEnergyOf(state, "B").used, before + FORCE_SHIELD_ENERGY);
+      assert.equal(domeOf(state, spine), undefined, "no dome while it researches");
+      ticks(state, secondsToTicks(RESEARCH.forceshield.seconds) + 2);
+      assert.equal(spine.forceShield, true);
+      assert.equal(hiveEnergyOf(state, "B").used, before + FORCE_SHIELD_ENERGY, "the draw stays");
+      const dome = domeOf(state, spine);
+      assert.ok(dome, "the dome stands");
+      assert.equal(dome.hpMax, FORCE_SHIELD_DOME.energy);
+      assert.ok(dome.r > (spine.tileW / 2) * state.tileSize, "past the footprint");
+      assert.ok(dome.r < spine.tileW * 2 * state.tileSize, "but tight to it");
+      assert.equal(domeOver(state, "A", spine.x, spine.y), dome, "it shelters the turret from the enemy");
+      const view = snapshotFor(state, "B").entities.find((e) => e.id === spine.id);
+      assert.deepEqual(view?.shield, { hp: FORCE_SHIELD_DOME.energy, max: FORCE_SHIELD_DOME.energy });
+      assert.equal(view?.forceShield, true);
+    });
+
+    it("drops when drained and comes back after the recharge", () => {
+      const state = field();
+      at(state, "fusionnode", 30, 30);
+      const spine = at(state, "spineturret", 40, 40);
+      shield(state, spine);
+      domeOf(state, spine)!.hp = 0;
+      ticks(state, 1);
+      assert.equal(domeOf(state, spine), undefined);
+      assert.equal(snapshotFor(state, "B").entities.find((e) => e.id === spine.id)?.shield?.hp, 0);
+      ticks(state, secondsToTicks(FORCE_SHIELD_DOME.rechargeSeconds) + 2);
+      assert.ok(domeOf(state, spine), "back up");
+    });
+
+    it("lowers while the defence is offline and keeps what it had", () => {
+      const state = field();
+      at(state, "fusionnode", 30, 30);
+      const spine = at(state, "spineturret", 40, 40);
+      shield(state, spine);
+      const dome = domeOf(state, spine)!;
+      dome.hp = 90;
+      spine.unpowered = true;
+      spine.hiveOffline = true;
+      ticks(state, 1);
+      assert.equal(domeOf(state, spine), undefined);
+      assert.ok((spine.forceShieldHp ?? 0) >= 90 && (spine.forceShieldHp ?? 0) < FORCE_SHIELD_DOME.energy);
+    });
+
+    it("gives an Energy Wall its dome beside its curtain", () => {
+      const state = field();
+      at(state, "fusionnode", 30, 30);
+      at(state, "fusionnode", 34, 30);
+      const wall = at(state, "energywall", 40, 40);
+      ticks(state, 2);
+      assert.ok(state.energyShields?.some((d) => d.post && d.fromId === wall.id), "the curtain stands");
+      shield(state, wall);
+      assert.ok(state.energyShields?.some((d) => d.post && d.fromId === wall.id), "the curtain still stands");
+      assert.ok(domeOf(state, wall), "and the dome over the core");
+    });
   });
 });

@@ -1675,6 +1675,16 @@ describe("Xenite CPU", () => {
     assert.equal(researching(state, aiId).length, 1, "one at a time");
   });
 
+  it("wraps a defence in a Force Shield once its Fusion Nodes are fully upgraded", () => {
+    const { state, aiId } = humanVsXeno();
+    waitCore(state, aiId);
+    standBy(state, aiId, [...BASE, "nexus", "fusionnode", "aerie", "fusionnode", "fusionnode", "fusionnode", "fusionnode", "fusionnode", "spineturret"]);
+    for (const e of state.entities.values()) if (e.ownerId === aiId && e.type === "fusionnode") e.level = 2;
+    micro(state, aiId);
+    const spine = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "spineturret")!;
+    assert.equal(spine.research?.id, "forceshield");
+  });
+
   it("roots as many Spine Turrets as its type calls for", () => {
     for (const ai of ["defensive", "aggressive"] as const) {
       const { state, aiId } = humanVsXeno(ai);

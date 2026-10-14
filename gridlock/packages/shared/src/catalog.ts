@@ -1241,19 +1241,24 @@ export function energySupplyOf(type: string): number {
   return type === "hivecore" ? HIVE_CORE_ENERGY : type === "fusionnode" ? FUSION_NODE_ENERGY : type === "fusioncore" ? FUSION_CORE_ENERGY : 0;
 }
 /**
- * Research (sim/research.ts): a structure upgrades itself, one level at a time. Each entry lifts
- * its `building` from `level - 1` to `level`; it runs on the structure for `seconds` at the
- * owner's job pace and costs `cost` scrap up front (nothing for the Xenite, who pay no scrap).
+ * Research (sim/research.ts): a structure upgrades itself. A level entry lifts its `buildings` from
+ * `level - 1` to `level`; a Force Shield entry gives the structure its own small energy dome. It runs
+ * on the structure for `seconds` at the owner's job pace and costs `cost` scrap as it goes (nothing
+ * for the Xenite, who pay no scrap) and `energy` more hive energy for as long as it stands.
  */
-export type ResearchId = "advancedfusion" | "ultrafusion";
+export type ResearchId = "advancedfusion" | "ultrafusion" | "forceshield";
 export interface ResearchDef {
   id: ResearchId;
   name: string;
-  building: BuildingType;
-  /** The level the structure reaches once it is done. */
-  level: number;
+  buildings: readonly BuildingType[];
+  /** The level the structure reaches once it is done. Unset for an upgrade that is not a level. */
+  level?: number;
+  /** What it grants instead of a level: the Force Shield's dome. */
+  grants?: "forceShield";
   seconds: number;
   cost: number;
+  /** Hive energy the upgrade takes from the moment it starts, for as long as the structure stands. */
+  energy?: number;
   /** One short line for the button: what the structure gives once it is done. */
   effect: string;
   blurb: string;
@@ -1262,11 +1267,18 @@ export interface ResearchDef {
 export const FUSION_NODE_LEVEL_ENERGY: readonly number[] = [FUSION_NODE_ENERGY, 400, 600];
 /** While a structure researches its next level, it gives this share of what it gives now. */
 export const RESEARCH_OUTPUT_SHARE = 0.5;
+/** Every Xenite defence can research a Force Shield. */
+export const FORCE_SHIELD_BUILDINGS: readonly BuildingType[] = ["spineturret", "pulsespire", "energywall", "laserfence"];
+/** Hive energy one Force Shield takes, from the moment its research starts. */
+export const FORCE_SHIELD_ENERGY = 30;
+/** The Force Shield dome: a small store, mended while it holds; its radius comes from the footprint (FORCE_SHIELD_MARGIN_TILES past it). */
+export const FORCE_SHIELD_DOME: EnergyDomeDef = { energy: 150, radiusTiles: 0, rechargeSeconds: 15, regenPerSecond: 6 };
+export const FORCE_SHIELD_MARGIN_TILES = 1.5;
 export const RESEARCH: Record<ResearchId, ResearchDef> = {
   advancedfusion: {
     id: "advancedfusion",
     name: "Advanced Fusion",
-    building: "fusionnode",
+    buildings: ["fusionnode"],
     level: 1,
     seconds: 45,
     effect: `${FUSION_NODE_LEVEL_ENERGY[1]} energy`,
@@ -1276,29 +1288,59 @@ export const RESEARCH: Record<ResearchId, ResearchDef> = {
   ultrafusion: {
     id: "ultrafusion",
     name: "Ultra Fusion",
-    building: "fusionnode",
+    buildings: ["fusionnode"],
     level: 2,
     seconds: 75,
     effect: `${FUSION_NODE_LEVEL_ENERGY[2]} energy`,
     cost: 0,
     blurb: `A four-coil crown around a caged star: ${FUSION_NODE_LEVEL_ENERGY[2]} energy instead of ${FUSION_NODE_LEVEL_ENERGY[1]}. While it upgrades the node holds only half its energy.`,
   },
+  forceshield: {
+    id: "forceshield",
+    name: "Force Shield",
+    buildings: FORCE_SHIELD_BUILDINGS,
+    grants: "forceShield",
+    seconds: 30,
+    cost: 0,
+    energy: FORCE_SHIELD_ENERGY,
+    effect: `Dome · ${FORCE_SHIELD_ENERGY} energy`,
+    blurb: `Wraps the defence in its own energy dome. The dome stops what comes in from outside until its ${FORCE_SHIELD_DOME.energy} points are gone, mends while it holds, and comes back a while after it breaks. Takes ${FORCE_SHIELD_ENERGY} hive energy from the moment the research starts.`,
+  },
 };
 export const RESEARCH_IDS = Object.keys(RESEARCH) as ResearchId[];
 export function isResearchId(id: unknown): id is ResearchId {
   return typeof id === "string" && Object.prototype.hasOwnProperty.call(RESEARCH, id);
 }
-/** Every research `type` offers, in level order. */
+/** Every research `type` offers: its levels in order, then the rest. */
 export function researchOf(type: string): ResearchDef[] {
-  return RESEARCH_IDS.map((id) => RESEARCH[id]).filter((r) => r.building === type).sort((a, b) => a.level - b.level);
+  return RESEARCH_IDS.map((id) => RESEARCH[id])
+    .filter((r) => r.buildings.includes(type as BuildingType))
+    .sort((a, b) => (a.level ?? 99) - (b.level ?? 99));
 }
-/** The research a `type` structure at `level` may start next, if any. */
+/** The level research a `type` structure at `level` may start next, if any. */
 export function nextResearch(type: string, level = 0): ResearchDef | undefined {
   return researchOf(type).find((r) => r.level === level + 1);
 }
-/** The highest level `type` can be researched to; 0 when it has no research. */
+/** What research knows of a structure: the snapshot view and the sim entity both fit. */
+export interface ResearchSubject {
+  type: string;
+  level?: number;
+  forceShield?: boolean;
+  research?: { id: ResearchId };
+}
+/** Has `e` got what `r` gives? */
+export function researchDone(e: ResearchSubject, r: ResearchDef): boolean {
+  if (r.level != null) return (e.level ?? 0) >= r.level;
+  return r.grants === "forceShield" ? !!e.forceShield : false;
+}
+/** May `e` start `r` now: its own research, not done, the level before it reached, nothing running. */
+export function canStartResearch(e: ResearchSubject, r: ResearchDef): boolean {
+  if (!r.buildings.includes(e.type as BuildingType) || e.research || researchDone(e, r)) return false;
+  return r.level == null || (e.level ?? 0) === r.level - 1;
+}
+/** The highest level `type` can be researched to; 0 when it has no level research. */
 export function maxLevelOf(type: string): number {
-  return researchOf(type).reduce((n, r) => Math.max(n, r.level), 0);
+  return researchOf(type).reduce((n, r) => Math.max(n, r.level ?? 0), 0);
 }
 /** Display names of a structure's levels, from "" at the base: the Fusion Node's are Advanced and Ultra. */
 export function levelNameOf(type: string, level = 0): string {
@@ -1309,9 +1351,18 @@ export function levelNameOf(type: string, level = 0): string {
  * Hive energy one standing structure adds: the Fusion Node by its level, and half of that while it
  * researches the next one.
  */
-export function energySupplyOfEntity(e: { type: string; level?: number; research?: unknown }): number {
+export function energySupplyOfEntity(e: { type: string; level?: number; research?: { id: ResearchId } | unknown }): number {
   const base = e.type === "fusionnode" ? (FUSION_NODE_LEVEL_ENERGY[Math.min(e.level ?? 0, FUSION_NODE_LEVEL_ENERGY.length - 1)] ?? FUSION_NODE_ENERGY) : energySupplyOf(e.type);
-  return e.research ? Math.floor(base * RESEARCH_OUTPUT_SHARE) : base;
+  const id = (e.research as { id?: ResearchId } | undefined)?.id;
+  const levelling = e.research != null && (id == null || RESEARCH[id]?.level != null);
+  return levelling ? Math.floor(base * RESEARCH_OUTPUT_SHARE) : base;
+}
+/** Hive energy a structure's upgrades take on top of its own: a Force Shield's, from the moment its research starts. */
+export function upgradeEnergyOf(e: ResearchSubject): number {
+  let n = e.forceShield ? FORCE_SHIELD_ENERGY : 0;
+  const running = e.research ? RESEARCH[e.research.id] : undefined;
+  if (running?.energy && !researchDone(e, running)) n += running.energy;
+  return n;
 }
 /** Scrap `type` costs a player of `faction`. */
 export function costFor(type: EntityType, faction: Faction): number {

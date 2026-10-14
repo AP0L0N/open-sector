@@ -580,7 +580,7 @@ export class SoundTracker {
     if (e.wreck || e.hp <= 0) return;
     const own = e.ownerId === me;
     const at = { type: e.type, x: e.x, y: e.y, own };
-    if ((e.level ?? 0) > (prev.level ?? 0)) {
+    if ((e.level ?? 0) > (prev.level ?? 0) || (e.forceShield && !prev.forceShield)) {
       out.push({ kind: "research", cue: "complete", ...at });
       if (own) out.push({ kind: "announce", event: "researchcomplete" });
       return;

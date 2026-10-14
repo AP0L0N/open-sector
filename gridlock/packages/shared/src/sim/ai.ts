@@ -46,6 +46,7 @@ import {
   catalog,
   energyOf,
   energySupplyOfEntity,
+  FORCE_SHIELD_ENERGY,
   nextResearch,
   usesHiveEnergy,
   dockOf,
@@ -481,24 +482,38 @@ function thinkXeno(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): v
 /** Fusion Nodes the Xenite CPU holds before it starts upgrading them. */
 const XENO_RESEARCH_AFTER_NODES = 3;
 
+/** Xenite defences the CPU wraps in a Force Shield; Laser Fence posts are too many to be worth it. */
+const XENO_SHIELDED: ReadonlySet<string> = new Set(["spineturret", "pulsespire", "energywall"]);
+
 /**
- * One Fusion Node upgrade at a time, the least upgraded node first, once the build order stands and
- * the dip while it upgrades keeps the hive at zero or above.
+ * One upgrade at a time, once the build order stands. First the least upgraded Fusion Node, when the
+ * dip while it upgrades keeps the hive at zero or above; else the oldest defence still bare gets its
+ * Force Shield, when the hive keeps HIVE_ENERGY_LOW free after the shield's draw.
  */
 function researchXeno(state: MatchState, p: SimPlayer): void {
-  let pick: Entity | undefined;
+  let node: Entity | undefined;
+  let bare: Entity | undefined;
   let nodes = 0;
   for (const e of state.entities.values()) {
-    if (e.ownerId !== p.playerId || e.type !== "fusionnode" || e.hp <= 0 || e.ruined) continue;
+    if (e.ownerId !== p.playerId || e.kind !== "building" || e.hp <= 0 || e.ruined) continue;
     if (e.research) return;
-    nodes++;
-    if (!nextResearch(e.type, e.level ?? 0)) continue;
-    if (!pick || (e.level ?? 0) < (pick.level ?? 0)) pick = e;
+    if (e.type === "fusionnode") {
+      nodes++;
+      if (nextResearch(e.type, e.level ?? 0) && (!node || (e.level ?? 0) < (node.level ?? 0))) node = e;
+    } else if (XENO_SHIELDED.has(e.type) && !e.forceShield && (!bare || e.id < bare.id)) bare = e;
   }
-  if (!pick || nodes < XENO_RESEARCH_AFTER_NODES || xenoOrderNext(state, p) != null) return;
-  const dip = energySupplyOfEntity(pick) - energySupplyOfEntity({ ...pick, research: true });
-  if (hiveFreeAfterQueue(state, p) - dip < 0) return;
-  applyCommand(state, p.playerId, { type: "cmd.research", ids: [pick.id], research: nextResearch(pick.type, pick.level ?? 0)!.id });
+  if (nodes < XENO_RESEARCH_AFTER_NODES || xenoOrderNext(state, p) != null) return;
+  const free = hiveFreeAfterQueue(state, p);
+  if (node) {
+    const dip = energySupplyOfEntity(node) - energySupplyOfEntity({ ...node, research: true });
+    if (free - dip >= 0) {
+      applyCommand(state, p.playerId, { type: "cmd.research", ids: [node.id], research: nextResearch(node.type, node.level ?? 0)!.id });
+      return;
+    }
+  }
+  if (bare && free - FORCE_SHIELD_ENERGY >= HIVE_ENERGY_LOW) {
+    applyCommand(state, p.playerId, { type: "cmd.research", ids: [bare.id], research: "forceshield" });
+  }
 }
 
 /** Hive energy free for a new unit or defence; Infinity for a side that pays scrap. */

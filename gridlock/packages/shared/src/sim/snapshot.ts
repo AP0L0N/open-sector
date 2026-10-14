@@ -57,7 +57,7 @@ import { artilleryCanLay, gunCrewOf } from "./artillery.js";
 import { crateViews, mineViews, payloadOf, planeRiders } from "./airdrop.js";
 import { cyborgShielded } from "./crits.js";
 import { assemblerCharge } from "./assembler.js";
-import { domeCharge } from "./energy-shield.js";
+import { domeCharge, forceShieldView } from "./energy-shield.js";
 import { plasmaCharge } from "./hive-ammo.js";
 import { hiveEnergyOf } from "./hive-energy.js";
 import { laserProgress } from "./laser.js";
@@ -523,6 +523,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       unpowered: e.kind === "building" && e.unpowered ? true : undefined,
       hiveDark: e.kind === "building" && e.hiveDark ? true : undefined,
       level: e.kind === "building" && e.level ? e.level : undefined,
+      forceShield: e.kind === "building" && e.forceShield ? true : undefined,
+      shield: e.kind === "building" && e.forceShield ? forceShieldView(state, e) : undefined,
       research: friendly && e.research ? { id: e.research.id, progress: Math.round((e.research.progressTicks / e.research.totalTicks) * 1000) / 1000 } : undefined,
       holdPosition: friendly && e.holdPosition ? true : undefined,
       patrol:
