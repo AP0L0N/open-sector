@@ -4359,6 +4359,13 @@ export const WEAVER_CELL: PlasmaCellDef = { shots: 4, rechargeSeconds: 5 };
 export const WEAVER_DOME_POINTS_PER_SHOT = 40;
 /** World px the dome stands out from the body it covers. */
 export const WEAVER_DOME_PAD_PX = 5;
+/**
+ * A Weaver's wall or dome stands about the unit it covers, at its radius plus WEAVER_DOME_PAD_PX,
+ * never under WEAVER_SHIELD.arcPx. Up to WEAVER_FULL_SHIELD_PX (a soldier's) it holds its full
+ * points; a bigger one spreads the same energy thinner and holds WEAVER_FULL_SHIELD_PX / r of them,
+ * so a dome on a Behemoth soaks about half of what it does on a cyborg and drains the cell twice as fast.
+ */
+export const WEAVER_FULL_SHIELD_PX = 12;
 export const WEAVER_MEND_CYBORG = 5;
 export const WEAVER_MEND_HEAVY = 4;
 
@@ -6911,7 +6918,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     plasmaCell: WEAVER_CELL,
-    blurb: `Support. No weapon. Four needle arms and a spindle of nanites on its back. When a unit of your side is under fire within ${WEAVER_SHIELD_REACH_TILES / TILE_SUBDIV} cells, the Bulwark itself too, it throws a small energy wall in front of it, facing the fire: one soldier wide and ${WEAVER_SHIELD.hp} points strong, standing ${WEAVER_SHIELD.seconds} seconds unless shot down. Enemy rounds stop on it and enemies cannot walk through; your side shoots and walks through. Each wall takes a quarter of its energy cell, which regrows a quarter every ${WEAVER_CELL.rechargeSeconds} seconds. It does not stop shells lobbed from above. Its own energy shield it keeps up for free: a small dome over itself that stops every round, shell, and blast that comes in, while the Bulwark walks and works inside. Force attack a unit of your side and the Bulwark puts that dome over the friend instead, walking after it to keep it within ${WEAVER_SHIELD_REACH_TILES / TILE_SUBDIV} cells; force attack the Bulwark, or Stop, to take it back. The dome's points are the energy cell (${WEAVER_DOME_POINTS_PER_SHOT} a quarter): each hit it absorbs drains the cell, and so does each wall. Drained, the dome is gone until the cell is full again. It also sends a mend every second into each hive unit of yours within ${WEAVER_REACH_TILES / TILE_SUBDIV} cells: ${WEAVER_MEND_CYBORG} HP to a cyborg, ${WEAVER_MEND_HEAVY} to a heavy assimilator or anything else the hive fields. Two Bulwarks on one unit mend it once. It cannot mend itself; another Bulwark can. Torn legs grow back once the body is whole enough. No stance orders. It hears the hive through your Assembly's spire, and shields and mends nothing while dark.`,
+    blurb: `Support. No weapon. Four needle arms and a spindle of nanites on its back. When a unit of your side is under fire within ${WEAVER_SHIELD_REACH_TILES / TILE_SUBDIV} cells, the Bulwark itself too, it throws a small energy wall in front of it, facing the fire: wrapped to the unit's size, ${WEAVER_SHIELD.hp} points strong on a soldier and thinner the bigger the unit, standing ${WEAVER_SHIELD.seconds} seconds unless shot down. Enemy rounds stop on it and enemies cannot walk through; your side shoots and walks through. Each wall takes a quarter of its energy cell, which regrows a quarter every ${WEAVER_CELL.rechargeSeconds} seconds. It does not stop shells lobbed from above. Its own energy shield it keeps up for free: a small dome over itself that stops every round, shell, and blast that comes in, while the Bulwark walks and works inside. Force attack a unit of your side and the Bulwark puts that dome over the friend instead, walking after it to keep it within ${WEAVER_SHIELD_REACH_TILES / TILE_SUBDIV} cells; force attack the Bulwark, or Stop, to take it back. The dome fits the unit under it. Its points are the energy cell (${WEAVER_DOME_POINTS_PER_SHOT} a quarter on a soldier, fewer on anything bigger): each hit it absorbs drains the cell, and so does each wall. Drained, the dome is gone until the cell is full again. It also sends a mend every second into each hive unit of yours within ${WEAVER_REACH_TILES / TILE_SUBDIV} cells: ${WEAVER_MEND_CYBORG} HP to a cyborg, ${WEAVER_MEND_HEAVY} to a heavy assimilator or anything else the hive fields. Two Bulwarks on one unit mend it once. It cannot mend itself; another Bulwark can. Torn legs grow back once the body is whole enough. No stance orders. It hears the hive through your Assembly's spire, and shields and mends nothing while dark.`,
   },
   /** Xenite cyborg: cloaked spine sniper. */
   shade: {

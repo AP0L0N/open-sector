@@ -7,6 +7,7 @@ import {
   WEAVER_SHIELD_GAP_SECONDS,
   WEAVER_DOME_PAD_PX,
   WEAVER_DOME_POINTS_PER_SHOT,
+  WEAVER_FULL_SHIELD_PX,
   WEAVER_SHIELD_REACH_TILES,
   factionOf,
   isCyborg,
@@ -110,6 +111,8 @@ export function tickWeaverShields(state: MatchState): void {
     }
     if (!best) continue;
     const from = fire.get(best.id)!;
+    const r = weaveRadius(best);
+    const hp = WEAVER_SHIELD.hp * weaveStrength(r);
     walls.push({
       id: state.nextId++,
       ownerId: w.ownerId,
@@ -119,15 +122,25 @@ export function tickWeaverShields(state: MatchState): void {
       y: best.y,
       angle: Math.atan2(from.y - best.y, from.x - best.x),
       half: (WEAVER_SHIELD.halfDeg * Math.PI) / 180,
-      r: WEAVER_SHIELD.arcPx,
-      hp: WEAVER_SHIELD.hp,
-      hpMax: WEAVER_SHIELD.hp,
+      r,
+      hp,
+      hpMax: hp,
       life: WEAVER_SHIELD.seconds,
     });
     drawPlasma(w);
     w.shieldReady = state.tick + secondsToTicks(WEAVER_SHIELD_GAP_SECONDS);
     guarded.add(best.id);
   }
+}
+
+/** A Weaver shield's radius about `o`: its body plus the pad, never under a soldier's wall. */
+export function weaveRadius(o: Entity): number {
+  return Math.max(WEAVER_SHIELD.arcPx, o.radius + WEAVER_DOME_PAD_PX);
+}
+
+/** 0–1: the share of its points a Weaver shield of radius `r` holds. The bigger, the thinner. */
+export function weaveStrength(r: number): number {
+  return Math.min(1, WEAVER_FULL_SHIELD_PX / r);
 }
 
 /** Ground units under fire, each with the nearest enemy that has it targeted and in reach. */
@@ -162,6 +175,7 @@ function weaveHolds(state: MatchState, w: Entity, o: Entity): boolean {
  * friend, over that friend while the friend is in shield reach (the Weaver walks after it when it
  * has nothing else to do). The dome's points are the Weaver's cell, WEAVER_DOME_POINTS_PER_SHOT a
  * shot: each hit it absorbs drains the cell by its damage, and so does every wall the Weaver throws.
+ * Both fit the unit they cover, and the bigger they stand the fewer points they hold (weaveStrength).
  * At empty the dome is gone, and it is cast again only once the cell is full.
  */
 export function tickWeaverDomes(state: MatchState): void {
@@ -189,10 +203,14 @@ export function tickWeaverDomes(state: MatchState): void {
       friend = undefined;
     }
     const holder = friend ?? w;
+    const r = weaveRadius(holder);
+    // Points for each shot in the cell, fewer the bigger the dome.
+    const perShot = WEAVER_DOME_POINTS_PER_SHOT * weaveStrength(r);
     const s = domes?.get(w.id);
     if (s) {
+      // Hits are paid at the rate of the dome that took them, before it moves to another holder.
       const absorbed = Math.max(0, (s.synced ?? s.hp) - s.hp);
-      if (absorbed > 0) w.energy = Math.max(0, (w.energy ?? cell.shots) - absorbed / WEAVER_DOME_POINTS_PER_SHOT);
+      if (absorbed > 0) w.energy = Math.max(0, (w.energy ?? cell.shots) - absorbed / (s.hpMax / cell.shots));
       const left = w.energy ?? cell.shots;
       // Broken, or the cell all but spent (the sliver it regrew since is not a shield).
       if (s.hp <= 0 || left < DOME_FLOOR_SHOTS) {
@@ -202,18 +220,18 @@ export function tickWeaverDomes(state: MatchState): void {
         w.weaveSpent = true;
         continue;
       }
-      s.hp = s.synced = left * WEAVER_DOME_POINTS_PER_SHOT;
-      s.hpMax = cell.shots * WEAVER_DOME_POINTS_PER_SHOT;
+      s.hp = s.synced = left * perShot;
+      s.hpMax = cell.shots * perShot;
       s.x = holder.x;
       s.y = holder.y;
-      s.r = holder.radius + WEAVER_DOME_PAD_PX;
+      s.r = r;
       s.forId = holder === w ? undefined : holder.id;
       continue;
     }
     const left = w.energy ?? cell.shots;
     if (w.weaveSpent && left < cell.shots - 1e-6) continue;
     w.weaveSpent = undefined;
-    const hp = left * WEAVER_DOME_POINTS_PER_SHOT;
+    const hp = left * perShot;
     shields.push({
       id: state.nextId++,
       ownerId: w.ownerId,
@@ -223,9 +241,9 @@ export function tickWeaverDomes(state: MatchState): void {
       y: holder.y,
       angle: 0,
       half: Math.PI,
-      r: holder.radius + WEAVER_DOME_PAD_PX,
+      r,
       hp,
-      hpMax: cell.shots * WEAVER_DOME_POINTS_PER_SHOT,
+      hpMax: cell.shots * perShot,
       life: 0,
       dome: true,
       weave: true,
