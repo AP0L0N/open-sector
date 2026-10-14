@@ -20,7 +20,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 171;
+export const PROTOCOL_VERSION = 172;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -271,6 +271,8 @@ export interface EntityView {
   absorb?: { by: number; light: number; u: number };
   /** A Mothership beaming its crew down: the ground spots its beams point at, and how far along 0–1. */
   drop?: { x: number; y: number; u: number }[];
+  /** A Mothership's ground scans: each square's centre, and whether it stays on a unit it found. */
+  scans?: { x: number; y: number; lock?: true }[];
   /** Seconds left on a magazine change. Allied infantry. Omitted when idle. */
   reload?: number;
   /** Seconds until a planted support weapon can fire. Gunner bipod, or the mortar tube. Omitted once it is set. */

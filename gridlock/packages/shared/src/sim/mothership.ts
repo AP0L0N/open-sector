@@ -15,6 +15,12 @@ import {
   MOTHERSHIP_DROP_MAX_TILES,
   MOTHERSHIP_DROP_MIN_TILES,
   MOTHERSHIP_DROP_SECONDS,
+  MOTHERSHIP_DROP_STAGGER_SECONDS,
+  MOTHERSHIP_DROP_TRIGGER_TILES,
+  MOTHERSHIP_SCANS,
+  MOTHERSHIP_SCAN_ROAM_TILES,
+  MOTHERSHIP_SCAN_SIDE_TILES,
+  MOTHERSHIP_SCAN_TILES_PER_SEC,
   MOTHERSHIP_SHOCKWAVE,
   isArmoredType,
   isGarrisonable,
@@ -164,6 +170,7 @@ export function tickMotherships(state: MatchState, dt: number): void {
     if (!isMothership(e.type) || !e.mothership) continue;
     tickBeams(state, e, dt);
     tickCrew(state, e, dt);
+    tickScans(state, e, dt);
   }
 }
 
@@ -287,28 +294,62 @@ function beamUp(state: MatchState, c: Entity): void {
   destroyEntity(state, c);
 }
 
+/** Open dry ground a crewman can stand on at (x, y), and no other spot already on it. */
+function standable(state: MatchState, x: number, y: number, taken: readonly { x: number; y: number }[]): boolean {
+  const ts = state.tileSize;
+  const tx = worldToTile(x, ts);
+  const ty = worldToTile(y, ts);
+  if (isWater(state, tx, ty) || !walkable(state, tx, ty, "lancer")) return false;
+  return !taken.some((p) => Math.hypot(p.x - x, p.y - y) < ts * 2);
+}
+
 /**
- * Open ground for `n` crew round the ship: random spots MOTHERSHIP_DROP_MIN_TILES to
- * MOTHERSHIP_DROP_MAX_TILES out, on dry ground a soldier can stand on, not on top of each other.
- * Fewer, or none, where there is not that much ground.
+ * Where the beams fall: one per crewman, each toward a random one of `foes` (not onto it), with a
+ * little spread, MOTHERSHIP_DROP_MIN_TILES to MOTHERSHIP_DROP_MAX_TILES out from under the ship and
+ * never past the foe it points at, on open dry ground. A beam with no ground that way looks round
+ * the ship instead.
  */
-function dropSpots(state: MatchState, e: Entity, n: number): { x: number; y: number }[] {
+function dropSpots(state: MatchState, e: Entity, n: number, foes: readonly Entity[]): { x: number; y: number }[] {
   const ts = state.tileSize;
   const min = MOTHERSHIP_DROP_MIN_TILES * ts;
   const max = MOTHERSHIP_DROP_MAX_TILES * ts;
   const out: { x: number; y: number }[] = [];
-  for (let tries = 0; tries < n * 12 && out.length < n; tries++) {
-    const a = nextRand(state) * Math.PI * 2;
-    const r = min + Math.sqrt(nextRand(state)) * (max - min);
-    const x = e.x + Math.cos(a) * r;
-    const y = e.y + Math.sin(a) * r;
-    const tx = worldToTile(x, ts);
-    const ty = worldToTile(y, ts);
-    if (isWater(state, tx, ty) || !walkable(state, tx, ty, "lancer")) continue;
-    if (out.some((p) => Math.hypot(p.x - x, p.y - y) < ts * 3)) continue;
-    out.push({ x: (tx + 0.5) * ts, y: (ty + 0.5) * ts });
+  for (let k = 0; k < n; k++) {
+    const foe = foes[Math.floor(nextRand(state) * foes.length)]!;
+    const toward = Math.atan2(foe.y - e.y, foe.x - e.x);
+    const reach = Math.max(min, Math.min(max, Math.hypot(foe.x - e.x, foe.y - e.y) - foe.radius - ts));
+    let spot: { x: number; y: number } | null = null;
+    for (let tries = 0; tries < 16 && !spot; tries++) {
+      // Toward the foe first; wider and wider round the ship if that ground is taken or wet.
+      const spread = (tries < 10 ? 0.45 : Math.PI) * (nextRand(state) * 2 - 1);
+      const r = min + nextRand(state) * Math.max(0, reach - min);
+      const x = e.x + Math.cos(toward + spread) * r;
+      const y = e.y + Math.sin(toward + spread) * r;
+      if (standable(state, x, y, out)) spot = { x: (worldToTile(x, ts) + 0.5) * ts, y: (worldToTile(y, ts) + 0.5) * ts };
+    }
+    if (spot) out.push(spot);
   }
   return out;
+}
+
+/** Enemies it sees within MOTHERSHIP_DROP_TRIGGER_TILES on the ground: what a beam-down answers. */
+function closeFoes(state: MatchState, e: Entity): Entity[] {
+  const reach = MOTHERSHIP_DROP_TRIGGER_TILES * state.tileSize;
+  const out: Entity[] = [];
+  for (const o of state.entities.values()) {
+    if (Math.abs(o.x - e.x) > reach || Math.abs(o.y - e.y) > reach) continue;
+    if (o.hp <= 0 || o.wreck || o.ownerId === "" || o.garrisonedIn != null || allies(state, e.ownerId, o.ownerId) || hiddenFromAuto(o)) continue;
+    if (o.kind === "building" ? o.ruined : isAirborne(o) || !!o.drone) continue;
+    if (Math.hypot(o.x - e.x, o.y - e.y) > reach || !canSeeEntity(state, e.ownerId, o)) continue;
+    out.push(o);
+  }
+  return out;
+}
+
+/** Its dome is down: broken, and waiting out its recharge (sim/energy-shield.ts). Not merely not cast yet. */
+function domeDown(state: MatchState, e: Entity): boolean {
+  if (state.energyShields?.some((s) => s.dome && s.fromId === e.id && s.hp > 0)) return false;
+  return e.shieldReady != null && state.tick < e.shieldReady;
 }
 
 /** The crew still missing, in MOTHERSHIP_CREW order: whatever has been lost since the last drop. */
@@ -357,23 +398,41 @@ function tickCrew(state: MatchState, e: Entity, dt: number): void {
       ms.drop = undefined;
       return;
     }
-    ms.drop.t -= dt;
-    if (ms.drop.t > 0) return;
+    // Each crewman on his own beam's clock: a few land together, the rest a moment later.
+    const left: typeof ms.drop.spots = [];
     for (const p of ms.drop.spots) {
+      p.t -= dt;
+      if (p.t > 0) {
+        left.push(p);
+        continue;
+      }
       const c = makeEntity(state, p.type, e.ownerId, p.x, p.y, { facing: Math.atan2(p.y - e.y, p.x - e.x) });
       c.beamedBy = e.id;
       ms.crew.push(c.id);
       blinkAt(state, c);
     }
-    ms.drop = undefined;
+    ms.drop = left.length > 0 ? { spots: left } : undefined;
     return;
   }
-  if (!working(e) || ms.calm > 0 || ms.dropCooldown > 0) return;
+  // Only with its dome down, foes close, and the last crew gone: then all of them at once.
+  if (!working(e) || ms.dropCooldown > 0 || crew.length > 0 || !domeDown(state, e)) return;
+  const foes = closeFoes(state, e);
+  if (foes.length === 0) return;
   const types = missingCrew(crew);
-  if (types.length === 0) return;
-  const spots = dropSpots(state, e, types.length);
+  // Shuffled, so the Lancers are not always the last beams down.
+  for (let i = types.length - 1; i > 0; i--) {
+    const k = Math.floor(nextRand(state) * (i + 1));
+    [types[i], types[k]] = [types[k]!, types[i]!];
+  }
+  const spots = dropSpots(state, e, types.length, foes);
   if (spots.length === 0) return;
-  ms.drop = { t: MOTHERSHIP_DROP_SECONDS, spots: spots.map((p, i) => ({ ...p, type: types[i]! })) };
+  ms.drop = {
+    spots: spots.map((p, i) => {
+      // In quarter seconds, so now and then two land together.
+      const total = MOTHERSHIP_DROP_SECONDS + Math.round(nextRand(state) * MOTHERSHIP_DROP_STAGGER_SECONDS * 4) / 4;
+      return { ...p, type: types[i]!, t: total, total };
+    }),
+  };
   ms.dropCooldown = MOTHERSHIP_DROP_COOLDOWN_SECONDS;
 }
 
@@ -381,8 +440,113 @@ function tickCrew(state: MatchState, e: Entity, dt: number): void {
 export function dropView(e: Entity): { x: number; y: number; u: number }[] | undefined {
   const d = e.mothership?.drop;
   if (!d) return undefined;
-  const u = Math.round(Math.max(0, Math.min(1, 1 - d.t / MOTHERSHIP_DROP_SECONDS)) * 100) / 100;
-  return d.spots.map((p) => ({ x: p.x, y: p.y, u }));
+  return d.spots.map((p) => ({ x: p.x, y: p.y, u: Math.round(Math.max(0, Math.min(1, 1 - p.t / Math.max(1e-6, p.total))) * 100) / 100 }));
+}
+
+/** A fresh wander point for a scan: anywhere within MOTHERSHIP_SCAN_ROAM_TILES of the ship, on the map. */
+function roamPoint(state: MatchState, e: Entity): { x: number; y: number } {
+  const ts = state.tileSize;
+  const a = nextRand(state) * Math.PI * 2;
+  const r = Math.sqrt(nextRand(state)) * MOTHERSHIP_SCAN_ROAM_TILES * ts;
+  return {
+    x: Math.max(ts, Math.min(state.width * ts - ts, e.x + Math.cos(a) * r)),
+    y: Math.max(ts, Math.min(state.height * ts - ts, e.y + Math.sin(a) * r)),
+  };
+}
+
+/** A unit a scan may stay on: an enemy on the ground or the water its side sees, not yet in the ship's beam reach. */
+function scanFinds(state: MatchState, e: Entity, o: Entity): boolean {
+  if (o.kind !== "unit" || o.hp <= 0 || o.wreck || o.garrisonedIn != null || o.ownerId === "" || allies(state, e.ownerId, o.ownerId)) return false;
+  if (isAirborne(o) || o.drone || hiddenFromAuto(o) || diving(o)) return false;
+  if (inReach(state, e, o)) return false;
+  return canSeeEntity(state, e.ownerId, o);
+}
+
+/**
+ * One Mothership's ground scans: MOTHERSHIP_SCANS small squares that wander round it while it flies
+ * and runs. One that finds an enemy unit inside its square stays on it, following, until the ship
+ * has it within its beam reach or it is gone; then it wanders on. Down or offline, they go out.
+ */
+function tickScans(state: MatchState, e: Entity, dt: number): void {
+  const ms = e.mothership!;
+  if (!working(e)) {
+    ms.scans = undefined;
+    return;
+  }
+  const ts = state.tileSize;
+  const scans = (ms.scans ??= []);
+  while (scans.length < MOTHERSHIP_SCANS) {
+    const to = roamPoint(state, e);
+    scans.push({ x: e.x, y: e.y, tx: to.x, ty: to.y });
+  }
+  const half = (MOTHERSHIP_SCAN_SIDE_TILES * ts) / 2;
+  const roam = MOTHERSHIP_SCAN_ROAM_TILES * ts;
+  const step = MOTHERSHIP_SCAN_TILES_PER_SEC * ts * dt;
+  for (const sc of scans) {
+    if (sc.lock != null) {
+      const o = state.entities.get(sc.lock);
+      if (o && o.hp > 0 && !o.wreck && !allies(state, e.ownerId, o.ownerId) && !inReach(state, e, o)) {
+        sc.x = o.x;
+        sc.y = o.y;
+        continue;
+      }
+      sc.lock = undefined;
+      const to = roamPoint(state, e);
+      sc.tx = to.x;
+      sc.ty = to.y;
+    }
+    // Wander: on to the point, and a new one there, or when the ship has left it behind.
+    const d = Math.hypot(sc.tx - sc.x, sc.ty - sc.y);
+    if (d <= step || Math.hypot(sc.tx - e.x, sc.ty - e.y) > roam * 1.2) {
+      if (d <= step) {
+        sc.x = sc.tx;
+        sc.y = sc.ty;
+      }
+      const to = roamPoint(state, e);
+      sc.tx = to.x;
+      sc.ty = to.y;
+    } else {
+      sc.x += ((sc.tx - sc.x) / d) * step;
+      sc.y += ((sc.ty - sc.y) / d) * step;
+    }
+    // Anything in its square? It stays on the nearest, unless another scan already has it.
+    let best: Entity | undefined;
+    let bestD = Infinity;
+    for (const o of state.entities.values()) {
+      if (Math.abs(o.x - sc.x) > half || Math.abs(o.y - sc.y) > half) continue;
+      if (scans.some((q) => q.lock === o.id) || !scanFinds(state, e, o)) continue;
+      const dd = Math.hypot(o.x - sc.x, o.y - sc.y);
+      if (dd < bestD) {
+        bestD = dd;
+        best = o;
+      }
+    }
+    if (best) sc.lock = best.id;
+  }
+}
+
+/** The ground scans for the client: each square's centre, and whether it is on a unit. */
+export function scansView(e: Entity): { x: number; y: number; lock?: true }[] | undefined {
+  const sc = e.mothership?.scans;
+  if (!sc || sc.length === 0) return undefined;
+  return sc.map((q) => ({ x: Math.round(q.x * 10) / 10, y: Math.round(q.y * 10) / 10, ...(q.lock != null ? { lock: true as const } : {}) }));
+}
+
+/** Ground every Mothership on `playerId`'s side scans now, in whole tiles, for that side's sight. */
+export function mothershipScanRects(state: MatchState, playerId: string): { x0: number; y0: number; x1: number; y1: number }[] {
+  const out: { x0: number; y0: number; x1: number; y1: number }[] = [];
+  const side = MOTHERSHIP_SCAN_SIDE_TILES;
+  for (const e of state.entities.values()) {
+    const sc = e.mothership?.scans;
+    if (!sc || sc.length === 0 || !allies(state, playerId, e.ownerId)) continue;
+    for (const q of sc) {
+      const x0 = worldToTile(q.x, state.tileSize) - Math.floor(side / 2);
+      const y0 = worldToTile(q.y, state.tileSize) - Math.floor(side / 2);
+      const r = { x0: Math.max(0, x0), y0: Math.max(0, y0), x1: Math.min(state.width - 1, x0 + side - 1), y1: Math.min(state.height - 1, y0 + side - 1) };
+      if (r.x0 <= r.x1 && r.y0 <= r.y1) out.push(r);
+    }
+  }
+  return out;
 }
 
 /** Share of the full blow at `dist`: all of it inside the core, falling off to edgeShare at the edge. */

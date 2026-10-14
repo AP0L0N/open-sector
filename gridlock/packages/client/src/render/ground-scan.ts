@@ -113,6 +113,32 @@ export function drawScanEdge(
   ctx.restore();
 }
 
+/**
+ * A Mothership's ground scan holding on a unit it found: bright corner brackets closing in on the
+ * square and pulsing. `corners` are the square's four corners on screen, clockwise from the north.
+ */
+export function drawScanLock(ctx: CanvasRenderingContext2D, corners: readonly Pt[], now: number, seed: number): void {
+  if (corners.length !== 4) return;
+  const pulse = 0.65 + 0.35 * Math.sin(now * 0.008 + seed);
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.lineWidth = 2;
+  ctx.lineCap = "round";
+  ctx.strokeStyle = `rgba(170, 255, 215, ${0.85 * pulse})`;
+  for (let i = 0; i < 4; i++) {
+    const c = corners[i]!;
+    const a = corners[(i + 3) % 4]!;
+    const b = corners[(i + 1) % 4]!;
+    const k = 0.28;
+    ctx.beginPath();
+    ctx.moveTo(c.x + (a.x - c.x) * k, c.y + (a.y - c.y) * k);
+    ctx.lineTo(c.x, c.y);
+    ctx.lineTo(c.x + (b.x - c.x) * k, c.y + (b.y - c.y) * k);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 /** Where the sweep line crosses the square at `now`: across it north to south and back, one pass every few seconds. */
 export function sweepAt(r: { x0: number; y0: number; x1: number; y1: number }, now: number, slot: number): { y: number } {
   const period = 5200;

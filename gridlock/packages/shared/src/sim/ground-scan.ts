@@ -7,6 +7,7 @@ import {
   TILE_SUBDIV,
 } from "../catalog.js";
 import { allies, worldToTile } from "./geo.js";
+import { mothershipScanRects } from "./mothership.js";
 import type { GroundScan, MatchState } from "./types.js";
 
 /**
@@ -105,7 +106,7 @@ export function scanRect(s: { x: number; y: number; open: number }, width: numbe
   return r.x0 > r.x1 || r.y0 > r.y1 ? null : r;
 }
 
-/** Ground `playerId`'s side sees from orbit: every allied scan's square as it stands now. */
+/** Ground `playerId`'s side sees from orbit: every allied scan's square as it stands now, and its Motherships' small roaming ones. */
 export function scanRects(state: MatchState, playerId: string): ScanRect[] {
   const out: ScanRect[] = [];
   for (const p of state.players.values()) {
@@ -115,5 +116,6 @@ export function scanRects(state: MatchState, playerId: string): ScanRect[] {
       if (r) out.push(r);
     }
   }
+  out.push(...mothershipScanRects(state, playerId));
   return out;
 }

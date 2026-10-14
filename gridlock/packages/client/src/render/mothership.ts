@@ -36,6 +36,70 @@ export function mothershipDrawSize(tileSize: number): number {
   return screenPerUnit / MOTHERSHIP_MODEL.scaleFrac;
 }
 
+/** The cube's energy shield stands this much wider than the cube round it. */
+export const CUBE_SHIELD_SCALE = 1.3;
+
+/**
+ * The Mothership's energy shield on screen, when something strikes it: a box of light round the
+ * cube, not a bubble. `mid` is the ship's drawn middle; the box is the cube's own corners projected
+ * on the sheet row drawn for `facing`, CUBE_SHIELD_SCALE wide (times `swell`). Its faces glow faintly
+ * and its twelve edges brighter, the three at the far bottom corner dim behind the rest. `glow` 0–1.
+ */
+export function drawCubeShield(
+  ctx: CanvasRenderingContext2D,
+  mid: { x: number; y: number },
+  facing: number,
+  drawSize: number,
+  tileSize: number,
+  glow: number,
+  swell = 1,
+): void {
+  if (glow <= 0.002) return;
+  const yaw = rowYaw(shipRow(facing, tileSize));
+  const k = MOTHERSHIP_MODEL.scaleFrac * drawSize;
+  const h = (MOTHERSHIP_MODEL.half + MOTHERSHIP_MODEL.relief) * CUBE_SHIELD_SCALE * swell;
+  const corners: { x: number; y: number; far: number; z: number; i: number }[] = [];
+  let n = 0;
+  for (const x of [-h, h]) {
+    for (const y of [-h, h]) {
+      for (const z of [-h, h]) {
+        const gx = x * Math.cos(yaw) - y * Math.sin(yaw);
+        const gy = x * Math.sin(yaw) + y * Math.cos(yaw);
+        corners.push({ x: mid.x + gx * k, y: mid.y - (gy * Math.sin(Math.PI / 6) + z * COS_CAM) * k, far: gy, z, i: n++ });
+      }
+    }
+  }
+  // The corner hidden behind the box: the farthest one at the bottom.
+  const hidden = corners.filter((c) => c.z < 0).reduce((a, b) => (b.far > a.far ? b : a));
+  const hull = convexHull(corners);
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  hull.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+  ctx.closePath();
+  const g = ctx.createRadialGradient(mid.x, mid.y, 0, mid.x, mid.y, h * k * 1.6);
+  g.addColorStop(0, `rgba(90, 240, 165, ${0.05 * glow})`);
+  g.addColorStop(1, `rgba(160, 255, 210, ${0.2 * glow})`);
+  ctx.fillStyle = g;
+  ctx.fill();
+  // Twelve edges: corners one coordinate apart (index bits 4, 2, 1 are x, y, z).
+  for (const a of corners) {
+    for (const bit of [1, 2, 4]) {
+      if (a.i & bit) continue;
+      const b = corners[a.i | bit]!;
+      const back = a === hidden || b === hidden;
+      ctx.lineWidth = back ? 1 : 1.6;
+      ctx.strokeStyle = `rgba(200, 255, 228, ${(back ? 0.22 : 0.7) * glow})`;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
 /** The cube's shadow is a square this share of the hull radius from its middle to each side. */
 export const MOTHERSHIP_SHADOW_HALF = (MOTHERSHIP_MODEL.half + MOTHERSHIP_MODEL.relief) / MOTHERSHIP_MODEL.hullR;
 

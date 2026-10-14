@@ -18,6 +18,9 @@ import {
   MOTHERSHIP_DROP_MAX_TILES,
   MOTHERSHIP_DROP_MIN_TILES,
   MOTHERSHIP_DROP_SECONDS,
+  MOTHERSHIP_DROP_STAGGER_SECONDS,
+  MOTHERSHIP_SCAN_ROAM_TILES,
+  MOTHERSHIP_SCAN_SIDE_TILES,
   MOTHERSHIP_SHOCKWAVE,
   TICK_DT,
   TILE_SUBDIV,
@@ -42,6 +45,7 @@ import { destroyEntity, hasCore, hqOf, isWater, makeEntity, tileCenter, worldToT
 import { hiveEnergyOf } from "./hive-energy.js";
 import { createMatch, step } from "./match.js";
 import { absorbSecondsOf } from "./mothership.js";
+import { scanRects } from "./ground-scan.js";
 import { snapshotFor } from "./snapshot.js";
 import { producerType } from "./train.js";
 import type { Entity, MatchState } from "./types.js";
@@ -342,67 +346,148 @@ describe("Mothership", () => {
     assert.equal(shore.hp, shore.hpMax);
   });
 
-  /** A ship with a crew to drop, and a foe in sight it cannot absorb and will not soon kill: a Stuka overhead. */
-  function dropField(): { state: MatchState; ship: Entity; foe: Entity } {
+  /** A ship with a crew to drop, and foes close by it cannot absorb: two enemy Watch Towers, east and south. */
+  function dropField(opts: { domeDown?: boolean; far?: boolean } = {}): { state: MatchState; ship: Entity; foes: Entity[] } {
     const state = dry();
     const ship = shipOver(state, 60, 60, "A", true);
-    const foe = makeEntity(state, "stuka", "B", tileCenter(east(60, 6), state.tileSize), tileCenter(60, state.tileSize));
-    foe.air!.phase = "fly";
-    foe.air!.alt = AIR_CRUISE_ALT;
-    foe.air!.speed = 0;
-    foe.hpMax = foe.hp = 1e7;
-    return { state, ship, foe };
+    const ts = state.tileSize;
+    const d = opts.far ? 12 : 6;
+    const foes = [
+      makeEntity(state, "tower", "B", tileCenter(east(60, d), ts), tileCenter(60, ts), { tileX: east(60, d), tileY: 60 }),
+      makeEntity(state, "tower", "B", tileCenter(60, ts), tileCenter(60 + d * TILE_SUBDIV, ts), { tileX: 60, tileY: 60 + d * TILE_SUBDIV }),
+    ];
+    for (const f of foes) f.hpMax = f.hp = 1e7;
+    run(state, 0.2);
+    if (opts.domeDown !== false) state.energyShields!.find((s) => s.fromId === ship.id)!.hp = 0;
+    return { state, ship, foes };
   }
 
   const crewOf = (state: MatchState, ship: Entity) => [...state.entities.values()].filter((e) => e.beamedBy === ship.id);
+  const bearing = (from: { x: number; y: number }, to: { x: number; y: number }) => Math.atan2(to.y - from.y, to.x - from.x);
+  const angleGap = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
 
-  it("in a fight, beams its crew down: five beams at open ground, then three Drones and two Lancers under them", () => {
+  it("beams its crew down only with its dome down and enemies close", () => {
+    const up = dropField({ domeDown: false });
+    run(up.state, 1);
+    assert.equal(up.ship.mothership!.drop, undefined, "dome up: no beams");
+    const far = dropField({ far: true });
+    run(far.state, 1);
+    assert.equal(far.ship.mothership!.drop, undefined, "enemies not close: no beams");
     const { state, ship } = dropField();
     run(state, 0.3);
-    const drop = ship.mothership!.drop;
-    assert.ok(drop && drop.spots.length === 5, "five beams");
+    assert.equal(ship.mothership!.drop?.spots.length, 5, "dome down, enemies close: all five beams");
+  });
+
+  it("casts all five toward the enemies, short of them, on open ground, closer in than before", () => {
+    const { state, ship, foes } = dropField();
+    run(state, 0.3);
+    const spots = ship.mothership!.drop!.spots;
+    assert.equal(spots.length, 5);
     const ts = state.tileSize;
-    for (const p of drop.spots) {
+    for (const p of spots) {
       const d = Math.hypot(p.x - ship.x, p.y - ship.y);
-      assert.ok(d >= MOTHERSHIP_DROP_MIN_TILES * ts - ts && d <= MOTHERSHIP_DROP_MAX_TILES * ts + ts, "round the ship");
+      assert.ok(d >= MOTHERSHIP_DROP_MIN_TILES * ts - ts && d <= MOTHERSHIP_DROP_MAX_TILES * ts + ts, `close in: ${(d / ts / TILE_SUBDIV).toFixed(1)} cells`);
       assert.ok(!isWater(state, worldToTile(p.x, ts), worldToTile(p.y, ts)), "on ground");
+      const toward = foes.some((f) => angleGap(bearing(ship, p), bearing(ship, f)) < 0.5 && d < Math.hypot(f.x - ship.x, f.y - ship.y));
+      assert.ok(toward, "toward an enemy, short of it");
     }
     assert.equal(snapshotFor(state, "B").entities.find((e) => e.id === ship.id)?.drop?.length, 5, "everyone sees the beams");
-    assert.equal(crewOf(state, ship).length, 0, "nobody down yet");
-    run(state, MOTHERSHIP_DROP_SECONDS);
+  });
+
+  it("lands them a few at a time: three Drones and two Lancers under the beams", () => {
+    const { state, ship } = dropField();
+    run(state, 0.3);
+    const drop = ship.mothership!.drop!;
+    const totals = new Set(drop.spots.map((p) => p.total));
+    assert.ok(totals.size > 1, "not all at once");
+    assert.ok(drop.spots.every((p) => p.total >= MOTHERSHIP_DROP_SECONDS && p.total <= MOTHERSHIP_DROP_SECONDS + MOTHERSHIP_DROP_STAGGER_SECONDS));
+    const spots = drop.spots.map((p) => ({ ...p }));
+    run(state, Math.min(...spots.map((p) => p.total)) + 0.05);
+    const first = crewOf(state, ship).length;
+    assert.ok(first >= 1 && first < 5, `the first of them: ${first}`);
+    run(state, MOTHERSHIP_DROP_STAGGER_SECONDS + 0.2);
     const crew = crewOf(state, ship);
     assert.equal(crew.length, 5);
     assert.equal(crew.filter((c) => c.type === "xenodrone").length, 3);
     assert.equal(crew.filter((c) => c.type === "lancer").length, 2);
-    assert.ok(crew.every((c) => c.ownerId === "A" && drop.spots.some((p) => Math.hypot(p.x - c.x, p.y - c.y) < ts * 2)), "under the beams");
+    const ts = state.tileSize;
+    assert.ok(crew.every((c) => spots.some((p) => Math.hypot(p.x - c.x, p.y - c.y) < ts * 2)), "under the beams");
   });
 
-  it("never has more than five down, and sends a lost one down again at the next drop", () => {
+  it("sends no more down while any of its crew is still on the ground", () => {
     const { state, ship } = dropField();
-    run(state, 0.3 + MOTHERSHIP_DROP_SECONDS);
+    run(state, 0.3 + MOTHERSHIP_DROP_SECONDS + MOTHERSHIP_DROP_STAGGER_SECONDS + 0.2);
     assert.equal(crewOf(state, ship).length, 5);
+    for (const c of crewOf(state, ship).slice(0, 4)) destroyEntity(state, c);
     run(state, MOTHERSHIP_DROP_COOLDOWN_SECONDS);
-    assert.equal(crewOf(state, ship).length, 5, "no more while all five are down");
-    const lost = crewOf(state, ship).find((c) => c.type === "xenodrone")!;
-    destroyEntity(state, lost);
-    run(state, MOTHERSHIP_DROP_COOLDOWN_SECONDS + MOTHERSHIP_DROP_SECONDS + 0.5);
-    const crew = crewOf(state, ship);
-    assert.equal(crew.length, 5);
-    assert.equal(crew.filter((c) => c.type === "xenodrone").length, 3, "the Drone replaced");
+    assert.equal(crewOf(state, ship).length, 1, "one still down: no new drop");
+    assert.equal(ship.mothership!.drop, undefined);
+    destroyEntity(state, crewOf(state, ship)[0]!);
+    run(state, 0.3);
+    assert.equal((ship.mothership!.drop as { spots: unknown[] } | undefined)?.spots.length, 5, "the last one gone: all five again");
   });
 
   it("takes its crew back up once out of the fight a while, and any who stray too far", () => {
-    const { state, ship, foe } = dropField();
-    run(state, 0.3 + MOTHERSHIP_DROP_SECONDS);
+    const { state, ship, foes } = dropField();
+    run(state, 0.3 + MOTHERSHIP_DROP_SECONDS + MOTHERSHIP_DROP_STAGGER_SECONDS + 0.2);
     const crew = crewOf(state, ship);
     assert.equal(crew.length, 5);
     const stray = crew[0]!;
     stray.x += (MOTHERSHIP_CREW_LEASH_TILES + 4) * state.tileSize;
     run(state, 0.2);
     assert.equal(state.entities.has(stray.id), false, "the stray beamed up");
-    destroyEntity(state, foe);
+    for (const f of foes) destroyEntity(state, f);
+    for (const c of crewOf(state, ship)) c.attackTarget = null;
     run(state, MOTHERSHIP_CALM_SECONDS + 1);
     assert.equal(crewOf(state, ship).length, 0, "all back up once calm");
+  });
+
+  it("sends three ground scans roaming round it that show its side the ground", () => {
+    const state = dry();
+    const ship = shipOver(state, 60, 60);
+    const ts = state.tileSize;
+    for (let k = 0; k < 20; k++) {
+      run(state, 0.5);
+      const sc = ship.mothership!.scans!;
+      assert.equal(sc.length, 3);
+      for (const q of sc) assert.ok(Math.hypot(q.x - ship.x, q.y - ship.y) <= MOTHERSHIP_SCAN_ROAM_TILES * ts * 1.25, "round the ship");
+    }
+    const rects = scanRects(state, "A");
+    assert.equal(rects.length, 3, "its side sees the squares");
+    assert.ok(rects.every((r) => r.x1 - r.x0 + 1 === MOTHERSHIP_SCAN_SIDE_TILES), "small squares");
+    assert.equal(scanRects(state, "B").length, 0, "the enemy does not");
+    assert.equal(snapshotFor(state, "A").entities.find((e) => e.id === ship.id)?.scans?.length, 3, "drawn on the ground for whoever sees the ship");
+  });
+
+  it("keeps a scan on a unit it finds, following it, until the ship has it in reach", () => {
+    const state = dry();
+    const ship = shipOver(state, 60, 60);
+    const ts = state.tileSize;
+    const foe = unit(state, "rifleman", "B", east(60, 12), 60);
+    foe.holdPosition = false;
+    run(state, 0.2);
+    const sc = ship.mothership!.scans!;
+    sc[0]!.x = foe.x;
+    sc[0]!.y = foe.y;
+    run(state, TICK_DT);
+    assert.equal(sc[0]!.lock, foe.id, "it stays on what it found");
+    foe.x += ts * 3;
+    run(state, TICK_DT);
+    assert.ok(Math.hypot(sc[0]!.x - foe.x, sc[0]!.y - foe.y) < 1, "and follows it");
+    foe.x = ship.x + ts * 4 * 3;
+    run(state, TICK_DT * 2);
+    assert.equal(sc[0]!.lock, undefined, "in the ship's reach, it lets go");
+  });
+
+  it("puts its scans out when it is down", () => {
+    const state = dry();
+    const ship = shipOver(state, 60, 60);
+    run(state, 0.2);
+    assert.equal(ship.mothership!.scans?.length, 3);
+    ship.hiveOffline = true;
+    ship.shutdown = true;
+    run(state, TICK_DT);
+    assert.equal(ship.mothership!.scans, undefined);
   });
 
   it("runs its crew on the ship, not the hive's energy", () => {

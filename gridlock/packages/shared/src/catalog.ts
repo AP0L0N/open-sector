@@ -5263,14 +5263,16 @@ export const MOTHERSHIP_SHOCKWAVE = {
   edgeShare: 0.08,
 } as const;
 /**
- * Beam-down (sim/mothership.ts): in a fight the Mothership points MOTHERSHIP_CREW_SIZE beams at
- * open ground round itself (MOTHERSHIP_DROP_MIN_TILES to MOTHERSHIP_DROP_MAX_TILES out), and after
- * MOTHERSHIP_DROP_SECONDS its crew stands there: three Drones and two Lancers (MOTHERSHIP_CREW).
- * It never has more than that crew down at once; a lost one is sent down again at the next drop,
- * no sooner than MOTHERSHIP_DROP_COOLDOWN_SECONDS after the last. They run on the ship, not the
- * hive's energy. They beam back up when they stray past MOTHERSHIP_CREW_LEASH_TILES from it, or
- * once it has been out of the fight for MOTHERSHIP_CALM_SECONDS. In the fight means a beam held,
- * a crewman with a target, or an enemy it sees within MOTHERSHIP_COMBAT_TILES.
+ * Beam-down (sim/mothership.ts): only while its dome is down and an enemy it sees stands within
+ * MOTHERSHIP_DROP_TRIGGER_TILES, with none of its crew still on the ground, the Mothership casts
+ * all MOTHERSHIP_CREW_SIZE beams at once: each toward a random one of those enemies (not onto it),
+ * MOTHERSHIP_DROP_MIN_TILES to MOTHERSHIP_DROP_MAX_TILES out on open ground. Each crewman stands
+ * under his beam MOTHERSHIP_DROP_SECONDS after it, plus up to MOTHERSHIP_DROP_STAGGER_SECONDS more,
+ * so they land a few at a time: three Drones and two Lancers (MOTHERSHIP_CREW). No sooner than
+ * MOTHERSHIP_DROP_COOLDOWN_SECONDS after the last. They run on the ship, not the hive's energy.
+ * They beam back up when they stray past MOTHERSHIP_CREW_LEASH_TILES from it, or once it has been
+ * out of the fight for MOTHERSHIP_CALM_SECONDS. In the fight means a beam held, a crewman with a
+ * target, or an enemy it sees within MOTHERSHIP_COMBAT_TILES.
  */
 export const MOTHERSHIP_CREW: readonly { type: TrainType; count: number }[] = [
   { type: "xenodrone", count: 3 },
@@ -5279,8 +5281,20 @@ export const MOTHERSHIP_CREW: readonly { type: TrainType; count: number }[] = [
 export const MOTHERSHIP_CREW_SIZE = 5;
 export const MOTHERSHIP_DROP_SECONDS = 2.5;
 export const MOTHERSHIP_DROP_COOLDOWN_SECONDS = 20;
-export const MOTHERSHIP_DROP_MIN_TILES = t(2);
-export const MOTHERSHIP_DROP_MAX_TILES = t(6);
+export const MOTHERSHIP_DROP_MIN_TILES = t(1);
+export const MOTHERSHIP_DROP_MAX_TILES = t(3.5);
+export const MOTHERSHIP_DROP_TRIGGER_TILES = t(8);
+export const MOTHERSHIP_DROP_STAGGER_SECONDS = 1.5;
+/**
+ * Ground scans (sim/mothership.ts): MOTHERSHIP_SCANS small squares of sight (MOTHERSHIP_SCAN_SIDE_TILES)
+ * wander the ground within MOTHERSHIP_SCAN_ROAM_TILES of the ship at MOTHERSHIP_SCAN_TILES_PER_SEC.
+ * One that finds an enemy unit stays on it, following, until it comes within the ship's beam
+ * reach or is destroyed. Its side sees the square, day or night, like an orbital Ground Scan.
+ */
+export const MOTHERSHIP_SCANS = 3;
+export const MOTHERSHIP_SCAN_SIDE_TILES = t(3);
+export const MOTHERSHIP_SCAN_ROAM_TILES = t(14);
+export const MOTHERSHIP_SCAN_TILES_PER_SEC = t(3);
 export const MOTHERSHIP_CREW_LEASH_TILES = t(18);
 export const MOTHERSHIP_CALM_SECONDS = 15;
 export const MOTHERSHIP_COMBAT_TILES = t(12);
@@ -7785,7 +7799,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     ...UNARMED,
     aircraft: true,
     wreckHp: 60,
-    blurb: `The hive's flying capital ship: a vast plated cube grown slowly in the Aerie on a great deal of hive energy, one at a time. It lifts out and cruises high, as high as the Wraith, where only anti-air guns reach it, and sees farther than anything else the hive has, ${(t(11.5) + HORTEN_FLYING_SIGHT_BONUS) / TILE_SUBDIV} tiles around it, nearly as far as the Wraith. It flies slowly and carries no guns: it takes what it fights. Up to ${MOTHERSHIP_BEAMS} enemy units at once within ${MOTHERSHIP_BEAM_TILES / TILE_SUBDIV} tiles are first lit by a blue tractor light, bright even at night, and after ${MOTHERSHIP_LIGHT_SECONDS} seconds drawn up into the hull: a soldier in a few seconds, a tank in about five, a ship far longer. Nothing is left behind, and what it absorbs refills its energy dome. A unit that gets out of reach or out of sight before the end breaks free. Sent at a unit it hangs off it and takes it first; otherwise it takes the nearest. An unseen energy dome stands round the hull in the air and shimmers only when something strikes it: anti-air fire and air bursts from outside stop on it, draining its ${MOTHERSHIP_DOME.energy} points, and drained it is gone for ${MOTHERSHIP_DOME.rechargeSeconds} seconds. Fire on the ground passes under it. It is the hungriest thing the hive runs, so when the hive is short of energy it is the first to go offline: it comes down to the ground, where anything can shoot it, or over water sinks out of sight, and lifts again when the power is back. In a fight it beams its own crew down by itself: five beams fall on open ground round it, and a moment later three Drones and two Lancers stand there. No more than five are ever down at once; a lost one is sent down again at the next drop. They run on the ship, not the hive's energy, and beam back up when they stray too far from it or when it has been out of the fight for ${MOTHERSHIP_CALM_SECONDS} seconds. Shot down, it drops straight out of the sky, and where it hits the ground a shockwave tears out ${MOTHERSHIP_SHOCKWAVE.radiusTiles / TILE_SUBDIV} cells round it, friend or foe, worst near the middle. On water it just goes in. Needs a Neural Nexus.`,
+    blurb: `The hive's flying capital ship: a vast plated cube grown slowly in the Aerie on a great deal of hive energy, one at a time. It lifts out and cruises high, as high as the Wraith, where only anti-air guns reach it, and sees farther than anything else the hive has, ${(t(11.5) + HORTEN_FLYING_SIGHT_BONUS) / TILE_SUBDIV} tiles around it, nearly as far as the Wraith. It flies slowly and carries no guns: it takes what it fights. Up to ${MOTHERSHIP_BEAMS} enemy units at once within ${MOTHERSHIP_BEAM_TILES / TILE_SUBDIV} tiles are first lit by a blue tractor light, bright even at night, and after ${MOTHERSHIP_LIGHT_SECONDS} seconds drawn up into the hull: a soldier in a few seconds, a tank in about five, a ship far longer. Nothing is left behind, and what it absorbs refills its energy dome. A unit that gets out of reach or out of sight before the end breaks free. Sent at a unit it hangs off it and takes it first; otherwise it takes the nearest. An unseen energy dome stands round the hull in the air and shimmers only when something strikes it: anti-air fire and air bursts from outside stop on it, draining its ${MOTHERSHIP_DOME.energy} points, and drained it is gone for ${MOTHERSHIP_DOME.rechargeSeconds} seconds. Fire on the ground passes under it. It is the hungriest thing the hive runs, so when the hive is short of energy it is the first to go offline: it comes down to the ground, where anything can shoot it, or over water sinks out of sight, and lifts again when the power is back. Three small ground scans roam round it, showing the ground under them day or night; one that finds an enemy stays on it until the ship has it in reach or it is dead. With its dome down and enemies close, it beams its own crew down by itself: five beams fall toward the enemy, short of them, and over a moment three Drones and two Lancers stand there, a few at a time. It sends no more down until the last of them is gone. They run on the ship, not the hive's energy, and beam back up when they stray too far from it or when it has been out of the fight for ${MOTHERSHIP_CALM_SECONDS} seconds. Shot down, it drops straight out of the sky, and where it hits the ground a shockwave tears out ${MOTHERSHIP_SHOCKWAVE.radiusTiles / TILE_SUBDIV} cells round it, friend or foe, worst near the middle. On water it just goes in. Needs a Neural Nexus.`,
   },
   // ── The Bloom ───────────────────────────────────────────────────────────────────────────
   /** Bloom HQ on the move: a fat seed-pod on root legs. */

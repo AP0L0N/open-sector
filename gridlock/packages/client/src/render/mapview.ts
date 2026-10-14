@@ -169,6 +169,7 @@ import {
   SIMUNIT_BLINK_RANGE_TILES,
   isSimUnit,
   MOTHERSHIP_DOME_DEPTH,
+  MOTHERSHIP_SCAN_SIDE_TILES,
   RESEARCH,
   isNeuralPulsar,
 } from "@gridlock/shared";
@@ -187,9 +188,9 @@ import {
   shieldGlow,
   shieldHeightElev,
 } from "./energy-shield.js";
-import { drawScanEdge, drawScanGhost, scanNow, scanOutline, scanWorldRect, sweepAt, tracePoly } from "./ground-scan.js";
+import { drawScanEdge, drawScanGhost, drawScanLock, scanNow, scanOutline, scanWorldRect, sweepAt, tracePoly } from "./ground-scan.js";
 import { drawNuke, drawNukeFlash, drawNukeScorch, NUKE_FX_MS, NUKE_SCORCH_MS } from "./nuke-fx.js";
-import { drawShockwave, SHOCKWAVE_FX_MS } from "./shockwave-fx.js";
+import { drawShockwave, drawShockwaveScorch, SHOCKWAVE_FX_MS, SHOCKWAVE_SCORCH_MS } from "./shockwave-fx.js";
 import { drawTitanThrust } from "./titan-jet-fx.js";
 import {
   FX_BOOM,
@@ -402,7 +403,7 @@ import { bumpTilt, crushBump } from "./crush-bump.js";
 import { drawFieldGunSmoke, fieldGunSmokePose, spawnFieldGunSmoke, type FieldGunSmokePuff } from "./field-gun-smoke.js";
 import { emplacementShotLook, facingConeDegOf, PAK43_FX_CALIBER_MUL } from "./emplacement-fx.js";
 import { drawArkCharge, drawArkPlasmaBall, hiveArkLayers, hiveArkMuzzle } from "./hive-ark.js";
-import { TRACTOR_POOL_SCALE, TRACTOR_RGB, absorbFade, drawAbsorbFx, drawTractorBeam, mothershipEmitterDrop, mothershipOutline, MOTHERSHIP_SHADOW_HALF } from "./mothership.js";
+import { TRACTOR_POOL_SCALE, TRACTOR_RGB, absorbFade, drawAbsorbFx, drawTractorBeam, drawCubeShield, mothershipEmitterDrop, mothershipOutline, MOTHERSHIP_SHADOW_HALF } from "./mothership.js";
 import {
   BATTLESHIP_WORLD_PER_UNIT,
   battleshipLayers,
@@ -5364,6 +5365,7 @@ export class MapView {
     }
     this.drawRotateHint();
     this.drawGroundScans();
+    this.drawShipScans();
     this.drawScanGhostAtCursor();
 
     if (this.box) {
@@ -7809,10 +7811,48 @@ export class MapView {
     return list;
   }
 
-  /** The night tint comes off a Ground Scan's square: it is lit as by day. */
+  /**
+   * Every Mothership ground scan in sight: its small square on the ground (the tiles the sim lights,
+   * MOTHERSHIP_SCAN_SIDE_TILES on a side), its four corners, its sweep, whether it holds on a unit,
+   * and whether it is the viewer's side's (its square is lit at night).
+   */
+  private shipScanShapes(): { pts: { x: number; y: number }[]; corners: { x: number; y: number }[]; sweep: [{ x: number; y: number }, { x: number; y: number }]; lock: boolean; own: boolean; seed: number }[] {
+    const out: ReturnType<MapView["shipScanShapes"]> = [];
+    const ts = this.ts();
+    const side = MOTHERSHIP_SCAN_SIDE_TILES;
+    const now = performance.now();
+    for (const e of this.curr.entities) {
+      if (!e.scans || e.hp <= 0) continue;
+      const own = ownerAllied(this.curr, e.ownerId);
+      e.scans.forEach((q, k) => {
+        const x0 = (Math.floor(q.x / ts) - Math.floor(side / 2)) * ts;
+        const y0 = (Math.floor(q.y / ts) - Math.floor(side / 2)) * ts;
+        const r = { x0, y0, x1: x0 + side * ts, y1: y0 + side * ts };
+        const pts = scanOutline(r, ts, (wx, wy) => this.toScreen(wx, wy));
+        const corners = [this.toScreen(r.x0, r.y0), this.toScreen(r.x1, r.y0), this.toScreen(r.x1, r.y1), this.toScreen(r.x0, r.y1)];
+        const seed = e.id * 3 + k;
+        const sy = sweepAt(r, now * 2.5, seed).y;
+        out.push({ pts, corners, sweep: [this.toScreen(r.x0, sy), this.toScreen(r.x1, sy)], lock: !!q.lock, own, seed });
+      });
+    }
+    return out;
+  }
+
+  /** Mothership ground scans, day and night: the energy edge and sweep, and brackets on one holding a unit. */
+  private drawShipScans(): void {
+    const shapes = this.shipScanShapes();
+    if (shapes.length === 0) return;
+    const now = performance.now();
+    for (const sc of shapes) {
+      drawScanEdge(this.ctx, sc.pts, sc.sweep, sc.lock ? 1 : 0.65, sc.seed, now);
+      if (sc.lock) drawScanLock(this.ctx, sc.corners, now, sc.seed);
+    }
+  }
+
+  /** The night tint comes off a Ground Scan's square, and off the side's own Mothership scans: lit as by day. */
   private cutScanLight(): void {
     if (this.daylight() >= 1) return;
-    const scans = this.scanShapes();
+    const scans = [...this.scanShapes(), ...this.shipScanShapes().filter((s) => s.own)];
     if (scans.length === 0) return;
     this.cutGlow((c) => {
       c.fillStyle = "rgba(0, 0, 0, 1)";
@@ -10230,8 +10270,30 @@ export class MapView {
   }
 
   /** Burned ground at every recent ground zero, under everything standing. */
+  /** A Mothership shockwave's ground zero on screen, and the half axes of its full reach. */
+  private shockwaveFrame(s: { x: number; y: number; r: number }): { g: IsoPt; rx: number; ry: number } {
+    const elev = this.elevAt(s.x, s.y);
+    const g = this.toScreen(s.x, s.y, elev);
+    const r = s.r / Math.SQRT2;
+    const ex = this.toScreen(s.x + r, s.y - r, elev);
+    const ey = this.toScreen(s.x + r, s.y + r, elev);
+    return { g, rx: Math.abs(ex.x - g.x), ry: Math.abs(ey.y - g.y) };
+  }
+
   private collectNukeScorch(items: DrawItem[]): void {
     const now = performance.now();
+    // A downed Mothership's crater lies on the ground under everything for a while.
+    this.shockwaves = this.shockwaves.filter((s) => now - s.at < SHOCKWAVE_SCORCH_MS);
+    for (const s of this.shockwaves) {
+      items.push({
+        layer: GROUND_DECAL_DRAW_LAYER,
+        z: isoDepth(s.x, s.y),
+        run: () => {
+          const f = this.shockwaveFrame(s);
+          drawShockwaveScorch(this.ctx, f.g, f.rx, f.ry, now - s.at, s.id);
+        },
+      });
+    }
     this.nukes = this.nukes.filter((n) => now - n.at < NUKE_SCORCH_MS);
     for (const n of this.nukes) {
       items.push({
@@ -10255,14 +10317,10 @@ export class MapView {
       drawNuke(this.ctx, f.g, f.rx, f.ry, age, n.id);
     }
     for (const n of this.nukes) drawNukeFlash(this.ctx, now - n.at);
-    this.shockwaves = this.shockwaves.filter((s) => now - s.at < SHOCKWAVE_FX_MS);
     for (const s of this.shockwaves) {
-      const elev = this.elevAt(s.x, s.y);
-      const g = this.toScreen(s.x, s.y, elev);
-      const r = s.r / Math.SQRT2;
-      const ex = this.toScreen(s.x + r, s.y - r, elev);
-      const ey = this.toScreen(s.x + r, s.y + r, elev);
-      drawShockwave(this.ctx, g, Math.abs(ex.x - g.x), Math.abs(ey.y - g.y), now - s.at);
+      if (now - s.at > SHOCKWAVE_FX_MS) continue;
+      const f = this.shockwaveFrame(s);
+      drawShockwave(this.ctx, f.g, f.rx, f.ry, now - s.at, s.id);
     }
   }
 
@@ -10519,6 +10577,19 @@ export class MapView {
     if (c.x < -rx || c.y < -rv || c.x > w + rx || c.y > h + rv) return;
     const swell = 1 + 0.04 * (1 - k);
     const glow = AIR_DOME_FLASH_GLOW * k * k;
+    // The Mothership's shield is a box of light round its cube, not a bubble.
+    if (host.type === "mothership") {
+      const mid = this.toScreen(at.x, at.y);
+      mid.y -= lift;
+      const facing = this.lerpEnt(host).facing;
+      items.push({
+        layer: AIR_DRAW_LAYER,
+        z: isoDepth(at.x, at.y) + 0.5,
+        at,
+        run: () => drawCubeShield(this.ctx, mid, facing, MOTHERSHIP_SPRITE.drawSize, this.ts(), Math.min(1, glow * 1.6), swell),
+      });
+      return;
+    }
     items.push({
       layer: AIR_DRAW_LAYER,
       // Just in front of the ship it wraps.

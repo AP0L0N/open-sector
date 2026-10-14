@@ -838,8 +838,10 @@ export interface MothershipState {
   calm: number;
   /** Seconds until it may beam a crew down again. */
   dropCooldown: number;
-  /** A beam-down under way: the spots its beams point at, and the seconds until the crew stands there. */
-  drop?: { t: number; spots: { x: number; y: number; type: TrainType }[] };
+  /** A beam-down under way: the spots its beams point at, and for each the seconds left and in all until its crewman stands there. */
+  drop?: { spots: { x: number; y: number; type: TrainType; t: number; total: number }[] };
+  /** Its ground scans: where each stands, where it is wandering to, and the unit it stays on, if any. */
+  scans?: { x: number; y: number; tx: number; ty: number; lock?: number }[];
   /** Down on the water while offline: under it, out of sight, until the power is back. */
   sunk?: true;
 }
