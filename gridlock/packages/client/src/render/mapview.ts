@@ -168,7 +168,11 @@ import {
   MAMMOTH_MINE_RANGE_TILES,
   SIMUNIT_BLINK_RANGE_TILES,
   isSimUnit,
+<<<<<<< HEAD
   MOTHERSHIP_DOME_DEPTH,
+=======
+  RESEARCH,
+>>>>>>> worktree-research-progress-bar
 } from "@gridlock/shared";
 import {
   CURTAIN_PANELS,
@@ -979,6 +983,10 @@ const OCCLUDED_UNIT_ALPHA = 0.46;
 const FIELD_SITE_ALPHA = 0.8;
 /** Narrowest an engineer's build bar draws, in screen pixels: wide enough for "BUILD 100%". */
 const BUILD_BAR_MIN_W = 56;
+/** Narrowest a structure's research bar draws: a small defence still gets a readable bar. */
+const RESEARCH_BAR_MIN_W = 48;
+/** Teal, apart from the amber work bars and the pale blue field and shield bars. */
+const RESEARCH_BAR_FILL = "#4fd1b8";
 const UNIT_SIGHT_FADE_MS = 250;
 
 type DrawItem = DrawKey & { run: () => void };
@@ -7738,6 +7746,7 @@ export class MapView {
     this.drawDeployProgress(e, bar.x - layoutW / 2, bar.y + 4, layoutW);
     if (!ghost) {
       this.drawCaptureProgress(e, stack.x - layoutW / 2, stack.y + 10, layoutW);
+      this.drawResearchProgress(e, stack.x, stack.y - 26, layoutW);
     }
     if (!ghost && (e.state === "undeploy" || e.state === "deploy")) {
       const p = e.deployProgress ?? 0;
@@ -10670,6 +10679,37 @@ export class MapView {
     ctx.textAlign = "center";
     ctx.fillStyle = "#e8dcc4";
     ctx.fillText(`${label} ${Math.round(p * 100)}%`, x + w / 2, y + 16);
+  }
+
+  /**
+   * A structure researching its next level (sim/research.ts) shows the job over its roof: the
+   * upgrade's name and percent above a teal bar. Only friendly snapshots carry `research`.
+   * Queued with the work bars, so a tree or roof in front cannot hide it.
+   */
+  private drawResearchProgress(e: EntityView, cx: number, y: number, layoutW: number): void {
+    const job = e.research;
+    if (!job || e.wreck || e.hp <= 0) return;
+    const p = Math.max(0, Math.min(1, job.progress));
+    const w = Math.max(layoutW, RESEARCH_BAR_MIN_W);
+    const x = cx - w / 2;
+    const label = `${(RESEARCH[job.id]?.name ?? "Research").toUpperCase()} ${Math.round(p * 100)}%`;
+    const alpha = this.ctx.globalAlpha;
+    this.workBars.push(() => {
+      const ctx = this.ctx;
+      ctx.globalAlpha = alpha;
+      ctx.font = "10px 'Share Tech Mono', monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "alphabetic";
+      ctx.fillStyle = "#e8dcc4";
+      ctx.fillText(label, cx, y - 3);
+      ctx.fillStyle = "#111";
+      ctx.fillRect(x, y, w, 5);
+      ctx.fillStyle = RESEARCH_BAR_FILL;
+      ctx.fillRect(x, y, w * p, 5);
+      ctx.strokeStyle = "#000";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x, y, w, 5);
+    });
   }
 
   private drawCaptureProgress(e: EntityView, x: number, y: number, w: number): void {
