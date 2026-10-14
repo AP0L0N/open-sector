@@ -7,6 +7,7 @@ import {
   MATRIARCH_LAY_SECONDS,
   BUILDING_TYPES,
   FACTIONS,
+  PICKABLE_FACTIONS,
   HQ_OF,
   REGROWTH_DELAY_SECONDS,
   TICK_DT,
@@ -47,7 +48,9 @@ function match(bFaction: Faction = "bloom"): MatchState {
   const room = r.value;
   assert.equal(joinRoom(room, "B", "Bravo").ok, true);
   updateSelf(room, "A", { ready: true, spawnId: 1 });
-  updateSelf(room, "B", { ready: true, spawnId: 4, faction: bFaction });
+  updateSelf(room, "B", { ready: true, spawnId: 4 });
+  // The Bloom are shelved from the lobby (HIDDEN_FACTIONS), so the seat is written straight.
+  room.slots.find((s) => s.playerId === "B")!.faction = bFaction;
   const started = startMatch(room, "A", () => 0);
   if (!started.ok) throw new Error(started.message);
   return createMatch(room, started.value);
@@ -248,13 +251,26 @@ describe("Bloom beasts", () => {
   });
 });
 
+describe("Bloom shelved", () => {
+  it("is off the lobby: no seat or CPU may pick it, and a saved setup falls back", () => {
+    assert.equal(PICKABLE_FACTIONS.includes("bloom"), false);
+    const made = createRoom({ id: "SHL", hostId: "A", hostName: "Alpha", mapId: "yard-64", maxSlots: 8 });
+    if (!made.ok) throw new Error(made.message);
+    const room = made.value;
+    assert.equal(updateSelf(room, "A", { faction: "bloom" }).ok, false);
+    assert.equal(hostSlot(room, "A", 1, { status: "ai", ai: "defensive", faction: "bloom" }).ok, false);
+    assert.equal(updateSelf(room, "A", { faction: "xeno" }).ok, true);
+  });
+});
+
 describe("Bloom CPU", () => {
   function humanVsBloom(): { state: MatchState; aiId: string } {
     const made = createRoom({ id: "AIL", hostId: "A", hostName: "Alpha", mapId: "yard-64", maxSlots: 8 });
     if (!made.ok) throw new Error(made.message);
     const room = made.value;
-    const add = hostSlot(room, "A", 1, { status: "ai", ai: "defensive", faction: "bloom" });
+    const add = hostSlot(room, "A", 1, { status: "ai", ai: "defensive" });
     if (!add.ok) throw new Error(add.message);
+    room.slots[1]!.faction = "bloom";
     updateSelf(room, "A", { ready: true });
     const started = startMatch(room, "A", () => 0);
     if (!started.ok) throw new Error(started.message);

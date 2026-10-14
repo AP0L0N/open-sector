@@ -1115,6 +1115,16 @@ export const FACTION_NAMES: Record<Faction, string> = { alliance: "Alliance", xe
 export function isFaction(v: unknown): v is Faction {
   return v === "alliance" || v === "xeno" || v === "bloom";
 }
+/**
+ * Factions shelved for now: still in the sim, saves, and tests, but no seat may pick one
+ * and the Map Builder offers none of their units.
+ */
+export const HIDDEN_FACTIONS: ReadonlySet<Faction> = new Set<Faction>(["bloom"]);
+/** The factions a seat can pick in the lobby. */
+export const PICKABLE_FACTIONS: readonly Faction[] = FACTIONS.filter((f) => !HIDDEN_FACTIONS.has(f));
+export function isPickableFaction(v: unknown): v is Faction {
+  return isFaction(v) && !HIDDEN_FACTIONS.has(v);
+}
 /** The ids older saves carry ("eu" was the Alliance, "borg" the Xenite), read as today's. */
 export function migrateFaction(v: unknown): unknown {
   return v === "eu" ? "alliance" : v === "borg" ? "xeno" : v;

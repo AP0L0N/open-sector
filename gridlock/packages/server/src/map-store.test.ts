@@ -173,7 +173,7 @@ describe("hub map builder", () => {
           mapId: "c-hubmap004",
           host: { faction: "xeno", colorId: 4, team: 1, spawnId: 2 },
           cpus: [
-            { index: 3, ai: "aggressive", faction: "bloom", colorId: 0, team: 2, spawnId: 1 },
+            { index: 3, ai: "aggressive", faction: "xeno", colorId: 0, team: 2, spawnId: 1 },
             { index: 5, ai: "defensive" },
           ],
         },
@@ -185,7 +185,7 @@ describe("hub map builder", () => {
         ["xeno", 4, 1, 2],
       );
       const cpu = room.slots[3]!;
-      assert.deepEqual([cpu.status, cpu.ai, cpu.faction, cpu.colorId, cpu.team, cpu.spawnId], ["ai", "aggressive", "bloom", 0, 2, 1]);
+      assert.deepEqual([cpu.status, cpu.ai, cpu.faction, cpu.colorId, cpu.team, cpu.spawnId], ["ai", "aggressive", "xeno", 0, 2, 1]);
       // The map seats two: the second CPU has no chair.
       assert.notEqual(room.slots[5]!.status, "ai");
     } finally {

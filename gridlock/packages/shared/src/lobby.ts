@@ -15,7 +15,7 @@ import {
   type SlotStatus,
 } from "./protocol.js";
 import { COLORS } from "./colors.js";
-import { isFaction, type Faction } from "./catalog.js";
+import { isPickableFaction, type Faction } from "./catalog.js";
 import { getMap, isPlaytestMapId } from "./maps.js";
 import { AI_PROFILES } from "./sim/ai-profile.js";
 
@@ -200,7 +200,7 @@ export function updateSelf(
   const slot = findPlayerSlot(room, playerId);
   if (!slot) return fail("not_member", "You are not in this room.");
   if (patch.faction !== undefined) {
-    if (!isFaction(patch.faction)) return fail("bad_payload", "No such faction.");
+    if (!isPickableFaction(patch.faction)) return fail("bad_payload", "No such faction.");
     slot.faction = patch.faction;
   }
 
@@ -254,7 +254,7 @@ export function hostSlot(
   const slot = room.slots[slotIndex];
   if (!slot) return fail("bad_slot", "No such slot.");
   if (action.ai !== undefined && !isAiDifficulty(action.ai)) return fail("bad_payload", "No such CPU type.");
-  if (action.faction !== undefined && !isFaction(action.faction)) return fail("bad_payload", "No such faction.");
+  if (action.faction !== undefined && !isPickableFaction(action.faction)) return fail("bad_payload", "No such faction.");
 
   if (action.kick || action.status === "closed" || action.status === "open" || action.status === "ai") {
     if (slot.playerId === hostId) return fail("bad_slot", "Host cannot kick or close their own slot.");
@@ -513,7 +513,7 @@ export function applySkirmishSetup(room: RoomState, setup: unknown): void {
   const spawns = new Set<number>();
   for (const { slot, seat } of seats) {
     const { faction, team, colorId, spawnId } = seat;
-    if (typeof faction === "string" && isFaction(faction)) slot.faction = faction;
+    if (typeof faction === "string" && isPickableFaction(faction)) slot.faction = faction;
     if (typeof team === "number" && Number.isInteger(team) && team >= 0 && team <= 4) slot.team = team;
     if (typeof colorId === "number" && COLORS.some((c) => c.id === colorId) && !colors.has(colorId)) {
       slot.colorId = colorId;
