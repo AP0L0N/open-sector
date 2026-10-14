@@ -1663,6 +1663,7 @@ describe("Xenite CPU", () => {
         e.shieldWall = true;
         e.level = maxLevelOf("conversion");
       }
+      if (e.ownerId === aiId && e.type === "forge") e.level = maxLevelOf("forge");
     }
   }
 
@@ -1684,6 +1685,8 @@ describe("Xenite CPU", () => {
     standBy(state, aiId, BASE);
     const chamber = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "conversion")!;
     const job = () => chamber.research?.id;
+    // The Forge's levels are another test's.
+    for (const e of state.entities.values()) if (e.ownerId === aiId && e.type === "forge") e.level = maxLevelOf("forge");
     chamber.shieldWall = true;
     micro(state, aiId);
     assert.equal(job(), "advancedassembly");
@@ -1694,6 +1697,27 @@ describe("Xenite CPU", () => {
     standBy(state, aiId, [...BASE, "nexus"]);
     micro(state, aiId);
     assert.equal(job(), "neuralassembly");
+  });
+
+  it("levels its Nanite Forge after the Assembly: Advanced Forge, then Neural Forge once a Nexus stands", () => {
+    const { state, aiId } = humanVsXeno();
+    waitCore(state, aiId);
+    standBy(state, aiId, BASE);
+    const chamber = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "conversion")!;
+    const forge = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "forge");
+    assert.ok(forge, "the build order has a Nanite Forge");
+    const job = () => forge.research?.id;
+    chamber.shieldWall = true;
+    chamber.level = maxLevelOf("conversion");
+    micro(state, aiId);
+    assert.equal(job(), "advancedforge");
+    forge.research = undefined;
+    forge.level = 1;
+    micro(state, aiId);
+    assert.equal(job(), undefined, "Neural Forge waits on a Neural Nexus");
+    standBy(state, aiId, [...BASE, "nexus"]);
+    micro(state, aiId);
+    assert.equal(job(), "neuralforge");
   });
 
   it("upgrades one Fusion Node at a time once its build order stands, and not before", () => {

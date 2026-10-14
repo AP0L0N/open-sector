@@ -304,7 +304,7 @@ describe("a Xenite seat", () => {
     assert.ok(smelterIncome(state, "B") > 0);
   });
 
-  it("grows the heavy assimilators at a Nanite Forge, the Behemoth only with a Neural Nexus", () => {
+  it("grows the heavy assimilators at a Nanite Forge: the Siphon, Nova Mortar and Assembler after Advanced Forge, the Behemoth and Juggernaut after Neural Forge", () => {
     const state = match();
     unpack(state, "B");
     const ts = state.tileSize;
@@ -317,15 +317,29 @@ describe("a Xenite seat", () => {
       const r = applyCommand(state, "B", { type: "cmd.train", unit });
       assert.equal(r.ok, true, r.ok ? unit : r.message);
     }
+    // Advanced Forge unlocks the Siphon, Nova Mortar, and Assembler.
+    for (const unit of ["siphon", "mawcaster", "assembler"] as const) {
+      const locked = applyCommand(state, "B", { type: "cmd.train", unit });
+      assert.equal(locked.ok ? "" : locked.message, "Research Advanced Forge at your Nanite Forge.", unit);
+    }
+    forge.level = 1;
+    for (const unit of ["siphon", "mawcaster", "assembler"] as const) {
+      const r = applyCommand(state, "B", { type: "cmd.train", unit });
+      assert.equal(r.ok, true, r.ok ? unit : r.message);
+    }
+    // Neural Forge, and a Neural Nexus, the Behemoth and Juggernaut.
     for (const unit of ["behemoth", "juggernaut"] as const) {
       const locked = applyCommand(state, "B", { type: "cmd.train", unit });
-      assert.equal(locked.ok, false);
-      if (!locked.ok) assert.equal(locked.message, "Need a Neural Nexus.");
+      assert.equal(locked.ok ? "" : locked.message, "Need a Neural Nexus.", unit);
     }
     makeEntity(state, "nexus", "B", tileCenter(30, ts), tileCenter(30, ts), { tileX: 30, tileY: 30 });
+    const waiting = applyCommand(state, "B", { type: "cmd.train", unit: "behemoth" });
+    assert.equal(waiting.ok ? "" : waiting.message, "Research Neural Forge at your Nanite Forge.");
+    forge.level = 2;
+    forge.queue.length = 0;
     assert.equal(applyCommand(state, "B", { type: "cmd.train", unit: "behemoth" }).ok, true);
     assert.equal(applyCommand(state, "B", { type: "cmd.train", unit: "juggernaut" }).ok, true);
-    assert.deepEqual(forge.queue.map((j) => j.type), ["stalker", "ravager", "behemoth", "juggernaut"]);
+    assert.deepEqual(forge.queue.map((j) => j.type), ["behemoth", "juggernaut"]);
     // Alliance cannot use a captured Forge.
     unpack(state, "A");
     forge.ownerId = "A";
