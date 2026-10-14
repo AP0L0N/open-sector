@@ -147,6 +147,7 @@ import {
 import { buzzDeny } from "./audio.js";
 import { announce, selectionVoice, setAnnouncerFaction } from "./game-audio.js";
 import { el } from "./dom.js";
+import { mountScanDock, paintScanDock } from "./scan-dock.js";
 import { bindCameoCards, fmtNum, setCameoCardState } from "./cameo-card.js";
 import { renderOptionsPane } from "./pause.js";
 import { garrisonRoster, type GarrisonSeat } from "./garrison-roster.js";
@@ -238,7 +239,14 @@ export function mountBattlefield(
   const commands = el("div", { class: "battle-commands" });
   commands.append(actions);
   const tip = el("div", { class: "cmd-tip", attrs: { id: "cmd-tip", role: "tooltip" } });
-  body.append(canvas, queue, rosterDock, commands, tip);
+  // The Xenite Ground Scans, in the map's top right corner: they answer to the hive, not a selection.
+  const scanDock = mountScanDock((slot) => {
+    const v = viewRef;
+    if (!v) return;
+    v.setScanMode(v.scanSlot === slot ? null : slot);
+    paintScanDock(ctx.match, v.scanSlot);
+  });
+  body.append(canvas, queue, rosterDock, commands, scanDock, tip);
   bindCommandTips(body, tip);
 
   const side = el("aside", { class: "sidebar" });
@@ -318,7 +326,10 @@ export function mountBattlefield(
     flashCheat(hiveHud(ctx.match) ? "CHEAT: +9999 ENERGY" : "CHEAT: 99999 SCRAP, +9999 POWER");
   };
   view.onPlaceMode = () => paintBattleHud(ctx);
-  view.onAttackMoveMode = () => paintQuickActions(ctx, view);
+  view.onAttackMoveMode = () => {
+    paintQuickActions(ctx, view);
+    paintScanDock(ctx.match, view.scanSlot);
+  };
   let lastSelected = new Set<number>();
   view.onSelect = (ids) => {
     // Units joining the selection answer; reselecting the same group stays quiet.
@@ -932,6 +943,7 @@ export function paintBattleHud(ctx: Ctx): void {
   paintInspect(ctx, viewRef);
   paintConfig(ctx, viewRef);
   paintQuickActions(ctx, viewRef);
+  paintScanDock(ctx.match, viewRef?.scanSlot ?? null);
   paintGarrisonRoster(ctx, viewRef);
 }
 
@@ -2306,6 +2318,9 @@ function showCommandTip(anchor: HTMLElement): void {
   if (anchor.dataset.tipSide === "right") {
     left = at.right - box.left + 8;
     top = at.top - box.top + at.height / 2 - h / 2;
+  } else if (anchor.dataset.tipSide === "below") {
+    left = at.left - box.left + at.width / 2 - w / 2;
+    top = at.bottom - box.top + 8;
   } else {
     left = at.left - box.left + at.width / 2 - w / 2;
     top = at.top - box.top - h - 8;
@@ -2371,28 +2386,6 @@ interface QAct {
   badge?: string;
 }
 
-/** One button per Ground Scan the hive holds: press, then click the map to send it there. */
-function groundScanActs(m: MatchSnapshot, view: MapView | null): QAct[] {
-  const slots = m.you.groundScanSlots ?? 0;
-  const out: QAct[] = [];
-  for (let slot = 0; slot < slots; slot++) {
-    const placed = m.scans?.find((s) => s.ownerId === m.youPlayerId && s.slot === slot);
-    const n = slot + 1;
-    out.push({
-      slot: `ground-scan-${slot}`,
-      act: `ground-scan-${slot}`,
-      label: `Ground Scan ${n}`,
-      title: placed
-        ? `Move Ground Scan ${n}: click the map. It folds into its centre, then opens round the new spot. It keeps a square of ground as bright as day for your side.`
-        : `Place Ground Scan ${n}: click anywhere on the map. A square of ground lit from orbit, as bright as day for your side.`,
-      on: view?.scanSlot === slot,
-      icon: "ground-scan",
-      badge: String(n),
-    });
-  }
-  return out;
-}
-
 function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
   if (!ctx.match) return [];
   const out: QAct[] = [];
@@ -2414,8 +2407,6 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
   // A CIWS, a RAM, or a crewed gun aims its own gun: it takes Stop, Force attack, and Rotate like a unit.
   const mounts = buildings.filter((e) => aimsOwnGun(e.type));
   const lamps = buildings.filter((e) => hasSpotlight(e.type) && e.spotFacing != null);
-  // The Xenite Ground Scans answer to the hive, not to a selection: always on the bar.
-  out.push(...groundScanActs(ctx.match, view));
   if (units.length === 0 && buildings.length === 0 && houses.length === 0) return out;
 
   // A gate locks and unlocks. It is built from the Defences tab.
@@ -3189,11 +3180,6 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   if (!match) return;
   if (act === "confirm-field") {
     view.confirmField();
-    return;
-  }
-  if (act.startsWith("ground-scan-")) {
-    const slot = Number(act.slice("ground-scan-".length));
-    view.setScanMode(view.scanSlot === slot ? null : slot);
     return;
   }
   const selected = selectedViews(ctx, view);

@@ -10,9 +10,9 @@ import { allies, worldToTile } from "./geo.js";
 import type { GroundScan, MatchState } from "./types.js";
 
 /**
- * Xenite Ground Scans. Something in orbit sweeps a square of ground and keeps it as bright as
- * day: night does not shorten the side's sight over it (sim/vision.ts reads `scanLightRects`).
- * It shows nothing by itself; an eye still has to look. A Xenite side holds GROUND_SCAN_BASE
+ * Xenite Ground Scans. Something in orbit sweeps a square of ground: the side and its allies see
+ * every tile of it, day or night, with no eye of theirs near (sim/vision.ts reads `scanRects`).
+ * At night the client lights it as by day. A Xenite side holds GROUND_SCAN_BASE
  * from the start and one more per Hive Core level (Orbital Relay, Orbital Array). A scan goes
  * anywhere on the map. Moved, it folds into its centre first, then opens round the new one.
  * Runs with tickSpotlights.
@@ -105,8 +105,8 @@ export function scanRect(s: { x: number; y: number; open: number }, width: numbe
   return r.x0 > r.x1 || r.y0 > r.y1 ? null : r;
 }
 
-/** Ground lit as day for `playerId`'s side: every allied scan. */
-export function scanLightRects(state: MatchState, playerId: string): ScanRect[] {
+/** Ground `playerId`'s side sees from orbit: every allied scan's square as it stands now. */
+export function scanRects(state: MatchState, playerId: string): ScanRect[] {
   const out: ScanRect[] = [];
   for (const p of state.players.values()) {
     if (!p.groundScans || p.groundScans.length === 0 || !allies(state, playerId, p.playerId)) continue;

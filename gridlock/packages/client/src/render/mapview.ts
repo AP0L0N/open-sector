@@ -5115,28 +5115,9 @@ export class MapView {
       };
       gl.render(field, { ...frame, ...look });
       const ctx = this.ctx;
-      // Under a Ground Scan the ground out of sight wears the day veil, not the night's near black.
-      const scans = this.daylight() < 1 ? this.scanShapes() : [];
-      if (scans.length === 0) {
-        ctx.save();
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.drawImage(gl.canvas, 0, 0);
-        ctx.restore();
-        return;
-      }
-      const night = this.scanFogLayer(gl.canvas);
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.drawImage(night, 0, 0);
-      ctx.restore();
-      gl.render(field, { ...frame, alpha: FOG_VEIL_ALPHA, rgb: FOG_RGB });
-      ctx.save();
-      for (const sc of scans) tracePoly(ctx, sc.pts);
-      ctx.save();
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clip();
       ctx.drawImage(gl.canvas, 0, 0);
-      ctx.restore();
       ctx.restore();
       return;
     }
@@ -7818,38 +7799,18 @@ export class MapView {
     });
   }
 
-  private scanFogCanvas: HTMLCanvasElement | null = null;
-
-  /** The night fog veil with every Ground Scan's square taken out of it. */
-  private scanFogLayer(src: HTMLCanvasElement | OffscreenCanvas): HTMLCanvasElement {
-    this.scanFogCanvas ??= document.createElement("canvas");
-    const layer = this.scanFogCanvas;
-    if (layer.width !== this.canvas.width || layer.height !== this.canvas.height) {
-      layer.width = this.canvas.width;
-      layer.height = this.canvas.height;
-    }
-    const c = layer.getContext("2d")!;
-    c.setTransform(1, 0, 0, 1, 0, 0);
-    c.globalCompositeOperation = "copy";
-    c.drawImage(src, 0, 0);
-    c.globalCompositeOperation = "destination-out";
-    c.setTransform(this.ctx.getTransform());
-    c.fillStyle = "#000";
-    for (const sc of this.scanShapes()) {
-      tracePoly(c, sc.pts);
-      c.fill();
-    }
-    c.setTransform(1, 0, 0, 1, 0, 0);
-    c.globalCompositeOperation = "source-over";
-    return layer;
-  }
-
-  /** Every Ground Scan's faint energy edge and its sweep, day or night. Only the side's own are sent. */
+  /** Every Ground Scan's faint energy edge and its sweep: only in the dark, coming up with the lamps at dusk. Only the side's own are sent. */
   private drawGroundScans(): void {
+    const glow = lampGlow(this.daylight());
+    if (glow <= 0) return;
     const scans = this.scanShapes();
     if (scans.length === 0) return;
     const now = performance.now();
-    for (const sc of scans) drawScanEdge(this.ctx, sc.pts, sc.sweep, sc.open, sc.slot, now);
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = glow;
+    for (const sc of scans) drawScanEdge(ctx, sc.pts, sc.sweep, sc.open, sc.slot, now);
+    ctx.restore();
   }
 
   /** A Ground Scan armed: its full square, dashed, on the ground under the cursor. */

@@ -1336,11 +1336,11 @@ export const SHIELD_WALL_ENERGY = 20;
 /** The units that raise an energy wall only once their side holds the Shield Wall (wallsNeedDrill). */
 export const SHIELD_WALL_UNITS: readonly EntityType[] = ["xenodrone", "lancer"];
 /**
- * The Xenite Ground Scan (sim/ground-scan.ts): a square of ground lit from orbit as if in daylight.
- * Night does not shorten the side's sight over it. It can sit anywhere on the map. Moving it first
- * folds it into its centre, then opens it again around the new one.
+ * The Xenite Ground Scan (sim/ground-scan.ts): a square of ground watched from orbit. The side sees all
+ * of it, day or night, as if it stood there; at night the client lights it as by day. It can sit
+ * anywhere on the map. Moving it first folds it into its centre, then opens it again around the new one.
  */
-export const GROUND_SCAN_SIDE_TILES = t(16);
+export const GROUND_SCAN_SIDE_TILES = t(8);
 /** Seconds a scan takes to open from nothing to its full square. */
 export const GROUND_SCAN_OPEN_SECONDS = 6;
 /** Seconds a scan takes to fold from its full square into its centre. */
@@ -1357,7 +1357,7 @@ export const RESEARCH: Record<ResearchId, ResearchDef> = {
     seconds: 60,
     effect: "2 Ground Scans",
     cost: 0,
-    blurb: "Hangs a second relay in orbit over the hive: one more Ground Scan, two in all. Each lights a square of ground as if it were day, anywhere on the map.",
+    blurb: "Hangs a second relay in orbit over the hive: one more Ground Scan, two in all. Each shows a square of ground anywhere on the map, lit as by day at night.",
   },
   scanarray: {
     id: "scanarray",
@@ -5251,7 +5251,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "The Xenite hive, dropped from orbit onto the Deployment. It raises every Xenite structure and never packs up. Its relay in orbit holds a Ground Scan: a square of ground anywhere on the map kept as bright as day. Research Orbital Relay, then Orbital Array once a Neural Nexus stands, for a second and a third. Lose it and the collective falls.",
+    blurb: "The Xenite hive, dropped from orbit onto the Deployment. It raises every Xenite structure and never packs up. Its relay in orbit holds a Ground Scan: a square of ground anywhere on the map that your side sees whole, lit as bright as day at night. Research Orbital Relay, then Orbital Array once a Neural Nexus stands, for a second and a third. Lose it and the collective falls.",
   },
   core: {
     type: "core",

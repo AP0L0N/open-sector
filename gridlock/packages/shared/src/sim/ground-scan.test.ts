@@ -20,7 +20,7 @@ import {
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { destroyEntity, hasCore, hqOf, makeEntity, tileCenter } from "./geo.js";
-import { groundScanSlots, scanLightRects, scanRect } from "./ground-scan.js";
+import { groundScanSlots, scanRect, scanRects } from "./ground-scan.js";
 import { createMatch, step, stepMatch } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
 import type { Entity, MatchState } from "./types.js";
@@ -73,15 +73,15 @@ function research(state: MatchState, e: Entity, id: keyof typeof RESEARCH): void
 }
 
 /**
- * A tile out from the Hive Core toward the middle of the map: past the core's sight at night,
- * inside it by day. Returns the tile and the world point at its centre.
+ * A tile out from the Hive Core toward the middle of the map, far past anything the core sees by
+ * day. Returns the tile and the world point at its centre.
  */
 function farTile(state: MatchState, core: Entity): { tx: number; ty: number; wx: number; wy: number } {
   const ts = state.tileSize;
   const ox = core.tileX + Math.floor(core.tileW / 2);
   const oy = core.tileY + Math.floor(core.tileH / 2);
   const dir = ox < state.width / 2 ? 1 : -1;
-  const tx = ox + dir * 36;
+  const tx = ox + dir * 100;
   return { tx, ty: oy, wx: tileCenter(tx, ts), wy: tileCenter(oy, ts) };
 }
 
@@ -156,55 +156,62 @@ describe("Xenite Ground Scan", () => {
     assert.equal(scan(state, 3, 700, 700).ok, false, "three at most");
   });
 
-  it("keeps its square as bright as day: night does not cut the side's sight over it", () => {
+  it("shows its whole square from orbit, by day and by night, with no eye near", () => {
     const state = field();
     const core = hive(state);
     const far = farTile(state, core);
     const i = far.ty * state.width + far.tx;
-    assert.equal(visionMask(state, "B")[i], 1, "by day the core sees that far");
-    state.tick = NIGHT_TICK;
-    assert.equal(visionMask(state, "B")[i], 0, "at night it does not");
+    assert.equal(visionMask(state, "B")[i], 0, "far past the core's sight");
     assert.equal(scan(state, 0, far.wx, far.wy).ok, true);
     ticks(state, secondsToTicks(GROUND_SCAN_OPEN_SECONDS) + 1);
-    assert.equal(visionMask(state, "B")[i], 1, "under the scan it sees as by day");
-    // The light is the core's eye let out to its day reach, not a window: ground past that stays dark.
     const s = state.players.get("B")!.groundScans![0]!;
     const rect = scanRect(s, state.width, state.height, state.tileSize)!;
-    const beyond = core.tileX < state.width / 2 ? rect.x1 : rect.x0;
-    assert.equal(visionMask(state, "B")[far.ty * state.width + beyond], 0, "past the core's day sight, the scan shows nothing");
+    const mask = visionMask(state, "B");
+    for (const [x, y] of [[rect.x0, rect.y0], [rect.x1, rect.y1], [far.tx, far.ty]] as const) {
+      assert.equal(mask[y * state.width + x], 1, `scanned tile ${x},${y}`);
+    }
+    assert.equal(mask[far.ty * state.width + rect.x1 + 2], 0, "just past its edge is unseen");
+    assert.equal(mask[far.ty * state.width + rect.x0 - 2], 0);
+    const foe = makeEntity(state, "rifleman", "A", far.wx, far.wy);
+    assert.equal(canSeeEntity(state, "B", foe), true, "an enemy under it is seen");
+    state.tick = NIGHT_TICK;
+    assert.equal(visionMask(state, "B")[i], 1, "and at night");
     // The enemy gets nothing from it, and is not told it is there.
-    assert.deepEqual(scanLightRects(state, "A"), []);
+    assert.deepEqual(scanRects(state, "A"), []);
     assert.equal(snapshotFor(state, "A").scans, undefined);
-    // The client repaints the same light from its snapshot.
+    // The client paints the same square from its snapshot.
     const snap = snapshotFor(state, "B");
     assert.equal(snap.scans?.length, 1);
     const client = visionMaskFromSnapshot(snap, state.width, state.height, state.tileSize);
     assert.equal(client[i], 1);
+    assert.equal(client[rect.y1 * state.width + rect.x1], 1);
   });
 
-  it("folding away gives the night back", () => {
+  it("folding away gives the ground back to the fog", () => {
     const state = field();
     const core = hive(state);
     const far = farTile(state, core);
     const i = far.ty * state.width + far.tx;
-    state.tick = NIGHT_TICK;
     scan(state, 0, far.wx, far.wy);
     ticks(state, secondsToTicks(GROUND_SCAN_OPEN_SECONDS) + 1);
     assert.equal(visionMask(state, "B")[i], 1);
     // Sent clear across the map: the old square folds away.
-    scan(state, 0, far.wx + (core.tileX < state.width / 2 ? 1 : -1) * 60 * TILE_SUBDIV * state.tileSize, far.wy);
-    ticks(state, secondsToTicks(GROUND_SCAN_FOLD_SECONDS) + 1);
+    scan(state, 0, far.wx, far.wy + 40 * TILE_SUBDIV * state.tileSize);
+    ticks(state, secondsToTicks(GROUND_SCAN_FOLD_SECONDS / 2));
+    const half = scanRect(state.players.get("B")!.groundScans![0]!, state.width, state.height, state.tileSize)!;
+    assert.ok(half.x1 - half.x0 + 1 < GROUND_SCAN_SIDE_TILES, "half folded, the square is smaller");
+    assert.equal(visionMask(state, "B")[i], 1, "its centre is the last to go");
+    ticks(state, secondsToTicks(GROUND_SCAN_FOLD_SECONDS / 2) + 1);
     assert.equal(visionMask(state, "B")[i], 0);
   });
 
-  it("lights a CPU side's ray sight the same way", () => {
+  it("shows a CPU side's ray sight the same ground", () => {
     const state = field();
     state.players.get("B")!.ai = "defensive";
     const core = hive(state);
     const far = farTile(state, core);
     const foe = makeEntity(state, "rifleman", "A", far.wx, far.wy);
-    state.tick = NIGHT_TICK;
-    assert.equal(canSeeEntity(state, "B", foe), false, "out in the dark");
+    assert.equal(canSeeEntity(state, "B", foe), false, "out of sight");
     scan(state, 0, far.wx, far.wy);
     ticks(state, secondsToTicks(GROUND_SCAN_OPEN_SECONDS) + 1);
     foe.x = far.wx;

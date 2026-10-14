@@ -2799,3 +2799,136 @@ input[type="range"] { padding: 0; }
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/buildings/husk-cameo.png");
 }
+
+/* Xenite Ground Scans: one button per scan in the map's top right corner, 30% over a command-bar button. */
+.scan-dock {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 6;
+  display: flex;
+  gap: 6px;
+  padding: 5px;
+  background: linear-gradient(rgba(30, 20, 14, 0.92), rgba(14, 10, 8, 0.94));
+  border: 2px solid var(--rust);
+  box-shadow: 0 3px 0 #000, inset 0 1px 0 #4a2c1c, 0 6px 18px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+}
+.scan-dock:empty { display: none; }
+.scan-btn {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  overflow: hidden;
+  background: #05090f;
+  border: 2px solid var(--rust);
+  box-shadow: inset 0 1px 0 #6a4030, 0 2px 0 #000;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+}
+.scan-btn:hover { border-color: var(--rust-hi); filter: brightness(1.15); }
+.scan-btn:active { transform: translateY(1px); }
+.scan-avatar {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.scan-num {
+  position: absolute;
+  left: 2px;
+  top: 0;
+  font-family: "Share Tech Mono", monospace;
+  font-size: 0.68rem;
+  color: #a0ffd2;
+  text-shadow: 0 1px 0 #000;
+  pointer-events: none;
+}
+.scan-state {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  font-family: "Oswald", sans-serif;
+  font-size: 0.5rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-align: center;
+  line-height: 1.35;
+  color: var(--amber-dim);
+  background: rgba(5, 8, 6, 0.78);
+  pointer-events: none;
+}
+.scan-ring {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+}
+/* Not placed: the beam is off, the relay waits. */
+.scan-btn[data-state="ready"] .scan-avatar-beam,
+.scan-btn[data-state="ready"] .scan-avatar-sweep { opacity: 0; }
+.scan-btn[data-state="ready"] .scan-avatar-plot { opacity: 0.35; }
+.scan-btn[data-state="ready"] .scan-avatar-eye { fill: #4b6a60; }
+/* Placed and watching: the beam breathes, a line sweeps the plot, a ring of light runs round the frame. */
+.scan-btn[data-state="active"] { border-color: #2f9e74; }
+.scan-btn[data-state="active"] .scan-state { color: #7dffc4; }
+.scan-btn[data-state="active"] .scan-avatar-beam { animation: scan-beam 2.4s ease-in-out infinite; }
+.scan-btn[data-state="active"] .scan-avatar-sweep { animation: scan-sweep 1.8s linear infinite; }
+.scan-btn[data-state="active"] .scan-avatar-eye { animation: scan-eye 2.4s ease-in-out infinite; }
+.scan-btn[data-state="active"] .scan-avatar-craft { animation: scan-bob 4s ease-in-out infinite; }
+.scan-btn[data-state="active"] .scan-ring {
+  opacity: 1;
+  inset: -40%;
+  background: conic-gradient(from 0deg, transparent 0 70%, rgba(125, 255, 196, 0.55) 85%, transparent 100%);
+  mix-blend-mode: screen;
+  animation: scan-ring 2.6s linear infinite;
+}
+/* Folding or opening: the beam flickers while the relay turns. */
+.scan-btn[data-state="moving"] { border-color: #b98a2e; }
+.scan-btn[data-state="moving"] .scan-state { color: #ffd27a; }
+.scan-btn[data-state="moving"] .scan-avatar-beam { animation: scan-flicker 0.5s steps(2, end) infinite; }
+.scan-btn[data-state="moving"] .scan-avatar-sweep { opacity: 0; }
+.scan-btn[data-state="moving"] .scan-avatar-plot { animation: scan-flicker 0.5s steps(2, end) infinite; }
+/* Armed: the next map click sends this scan. */
+.scan-btn.is-armed {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 1px var(--danger), 0 0 12px rgba(255, 90, 60, 0.45), inset 0 1px 0 #6a4030, 0 2px 0 #000;
+}
+.scan-btn.is-armed .scan-state { color: #ffb0a0; }
+@keyframes scan-beam {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+@keyframes scan-sweep {
+  0% { transform: translateY(-3.5px); opacity: 0; }
+  15% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { transform: translateY(3.5px); opacity: 0; }
+}
+@keyframes scan-eye {
+  0%, 100% { fill: #46e69a; }
+  50% { fill: #ecfff6; }
+}
+@keyframes scan-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-1px); }
+}
+@keyframes scan-ring {
+  to { transform: rotate(360deg); }
+}
+@keyframes scan-flicker {
+  0% { opacity: 0.2; }
+  100% { opacity: 0.9; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scan-btn .scan-avatar-beam,
+  .scan-btn .scan-avatar-sweep,
+  .scan-btn .scan-avatar-eye,
+  .scan-btn .scan-avatar-craft,
+  .scan-btn .scan-avatar-plot,
+  .scan-btn .scan-ring { animation: none; }
+}
