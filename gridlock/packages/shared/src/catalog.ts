@@ -1342,9 +1342,9 @@ export const SHIELD_WALL_UNITS: readonly EntityType[] = ["xenodrone", "lancer"];
  */
 export const GROUND_SCAN_SIDE_TILES = t(8);
 /** Seconds a scan takes to open from nothing to its full square. */
-export const GROUND_SCAN_OPEN_SECONDS = 6;
+export const GROUND_SCAN_OPEN_SECONDS = 12;
 /** Seconds a scan takes to fold from its full square into its centre. */
-export const GROUND_SCAN_FOLD_SECONDS = 4;
+export const GROUND_SCAN_FOLD_SECONDS = 8;
 /** Scans a Xenite side holds with a plain Hive Core; each Hive Core level adds one. */
 export const GROUND_SCAN_BASE = 1;
 export const GROUND_SCAN_MAX = 3;
