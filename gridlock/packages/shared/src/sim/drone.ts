@@ -23,7 +23,7 @@ import {
   isGarrisonable,
   isInfantryType,
   radarLaidOf,
-  antiAirGunOf,
+  antiAirGun,
   rocketsOf,
   rocketRackFor,
   type DroneMode,
@@ -68,7 +68,7 @@ export function reachesDrone(shooter: Entity, drone: Entity): boolean {
   // The Battle Ship's CIWS mounts reach a drone, high or low.
   if (isBattleship(shooter.type)) return true;
   if (droneIsHigh(drone)) return reachesHighFlyer(shooter);
-  if (shooter.type === "walker" || radarLaidOf(shooter.type) || hasMg(shooter.type) || antiAirGunOf(shooter.type)) return true;
+  if (shooter.type === "walker" || radarLaidOf(shooter.type) || hasMg(shooter.type) || antiAirGun(shooter)) return true;
   // Titan pods reach a low drone. An artillery rack's lobbed rockets never do.
   if (rocketsOf(shooter.type)) return rocketRackFor(shooter).antiAir;
   return !!gun && gun.id !== "mortar";
@@ -81,7 +81,7 @@ export function reachesDrone(shooter: Entity, drone: Entity): boolean {
  */
 export function reachesHighFlyer(shooter: Entity): boolean {
   if (isBattleship(shooter.type)) return true;
-  if (shooter.type === "walker" || (radarLaidOf(shooter.type) && !rocketsOf(shooter.type)) || antiAirGunOf(shooter.type)) return true;
+  if (shooter.type === "walker" || (radarLaidOf(shooter.type) && !rocketsOf(shooter.type)) || antiAirGun(shooter)) return true;
   return !!infantryGunFor(shooter)?.antiAir;
 }
 

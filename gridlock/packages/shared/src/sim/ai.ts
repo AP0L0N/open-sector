@@ -47,6 +47,7 @@ import {
   energyOf,
   energySupplyOfEntity,
   FORCE_SHIELD_ENERGY,
+  SKY_SPINES_ENERGY,
   nextResearch,
   usesHiveEnergy,
   dockOf,
@@ -488,12 +489,14 @@ const XENO_SHIELDED: ReadonlySet<string> = new Set(["spineturret", "pulsespire",
 
 /**
  * One upgrade at a time, once the build order stands. First the least upgraded Fusion Node, when the
- * dip while it upgrades keeps the hive at zero or above; else the oldest defence still bare gets its
- * Force Shield, when the hive keeps HIVE_ENERGY_LOW free after the shield's draw.
+ * dip while it upgrades keeps the hive at zero or above; else, once enemy fliers have been seen, the
+ * oldest Spine Turret still blind to them grows Sky Spines; else the oldest defence still bare gets
+ * its Force Shield. Either only when the hive keeps HIVE_ENERGY_LOW free after the upgrade's draw.
  */
 function researchXeno(state: MatchState, p: SimPlayer): void {
   let node: Entity | undefined;
   let bare: Entity | undefined;
+  let grounded: Entity | undefined;
   let nodes = 0;
   for (const e of state.entities.values()) {
     if (e.ownerId !== p.playerId || e.kind !== "building" || e.hp <= 0 || e.ruined) continue;
@@ -501,7 +504,10 @@ function researchXeno(state: MatchState, p: SimPlayer): void {
     if (e.type === "fusionnode") {
       nodes++;
       if (nextResearch(e.type, e.level ?? 0) && (!node || (e.level ?? 0) < (node.level ?? 0))) node = e;
-    } else if (XENO_SHIELDED.has(e.type) && !e.forceShield && (!bare || e.id < bare.id)) bare = e;
+    } else {
+      if (XENO_SHIELDED.has(e.type) && !e.forceShield && (!bare || e.id < bare.id)) bare = e;
+      if (e.type === "spineturret" && !e.skySpines && (!grounded || e.id < grounded.id)) grounded = e;
+    }
   }
   if (nodes < XENO_RESEARCH_AFTER_NODES || xenoOrderNext(state, p) != null) return;
   const free = hiveFreeAfterQueue(state, p);
@@ -511,6 +517,10 @@ function researchXeno(state: MatchState, p: SimPlayer): void {
       applyCommand(state, p.playerId, { type: "cmd.research", ids: [node.id], research: nextResearch(node.type, node.level ?? 0)!.id });
       return;
     }
+  }
+  if (grounded && aiPlanOf(p).airSeenTick != null && free - SKY_SPINES_ENERGY >= HIVE_ENERGY_LOW) {
+    applyCommand(state, p.playerId, { type: "cmd.research", ids: [grounded.id], research: "skyspines" });
+    return;
   }
   if (bare && free - FORCE_SHIELD_ENERGY >= HIVE_ENERGY_LOW) {
     applyCommand(state, p.playerId, { type: "cmd.research", ids: [bare.id], research: "forceshield" });

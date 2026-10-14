@@ -6,7 +6,8 @@ import type { Entity, MatchState } from "./types.js";
 /**
  * Research. A structure that offers it (catalog RESEARCH) upgrades itself one level at a time:
  * the Fusion Node to Advanced Fusion, then to Ultra Fusion; a Xenite defence to its Force Shield
- * (a small dome of its own, sim/energy-shield.ts). The job runs on the structure itself,
+ * (a small dome of its own, sim/energy-shield.ts); a Spine Turret to Sky Spines (it reaches
+ * aircraft, catalog antiAirGun). The job runs on the structure itself,
  * at the owner's job pace (power, or the hive's energy), and takes its scrap as it goes, like a
  * yard job. While it runs a Fusion Node holds only RESEARCH_OUTPUT_SHARE of its energy
  * (energySupplyOfEntity). Cancelled, it gives the scrap back; captured, the job is dropped and
@@ -87,6 +88,7 @@ export function tickResearch(state: MatchState): void {
     if (!jobFullyPaid(job, cost)) continue;
     if (def.level != null) e.level = def.level;
     if (def.grants === "forceShield") e.forceShield = true;
+    if (def.grants === "skySpines") e.skySpines = true;
     e.research = undefined;
   }
 }
