@@ -15,6 +15,7 @@ import {
   TRAIN_TYPES,
   catalog,
   energyDomeOf,
+  fires,
   factionOf,
   isAircraftType,
   isOneAtATime,
@@ -91,7 +92,7 @@ describe("Mothership", () => {
     assert.ok(MOTHERSHIP_CRUISE_ALT >= AIR_HIGH_ALT);
   });
 
-  it("carries the Spine Turret's, the Pulse Spire's, and the Mawcaster's cells", () => {
+  it("carries the Ion Turret's, the Disruptor Pylon's, and the Nova Mortar's cells", () => {
     assert.equal(MOTHERSHIP_CELLS.spine, SPINE_TURRET_CELL);
     assert.equal(MOTHERSHIP_CELLS.pulse, PULSE_SPIRE_CELL);
     assert.equal(catalog("pulsespire").plasmaCell, PULSE_SPIRE_CELL);
@@ -145,7 +146,7 @@ describe("Mothership", () => {
     assert.ok(ship.mothership!.spine.firedTick != null, "the spine fired");
   });
 
-  it("throws the Mawcaster's salvo at the ground in its band, and never inside it", () => {
+  it("throws the Nova Mortar's salvo at the ground in its band, and never inside it", () => {
     const state = dry();
     shipOver(state, 30, 60);
     const ts = state.tileSize;
@@ -162,7 +163,7 @@ describe("Mothership", () => {
     assert.equal(ship.mothership!.maw.firedTick, undefined, "too close for the maw");
   });
 
-  it("spits the Mawcaster's air balls at a low plane in reach", () => {
+  it("spits the Nova Mortar's air balls at a low plane in reach", () => {
     const state = dry();
     const ship = shipOver(state, 30, 60);
     const ts = state.tileSize;
@@ -192,6 +193,55 @@ describe("Mothership", () => {
     assert.ok(Math.hypot(hit.x - ship.x, hit.y - ship.y) > ship.radius, "before it reaches the hull");
     // Its own side's rounds go out through it.
     assert.equal(aloftSweep(state, "A", ship.x - 150, ship.y, 1, ship.x, ship.y, MOTHERSHIP_CRUISE_ALT), null);
+  });
+
+  it("counts as armed, so a force attack is sent to it", () => {
+    assert.ok(fires("mothership"));
+  });
+
+  it("on a force attack on the ground, fires the maw, the pulse, and the spine there, even on armor", () => {
+    const state = dry();
+    const ship = shipOver(state, 30, 60);
+    const ts = state.tileSize;
+    // A friendly tank: nothing picks it for itself, only the order.
+    const tank = makeEntity(state, "warden", "A", tileCenter(east(30, 9), ts), tileCenter(60, ts));
+    tank.hpMax = tank.hp = tank.hp * 40;
+    applyCommand(state, "A", { type: "cmd.forceattack", ids: [ship.id], x: tank.x, y: tank.y, targetId: tank.id });
+    run(state, 4);
+    const ms = ship.mothership!;
+    assert.ok(ms.spine.firedTick != null, "the spine fired");
+    assert.ok(ms.pulse.firedTick != null, "the pulse fired");
+    assert.ok(ms.maw.firedTick != null, "the maw fired");
+    assert.equal(ms.flak.firedTick, undefined, "the flak maw leaves the ground alone");
+    assert.ok(tank.hp < tank.hpMax, "the tank was hit");
+  });
+
+  it("on a force attack on an open point, lays the ground mounts on the point", () => {
+    const state = dry();
+    const ship = shipOver(state, 30, 60);
+    const ts = state.tileSize;
+    applyCommand(state, "A", { type: "cmd.forceattack", ids: [ship.id], x: tileCenter(east(30, 10), ts), y: tileCenter(60, ts) });
+    run(state, 3);
+    const ms = ship.mothership!;
+    assert.ok(ms.spine.firedTick != null && ms.pulse.firedTick != null && ms.maw.firedTick != null);
+    assert.equal(ms.flak.firedTick, undefined);
+  });
+
+  it("on a force attack on a plane, fires the flak maw at it and nothing else", () => {
+    const state = dry();
+    const ship = shipOver(state, 30, 60);
+    const ts = state.tileSize;
+    const plane = makeEntity(state, "stuka", "A", tileCenter(east(30, 8), ts), tileCenter(60, ts));
+    plane.air!.phase = "fly";
+    plane.air!.alt = AIR_CRUISE_ALT;
+    plane.air!.speed = 0;
+    plane.order = { kind: "move", x: plane.x, y: plane.y };
+    applyCommand(state, "A", { type: "cmd.forceattack", ids: [ship.id], x: plane.x, y: plane.y, targetId: plane.id });
+    run(state, 1);
+    const ms = ship.mothership!;
+    assert.ok(ms.flak.firedTick != null, "the flak maw fired");
+    assert.equal(ms.maw.firedTick, undefined);
+    assert.equal(ms.pulse.firedTick, undefined);
   });
 
   it("lets an enemy soldier walk under it", () => {

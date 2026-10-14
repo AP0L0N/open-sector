@@ -20,7 +20,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 160;
+export const PROTOCOL_VERSION = 161;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -345,7 +345,7 @@ export interface EntityView {
   research?: { id: ResearchId; progress: number };
   /** Researched Force Shield: the structure holds its own small dome. Everyone sees it. */
   forceShield?: true;
-  /** Researched Sky Spines: the Spine Turret lays on aircraft too. Everyone sees it. */
+  /** Researched Sky Tracking: the Ion Turret lays on aircraft too. Everyone sees it. */
   skySpines?: true;
   /** Force Shield points and full charge (0 while it recharges), drawn as a pale blue bar under the health bar. */
   shield?: { hp: number; max: number };

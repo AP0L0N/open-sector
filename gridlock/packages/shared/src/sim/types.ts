@@ -599,7 +599,7 @@ export interface Entity {
   forceShieldHp?: number;
   /** Tick a drained Force Shield dome comes back. */
   forceShieldReady?: number;
-  /** Researched Sky Spines (sim/research.ts): a Spine Turret that lays on aircraft too (catalog antiAirGun). */
+  /** Researched Sky Tracking (sim/research.ts): an Ion Turret that lays on aircraft too (catalog antiAirGun). */
   skySpines?: true;
   /** Research running on this structure, for the side that started it; `paid` is the scrap it took. */
   research?: { id: ResearchId; ownerId: string; progressTicks: number; totalTicks: number; paid: number };

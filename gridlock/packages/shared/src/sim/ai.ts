@@ -490,7 +490,7 @@ const XENO_SHIELDED: ReadonlySet<string> = new Set(["spineturret", "pulsespire",
 /**
  * One upgrade at a time, once the build order stands. First the least upgraded Fusion Node, when the
  * dip while it upgrades keeps the hive at zero or above; else, once enemy fliers have been seen, the
- * oldest Spine Turret still blind to them grows Sky Spines; else the oldest defence still bare gets
+ * oldest Ion Turret still blind to them grows Sky Tracking; else the oldest defence still bare gets
  * its Force Shield. Either only when the hive keeps HIVE_ENERGY_LOW free after the upgrade's draw.
  */
 function researchXeno(state: MatchState, p: SimPlayer): void {

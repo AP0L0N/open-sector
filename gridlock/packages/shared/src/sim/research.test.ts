@@ -218,7 +218,7 @@ describe("research", () => {
     });
   });
 
-  describe("Sky Spines", () => {
+  describe("Sky Tracking", () => {
     const grow = (state: MatchState, e: Entity) => {
       applyCommand(state, "B", { type: "cmd.research", ids: [e.id], research: "skyspines" });
       ticks(state, secondsToTicks(RESEARCH.skyspines.seconds) + 2);
@@ -233,7 +233,7 @@ describe("research", () => {
       return plane;
     }
 
-    it("is offered on the Spine Turret and on nothing else", () => {
+    it("is offered on the Ion Turret and on nothing else", () => {
       assert.ok(researchOf("spineturret").some((r) => r.id === "skyspines"));
       for (const t of ["pulsespire", "energywall", "laserfence", "fusionnode", "hivecore"] as const) {
         assert.ok(!researchOf(t).some((r) => r.id === "skyspines"), t);

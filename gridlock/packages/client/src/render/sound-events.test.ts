@@ -442,7 +442,7 @@ describe("SoundTracker cyborg link", () => {
   });
 });
 
-describe("Thrall cues", () => {
+describe("Enforcer cues", () => {
   it("plays its vault and stagger as they start, and its detonation with a last word when yours goes off", () => {
     const t = new SoundTracker();
     const cues = (evs: SoundEvent[]) => kinds(evs, "unitsfx").map((e) => (e as { cue: string }).cue);
@@ -457,6 +457,6 @@ describe("Thrall cues", () => {
     const theirs = { ...blast, id: 51, fromId: 2 };
     const far = t.step(snap({ entities: [], impacts: [theirs] as never }), 500);
     assert.deepEqual(cues(far), ["detonate"]);
-    assert.deepEqual(kinds(far, "voice"), [], "an enemy Thrall says nothing to you");
+    assert.deepEqual(kinds(far, "voice"), [], "an enemy Enforcer says nothing to you");
   });
 });
