@@ -7152,7 +7152,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: 0,
     leavesWreck: true,
     wreckHp: 35,
-    blurb: `A small nanite forge on four short legs. It carries no weapon. From the moment it leaves the Forge it builds Enforcers by itself, ${ASSEMBLER_SPEEDUP} times as fast as a Forge, and sets each one down behind it. Every Enforcer spends ${Math.round(100 / ASSEMBLER_THRALLS)}% of its energy, ${ASSEMBLER_THRALLS} at most. When one of its Enforcers dies, that ${Math.round(100 / ASSEMBLER_THRALLS)}% slowly flows back over ${ASSEMBLER_REGEN_SECONDS} seconds, and it builds a new one. Its Enforcers are Enforcers like any other: they count against your units and run on the uplink. At the unit cap it holds the next one until there is room. Thick plate on every face. Keep it behind the line. Needs Advanced Forge.`,
+    blurb: `A small nanite forge on four short legs. It carries no weapon. From the moment it leaves the Forge it builds Enforcers by itself, ${ASSEMBLER_SPEEDUP} times as fast as a Forge, and sets each one down behind it. Unless you give it a rally point, each new Enforcer stands guard over it. Every Enforcer spends ${Math.round(100 / ASSEMBLER_THRALLS)}% of its energy, ${ASSEMBLER_THRALLS} at most. When one of its Enforcers dies, that ${Math.round(100 / ASSEMBLER_THRALLS)}% slowly flows back over ${ASSEMBLER_REGEN_SECONDS} seconds, and it builds a new one. Its Enforcers are Enforcers like any other: they count against your units and run on the uplink. At the unit cap it holds the next one until there is room. Thick plate on every face. Keep it behind the line. Needs Advanced Forge.`,
   },
   /** Xenite heavy assimilator: spore-pod rocket artillery. */
   mawcaster: {
