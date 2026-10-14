@@ -49,6 +49,18 @@ export function shieldGlow(s: Pick<EnergyShieldView, "hp" | "hpMax" | "hit">, no
   return Math.min(1, s.hit ? base + 0.45 : base);
 }
 
+/** The Neural Pulsar's dome over a whole base: barely there while it stands quiet... */
+export const PULSAR_DOME_QUIET = 0.2;
+/** ...a clear flare while it is being struck... */
+export const PULSAR_DOME_STRUCK = 0.7;
+/** ...and flatter than a Siphon's, so its crown does not tower over the base. */
+export const PULSAR_DOME_FLATTEN = 0.5;
+
+/** A Neural Pulsar dome's glow: shieldGlow, faded down so it does not get in the way. */
+export function pulsarDomeGlow(s: Pick<EnergyShieldView, "hp" | "hpMax" | "hit">, now: number, id: number): number {
+  return shieldGlow(s, now, id) * (s.hit ? PULSAR_DOME_STRUCK : PULSAR_DOME_QUIET);
+}
+
 /** How long the nanite thread from a Weaver to the wall it just threw shows, ms. */
 export const WEAVE_THREAD_MS = 450;
 

@@ -439,6 +439,39 @@ const LEVEL_DEFS: Partial<Record<EntityType, BuildingAnimDef[]>> = {
       smoke: [{ x: 264, y: 135, rise: 30, thin: true }],
     },
   ],
+  // Neural Pulsar (nexus-pulsar.json): the star throbs fast, the brain under it, the cage ribs and the
+  // crown tips chase round, the dome projectors pulse in turn, the spike blinks.
+  nexus: [
+    {
+      lights: [
+        { x: 210, y: 54, r: 20, color: "#e6fff8", period: 600, phase: 0.0, mode: "pulse" },
+        { x: 210, y: 29, r: 6, color: "#b6fff0", period: 1200, phase: 0.0, mode: "blink" },
+        { x: 210, y: 233, r: 16, color: "#6dffc8", period: 1800, phase: 0.0, mode: "pulse" },
+        { x: 233, y: 268, r: 5, color: "#7fe3ff", period: 1400, phase: 0.0, mode: "pulse" },
+        { x: 187, y: 268, r: 5, color: "#7fe3ff", period: 1400, phase: 0.125, mode: "pulse" },
+        { x: 154, y: 251, r: 5, color: "#7fe3ff", period: 1400, phase: 0.25, mode: "pulse" },
+        { x: 154, y: 228, r: 5, color: "#7fe3ff", period: 1400, phase: 0.375, mode: "pulse" },
+        { x: 187, y: 212, r: 5, color: "#7fe3ff", period: 1400, phase: 0.5, mode: "pulse" },
+        { x: 233, y: 212, r: 5, color: "#7fe3ff", period: 1400, phase: 0.625, mode: "pulse" },
+        { x: 266, y: 228, r: 5, color: "#7fe3ff", period: 1400, phase: 0.75, mode: "pulse" },
+        { x: 266, y: 251, r: 5, color: "#7fe3ff", period: 1400, phase: 0.875, mode: "pulse" },
+        { x: 210, y: 150, r: 4, color: "#b6fff0", period: 1600, phase: 0.0, mode: "blink" },
+        { x: 162, y: 140, r: 4, color: "#b6fff0", period: 1600, phase: 0.125, mode: "blink" },
+        { x: 142, y: 116, r: 4, color: "#b6fff0", period: 1600, phase: 0.25, mode: "blink" },
+        { x: 162, y: 92, r: 4, color: "#b6fff0", period: 1600, phase: 0.375, mode: "blink" },
+        { x: 210, y: 82, r: 4, color: "#b6fff0", period: 1600, phase: 0.5, mode: "blink" },
+        { x: 258, y: 92, r: 4, color: "#b6fff0", period: 1600, phase: 0.625, mode: "blink" },
+        { x: 278, y: 116, r: 4, color: "#b6fff0", period: 1600, phase: 0.75, mode: "blink" },
+        { x: 258, y: 140, r: 4, color: "#b6fff0", period: 1600, phase: 0.875, mode: "blink" },
+        { x: 278, y: 291, r: 7, color: "#6dffc8", period: 2000, phase: 0.0, mode: "pulse" },
+        { x: 143, y: 291, r: 7, color: "#6dffc8", period: 2000, phase: 0.25, mode: "pulse" },
+        { x: 143, y: 223, r: 7, color: "#6dffc8", period: 2000, phase: 0.5, mode: "pulse" },
+        { x: 278, y: 223, r: 7, color: "#6dffc8", period: 2000, phase: 0.75, mode: "pulse" },
+        { x: 174, y: 320, r: 5, color: "#6dffc8", period: 2400, phase: 0.0, mode: "pulse" },
+        { x: 246, y: 320, r: 5, color: "#6dffc8", period: 2400, phase: 0.5, mode: "pulse" },
+      ],
+    },
+  ],
 };
 
 function animDefFor(e: BuildingAnimView): BuildingAnimDef | undefined {

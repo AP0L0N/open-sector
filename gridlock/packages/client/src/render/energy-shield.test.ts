@@ -4,7 +4,9 @@ import { ISO_ELEVATION } from "@gridlock/shared";
 import {
   CURTAIN_PANELS,
   DOME_OPACITY,
+  PULSAR_DOME_FLATTEN,
   PULSE_SPIRE_TOP_PX,
+  pulsarDomeGlow,
   SHIELD_PANELS,
   curtainHeightElev,
   domeHeightElev,
@@ -43,5 +45,13 @@ describe("energy wall drawing", () => {
 
   it("a dome draws half as opaque as before", () => {
     assert.equal(DOME_OPACITY, 0.5);
+  });
+
+  it("the Neural Pulsar's dome is barely there while quiet, and shows clearly where it is struck", () => {
+    const quiet = pulsarDomeGlow({ hp: 2000, hpMax: 2000 }, 0, 1);
+    const struck = pulsarDomeGlow({ hp: 2000, hpMax: 2000, hit: true }, 0, 1);
+    assert.ok(quiet < shieldGlow({ hp: 2000, hpMax: 2000 }, 0, 1) * 0.3, "far fainter than a Siphon's dome");
+    assert.ok(struck > quiet * 2, "a hit lights it up");
+    assert.ok(PULSAR_DOME_FLATTEN < 1, "and it crowns lower over the base");
   });
 });

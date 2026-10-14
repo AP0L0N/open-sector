@@ -11,6 +11,7 @@ import {
   energySupplyOf,
   energySupplyOfEntity,
   levelNameOf,
+  isNeuralPulsar,
   canStartResearch,
   researchTechMissing,
   RESEARCH,
@@ -2133,7 +2134,7 @@ function updateResearch(body: HTMLElement, type: EntityType, mine: EntityView[],
     const line = energySupplyOf(type) > 0
       ? `${name}  ·  ${energy} energy${job ? `  (${job})` : ""}${flak}`
       : focus.shield
-        ? `Force Shield  ${focus.shield.hp}/${focus.shield.max}${focus.shield.hp <= 0 ? "  recharging" : ""}`
+        ? `${isNeuralPulsar(focus) ? "Pulsar Dome" : "Force Shield"}  ${focus.shield.hp}/${focus.shield.max}${focus.shield.hp <= 0 ? "  recharging" : ""}`
         : job
           ? `Upgrading: ${job}`
           : FORCE_SHIELD_BUILDINGS.includes(type as BuildingType) && level === 0

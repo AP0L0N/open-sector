@@ -170,9 +170,11 @@ import {
   isSimUnit,
   MOTHERSHIP_DOME_DEPTH,
   RESEARCH,
+  isNeuralPulsar,
 } from "@gridlock/shared";
 import {
   CURTAIN_PANELS,
+  PULSAR_DOME_FLATTEN,
   WEAVE_THREAD_MS,
   curtainHeightElev,
   domeHeightElev,
@@ -180,6 +182,7 @@ import {
   drawDome,
   drawShieldPanel,
   drawWeaveThread,
+  pulsarDomeGlow,
   shieldCurve,
   shieldGlow,
   shieldHeightElev,
@@ -10462,8 +10465,10 @@ export class MapView {
       rx = Math.max(rx, Math.abs(p.x - c.x));
       ry = Math.max(ry, Math.abs(p.y - c.y));
     }
-    const lift = c.y - this.toScreen(at.x, at.y, elev + domeHeightElev(s.r)).y;
-    const glow = shieldGlow(s, now, s.id);
+    // The Neural Pulsar's dome spans the whole base: flatter, and barely there until something strikes it.
+    const pulsar = host != null && isNeuralPulsar(host);
+    const lift = (c.y - this.toScreen(at.x, at.y, elev + domeHeightElev(s.r)).y) * (pulsar ? PULSAR_DOME_FLATTEN : 1);
+    const glow = pulsar ? pulsarDomeGlow(s, now, s.id) : shieldGlow(s, now, s.id);
     // Sorted at its front rim: what stands under it draws first and shows through.
     const front = { x: at.x + s.r * Math.SQRT1_2, y: at.y + s.r * Math.SQRT1_2 };
     items.push({

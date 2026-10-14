@@ -2379,6 +2379,7 @@ export const LEVEL_SHEETS: Partial<Record<EntityType, readonly string[]>> = {
   fusioncore: ["reactor"],
   conversion: ["advanced", "neural"],
   forge: ["advanced", "neural"],
+  nexus: ["pulsar"],
 };
 const LEVEL_SPRITES: Partial<Record<EntityType, BuildingSpriteDef[]>> = {};
 for (const [type, names] of Object.entries(LEVEL_SHEETS) as [EntityType, readonly string[]][]) {
