@@ -83,6 +83,7 @@ import { tickTrain } from "./train.js";
 import { tickResearch } from "./research.js";
 import { tickRoofFlak } from "./roof-flak.js";
 import { aimSpotlightPatrol, hasSpotlight, tickSpotlights } from "./night.js";
+import { tickGroundScans } from "./ground-scan.js";
 import type { Entity, MatchState, SimPlayer } from "./types.js";
 import { leaveCorpse } from "./remains.js";
 import { keepRubbleStanding, toRubble } from "./rubble.js";
@@ -394,6 +395,7 @@ function stepHeld(state: MatchState, dt: number): void {
   tickCyborgLink(state); lap("tickCyborgLink");
   tickSmoke(state, dt); lap("tickSmoke");
   tickSpotlights(state, dt); lap("tickSpotlights");
+  tickGroundScans(state, dt); lap("tickGroundScans");
   tickStance(state); lap("tickStance");
   tickBipod(state); lap("tickBipod");
   tickDeploy(state, dt); lap("tickDeploy");
@@ -624,6 +626,7 @@ function eliminate(state: MatchState, playerId: string): void {
   }
   state.projectiles = state.projectiles.filter((pr) => pr.ownerId !== playerId);
   if (state.energyShields) state.energyShields = state.energyShields.filter((s) => s.ownerId !== playerId);
+  p.groundScans = undefined;
 }
 
 function checkWin(state: MatchState): void {

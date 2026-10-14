@@ -141,6 +141,8 @@ export {
   spotFacingOf,
 } from "./night.js";
 export type { DayPhase, HullLamp, MatchClock } from "./night.js";
+export { groundScanSlots, placeGroundScan, scanRect } from "./ground-scan.js";
+export type { ScanRect } from "./ground-scan.js";
 export {
   FIELD_TURN_MAX,
   fencePostTile,

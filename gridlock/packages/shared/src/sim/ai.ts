@@ -82,6 +82,7 @@ import {
   scrapIsGround,
   smelterOf,
   energyWallOf,
+  GROUND_SCAN_SIDE_TILES,
 } from "../catalog.js";
 import { droneCall, subDepthCall, tickNeutralCrews } from "./ai-crew.js";
 import { aiProfile, type AiProfile } from "./ai-profile.js";
@@ -97,6 +98,7 @@ import { powerOf } from "./power.js";
 import { fenceLineEnergy, hiveEnergyOf } from "./hive-energy.js";
 import { purgeDenied } from "./simunit.js";
 import { researchBlocker } from "./research.js";
+import { groundScanSlots } from "./ground-scan.js";
 import { needsSupply } from "./supply.js";
 import { canSeeEntity, sightKeysHeld } from "./vision.js";
 import type { AiFleet, AiForce, AiPlan, Entity, MatchState, SimPlayer, StructureJob, Vec } from "./types.js";
@@ -467,6 +469,7 @@ function thinkXeno(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): v
   if (state.tick >= (p.aiNextMicroTick ?? 0)) {
     p.aiNextMicroTick = state.tick + CPU_MICRO_EVERY_TICKS;
     researchXeno(state, p);
+    aimGroundScans(state, p, hq);
     watchSky(state, p, plan);
     if (plan.posture === "fortify" && xenoFortified(state, p, hq, plan)) {
       plan.posture = "campaign";
@@ -483,6 +486,43 @@ function thinkXeno(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): v
   }
 }
 
+/**
+ * The Xenite CPU's Ground Scans: the first over its Hive Core, the second over the middle of its
+ * army in the field, the third over its unit farthest from home, the front. A scan is moved only
+ * once its mark has wandered half a square off, so it is not forever folding.
+ */
+function aimGroundScans(state: MatchState, p: SimPlayer, hq: Entity): void {
+  const slots = groundScanSlots(state, p.playerId);
+  if (slots <= 0) return;
+  let n = 0;
+  let sx = 0;
+  let sy = 0;
+  let front: Entity | undefined;
+  let frontD = -1;
+  for (const e of state.entities.values()) {
+    if (e.ownerId !== p.playerId || e.kind !== "unit" || e.hp <= 0 || e.wreck || e.air || e.garrisonedIn != null) continue;
+    n++;
+    sx += e.x;
+    sy += e.y;
+    const d = Math.hypot(e.x - hq.x, e.y - hq.y);
+    if (d > frontD) {
+      frontD = d;
+      front = e;
+    }
+  }
+  const marks: { x: number; y: number }[] = [{ x: hq.x, y: hq.y }];
+  if (n > 0) marks.push({ x: sx / n, y: sy / n });
+  if (front) marks.push({ x: front.x, y: front.y });
+  const slack = (GROUND_SCAN_SIDE_TILES * state.tileSize) / 2;
+  for (let slot = 0; slot < Math.min(slots, marks.length); slot++) {
+    const m = marks[slot]!;
+    const s = p.groundScans?.find((g) => g.slot === slot);
+    const at = s?.to ?? s;
+    if (at && Math.hypot(at.x - m.x, at.y - m.y) < slack) continue;
+    applyCommand(state, p.playerId, { type: "cmd.groundscan", slot, x: m.x, y: m.y });
+  }
+}
+
 /** Fusion Nodes the Xenite CPU holds before it starts upgrading them. */
 const XENO_RESEARCH_AFTER_NODES = 3;
 
@@ -496,19 +536,25 @@ const XENO_SHIELDED: ReadonlySet<string> = new Set(["spineturret", "pulsespire",
  * dip while it upgrades keeps the hive at zero or above (Ultra Fusion waits for a Neural Nexus); else,
  * once enemy fliers have been seen, the oldest Ion Turret still blind to them grows Sky Tracking; else
  * the oldest defence still bare gets its Force Shield. Either only when the hive keeps HIVE_ENERGY_LOW
- * free after the upgrade's draw.
+ * free after the upgrade's draw. The Hive Core's Orbital Relay and Array, free and drawing nothing,
+ * go up beside these once the build order stands.
  */
 function researchXeno(state: MatchState, p: SimPlayer): void {
   let node: Entity | undefined;
   let bare: Entity | undefined;
   let grounded: Entity | undefined;
   let chamber: Entity | undefined;
+  let hive: Entity | undefined;
   let drilled = false;
   let nodes = 0;
   for (const e of state.entities.values()) {
     if (e.ownerId !== p.playerId || e.kind !== "building" || e.hp <= 0 || e.ruined) continue;
+    if (e.type === "hivecore") {
+      hive = e;
+      continue;
+    }
     if (e.research) return;
-    if (e.type === "conversion") {
+    else if (e.type === "conversion") {
       if (e.shieldWall) drilled = true;
       else if (!chamber || e.id < chamber.id) chamber = e;
     } else if (e.type === "fusionnode") {
@@ -524,6 +570,13 @@ function researchXeno(state: MatchState, p: SimPlayer): void {
     return;
   }
   if (nodes < XENO_RESEARCH_AFTER_NODES || xenoOrderNext(state, p) != null) return;
+  // The Hive Core's relays cost nothing and take nothing from the hive: they go up beside the rest.
+  if (hive && !hive.research) {
+    const next = nextResearch(hive.type, hive.level ?? 0);
+    if (next && !researchBlocker(state, p.playerId, hive, next.id)) {
+      applyCommand(state, p.playerId, { type: "cmd.research", ids: [hive.id], research: next.id });
+    }
+  }
   // The least upgraded node is the one to go next; if its level is still locked (Ultra Fusion
   // without a Neural Nexus), every node is, and the shields go first.
   if (node && researchBlocker(state, p.playerId, node, nextResearch(node.type, node.level ?? 0)!.id)) node = undefined;

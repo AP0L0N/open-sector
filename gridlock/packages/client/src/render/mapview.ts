@@ -184,6 +184,7 @@ import {
   shieldGlow,
   shieldHeightElev,
 } from "./energy-shield.js";
+import { drawScanEdge, drawScanGhost, scanNow, scanOutline, scanWorldRect, sweepAt, tracePoly } from "./ground-scan.js";
 import { drawNuke, drawNukeFlash, drawNukeScorch, NUKE_FX_MS, NUKE_SCORCH_MS } from "./nuke-fx.js";
 import { drawTitanThrust } from "./titan-jet-fx.js";
 import {
@@ -1419,6 +1420,8 @@ export class MapView {
   private hiveFxSeen = new Set<number>();
   private seenBlinks = new Set<number>();
   rotateMode = false;
+  /** Xenite Ground Scan armed: the next left click sends this scan slot there. Null when not armed. */
+  scanSlot: number | null = null;
   /** Rotate light: the rotate click swings only the selected Battle Ships' and Titans' lamps. */
   rotateLight = false;
   guardMode = false;
@@ -1495,6 +1498,7 @@ export class MapView {
     this.attackMoveMode = on;
     if (on) {
       this.placeMode = false;
+      this.scanSlot = null;
       this.forceAttackMode = false;
       this.mineLayMode = false;
       this.rallyMode = false;
@@ -1522,6 +1526,7 @@ export class MapView {
     this.patrolLoop = false;
     if (on) {
       this.placeMode = false;
+      this.scanSlot = null;
       this.attackMoveMode = false;
       this.forceAttackMode = false;
       this.mineLayMode = false;
@@ -1543,6 +1548,7 @@ export class MapView {
       this.mineLayMode = false;
       this.rallyMode = false;
       this.placeMode = false;
+      this.scanSlot = null;
       this.attackMoveMode = false;
       this.rotateMode = false;
       this.fieldPlace = null;
@@ -1560,6 +1566,7 @@ export class MapView {
     this.blinkMode = on;
     if (on) {
       this.placeMode = false;
+      this.scanSlot = null;
       this.attackMoveMode = false;
       this.forceAttackMode = false;
       this.mineLayMode = false;
@@ -1580,6 +1587,7 @@ export class MapView {
     if (on) {
       this.blinkMode = false;
       this.placeMode = false;
+      this.scanSlot = null;
       this.attackMoveMode = false;
       this.forceAttackMode = false;
       this.rotateMode = false;
@@ -1599,6 +1607,7 @@ export class MapView {
     if (on) {
       this.blinkMode = false;
       this.placeMode = false;
+      this.scanSlot = null;
       this.attackMoveMode = false;
       this.forceAttackMode = false;
       this.mineLayMode = false;
@@ -1613,12 +1622,39 @@ export class MapView {
     this.onPlaceMode();
   }
 
+  /** Arm Ground Scan `slot` for a click on the map, or disarm with null. Needs nothing selected. */
+  setScanMode(slot: number | null): void {
+    if (this.scanSlot === slot) return;
+    this.scanSlot = slot;
+    if (slot != null) {
+      this.placeMode = this.attackMoveMode = this.forceAttackMode = this.mineLayMode = this.rallyMode = false;
+      this.blinkMode = this.rotateMode = false;
+      this.fieldPlace = null;
+      this.constructPlace = null;
+      this.bridgePlace = null;
+      this.setGuardMode(false);
+      this.setPatrolMode(false);
+    }
+    this.onAttackMoveMode();
+    this.onPlaceMode();
+  }
+
+  /** Send the armed Ground Scan to the ground under the cursor. */
+  private commitScan(px: number, py: number): void {
+    const slot = this.scanSlot;
+    if (slot == null) return;
+    const w = this.screenToWorld(px, py);
+    this.command({ type: "cmd.groundscan", slot, x: w.x, y: w.y });
+    this.setScanMode(null);
+  }
+
   setRotateMode(on: boolean, light = false): void {
     if (this.rotateMode === on && (!on || this.rotateLight === light)) return;
     this.rotateMode = on;
     this.rotateLight = on && light;
     if (on) {
       this.placeMode = false;
+      this.scanSlot = null;
       this.attackMoveMode = false;
       this.forceAttackMode = false;
       this.mineLayMode = false;
@@ -1638,6 +1674,7 @@ export class MapView {
     this.guardMode = on;
     if (on) {
       this.placeMode = false;
+      this.scanSlot = null;
       this.attackMoveMode = false;
       this.forceAttackMode = false;
       this.mineLayMode = false;
@@ -1665,6 +1702,7 @@ export class MapView {
     this.fieldPath = [];
     if (next) {
       this.placeMode = false;
+      this.scanSlot = null;
       this.placePick = null;
       this.yardArm = null;
       this.attackMoveMode = false;
@@ -1693,6 +1731,7 @@ export class MapView {
       this.fieldShown = this.fieldFacing;
       this.fieldShownAt = performance.now();
       this.placeMode = false;
+      this.scanSlot = null;
       this.placePick = null;
       this.yardArm = null;
       this.attackMoveMode = false;
@@ -1717,6 +1756,7 @@ export class MapView {
     this.fieldPath = [];
     if (next) {
       this.placeMode = false;
+      this.scanSlot = null;
       this.placePick = null;
       this.yardArm = null;
       this.attackMoveMode = false;
@@ -3034,6 +3074,7 @@ export class MapView {
 
   /** Place this finished building. A ready defence does not have to wait for a ready base. */
   armPlace(type: BuildingType): void {
+    this.scanSlot = null;
     this.placePick = type;
     this.yardArm = null;
     this.fenceArm = false;
@@ -3191,6 +3232,10 @@ export class MapView {
           this.onPlaceMode();
           return;
         }
+        if (this.scanSlot != null) {
+          this.setScanMode(null);
+          return;
+        }
         if (this.attackMoveMode || this.forceAttackMode || this.mineLayMode || this.rallyMode || this.blinkMode || this.rotateMode || this.guardMode || this.fieldPlace || this.constructPlace || this.bridgePlace) {
           this.setAttackMoveMode(false);
           this.setForceAttackMode(false);
@@ -3247,6 +3292,10 @@ export class MapView {
           } else {
             this.fieldDrag = { x: w.x, y: w.y };
           }
+          return;
+        }
+        if (this.scanSlot != null) {
+          this.commitScan(mx, my);
           return;
         }
         if (this.blinkMode) {
@@ -3439,6 +3488,12 @@ export class MapView {
     if (k === "h") {
       e.preventDefault();
       this.centerOnHq();
+      return;
+    }
+    if (k === "escape" && this.scanSlot != null) {
+      e.preventDefault();
+      e.stopPropagation();
+      this.setScanMode(null);
       return;
     }
     if (
@@ -5015,7 +5070,7 @@ export class MapView {
     if (gl) {
       const dpr = Math.min(devicePixelRatio || 1, 1.5);
       gl.setMap(this.map());
-      gl.render(field, {
+      const frame = {
         camX: this.camX,
         camY: this.camY,
         scale: dpr * this.zoom,
@@ -5023,12 +5078,31 @@ export class MapView {
         height: this.canvas.height,
         now,
         lift: isoLift(this.maxElev),
-        ...look,
-      });
+      };
+      gl.render(field, { ...frame, ...look });
       const ctx = this.ctx;
+      // Under a Ground Scan the ground out of sight wears the day veil, not the night's near black.
+      const scans = this.daylight() < 1 ? this.scanShapes() : [];
+      if (scans.length === 0) {
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.drawImage(gl.canvas, 0, 0);
+        ctx.restore();
+        return;
+      }
+      const night = this.scanFogLayer(gl.canvas);
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(night, 0, 0);
+      ctx.restore();
+      gl.render(field, { ...frame, alpha: FOG_VEIL_ALPHA, rgb: FOG_RGB });
+      ctx.save();
+      for (const sc of scans) tracePoly(ctx, sc.pts);
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clip();
       ctx.drawImage(gl.canvas, 0, 0);
+      ctx.restore();
       ctx.restore();
       return;
     }
@@ -5171,6 +5245,7 @@ export class MapView {
     const xenoGlow = lampGlow(this.daylight());
     this.xenoFrame = xenoGlow > 0 ? this.xenoPools(w, h) : [];
     this.beginGlowCut();
+    this.cutScanLight();
     if (this.xenoFrame.length) items.push({ layer: HOLE_DRAW_LAYER, z: Infinity, run: () => this.drawXenoGlow(xenoGlow) });
     this.collectRemains(items);
     this.collectUnitShadows(items);
@@ -5263,6 +5338,8 @@ export class MapView {
       else if (yard) this.drawFieldGhost(yard, true);
     }
     this.drawRotateHint();
+    this.drawGroundScans();
+    this.drawScanGhostAtCursor();
 
     if (this.box) {
       const b = this.box;
@@ -7607,6 +7684,96 @@ export class MapView {
     draw(c);
     c.restore();
     this.glowCutUsed = true;
+  }
+
+  /** This frame's Ground Scans on screen, in the view's transform; worked out once a frame. */
+  private scanShapesAt = -1;
+  private scanShapesList: { pts: { x: number; y: number }[]; sweep: [{ x: number; y: number }, { x: number; y: number }] | null; open: number; slot: number }[] = [];
+
+  private scanShapes(): { pts: { x: number; y: number }[]; sweep: [{ x: number; y: number }, { x: number; y: number }] | null; open: number; slot: number }[] {
+    const now = performance.now();
+    if (this.scanShapesAt === now) return this.scanShapesList;
+    this.scanShapesAt = now;
+    const list: typeof this.scanShapesList = [];
+    const scans = this.curr.scans;
+    if (scans && scans.length > 0) {
+      const ts = this.ts();
+      const ms = now - this.snapAt;
+      const speed = this.curr.gameSpeed || 1;
+      for (const s of scans) {
+        const at = scanNow(s, ms, speed);
+        const r = scanWorldRect(at.x, at.y, at.open, ts);
+        if (!r) continue;
+        const pts = scanOutline(r, ts * 2, (wx, wy) => this.toScreen(wx, wy));
+        const sy = sweepAt(r, now, s.slot).y;
+        const sweep: [{ x: number; y: number }, { x: number; y: number }] = [this.toScreen(r.x0, sy), this.toScreen(r.x1, sy)];
+        list.push({ pts, sweep, open: at.open, slot: s.slot });
+      }
+    }
+    this.scanShapesList = list;
+    return list;
+  }
+
+  /** The night tint comes off a Ground Scan's square: it is lit as by day. */
+  private cutScanLight(): void {
+    if (this.daylight() >= 1) return;
+    const scans = this.scanShapes();
+    if (scans.length === 0) return;
+    this.cutGlow((c) => {
+      c.fillStyle = "rgba(0, 0, 0, 1)";
+      c.strokeStyle = "rgba(0, 0, 0, 0.5)";
+      c.lineJoin = "round";
+      c.lineWidth = 6;
+      for (const sc of scans) {
+        tracePoly(c, sc.pts);
+        c.fill();
+        c.stroke();
+      }
+    });
+  }
+
+  private scanFogCanvas: HTMLCanvasElement | null = null;
+
+  /** The night fog veil with every Ground Scan's square taken out of it. */
+  private scanFogLayer(src: HTMLCanvasElement | OffscreenCanvas): HTMLCanvasElement {
+    this.scanFogCanvas ??= document.createElement("canvas");
+    const layer = this.scanFogCanvas;
+    if (layer.width !== this.canvas.width || layer.height !== this.canvas.height) {
+      layer.width = this.canvas.width;
+      layer.height = this.canvas.height;
+    }
+    const c = layer.getContext("2d")!;
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.globalCompositeOperation = "copy";
+    c.drawImage(src, 0, 0);
+    c.globalCompositeOperation = "destination-out";
+    c.setTransform(this.ctx.getTransform());
+    c.fillStyle = "#000";
+    for (const sc of this.scanShapes()) {
+      tracePoly(c, sc.pts);
+      c.fill();
+    }
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.globalCompositeOperation = "source-over";
+    return layer;
+  }
+
+  /** Every Ground Scan's faint energy edge and its sweep, day or night. Only the side's own are sent. */
+  private drawGroundScans(): void {
+    const scans = this.scanShapes();
+    if (scans.length === 0) return;
+    const now = performance.now();
+    for (const sc of scans) drawScanEdge(this.ctx, sc.pts, sc.sweep, sc.open, sc.slot, now);
+  }
+
+  /** A Ground Scan armed: its full square, dashed, on the ground under the cursor. */
+  private drawScanGhostAtCursor(): void {
+    if (this.scanSlot == null || this.mouseX < 0 || this.overControl) return;
+    const w = this.screenToWorld(this.mouseX, this.mouseY);
+    const ts = this.ts();
+    const r = scanWorldRect(w.x, w.y, 1, ts);
+    if (!r) return;
+    drawScanGhost(this.ctx, scanOutline(r, ts * 2, (wx, wy) => this.toScreen(wx, wy)));
   }
 
   /** Takes what is drawn here back out of the cut layer: a tree or a prop standing in front of a lit window stays dark. */
@@ -10915,6 +11082,7 @@ export class MapView {
         this.forceAttackMode ||
         this.mineLayMode || this.rallyMode || this.blinkMode ||
         this.rotateMode ||
+        this.scanSlot != null ||
         this.guardMode ||
         (this.ctrlHeld && this.ownForceIds().length > 0)) &&
       !this.overControl;

@@ -63,6 +63,7 @@ import { assemblerCharge } from "./assembler.js";
 import { domeCharge, forceShieldView } from "./energy-shield.js";
 import { plasmaCharge } from "./hive-ammo.js";
 import { hiveEnergyOf } from "./hive-energy.js";
+import { groundScanSlots } from "./ground-scan.js";
 import { laserProgress } from "./laser.js";
 import { garrisonBars, garrisonOwner } from "./garrison.js";
 import { deckLoad } from "./lst.js";
@@ -93,6 +94,7 @@ import type { Entity, LaserBeam, MatchState, Order, QueueableCommand, StructureJ
 import type {
   CorpseView,
   EnergyShieldView,
+  GroundScanView,
   EntityView,
   MatchSnapshot,
   PlanKind,
@@ -738,6 +740,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       used: power.used,
       lowPower: power.lowPower,
       ...(you && usesHiveEnergy(you.faction) ? { energy: hiveEnergyOf(state, youPlayerId) } : {}),
+      ...(you?.faction === "xeno" ? { groundScanSlots: groundScanSlots(state, youPlayerId) } : {}),
       structureQueue: structureQueueView(you?.structure),
       defenceQueue: structureQueueView(you?.defence),
       lineQueue: structureQueueView(you?.line),
@@ -822,6 +825,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       lifeMax: c.lifeMax,
     })),
     shields: shieldViews(state, youPlayerId, vis),
+    scans: scanViews(state, youPlayerId),
     fires: state.fires
       .filter((f) => allies(state, youPlayerId, f.ownerId) || canSeeWorld(state, vis, f.x, f.y))
       .map((f) => ({ id: f.id, x: f.x, y: f.y, radius: f.radius, life: f.life, lifeMax: f.lifeMax })),
@@ -909,6 +913,26 @@ function energyShot(state: MatchState, ownerId: string): boolean {
 
 /** Ticks a struck energy wall flares for. */
 const SHIELD_FLASH_TICKS = 4;
+
+/** The side's Ground Scans. The enemy is not shown them: the light is the scanning side's alone. */
+function scanViews(state: MatchState, youPlayerId: string): GroundScanView[] | undefined {
+  let out: GroundScanView[] | undefined;
+  for (const p of state.players.values()) {
+    if (!p.groundScans || p.groundScans.length === 0 || !allies(state, youPlayerId, p.playerId)) continue;
+    for (const s of p.groundScans) {
+      (out ??= []).push({
+        ownerId: p.playerId,
+        slot: s.slot,
+        x: s.x,
+        y: s.y,
+        open: Math.round(s.open * 1000) / 1000,
+        dir: s.dir,
+        ...(s.to ? { to: { x: s.to.x, y: s.to.y } } : {}),
+      });
+    }
+  }
+  return out;
+}
 
 function shieldViews(state: MatchState, youPlayerId: string, vis: Uint8Array): EnergyShieldView[] | undefined {
   const walls = state.energyShields;

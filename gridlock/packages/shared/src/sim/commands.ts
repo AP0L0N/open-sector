@@ -85,6 +85,7 @@ import { droneOf, guardDrone, launchDrone, orderDrone, recallDrone, setDroneMode
 import { landJet, takeOff } from "./jet.js";
 import { setDive } from "./naval.js";
 import { cancelResearch, startResearch } from "./research.js";
+import { placeGroundScan } from "./ground-scan.js";
 import { layMine } from "./destroyer.js";
 import { orderMineLay } from "./minelauncher.js";
 import { aimSpotlightPatrol, hasSpotlight, lampUnderway, spotFacingOf, spotlightManned } from "./night.js";
@@ -196,6 +197,11 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
     case "cmd.cloak":
       if (!Array.isArray(msg.ids)) return fail("bad_payload", "Bad cloak order.");
       return cmdCloak(state, playerId, msg.ids);
+    case "cmd.groundscan": {
+      if (typeof msg.slot !== "number" || !Number.isFinite(msg.x) || !Number.isFinite(msg.y)) return fail("bad_payload", "Bad Ground Scan order.");
+      const r = placeGroundScan(state, playerId, msg.slot, msg.x, msg.y);
+      return r.ok ? ok() : fail("busy", r.reason);
+    }
     case "cmd.blink":
       if (!Array.isArray(msg.ids) || typeof msg.x !== "number" || typeof msg.y !== "number") return fail("bad_payload", "Bad blink order.");
       return cmdBlink(state, playerId, msg.ids, msg.x, msg.y);
