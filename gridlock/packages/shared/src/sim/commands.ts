@@ -30,6 +30,7 @@ import {
   isInfantryType,
   isInfantryWeaponId,
   isShellType,
+  isResearchId,
   isSmokeShell,
   isStance,
   isTrainType,
@@ -83,6 +84,7 @@ import { orderBoardPlane, setPayload, unloadPlane } from "./airdrop.js";
 import { droneOf, guardDrone, launchDrone, orderDrone, recallDrone, setDroneMode, stopDrone } from "./drone.js";
 import { landJet, takeOff } from "./jet.js";
 import { setDive } from "./naval.js";
+import { cancelResearch, startResearch } from "./research.js";
 import { layMine } from "./destroyer.js";
 import { orderMineLay } from "./minelauncher.js";
 import { aimSpotlightPatrol, hasSpotlight, lampUnderway, spotFacingOf, spotlightManned } from "./night.js";
@@ -162,6 +164,11 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
     case "cmd.reach":
       if (typeof msg.max !== "boolean") return fail("bad_payload", "Unknown reach setting.");
       return cmdReach(state, playerId, msg.ids, msg.max);
+    case "cmd.research": {
+      if (!Array.isArray(msg.ids) || (msg.research !== null && !isResearchId(msg.research))) return fail("bad_payload", "Unknown research.");
+      const r = msg.research === null ? cancelResearch(state, playerId, msg.ids) : startResearch(state, playerId, msg.ids, msg.research);
+      return r.ok ? ok() : fail("busy", r.reason);
+    }
     case "cmd.guns":
       if (msg.guns !== 1 && msg.guns !== 2) return fail("bad_payload", "Unknown gatling setting.");
       return cmdGuns(state, playerId, msg.ids, msg.guns);

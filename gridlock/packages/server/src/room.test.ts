@@ -295,6 +295,58 @@ describe("hub rooms", () => {
       hub.shutdown();
     }
   });
+
+  it("echoes an autosave ask, and restarts a skirmish in the same room from tick 0", () => {
+    const hub = new Hub();
+    try {
+      const a = client(hub, "A");
+      hub.handle("A", { type: "hello", name: "Alpha" });
+      hub.handle("A", { type: "room.create", mapId: "yard-64", maxSlots: 8, mode: "skirmish" });
+      hub.handle("A", { type: "slot.host", slotIndex: 1, status: "ai" });
+      hub.handle("A", { type: "room.start" });
+      const roomId = hub.sessions.get("A")!.roomId!;
+      const before = hub.matches.get(roomId)!;
+      for (let i = 0; i < 3; i++) step(before);
+      hub.handle("A", { type: "match.save", auto: true });
+      assert.equal(a.of("match.saved").at(-1)?.auto, true);
+      hub.handle("A", { type: "match.save" });
+      assert.equal(a.of("match.saved").at(-1)?.auto, undefined);
+      hub.handle("A", { type: "match.pause", paused: true });
+      hub.handle("A", { type: "match.restart" });
+      assert.deepEqual(a.of("room.error"), []);
+      const after = hub.matches.get(roomId)!;
+      assert.notEqual(after, before);
+      assert.equal(after.tick, 0);
+      assert.ok(!after.paused, "the new fight runs");
+      assert.equal(after.players.has("A"), true);
+      assert.equal(after.players.has("ai:1"), true);
+      const resumed = a.of("match.resume").at(-1);
+      assert.ok(resumed);
+      assert.equal(resumed.match.tick, 0);
+      assert.equal(resumed.room.id, roomId);
+    } finally {
+      hub.shutdown();
+    }
+  });
+
+  it("will not restart a network match", () => {
+    const hub = new Hub();
+    try {
+      const a = client(hub, "A");
+      hub.handle("A", { type: "hello", name: "Alpha" });
+      hub.handle("A", { type: "room.create", mapId: "yard-64", maxSlots: 8, mode: "network" });
+      hub.handle("A", { type: "slot.host", slotIndex: 1, status: "ai" });
+      hub.handle("A", { type: "slot.update", ready: true });
+      hub.handle("A", { type: "room.start" });
+      const roomId = hub.sessions.get("A")!.roomId!;
+      const before = hub.matches.get(roomId);
+      hub.handle("A", { type: "match.restart" });
+      assert.equal(a.of("room.error").at(-1)?.code, "closed");
+      assert.equal(hub.matches.get(roomId), before);
+    } finally {
+      hub.shutdown();
+    }
+  });
 });
 
 describe("hub map builder play test", () => {
@@ -337,6 +389,40 @@ describe("hub map builder play test", () => {
       assert.equal(hub.maps.has(id), false, "a play test is not stored");
       hub.handle("A", { type: "room.leave" });
       assert.equal(getMap(id), undefined, "leaving drops the sheet");
+    } finally {
+      hub.shutdown();
+    }
+  });
+
+  it("restarts a play test, and picks it up again from its autosave after leaving", () => {
+    const hub = new Hub();
+    try {
+      const a = client(hub, "A");
+      hub.handle("A", { type: "hello", name: "Alpha" });
+      const id = newPlaytestMapId();
+      const sheet = testSheet(id, [{ id: 2, x: 30, y: 30 }]);
+      hub.handle("A", { type: "map.test", map: sheet });
+      const roomId = hub.sessions.get("A")!.roomId!;
+      for (let i = 0; i < 3; i++) step(hub.matches.get(roomId)!);
+      hub.handle("A", { type: "match.restart" });
+      assert.deepEqual(a.of("room.error"), []);
+      assert.equal(hub.matches.get(roomId)!.tick, 0);
+      assert.equal(hub.matches.get(roomId)!.mapId, id);
+      for (let i = 0; i < 4; i++) step(hub.matches.get(roomId)!);
+      hub.handle("A", { type: "match.save", auto: true });
+      const saved = a.of("match.saved").at(-1)!;
+      hub.handle("A", { type: "room.leave" });
+      assert.equal(getMap(id), undefined);
+      hub.handle("A", { type: "map.test", map: sheet, save: saved.save });
+      assert.deepEqual(a.of("room.error"), []);
+      const resumed = a.of("match.resume").at(-1);
+      assert.ok(resumed);
+      assert.equal(resumed.match.mapId, id);
+      assert.equal(resumed.match.tick, 4);
+      hub.handle("A", { type: "room.leave" });
+      assert.equal(getMap(id), undefined, "leaving drops the sheet again");
+      hub.handle("A", { type: "map.test", map: testSheet(newPlaytestMapId(), [{ id: 2, x: 30, y: 30 }]), save: saved.save });
+      assert.equal(a.of("room.error").at(-1)?.code, "bad_payload", "an autosave rides only on its own sheet");
     } finally {
       hub.shutdown();
     }

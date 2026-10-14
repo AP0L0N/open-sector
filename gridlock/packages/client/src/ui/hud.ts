@@ -9,6 +9,12 @@ import {
   costFor,
   energyOf,
   energySupplyOf,
+  energySupplyOfEntity,
+  levelNameOf,
+  canStartResearch,
+  RESEARCH,
+  researchDone,
+  researchOf,
   hiveSpeed,
   usesHiveEnergy,
   isAirfieldType,
@@ -59,6 +65,7 @@ import {
   BV222_TROOPS,
   MAMMOTH_MINE_PACKS,
   isAirDrop,
+  isResearchId,
   isTransportType,
   catalog,
   clockMarkLine,
@@ -291,7 +298,7 @@ export function mountBattlefield(
   );
   const inspect = el("div", { class: "inspect-box", attrs: { id: "inspect" } });
   inspect.textContent = "No selection.";
-  side.append(el("h3", { text: "Config" }), config, el("h3", { text: "Inspect" }), inspect);
+  side.append(el("h3", { text: "Selection" }), config, el("h3", { text: "Inspect" }), inspect);
 
   const banner = el("div", { class: "victory-banner hidden", attrs: { id: "victory-banner" } });
   wrap.append(top, body, side, banner);
@@ -431,8 +438,16 @@ export function mountBattlefield(
     });
   }
 
-  bindPress(config, "[data-config-type], [data-shell], [data-weapon], [data-guns], [data-selfdestruct], [data-fielddivert], [data-pulse], [data-rockets], [data-attack], [data-reach], [data-payload]", (t) => {
+  bindPress(config, "[data-config-type], [data-shell], [data-weapon], [data-guns], [data-selfdestruct], [data-fielddivert], [data-pulse], [data-rockets], [data-attack], [data-reach], [data-payload], [data-research], [data-research-cancel]", (t) => {
     runConfigAction(ctx, t);
+  });
+  // Double-click a type's avatar: keep only that type selected, drop the rest.
+  config.addEventListener("dblclick", (e) => {
+    const t = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-config-type]");
+    const type = t?.dataset.configType as EntityType | undefined;
+    if (!type || !viewRef || !ctx.match) return;
+    e.preventDefault();
+    viewRef.selectOnly(selectedOfType(ctx, viewRef, type).map((ent) => ent.id));
   });
 
   bindPress(actions, "[data-act]", (btn) => {
@@ -1320,7 +1335,7 @@ function updateRocketRack(body: HTMLElement, type: EntityType, mine: EntityView[
 }
 
 function loadoutButton(opts: {
-  attr: "data-shell" | "data-weapon" | "data-guns" | "data-selfdestruct" | "data-fielddivert" | "data-pulse" | "data-rockets" | "data-attack" | "data-reach" | "data-payload";
+  attr: "data-shell" | "data-weapon" | "data-guns" | "data-selfdestruct" | "data-fielddivert" | "data-pulse" | "data-rockets" | "data-attack" | "data-reach" | "data-payload" | "data-research";
   id: string;
   name: string;
   blurb: string;
@@ -1600,6 +1615,7 @@ function configBodyLayout(focus: EntityView, live: EntityView[], wrecks: EntityV
   if (hasScout(focus.type)) parts.push("scout");
   if (armorLabel(focus.type)) parts.push("armor");
   if (specialLabel(focus.type)) parts.push("spec");
+  if (mine.length > 0 && researchOf(focus.type).length > 0) parts.push("research");
   return parts.join("|");
 }
 
@@ -1749,6 +1765,7 @@ function buildConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
   if (hasScout(focus.type)) body.append(el("p", { class: "tiny", attrs: { "data-field": "scout" } }));
   if (armorLabel(focus.type)) body.append(el("p", { class: "tiny", attrs: { "data-field": "armor" } }));
   if (specialLabel(focus.type)) body.append(el("p", { class: "tiny", attrs: { "data-field": "special" } }));
+  if (mine.length > 0 && researchOf(focus.type).length > 0) appendResearch(body, focus.type);
 }
 
 function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[], wrecks: EntityView[], you: string): void {
@@ -1968,6 +1985,73 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
   if (spec) {
     const ready = live.some((e) => specialReady(e.type, e.state, e.specialCooldown ?? 0));
     setField(body, "special", ready ? `${spec}  (${SPECIAL_HOTKEY.toUpperCase()} / click)` : spec);
+  }
+  if (researchOf(focus.type).length > 0) updateResearch(body, focus.type, live.filter((e) => e.ownerId === you));
+}
+
+/** Research: one button per level of the structure's upgrades, a bar while one runs, and Cancel. */
+function appendResearch(body: HTMLElement, type: EntityType): void {
+  // The level line leads: the panel is short, and the long story is in each button's tooltip.
+  body.append(el("p", { class: "tiny", attrs: { "data-field": "level" } }), el("div", { class: "tiny", text: "Research" }));
+  const rack = el("div", { class: "shell-rack research-rack" });
+  for (const r of researchOf(type)) {
+    rack.append(
+      loadoutButton({ attr: "data-research", id: r.id, name: r.name, blurb: r.effect, count: "", on: false, title: `${r.name} — ${r.blurb}` }),
+    );
+  }
+  body.append(rack);
+  const bar = el("div", { class: "research-bar hidden", attrs: { "data-field": "research-bar" } });
+  bar.append(el("span"));
+  const cancel = el("button", {
+    class: "shell research-cancel hidden",
+    attrs: { type: "button", "data-research-cancel": "1", title: "Cancel the upgrade. A Fusion Node goes back to its full output; a Force Shield gives its energy back." },
+  });
+  cancel.append(el("span", { class: "shell-row", text: "Cancel upgrade" }));
+  body.append(bar, cancel);
+}
+
+function updateResearch(body: HTMLElement, type: EntityType, mine: EntityView[]): void {
+  const running = mine.filter((e) => e.research);
+  for (const r of researchOf(type)) {
+    const btn = body.querySelector(`[data-research="${r.id}"]`);
+    if (!(btn instanceof HTMLElement)) continue;
+    const done = mine.length > 0 && mine.every((e) => researchDone(e, r));
+    const on = running.filter((e) => e.research!.id === r.id);
+    const ready = mine.filter((e) => canStartResearch(e, r));
+    const pct = on.length > 0 ? Math.floor((on.reduce((n, e) => n + e.research!.progress, 0) / on.length) * 100) : 0;
+    const before = r.level != null ? researchOf(type).find((x) => x.level === r.level! - 1) : undefined;
+    updateLoadoutButton(btn, {
+      count: done ? "Done" : on.length > 0 ? `${pct}%` : ready.length > 0 ? (ready.length > 1 ? `${r.seconds}s ×${ready.length}` : `${r.seconds}s`) : "",
+      on: done || on.length > 0,
+      empty: !done && on.length === 0 && ready.length === 0,
+      locked: ready.length === 0,
+      title:
+        ready.length === 0 && !done && on.length === 0 && before
+          ? `${r.name} — Research ${before.name} first. ${r.blurb}`
+          : `${r.name} — ${r.blurb}`,
+    });
+  }
+  const bar = body.querySelector('[data-field="research-bar"]');
+  if (bar instanceof HTMLElement) {
+    bar.classList.toggle("hidden", running.length === 0);
+    const fill = bar.querySelector("span");
+    const share = running.length > 0 ? running.reduce((n, e) => n + e.research!.progress, 0) / running.length : 0;
+    if (fill instanceof HTMLElement) fill.style.width = `${Math.round(Math.max(0, Math.min(1, share)) * 100)}%`;
+  }
+  body.querySelector(".research-cancel")?.classList.toggle("hidden", running.length === 0);
+  const focus = mine[0];
+  if (focus) {
+    const level = focus.level ?? 0;
+    const name = levelNameOf(type, level) || catalog(type).name;
+    const energy = energySupplyOfEntity(focus);
+    const line = energySupplyOf(type) > 0
+      ? `${name}  ·  ${energy} energy${focus.research ? "  (upgrading)" : ""}`
+      : focus.shield
+        ? `Force Shield  ${focus.shield.hp}/${focus.shield.max}${focus.shield.hp <= 0 ? "  recharging" : ""}`
+        : focus.research
+          ? "Raising its Force Shield"
+          : "No shield";
+    setField(body, "level", mine.length > 1 ? `${line}  ·  ×${mine.length}` : line);
   }
 }
 
@@ -2954,6 +3038,23 @@ function runConfigAction(ctx: Ctx, t: HTMLElement): void {
       .map((ent) => ent.id);
     if (ids.length === 0) return;
     ctx.net.send({ type: "cmd.airmode", ids, air: attack === "air" });
+    return;
+  }
+  const research = t.dataset.research;
+  if (research && isResearchId(research)) {
+    const ids = selectedOfType(ctx, viewRef, configFocus)
+      .filter((ent) => ent.ownerId === ctx.match!.youPlayerId && !ent.wreck && canStartResearch(ent, RESEARCH[research]))
+      .map((ent) => ent.id);
+    if (ids.length === 0) return;
+    ctx.net.send({ type: "cmd.research", ids, research });
+    return;
+  }
+  if (t.dataset.researchCancel) {
+    const ids = selectedOfType(ctx, viewRef, configFocus)
+      .filter((ent) => ent.ownerId === ctx.match!.youPlayerId && ent.research)
+      .map((ent) => ent.id);
+    if (ids.length === 0) return;
+    ctx.net.send({ type: "cmd.research", ids, research: null });
     return;
   }
   const reach = t.dataset.reach;

@@ -23,6 +23,7 @@ import { builderError, builderMapSaved, refreshBuilder, renderBuilder } from "./
 import { forgetTerrain } from "./render/terrain.js";
 import { flashNoScrap, mountBattlefield, paintBattleHud, renderLeaveModal } from "./ui/hud.js";
 import { battleModalKey, beginLoad, renderMenuLoad, renderPauseModal, storeSavedGame } from "./ui/pause.js";
+import { resetAutosaveClock, storeAutosave, tickAutosave } from "./ui/autosave.js";
 import { el } from "./ui/dom.js";
 import { acknowledgeOrder } from "./ui/game-audio.js";
 import { initMusic, setMusicMode } from "./ui/music.js";
@@ -303,6 +304,7 @@ function onMessage(msg: ServerMessage): void {
       ctx.match = foldScenery(msg.match, null);
       ctx.chat = [];
       ctx.winner = null;
+      resetAutosaveClock();
       ctx.screen = "deploy";
       ctx.render();
       if (deployTimer) clearTimeout(deployTimer);
@@ -327,6 +329,7 @@ function onMessage(msg: ServerMessage): void {
       ctx.playMode = msg.room.mode;
       ctx.match = foldScenery(msg.match, null);
       ctx.winner = msg.match.winner ?? null;
+      resetAutosaveClock();
       ctx.leaveOpen = false;
       ctx.pausePane = "menu";
       ctx.menuLoad = false;
@@ -346,7 +349,8 @@ function onMessage(msg: ServerMessage): void {
       ctx.render();
       break;
     case "match.saved":
-      storeSavedGame(ctx, msg.save);
+      if (msg.auto) storeAutosave(ctx, msg.save);
+      else storeSavedGame(ctx, msg.save);
       break;
     case "match.end":
       ctx.winner = msg.winnerPlayerId
@@ -480,5 +484,6 @@ initMusic();
 net.onSend = (msg) => {
   if (ctx.screen === "battle") acknowledgeOrder(msg, ctx.match);
 };
+window.setInterval(() => tickAutosave(ctx, performance.now()), 1000);
 net.connect();
 ctx.render();

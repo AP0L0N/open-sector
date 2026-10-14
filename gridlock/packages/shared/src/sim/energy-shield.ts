@@ -1,4 +1,16 @@
-import { MOTHERSHIP_DOME_DEPTH, NEUTRAL_OWNER, energyDomeOf, energyShieldOf, energyWallOf, isAircraftType, secondsToTicks, type EnergyDomeDef, type EnergyWallDef } from "../catalog.js";
+import {
+  FORCE_SHIELD_DOME,
+  FORCE_SHIELD_MARGIN_TILES,
+  MOTHERSHIP_DOME_DEPTH,
+  NEUTRAL_OWNER,
+  energyDomeOf,
+  energyShieldOf,
+  energyWallOf,
+  isAircraftType,
+  secondsToTicks,
+  type EnergyDomeDef,
+  type EnergyWallDef,
+} from "../catalog.js";
 import { airAlt, entityHeight, weaponRangeWorld } from "./elevation.js";
 import { allies, worldToTile } from "./geo.js";
 import { energyRound } from "./remains.js";
@@ -24,6 +36,10 @@ import type { Entity, EnergyShield, MatchState, Projectile } from "./types.js";
  * An Energy Wall building holds a far wider curtain the same way a wall stands, but for as long
  * as the core is online, across the way the core was placed. Hits drain it, it mends slowly, and
  * drained it is down until the core recharges.
+ *
+ * A Xenite defence with its Force Shield researched (sim/research.ts) holds a small dome the same
+ * way, sized to its footprint, for as long as it stands online. It keeps its own charge
+ * (forceShieldHp, forceShieldReady), apart from an Energy Wall's curtain.
  *
  * Pulses and lasers (another hive's bolts, a Cyborg's beam) glance off: a bolt fired flat
  * turns back off the face, live, and a beam stops there. Either still costs the shield, but
@@ -328,9 +344,23 @@ function canRaise(state: MatchState, e: Entity): boolean {
   return dx * dx + dy * dy <= reach * reach;
 }
 
-/** A Siphon holds its dome whenever it is alive, running, and out in the open. */
+/** A Siphon holds its dome whenever it is alive, running, and out in the open; a shielded defence while it stands online. */
 function canHoldDome(e: Entity): boolean {
+  if (e.kind === "building") return !!e.forceShield && e.ownerId !== NEUTRAL_OWNER && e.hp > 0 && !e.ruined && !e.wreck && !e.unpowered;
   return e.kind === "unit" && e.hp > 0 && !e.wreck && !e.shutdown && !e.dormant && e.garrisonedIn == null;
+}
+
+/** The dome `e` holds: its type's own (a Siphon's, a Hive Ark's), or its Force Shield's, a little past its footprint. */
+export function domeOf(e: Pick<Entity, "type" | "forceShield" | "tileW" | "tileH">): EnergyDomeDef | undefined {
+  const own = energyDomeOf(e.type);
+  if (own) return own;
+  if (!e.forceShield) return undefined;
+  return { ...FORCE_SHIELD_DOME, radiusTiles: Math.max(e.tileW, e.tileH) / 2 + FORCE_SHIELD_MARGIN_TILES };
+}
+
+/** A Force Shield keeps its charge apart from anything else the structure holds (an Energy Wall's curtain). */
+function forceDome(e: Entity): boolean {
+  return !energyDomeOf(e.type) && !!e.forceShield;
 }
 
 /**
@@ -340,15 +370,24 @@ function canHoldDome(e: Entity): boolean {
  */
 function tickDome(state: MatchState, s: EnergyShield, dt: number): boolean {
   const from = state.entities.get(s.fromId);
-  const def = from ? energyDomeOf(from.type) : undefined;
+  const def = from ? domeOf(from) : undefined;
   if (!from || !def) return false;
+  const own = forceDome(from);
   if (s.hp <= 0) {
-    from.energy = undefined;
-    from.shieldReady = state.tick + secondsToTicks(def.rechargeSeconds);
+    if (own) {
+      from.forceShieldHp = undefined;
+      from.forceShieldReady = state.tick + secondsToTicks(def.rechargeSeconds);
+    } else {
+      from.energy = undefined;
+      from.shieldReady = state.tick + secondsToTicks(def.rechargeSeconds);
+    }
     return false;
   }
   if (!canHoldDome(from)) {
-    if (from.hp > 0) from.energy = s.hp;
+    if (from.hp > 0) {
+      if (own) from.forceShieldHp = s.hp;
+      else from.energy = s.hp;
+    }
     return false;
   }
   s.x = from.x;
@@ -369,13 +408,14 @@ function castDome(state: MatchState, e: Entity, def: EnergyDomeDef): void {
     angle: 0,
     half: Math.PI,
     r: def.radiusTiles * state.tileSize,
-    hp: Math.min(def.energy, e.energy ?? def.energy),
+    hp: Math.min(def.energy, (forceDome(e) ? e.forceShieldHp : e.energy) ?? def.energy),
     hpMax: def.energy,
     life: 0,
     dome: true,
     ...(isAircraftType(e.type) ? { aloft: aloftOf(state, e) } : {}),
   });
-  e.energy = undefined;
+  if (forceDome(e)) e.forceShieldHp = undefined;
+  else e.energy = undefined;
 }
 
 /** An Energy Wall core holds its curtain while it stands, held and online. */
@@ -452,9 +492,16 @@ export function tickEnergyShields(state: MatchState, dt: number): void {
     }
     state.energyShields = keep;
   }
-  const standing = new Set(state.energyShields!.map((s) => s.fromId));
+  // A shielded Energy Wall holds its curtain and its dome at once: each is kept apart.
+  const standing = new Set<number>();
+  const domed = new Set<number>();
+  for (const s of state.energyShields!) (s.dome ? domed : standing).add(s.fromId);
   for (const e of state.entities.values()) {
+    if (e.forceShield && !domed.has(e.id) && canHoldDome(e) && (e.forceShieldReady == null || state.tick >= e.forceShieldReady)) {
+      castDome(state, e, domeOf(e)!);
+    }
     if (standing.has(e.id)) continue;
+    if (domed.has(e.id) && !energyWallOf(e.type)) continue;
     const dome = energyDomeOf(e.type);
     if (dome) {
       if (canHoldDome(e) && (e.shieldReady == null || state.tick >= e.shieldReady)) castDome(state, e, dome);
@@ -482,6 +529,16 @@ export function tickEnergyShields(state: MatchState, dt: number): void {
       life: def.seconds,
     });
   }
+}
+
+/** A Force Shield's points and its full charge: the dome's while it stands, what it kept while lowered, 0 while it recharges. */
+export function forceShieldView(state: MatchState, e: Entity): { hp: number; max: number } | undefined {
+  if (!e.forceShield || e.hp <= 0 || e.wreck) return undefined;
+  const def = domeOf(e);
+  if (!def) return undefined;
+  const up = state.energyShields?.find((s) => s.dome && s.fromId === e.id);
+  const hp = up ? up.hp : e.forceShieldReady != null && state.tick < e.forceShieldReady ? 0 : (e.forceShieldHp ?? def.energy);
+  return { hp: Math.ceil(hp), max: def.energy };
 }
 
 /** A Siphon's energy, or an Energy Wall's curtain, 0–1: its points while it stands, else how far the recharge has come. Undefined for other types. */

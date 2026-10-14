@@ -10,6 +10,7 @@ import type {
   EntityType,
   Faction,
   InfantryWeaponId,
+  ResearchId,
   ShellType,
   FieldStructureType,
   Stance,
@@ -19,7 +20,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 158;
+export const PROTOCOL_VERSION = 160;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -338,6 +339,14 @@ export interface EntityView {
   unpowered?: boolean;
   /** Xenite structure whose hive is below zero: its glow is out and it sees less far. Omitted otherwise. */
   hiveDark?: true;
+  /** Research level the structure has reached (the Fusion Node: 1 Advanced, 2 Ultra). Everyone sees it; omitted at 0. */
+  level?: number;
+  /** Research running on the structure, 0..1 done. Friendly snapshots. */
+  research?: { id: ResearchId; progress: number };
+  /** Researched Force Shield: the structure holds its own small dome. Everyone sees it. */
+  forceShield?: true;
+  /** Force Shield points and full charge (0 while it recharges), drawn as a pale blue bar under the health bar. */
+  shield?: { hp: number; max: number };
   /** Titan pods switched off. Friendly snapshots; omitted while on. */
   rocketsOff?: boolean;
   /** Mawcaster set to Air attacks. Friendly snapshots; omitted on Ground attacks. */
@@ -933,7 +942,7 @@ export type ClientMessage =
    * One start position is enough. `spawnId` picks the start to drop on;
    * 0 or missing draws one at random.
    */
-  | { type: "map.test"; map: CustomMapSpec; spawnId?: number }
+  | { type: "map.test"; map: CustomMapSpec; spawnId?: number; save?: SaveGame }
   | { type: "chat"; text: string }
   /** `queue`: Shift-queued. The unit runs it after its current and earlier queued orders finish. */
   /** `facing`: world radians the unit turns to after it arrives. A held move click sets it. */
@@ -982,6 +991,8 @@ export type ClientMessage =
   /** Mawcaster: `air` true for Air attacks (fliers only, small quick balls), false for Ground attacks. */
   | { type: "cmd.airmode"; ids: number[]; air: boolean }
   | { type: "cmd.reach"; ids: number[]; max: boolean }
+  /** Start `research` on each selected structure that can take it; `research: null` cancels what runs there (sim/research.ts). */
+  | { type: "cmd.research"; ids: number[]; research: ResearchId | null }
   | { type: "cmd.build"; building: BuildingType | YardFieldType }
   /**
    * `facing`: world radians for a Bunker, Watch Tower, or Airfield, snapped to the nearest BUILDING_TURN_STEP;
@@ -1121,9 +1132,11 @@ export type ClientMessage =
   /** Skirmish only. Holds the sim without changing game speed. */
   | { type: "match.pause"; paused: boolean }
   /** Skirmish only. The hub answers with `match.saved`. */
-  | { type: "match.save" }
+  | { type: "match.save"; auto?: boolean }
   /** Skirmish only. Replaces the current fight, or opens one from the menu. */
-  | { type: "match.load"; save: SaveGame };
+  | { type: "match.load"; save: SaveGame }
+  /** Skirmish only. Throw the fight away and start it again from the room's setup. */
+  | { type: "match.restart" };
 
 export type ServerMessage =
   | { type: "welcome"; playerId: string; protocol: number }
@@ -1134,7 +1147,7 @@ export type ServerMessage =
   /** A loaded skirmish. The client draws it without the deploy splash. */
   | { type: "match.resume"; room: RoomState; match: MatchSnapshot }
   /** The authoritative save of the skirmish underway. The browser stores it. */
-  | { type: "match.saved"; save: SaveGame }
+  | { type: "match.saved"; save: SaveGame; auto?: boolean }
   | { type: "match.end"; winnerPlayerId: string | null; winnerTeam: number | null; reason: "core" | "host" }
   | { type: "room.closed"; reason: string }
   | { type: "chat"; from: string; name: string; text: string; at: number }

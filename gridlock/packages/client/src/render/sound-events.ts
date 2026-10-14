@@ -38,6 +38,9 @@ export type AnnounceEvent =
   | "cyborglinkrestored"
   | "cyborgsoffline"
   | "cyborgacquired"
+  | "researchstarted"
+  | "researchcomplete"
+  | "cancelled"
   | "victory"
   | "defeat";
 
@@ -71,7 +74,14 @@ export type SoundEvent =
    * a Thrall going off on a hull (detonate), leaping sandbags or a wall (vault), or rocked by a bullet (stagger).
    */
   | { kind: "unitsfx"; type: string; cue: "special" | "crush" | "dive" | "lunge" | "burrow" | "unburrow" | "cloak" | "mend" | "birth" | ThrallSfx | LinkSfx | JuggernautSfx; x: number; y: number }
-  | { kind: "announce"; event: AnnounceEvent };
+  | { kind: "announce"; event: AnnounceEvent }
+  /**
+   * Research (sim/research.ts) on a structure: one of yours starting (`start`) or being cancelled
+   * (`cancel`), and any structure in view reaching its next level (`complete`, heard where it stands).
+   */
+  | { kind: "research"; cue: ResearchCue; own: boolean; type: string; x: number; y: number };
+
+export type ResearchCue = "start" | "complete" | "cancel";
 
 /**
  * Cyborg link cues. A Cyborg powering down (`shutdown`) and booting up on his new side
@@ -420,6 +430,7 @@ export class SoundTracker {
         if (e.burrow === "digging") out.push({ kind: "unitsfx", type: e.type, cue: "burrow", x: e.x, y: e.y });
         else if (e.burrow === "rising") out.push({ kind: "unitsfx", type: e.type, cue: "unburrow", x: e.x, y: e.y });
       }
+      if (prev && prev.ownerId === e.ownerId && isBuildingType(e.type)) this.noteResearch(prev, e, me, out);
       if (prev && prev.ownerId !== e.ownerId && isBuildingType(e.type)) {
         if (e.ownerId === me) out.push({ kind: "announce", event: "captured" });
         else if (prev.ownerId === me) out.push({ kind: "announce", event: "buildingcaptured" });
@@ -564,6 +575,26 @@ export class SoundTracker {
     const type = byId.get(c.by)?.type ?? (c.armored ? "cyborgcommander" : "cyborg");
     this.sensorCallAt = now;
     out.push({ kind: "voice", type, event: c.armored ? "radar" : "thermal" });
+  }
+
+  /** Research started, finished, or called off on one structure since the last snapshot. */
+  private noteResearch(prev: EntityView, e: EntityView, me: string, out: SoundEvent[]): void {
+    if (e.wreck || e.hp <= 0) return;
+    const own = e.ownerId === me;
+    const at = { type: e.type, x: e.x, y: e.y, own };
+    if ((e.level ?? 0) > (prev.level ?? 0) || (e.forceShield && !prev.forceShield)) {
+      out.push({ kind: "research", cue: "complete", ...at });
+      if (own) out.push({ kind: "announce", event: "researchcomplete" });
+      return;
+    }
+    if (!own) return;
+    if (!prev.research && e.research) {
+      out.push({ kind: "research", cue: "start", ...at });
+      out.push({ kind: "announce", event: "researchstarted" });
+    } else if (prev.research && !e.research) {
+      out.push({ kind: "research", cue: "cancel", ...at });
+      out.push({ kind: "announce", event: "cancelled" });
+    }
   }
 
   /** Construction lanes: a new job is "Building", the flip to ready is "Construction complete". */

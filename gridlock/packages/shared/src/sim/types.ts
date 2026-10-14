@@ -1,4 +1,4 @@
-import type { AirDrop, BridgeType, BuildingType, Crit, DroneMode, EntityType, Faction, FieldStructureType, InfantryWeaponId, ShellType, Stance, TrainType, YardFieldType } from "../catalog.js";
+import type { AirDrop, BridgeType, BuildingType, Crit, DroneMode, EntityType, Faction, FieldStructureType, InfantryWeaponId, ResearchId, ShellType, Stance, TrainType, YardFieldType } from "../catalog.js";
 import type { AiDifficulty, BlinkView, ClientMessage, CorpseView, EntityState, ImpactView, RocketLaunchView, ShellHoleView } from "../protocol.js";
 
 export interface Vec {
@@ -591,6 +591,16 @@ export interface Entity {
   hiveOffline?: true;
   /** Xenite structure while its hive is below zero: no glow, and it sees as far as one short on power. Set each tick. */
   hiveDark?: true;
+  /** Structure upgraded by research (sim/research.ts): 1 after the first, 2 after the second. Omitted at the base level. */
+  level?: number;
+  /** Researched Force Shield (sim/research.ts): the structure holds its own small energy dome (sim/energy-shield.ts). */
+  forceShield?: true;
+  /** Force Shield charge kept while its dome is lowered (offline); unset is full. */
+  forceShieldHp?: number;
+  /** Tick a drained Force Shield dome comes back. */
+  forceShieldReady?: number;
+  /** Research running on this structure, for the side that started it; `paid` is the scrap it took. */
+  research?: { id: ResearchId; ownerId: string; progressTicks: number; totalTicks: number; paid: number };
   /** Shut-down Cyborg only: the Cyborg Commander taking him over, and ticks of uplink so far. */
   takeover?: { by: number; ticks: number };
   /** Cyborg only: fires on what his side's thermal and APS read, seen or not, inside his reach. */

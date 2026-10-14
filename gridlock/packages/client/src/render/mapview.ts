@@ -437,6 +437,8 @@ const THRALL_VAULT_TILES = 0.55;
 const THRALL_VAULT_EASE_MS = 55;
 /** The Cyborg Commander's force-field bar, over his health bar. */
 const FIELD_BAR_FILL = "#7cc8ff";
+/** A structure's Force Shield, under its health bar: a lighter blue than the force field. */
+const SHIELD_BAR_FILL = "#b4e2ff";
 import { INTERCEPT_BURST_SIZE, RAM_MISS_BURST_SIZE, interceptorTrail } from "./ram.js";
 import { drawCyborgDeathSparks } from "./cyborg-sparks.js";
 import { drawGroundShadow, unitCastsShadow, unitShadowFootprint } from "./unit-shadow.js";
@@ -4672,6 +4674,15 @@ export class MapView {
     this.onSelect([...this.selected]);
   }
 
+  /** Narrow the selection to `ids` (those still selected), as a fresh pick. */
+  selectOnly(ids: readonly number[]): void {
+    const keep = ids.filter((id) => this.selected.has(id));
+    if (keep.length === 0) return;
+    this.selected.clear();
+    for (const id of keep) this.selected.add(id);
+    this.onSelect([...this.selected]);
+  }
+
   private boxSelect(b: { x0: number; y0: number; x1: number; y1: number }, shift: boolean): void {
     const x0 = Math.min(b.x0, b.x1);
     const y0 = Math.min(b.y0, b.y1);
@@ -7575,7 +7586,7 @@ export class MapView {
     const ez = this.extrude(e.type);
     const elev = this.buildingElev(e);
     const hex = this.ownerColor(e);
-    const spr = buildingSpriteFor(e.type, e.facing);
+    const spr = buildingSpriteFor(e.type, e.facing, e.level);
     const south = this.toScreen(x + bw, y + bh, elev);
     const east = this.toScreen(x + bw, y, elev);
     const west = this.toScreen(x, y + bh, elev);
@@ -7913,7 +7924,7 @@ export class MapView {
       const east = this.toScreen(x + w, y, elev);
       const west = this.toScreen(x, y + h, elev);
       const south = this.toScreen(x + w, y + h, elev);
-      const spr = buildingSpriteFor(e.type, e.facing);
+      const spr = buildingSpriteFor(e.type, e.facing, e.level);
       const footprintW = east.x - west.x;
       out.push({
         x,
@@ -7955,7 +7966,7 @@ export class MapView {
     for (const e of drawList) {
       if (e.kind !== "building" || isBridge(e.type) || isFieldStructure(e.type) || isRubble(e)) continue;
       if (!this.knownRect(e)) continue;
-      const spr = buildingSpriteFor(e.type, e.facing);
+      const spr = buildingSpriteFor(e.type, e.facing, e.level);
       if (!spr || !spriteReady(spr)) continue;
       const x = e.tileX * ts;
       const y = e.tileY * ts;
@@ -10851,7 +10862,9 @@ export class MapView {
     // A CIWS, a RAM, or a crewed gun always shows its bars, like a unit: the ammo is what it lives on.
     const mount = aimsOwnGun(e.type);
     const capturing = (e.capture?.progress ?? 0) > 0;
-    if (!(unit || mount || selected || damaged || capturing)) return;
+    // A Force Shield short of full keeps its bars up, so a dome under fire or recharging reads at a glance.
+    const shieldDown = !!e.shield && e.shield.hp < e.shield.max;
+    if (!(unit || mount || selected || damaged || capturing || shieldDown)) return;
     const ratio = Math.max(0, Math.min(1, e.hp / e.hpMax));
     const barW = Math.max(8, mount ? w * (selected ? 0.95 : 0.85) : selected ? w * 0.48 : w * 0.4);
     const barH = mount ? (selected ? 4 : 3) : selected ? 3 : 2;
@@ -10872,7 +10885,20 @@ export class MapView {
       ctx.fillRect(bx, fy, barW * Math.max(0, Math.min(1, e.field.hp / Math.max(1, e.field.max))), barH);
       ctx.globalAlpha = 1;
     }
-    this.paintAmmoBars(e, bx, by + barH + 1, barW, Math.min(1, alpha + 0.12), mount ? 2 : 1);
+    let under = by + barH + 1;
+    if (e.shield) {
+      // The Force Shield sits right under the health bar.
+      const sa = shieldDown ? Math.max(alpha, 0.7) : alpha;
+      ctx.globalAlpha = Math.min(1, sa + 0.12) * 0.85;
+      ctx.fillStyle = "rgba(8, 6, 4, 0.72)";
+      ctx.fillRect(bx, under, barW, barH);
+      ctx.globalAlpha = Math.min(1, sa + 0.12);
+      ctx.fillStyle = SHIELD_BAR_FILL;
+      ctx.fillRect(bx, under, barW * Math.max(0, Math.min(1, e.shield.hp / Math.max(1, e.shield.max))), barH);
+      ctx.globalAlpha = 1;
+      under += barH + 1;
+    }
+    this.paintAmmoBars(e, bx, under, barW, Math.min(1, alpha + 0.12), mount ? 2 : 1);
     if (outOfAmmo(e)) drawOutOfAmmo(ctx, bx - OUT_OF_AMMO_SIZE - 3, by + barH / 2 - OUT_OF_AMMO_SIZE / 2, Math.max(alpha, 0.85));
     ctx.restore();
   }

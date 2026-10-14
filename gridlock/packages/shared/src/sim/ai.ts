@@ -45,6 +45,9 @@ import {
   buildRadiusOf,
   catalog,
   energyOf,
+  energySupplyOfEntity,
+  FORCE_SHIELD_ENERGY,
+  nextResearch,
   usesHiveEnergy,
   dockOf,
   costFor,
@@ -460,6 +463,7 @@ function thinkXeno(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): v
   trainXeno(state, p);
   if (state.tick >= (p.aiNextMicroTick ?? 0)) {
     p.aiNextMicroTick = state.tick + CPU_MICRO_EVERY_TICKS;
+    researchXeno(state, p);
     watchSky(state, p, plan);
     if (plan.posture === "fortify" && xenoFortified(state, p, hq, plan)) {
       plan.posture = "campaign";
@@ -473,6 +477,43 @@ function thinkXeno(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): v
     seaWork(state, p, hq, plan);
     microUnits(state, p, hq, plan);
     scoutGnats(state, p, hq, plan);
+  }
+}
+
+/** Fusion Nodes the Xenite CPU holds before it starts upgrading them. */
+const XENO_RESEARCH_AFTER_NODES = 3;
+
+/** Xenite defences the CPU wraps in a Force Shield; Laser Fence posts are too many to be worth it. */
+const XENO_SHIELDED: ReadonlySet<string> = new Set(["spineturret", "pulsespire", "energywall"]);
+
+/**
+ * One upgrade at a time, once the build order stands. First the least upgraded Fusion Node, when the
+ * dip while it upgrades keeps the hive at zero or above; else the oldest defence still bare gets its
+ * Force Shield, when the hive keeps HIVE_ENERGY_LOW free after the shield's draw.
+ */
+function researchXeno(state: MatchState, p: SimPlayer): void {
+  let node: Entity | undefined;
+  let bare: Entity | undefined;
+  let nodes = 0;
+  for (const e of state.entities.values()) {
+    if (e.ownerId !== p.playerId || e.kind !== "building" || e.hp <= 0 || e.ruined) continue;
+    if (e.research) return;
+    if (e.type === "fusionnode") {
+      nodes++;
+      if (nextResearch(e.type, e.level ?? 0) && (!node || (e.level ?? 0) < (node.level ?? 0))) node = e;
+    } else if (XENO_SHIELDED.has(e.type) && !e.forceShield && (!bare || e.id < bare.id)) bare = e;
+  }
+  if (nodes < XENO_RESEARCH_AFTER_NODES || xenoOrderNext(state, p) != null) return;
+  const free = hiveFreeAfterQueue(state, p);
+  if (node) {
+    const dip = energySupplyOfEntity(node) - energySupplyOfEntity({ ...node, research: true });
+    if (free - dip >= 0) {
+      applyCommand(state, p.playerId, { type: "cmd.research", ids: [node.id], research: nextResearch(node.type, node.level ?? 0)!.id });
+      return;
+    }
+  }
+  if (bare && free - FORCE_SHIELD_ENERGY >= HIVE_ENERGY_LOW) {
+    applyCommand(state, p.playerId, { type: "cmd.research", ids: [bare.id], research: "forceshield" });
   }
 }
 

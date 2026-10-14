@@ -38,6 +38,8 @@
     "cyborglinklost": ["Warning: hive link severed."],
     "cyborglinkrestored": ["Hive link restored."],
     "cyborgsoffline": ["Drones disconnected."],
-    "cyborgacquired": ["Drone assimilated."]
+    "cyborgacquired": ["Drone assimilated."],
+    "researchstarted": ["Construct evolving."],
+    "researchcomplete": ["Evolution complete."]
   }
 }

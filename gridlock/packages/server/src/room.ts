@@ -2,6 +2,7 @@ import {
   DEFAULT_MAP_ID,
   PROTOCOL_VERSION,
   SLOT_COUNT,
+  getMap,
   isPlaytestMapId,
   loadCustomMap,
   unregisterMap,
@@ -24,6 +25,7 @@ import {
   snapshotFor,
   applySaveSeats,
   exportSave,
+  resolveSpawns,
   restoreMatch,
   startMatch,
   stepMatch,
@@ -155,10 +157,13 @@ export class Hub {
         this.onMatchPause(session, msg.paused);
         break;
       case "match.save":
-        this.onMatchSave(session);
+        this.onMatchSave(session, msg.auto === true);
         break;
       case "match.load":
         this.onMatchLoad(session, msg.save);
+        break;
+      case "match.restart":
+        this.onMatchRestart(session);
         break;
       case "map.save":
         this.onMapSave(session, msg.map, msg.key);
@@ -167,7 +172,7 @@ export class Hub {
         this.onMapDelete(session, msg.id, msg.key);
         break;
       case "map.test":
-        this.onMapTest(session, msg.map, msg.spawnId);
+        this.onMapTest(session, msg.map, msg.spawnId, msg.save);
         break;
       default:
         if (msg.type.startsWith("cmd.")) this.onCmd(session, msg);
@@ -416,9 +421,10 @@ export class Hub {
   /**
    * Map Builder play test: load the sheet as a private map, open a skirmish on
    * it with the sender alone on `spawnId` (random when 0 or missing), and
-   * start. Nothing is stored or announced.
+   * start. Nothing is stored or announced. With `save` (a play test autosave
+   * on this sheet) the fight picks up from it instead.
    */
-  private onMapTest(session: Session, map: unknown, spawnId?: unknown): void {
+  private onMapTest(session: Session, map: unknown, spawnId?: unknown, save?: unknown): void {
     if (spawnId !== undefined && !Number.isInteger(spawnId)) return this.err(session, "bad_payload", "Invalid start position.");
     const id = (map as { id?: unknown } | null)?.id;
     if (typeof id !== "string" || !isPlaytestMapId(id)) return this.err(session, "bad_payload", "Invalid play test.");
@@ -427,6 +433,16 @@ export class Hub {
     const loaded = loadCustomMap({ ...(map as object), author: session.name, updatedAt: 0 }, { playtest: true });
     if (!loaded.ok) return this.err(session, "map_invalid", loaded.message);
     log("map.test", { playerId: session.playerId, mapId: id });
+    if (save !== undefined) {
+      if ((save as { mapId?: unknown } | null)?.mapId !== id) {
+        unregisterMap(id);
+        return this.err(session, "bad_payload", "That autosave is for another play test.");
+      }
+      this.detachFromRoom(session);
+      this.onMatchLoad(session, save);
+      if (!session.roomId) unregisterMap(id);
+      return;
+    }
     this.onCreate(session, id, SLOT_COUNT, "skirmish");
     const room = this.roomOf(session);
     if (room?.mapId !== id) {
@@ -590,10 +606,22 @@ export class Hub {
     this.broadcastSnapshots(found.room.id);
   }
 
-  private onMatchSave(session: Session): void {
+  private onMatchSave(session: Session, auto: boolean): void {
     const found = this.skirmishMatch(session);
     if (!found) return;
-    session.send({ type: "match.saved", save: exportSave(found.match, found.room) });
+    session.send({ type: "match.saved", save: exportSave(found.match, found.room), ...(auto ? { auto: true } : {}) });
+  }
+
+  /** The same room, seats and map, from tick 0. Random starts are drawn again. */
+  private onMatchRestart(session: Session): void {
+    const found = this.skirmishMatch(session);
+    if (!found) return;
+    const { room } = found;
+    if (!getMap(room.mapId)) return this.err(session, "no_map", "Unknown map.");
+    const match = createMatch(room, resolveSpawns(room));
+    this.stopTicker(room.id);
+    log("match.restart", { room: room.id, playerId: session.playerId, mapId: room.mapId });
+    this.installLoaded(room, match);
   }
 
   private onMatchLoad(session: Session, raw: unknown): void {

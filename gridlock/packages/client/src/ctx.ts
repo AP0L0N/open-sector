@@ -3,7 +3,7 @@ import type { GameSocket } from "./net/client.js";
 
 export type Screen = "callsign" | "menu" | "play" | "lobby" | "deploy" | "battle" | "options" | "credits" | "builder";
 export type NetworkStep = "choose" | "create" | "join";
-export type PausePane = "menu" | "save" | "load" | "options";
+export type PausePane = "menu" | "save" | "load" | "options" | "restart";
 
 export interface ChatLine {
   name: string;

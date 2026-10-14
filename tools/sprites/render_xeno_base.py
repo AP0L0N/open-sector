@@ -34,6 +34,11 @@ pad, like core.png, smelter.png, and dynamo.png.
   python tools/sprites/render_xeno_base.py --out gridlock/packages/client/src/assets/buildings
   python tools/sprites/render_xeno_base.py --out ... --only hivecore
   python tools/sprites/render_xeno_base.py --out ... --only aerie
+  python tools/sprites/render_xeno_base.py --out ... --only fusionnode fusionnode-advanced fusionnode-ultra
+
+  fusionnode-advanced / fusionnode-ultra: the Fusion Node after Advanced and Ultra Fusion research
+  (sim/research.ts). Same plinth and pad; taller, denser coils, a bigger core in gyro hoops, more
+  capacitors and vents, and for Ultra a crown of four spires under a glowing ring.
 """
 
 from __future__ import annotations
@@ -409,69 +414,155 @@ def fn_spires() -> list[tuple[float, float]]:
 
 
 def build_fusionnode(with_pad: bool) -> ra.Mesh:
+    return build_fusionnode_level(with_pad, 0)
+
+
+# Research levels (sim/research.ts): Advanced Fusion and Ultra Fusion. Same plinth and pad, so the
+# node reads as the same building grown hotter: taller, denser coils, a bigger core, more glow.
+FN_LEVELS = {
+    0: dict(top=FN_SPIRE_TOP, orb_z=FN_ORB_Z, orb_r=5.6, step=4.2, spires=2),
+    1: dict(top=60.0, orb_z=44.0, orb_r=6.6, step=3.4, spires=2),
+    2: dict(top=66.0, orb_z=50.0, orb_r=8.2, step=3.0, spires=4),
+}
+
+
+def fn_level_spires(level: int) -> list[tuple[float, float]]:
+    if FN_LEVELS[level]["spires"] == 2:
+        return fn_spires()
+    cx, cy = FN_C
+    o = 19.0
+    # Ultra: a crown of four on the plinth's side midpoints, two either side of the core, so none
+    # stands in front of it.
+    return [(cx + o, cy), (cx, cy + o), (cx - o, cy), (cx, cy - o)]
+
+
+def fn_spire(m: ra.Mesh, sx: float, sy: float, top: float, step: float) -> None:
+    m.box((sx - 5.5, sy - 5.5, 7.0), (sx + 5.5, sy + 5.5, 10.0), "steel_dark", top="roof")
+    m.cyl((sx, sy, 10.0), (sx, sy, top), 3.6, 1.4, "ribbed", n=10)
+    for z in np.arange(13.0, top - 6.0, step):
+        r = 3.6 + (1.4 - 3.6) * (z - 10.0) / (top - 10.0)
+        m.cyl((sx, sy, z), (sx, sy, z + step * 0.62), r + 1.5, r + 1.3, "coil", n=12)
+        m.cyl((sx, sy, z + step * 0.62), (sx, sy, z + step * 0.74), r + 0.9, r + 0.9, "glow", n=12, caps=False)
+    ball(m, (sx, sy, top + 1.2), 2.0, "core", rings=5, n=10)
+
+
+def build_fusionnode_level(with_pad: bool, level: int) -> ra.Mesh:
     global RIB_C
     RIB_C = FN_C
+    L = FN_LEVELS[level]
+    top, orb_z, orb_r = L["top"], L["orb_z"], L["orb_r"]
     m = ra.Mesh()
     if with_pad:
         pad(m, FN, FN)
     cx, cy = FN_C
-    # Octagonal plinth, a glowing seam, and a deck.
+    # Octagonal plinth, a glowing seam, and a deck. Upgraded nodes light a second seam.
     m.cyl((cx, cy, 1.0), (cx, cy, 4.0), 27.0, 26.0, "steel_dark", n=8)
     m.cyl((cx, cy, 4.0), (cx, cy, 4.6), 25.6, 25.6, "glow", n=8, caps=False)
     m.cyl((cx, cy, 4.6), (cx, cy, 7.0), 25.0, 23.0, "steel", n=8)
+    if level >= 1:
+        m.cyl((cx, cy, 6.2), (cx, cy, 6.7), 23.6, 23.6, "glow", n=8, caps=False)
     # The well: a glowing core column in a ribbed cage, between the spires.
+    well_top = 24.0 if level == 0 else 26.0 + 2.0 * level
     m.cyl((cx, cy, 7.0), (cx, cy, 9.0), 9.0, 8.0, "steel_dark", n=16)
-    m.cyl((cx, cy, 9.0), (cx, cy, 24.0), 5.0, 4.2, "core", n=16)
-    for k in range(6):
-        a = 2 * math.pi * k / 6 + math.pi / 12
-        b = (cx + 6.2 * math.cos(a), cy + 6.2 * math.sin(a), 9.0)
-        t = (cx + 5.0 * math.cos(a), cy + 5.0 * math.sin(a), 24.0)
+    m.cyl((cx, cy, 9.0), (cx, cy, well_top), 5.0 + 0.6 * level, 4.2 + 0.6 * level, "core", n=16)
+    bars = 6 + 2 * level
+    for k in range(bars):
+        a = 2 * math.pi * k / bars + math.pi / 12
+        rr = 6.2 + 0.6 * level
+        b = (cx + rr * math.cos(a), cy + rr * math.sin(a), 9.0)
+        t = (cx + (rr - 1.2) * math.cos(a), cy + (rr - 1.2) * math.sin(a), well_top)
         m.cyl(b, t, 0.8, 0.7, "spine", n=6)
-    m.cyl((cx, cy, 24.0), (cx, cy, 26.0), 7.0, 6.0, "steel_dark", n=16)
-    m.cyl((cx, cy, 26.0), (cx, cy, 27.5), 3.0, 1.5, "spine", n=12)
-    # Twin coil spires.
-    for sx, sy in fn_spires():
-        m.box((sx - 5.5, sy - 5.5, 7.0), (sx + 5.5, sy + 5.5, 10.0), "steel_dark", top="roof")
-        m.cyl((sx, sy, 10.0), (sx, sy, FN_SPIRE_TOP), 3.6, 1.4, "ribbed", n=10)
-        for z in np.arange(13.0, FN_SPIRE_TOP - 6.0, 4.2):
-            r = 3.6 + (1.4 - 3.6) * (z - 10.0) / (FN_SPIRE_TOP - 10.0)
-            m.cyl((sx, sy, z), (sx, sy, z + 2.6), r + 1.5, r + 1.3, "coil", n=12)
-            m.cyl((sx, sy, z + 2.6), (sx, sy, z + 3.1), r + 0.9, r + 0.9, "glow", n=12, caps=False)
-        ball(m, (sx, sy, FN_SPIRE_TOP + 1.2), 2.0, "core", rings=5, n=10)
+    m.cyl((cx, cy, well_top), (cx, cy, well_top + 2.0), 7.0 + 0.6 * level, 6.0 + 0.6 * level, "steel_dark", n=16)
+    m.cyl((cx, cy, well_top + 2.0), (cx, cy, well_top + 3.5), 3.0, 1.5, "spine", n=12)
+    if level >= 1:
+        # A plasma stream from the well up into the orb.
+        m.cyl((cx, cy, well_top + 3.5), (cx, cy, orb_z - orb_r + 0.5), 1.1, 1.6, "hot", n=10)
+    # Coil spires.
+    spires = fn_level_spires(level)
+    for sx, sy in spires:
+        fn_spire(m, sx, sy, top, L["step"])
         # Prong toward the orb.
         tx = cx + (sx - cx) * 0.35
         ty = cy + (sy - cy) * 0.35
-        m.cyl((sx, sy, FN_ORB_Z + 3.0), (tx, ty, FN_ORB_Z + 0.5), 0.9, 0.4, "spine", n=6)
-    # The plasma core, held between the spires, in a halo ring.
-    ball(m, (cx, cy, FN_ORB_Z), 5.6, "core", rings=8, n=16)
-    # Two thin containment hoops, crossed, around the core.
-    m.cyl((cx - 0.3, cy + 0.3, FN_ORB_Z - 6.6), (cx + 0.3, cy - 0.3, FN_ORB_Z + 6.6), 0.35, 0.35, "spine", n=6)
-    m.cyl((cx, cy, FN_ORB_Z - 0.25), (cx, cy, FN_ORB_Z + 0.25), 6.6, 6.6, "spine", n=20, caps=False)
+        m.cyl((sx, sy, orb_z + 3.0), (tx, ty, orb_z + 0.5), 0.9, 0.4, "spine", n=6)
+        if level >= 1:
+            # A second, lower prong: Advanced and Ultra feed the core from two heights.
+            m.cyl((sx, sy, orb_z - 7.0), (cx + (sx - cx) * 0.42, cy + (sy - cy) * 0.42, orb_z - 4.5), 0.8, 0.35, "spine", n=6)
+    # The plasma core, held between the spires.
+    ball(m, (cx, cy, orb_z), orb_r, "core", rings=8 + 2 * level, n=16 + 4 * level)
+    # Containment hoops: a cross and a ring; Advanced adds a tilted gyro hoop, Ultra a third.
+    hr = orb_r + 1.0
+    m.cyl((cx - 0.3, cy + 0.3, orb_z - hr), (cx + 0.3, cy - 0.3, orb_z + hr), 0.35, 0.35, "spine", n=6)
+    m.cyl((cx, cy, orb_z - 0.25), (cx, cy, orb_z + 0.25), hr, hr, "spine", n=20, caps=False)
+    if level >= 1:
+        hoop(m, (cx, cy, orb_z), hr + 0.8, (1.0, -1.0, 0.0), "glow" if level == 1 else "spine")
+    if level >= 2:
+        hoop(m, (cx, cy, orb_z), hr + 1.6, (1.0, 1.0, 0.0), "glow")
+        # A crown ring over the spires, glowing seam on its rim.
+        ring_z = top - 9.0
+        m.cyl((cx, cy, ring_z), (cx, cy, ring_z + 1.2), 19.6, 19.6, "steel_dark", n=24, caps=False)
+        m.cyl((cx, cy, ring_z + 1.2), (cx, cy, ring_z + 1.6), 19.6, 19.6, "glow", n=24, caps=False)
     # Conduits from the plinth to the spires.
-    for sx, sy in fn_spires():
-        m.cyl((cx, cy, 8.0), (sx, sy, 8.6), 1.0, 1.0, "pipe", n=8)
-    # A capacitor tower behind the well, north corner.
-    px_, py_ = cx - 15.0, cy - 15.0
-    m.cyl((px_, py_, 1.0), (px_, py_, 18.0), 4.2, 3.6, "steel", n=12)
-    for z in (8.0, 12.0, 16.0):
-        m.cyl((px_, py_, z), (px_, py_, z + 0.7), 4.0, 4.0, "glow", n=12, caps=False)
-    m.cyl((px_, py_, 18.0), (px_, py_, 19.5), 3.6, 1.8, "steel_dark", n=12)
-    # Glowing vents in the deck toward the camera.
-    for k in (-1, 1):
-        vx, vy = cx + 15.0 + k * 5.0, cy + 15.0 - k * 5.0
-        m.box((vx - 2.0, vy - 2.0, 7.0), (vx + 2.0, vy + 2.0, 7.4), "glow")
+    for sx, sy in spires:
+        m.cyl((cx, cy, 8.0), (sx, sy, 8.6), 1.0 + 0.2 * level, 1.0 + 0.2 * level, "pipe", n=8)
+    # Capacitor towers: one behind the well; upgraded nodes carry a pair. Ultra's corners hold spires.
+    if level == 0:
+        caps_at = [(cx - 15.0, cy - 15.0)]
+    elif level == 1:
+        caps_at = [(cx - 19.0, cy - 6.0), (cx - 6.0, cy - 19.0)]
+    else:
+        caps_at = [(cx - 15.0, cy - 15.0)]
+    for px_, py_ in caps_at:
+        h = 18.0 + 4.0 * level
+        r0 = 4.2 if level == 0 else 3.6
+        m.cyl((px_, py_, 1.0), (px_, py_, h), r0, r0 - 0.6, "steel", n=12)
+        for z in np.arange(8.0, h - 1.0, 4.0 if level == 0 else 3.0):
+            m.cyl((px_, py_, z), (px_, py_, z + 0.7), r0 - 0.2, r0 - 0.2, "glow", n=12, caps=False)
+        m.cyl((px_, py_, h), (px_, py_, h + 1.5), r0 - 0.6, 1.8, "steel_dark", n=12)
+        if level >= 1:
+            ball(m, (px_, py_, h + 2.2), 1.3, "core", rings=4, n=8)
+    # Glowing vents in the deck toward the camera; more with each level.
+    if level == 0:
+        for k in (-1, 1):
+            vx, vy = cx + 15.0 + k * 5.0, cy + 15.0 - k * 5.0
+            m.box((vx - 2.0, vy - 2.0, 7.0), (vx + 2.0, vy + 2.0, 7.4), "glow")
+    else:
+        for k in ((-1, 0, 1) if level == 2 else (-2, -1, 0, 1, 2)):
+            vx, vy = cx + 15.0 + k * 3.6, cy + 15.0 - k * 3.6
+            m.box((vx - 1.6, vy - 1.6, 7.0), (vx + 1.6, vy + 1.6, 7.4), "glow")
     return m
 
 
+def hoop(m: ra.Mesh, c, r: float, tilt_axis, mat: str, segs: int = 28) -> None:
+    """A thin ring around `c`, tipped 55 degrees about the horizontal `tilt_axis`, from short rods."""
+    ax = np.asarray(tilt_axis, float)
+    ax /= np.linalg.norm(ax)
+    ang = math.radians(55)
+
+    def rot(v):
+        v = np.asarray(v, float)
+        return v * math.cos(ang) + np.cross(ax, v) * math.sin(ang) + ax * np.dot(ax, v) * (1 - math.cos(ang))
+
+    pts = [np.asarray(c, float) + rot((r * math.cos(2 * math.pi * i / segs), r * math.sin(2 * math.pi * i / segs), 0.0)) for i in range(segs)]
+    for i in range(segs):
+        a, b = pts[i], pts[(i + 1) % segs]
+        m.cyl(tuple(a), tuple(b), 0.32, 0.32, mat, n=5)
+
+
 def fusionnode_spots() -> dict:
+    return fusionnode_level_spots(0)
+
+
+def fusionnode_level_spots(level: int) -> dict:
     cx, cy = FN_C
-    sp = fn_spires()
+    L = FN_LEVELS[level]
+    sp = fn_level_spires(level)
     return {
-        "core": (cx, cy, FN_ORB_Z),
+        "core": (cx, cy, L["orb_z"]),
         "well": (cx + 4.0, cy + 4.0, 16.0),
-        "tips": [(sx, sy, FN_SPIRE_TOP + 1.2) for sx, sy in sp],
-        "arcs": [(cx + (sx - cx) * 0.35, cy + (sy - cy) * 0.35, FN_ORB_Z + 0.5) for sx, sy in sp],
-        "stack": (cx, cy, FN_SPIRE_TOP + 4.0),
+        "tips": [(sx, sy, L["top"] + 1.2) for sx, sy in sp],
+        "arcs": [(cx + (sx - cx) * 0.35, cy + (sy - cy) * 0.35, L["orb_z"] + 0.5) for sx, sy in sp],
+        "stack": (cx, cy, L["top"] + 4.0),
     }
 
 
@@ -1232,6 +1323,8 @@ BUILDINGS = {
     "hivecore": (HC, HC, 2.0, build_hivecore, hivecore_spots),
     "conversion": (CC, CC, 3.0, build_conversion, conversion_spots),
     "fusionnode": (FN, FN, 3.0, build_fusionnode, fusionnode_spots),
+    "fusionnode-advanced": (FN, FN, 3.0, lambda pad_: build_fusionnode_level(pad_, 1), lambda: fusionnode_level_spots(1)),
+    "fusionnode-ultra": (FN, FN, 3.0, lambda pad_: build_fusionnode_level(pad_, 2), lambda: fusionnode_level_spots(2)),
     "assimilator": (AS, AS, 2.0, build_assimilator, assimilator_spots),
     "forge": (NF, NF, 2.0, build_forge, forge_spots),
     "nexus": (NX, NX, 3.0, build_nexus, nexus_spots),
