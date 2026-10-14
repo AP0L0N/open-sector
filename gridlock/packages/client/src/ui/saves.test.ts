@@ -1,7 +1,21 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { SaveGame } from "@gridlock/shared";
-import { cleanSaveName, dropSaveSlot, putSaveSlot, readSaveSlots, suggestSaveName, writeSaveSlots, type SaveSlot, type SaveStore } from "./saves.js";
+import {
+  autosaveKey,
+  cleanSaveName,
+  dropSaveSlot,
+  putSaveSlot,
+  readAutosave,
+  readSaveSlots,
+  suggestSaveName,
+  writeAutosave,
+  writeSaveSlots,
+  type Autosave,
+  type AutosaveStore,
+  type SaveSlot,
+  type SaveStore,
+} from "./saves.js";
 
 function mem(): SaveStore {
   const box = new Map<string, string>();
@@ -68,5 +82,70 @@ describe("save slots", () => {
     assert.deepEqual(readSaveSlots(store), []);
     store.setItem("gridlock.saves", "[{}]");
     assert.deepEqual(readSaveSlots(store), []);
+  });
+});
+
+describe("autosave", () => {
+  function box(failOn?: (key: string, value: string) => boolean): AutosaveStore & { keys: Map<string, string> } {
+    const keys = new Map<string, string>();
+    return {
+      keys,
+      getItem: (key) => keys.get(key) ?? null,
+      setItem: (key, value) => {
+        if (failOn?.(key, value)) throw new Error("QuotaExceededError");
+        keys.set(key, value);
+      },
+      removeItem: (key) => {
+        keys.delete(key);
+      },
+    };
+  }
+  const entry = (tick: number): Autosave => ({ savedAt: 1_700_000_000_000 + tick, mapId: "yard-64", tick, save: { v: 1 } as SaveGame });
+
+  it("overwrites the one autosave and leaves no backup behind", () => {
+    const store = box();
+    assert.equal(readAutosave("skirmish", store), null);
+    assert.deepEqual(writeAutosave("skirmish", entry(10), store), { ok: true });
+    assert.deepEqual(writeAutosave("skirmish", entry(20), store), { ok: true });
+    assert.equal(readAutosave("skirmish", store)?.tick, 20);
+    assert.deepEqual([...store.keys.keys()], [autosaveKey("skirmish")]);
+  });
+
+  it("keeps skirmish and play test apart", () => {
+    const store = box();
+    writeAutosave("skirmish", entry(10), store);
+    writeAutosave("playtest", entry(30), store);
+    assert.equal(readAutosave("skirmish", store)?.tick, 10);
+    assert.equal(readAutosave("playtest", store)?.tick, 30);
+  });
+
+  it("keeps the last good one when the new write fails", () => {
+    let fail = false;
+    const store = box((key) => fail && key === autosaveKey("skirmish"));
+    writeAutosave("skirmish", entry(10), store);
+    fail = true;
+    const res = writeAutosave("skirmish", entry(20), store);
+    assert.equal(res.ok, false);
+    assert.equal(readAutosave("skirmish", store)?.tick, 10);
+  });
+
+  it("refuses to write when the old one cannot be backed up", () => {
+    let fail = false;
+    const store = box((key) => fail && key.endsWith(".bak"));
+    writeAutosave("skirmish", entry(10), store);
+    fail = true;
+    assert.equal(writeAutosave("skirmish", entry(20), store).ok, false);
+    assert.equal(readAutosave("skirmish", store)?.tick, 10);
+  });
+
+  it("reads the backup when a write was cut short and the main copy is damaged", () => {
+    const store = box();
+    writeAutosave("skirmish", entry(10), store);
+    store.keys.set(`${autosaveKey("skirmish")}.bak`, store.keys.get(autosaveKey("skirmish"))!);
+    store.keys.set(autosaveKey("skirmish"), '{"savedAt":1,"mapId":"yar');
+    assert.equal(readAutosave("skirmish", store)?.tick, 10);
+    assert.deepEqual(writeAutosave("skirmish", entry(20), store), { ok: true });
+    assert.equal(readAutosave("skirmish", store)?.tick, 20);
+    assert.equal(store.keys.has(`${autosaveKey("skirmish")}.bak`), false);
   });
 });

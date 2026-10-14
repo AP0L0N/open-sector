@@ -19,7 +19,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 157;
+export const PROTOCOL_VERSION = 158;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -924,7 +924,7 @@ export type ClientMessage =
    * One start position is enough. `spawnId` picks the start to drop on;
    * 0 or missing draws one at random.
    */
-  | { type: "map.test"; map: CustomMapSpec; spawnId?: number }
+  | { type: "map.test"; map: CustomMapSpec; spawnId?: number; save?: SaveGame }
   | { type: "chat"; text: string }
   /** `queue`: Shift-queued. The unit runs it after its current and earlier queued orders finish. */
   /** `facing`: world radians the unit turns to after it arrives. A held move click sets it. */
@@ -1112,9 +1112,11 @@ export type ClientMessage =
   /** Skirmish only. Holds the sim without changing game speed. */
   | { type: "match.pause"; paused: boolean }
   /** Skirmish only. The hub answers with `match.saved`. */
-  | { type: "match.save" }
+  | { type: "match.save"; auto?: boolean }
   /** Skirmish only. Replaces the current fight, or opens one from the menu. */
-  | { type: "match.load"; save: SaveGame };
+  | { type: "match.load"; save: SaveGame }
+  /** Skirmish only. Throw the fight away and start it again from the room's setup. */
+  | { type: "match.restart" };
 
 export type ServerMessage =
   | { type: "welcome"; playerId: string; protocol: number }
@@ -1125,7 +1127,7 @@ export type ServerMessage =
   /** A loaded skirmish. The client draws it without the deploy splash. */
   | { type: "match.resume"; room: RoomState; match: MatchSnapshot }
   /** The authoritative save of the skirmish underway. The browser stores it. */
-  | { type: "match.saved"; save: SaveGame }
+  | { type: "match.saved"; save: SaveGame; auto?: boolean }
   | { type: "match.end"; winnerPlayerId: string | null; winnerTeam: number | null; reason: "core" | "host" }
   | { type: "room.closed"; reason: string }
   | { type: "chat"; from: string; name: string; text: string; at: number }

@@ -8,9 +8,11 @@ import {
   dropSaveSlot,
   newSaveId,
   putSaveSlot,
+  readAutosave,
   readSaveSlots,
   suggestSaveName,
   writeSaveSlots,
+  type Autosave,
   type SaveSlot,
 } from "./saves.js";
 
@@ -35,6 +37,7 @@ export function renderPauseModal(root: HTMLElement, ctx: Ctx): void {
   if (ctx.pausePane === "save") renderSavePane(modal, ctx);
   else if (ctx.pausePane === "load") renderSlotList(modal, ctx, "pause");
   else if (ctx.pausePane === "options") renderOptionsPane(modal, ctx);
+  else if (ctx.pausePane === "restart") renderRestartPane(modal, ctx);
   else renderPauseMenu(modal, ctx);
   back.append(modal);
   root.append(back);
@@ -112,6 +115,7 @@ function renderPauseMenu(modal: HTMLElement, ctx: Ctx): void {
     modal.append(el("p", { class: "tiny", text: "Play test. Your map is waiting in the builder." }));
     stack.append(
       action("Resume", "btn btn-primary", () => ctx.resumeSkirmish()),
+      action("Restart", "btn", () => openPane(ctx, "restart")),
       action("Options", "btn", () => openPane(ctx, "options")),
       action("Return to map builder", "btn", () => leaveMatch(ctx, "builder")),
     );
@@ -123,6 +127,7 @@ function renderPauseMenu(modal: HTMLElement, ctx: Ctx): void {
     action("Resume", "btn btn-primary", () => ctx.resumeSkirmish()),
     action("Save game", "btn", () => openPane(ctx, "save")),
     action("Load game", "btn", () => openPane(ctx, "load")),
+    action("Restart", "btn", () => openPane(ctx, "restart")),
     action("Options", "btn", () => openPane(ctx, "options")),
     action("Leave", "btn btn-ghost", () => leaveMatch(ctx)),
   );
@@ -163,6 +168,24 @@ function renderSavePane(modal: HTMLElement, ctx: Ctx): void {
   requestAnimationFrame(() => name.focus());
 }
 
+/** Restart asks once: the fight underway is lost unless it was saved. */
+function renderRestartPane(modal: HTMLElement, ctx: Ctx): void {
+  modal.append(
+    el("h2", { text: "Restart" }),
+    el("p", { class: "tiny", text: "Start this fight again from the beginning? Anything not saved is lost." }),
+  );
+  const row = el("div", { class: "btn-row" });
+  row.append(
+    action("Back", "btn btn-ghost", () => openPane(ctx, "menu")),
+    action("Restart", "btn btn-primary", () => {
+      ctx.banner = "Restarting…";
+      ctx.net.send({ type: "match.restart" });
+      ctx.render();
+    }),
+  );
+  modal.append(row);
+}
+
 /** Sound and camera settings inside the battle menu. Back returns to that menu. */
 export function renderOptionsPane(modal: HTMLElement, ctx: Ctx): void {
   modal.append(el("h2", { text: "Options" }), ...optionsControls());
@@ -175,11 +198,13 @@ export function renderOptionsPane(modal: HTMLElement, ctx: Ctx): void {
 function renderSlotList(host: HTMLElement, ctx: Ctx, where: "menu" | "pause"): void {
   if (where === "pause") host.append(el("h2", { text: "Load game" }));
   const slots = readSaveSlots(localStorage);
-  if (slots.length === 0) {
+  const auto = readAutosave("skirmish", localStorage);
+  if (slots.length === 0 && !auto) {
     host.append(el("p", { class: "tiny", text: "No saved games." }));
   } else {
     if (where === "pause") host.append(el("p", { class: "tiny", text: "Loading replaces the fight underway." }));
-    host.append(slotColumn(ctx, slots, "load"));
+    if (auto) host.append(autosaveRow(ctx, auto));
+    if (slots.length) host.append(slotColumn(ctx, slots, "load"));
   }
   const back = action("Back", "btn btn-ghost", () => {
     ctx.banner = "";
@@ -195,6 +220,22 @@ function renderSlotList(host: HTMLElement, ctx: Ctx, where: "menu" | "pause"): v
   row.style.marginTop = "12px";
   row.append(back);
   host.append(row);
+}
+
+/** The skirmish autosave sits above the named saves. It is overwritten, never deleted. */
+function autosaveRow(ctx: Ctx, auto: Autosave): HTMLElement {
+  const list = el("div", { class: "save-list" });
+  const row = el("div", { class: "save-row" });
+  const pick = el("button", { class: "btn", attrs: { type: "button" } });
+  const map = getMap(auto.mapId)?.name ?? auto.mapId;
+  pick.append(
+    el("span", { text: "Autosave" }),
+    el("small", { text: `${map} · ${matchClock(auto.tick, getMap(auto.mapId)?.night).text} · ${stamp(auto.savedAt)}` }),
+  );
+  pick.addEventListener("click", () => beginLoad(ctx, auto.save));
+  row.append(pick);
+  list.append(row);
+  return list;
 }
 
 function slotColumn(ctx: Ctx, slots: SaveSlot[], mode: "save" | "load"): HTMLElement {

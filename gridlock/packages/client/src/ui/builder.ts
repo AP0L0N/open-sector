@@ -106,7 +106,9 @@ import palmUrl from "../assets/terrain/palm-1.png";
 import cactusUrl from "../assets/terrain/cactus-1.png";
 import rockUrl from "../assets/terrain/ground-rock.png";
 import { drawBrick, layoutBridges } from "../render/bridge.js";
+import { rememberPlaytestMap } from "./autosave.js";
 import { el } from "./dom.js";
+import { readAutosave } from "./saves.js";
 import * as M from "./builder-model.js";
 import { isoChanged, isoDraw, isoRestamp, type RouteDraw, type SpotBeam, type UnitOverlay } from "./builder-iso.js";
 import { SIDEBAR_GROUPS, sidebarGroupOf, type SidebarGroup } from "./sidebar-groups.js";
@@ -2413,12 +2415,28 @@ function playtest(ctx: Ctx): void {
   const loaded = loadCustomMap(spec, { playtest: true });
   if (!loaded.ok) return say(loaded.message, "bad");
   forgetTerrain(spec.id);
+  rememberPlaytestMap(spec);
   say("Starting play test…");
   ctx.playMode = "skirmish";
   ctx.net.send({ type: "hello", name: ctx.name });
   // A start removed since it was picked falls back to random.
   const spawnId = s.spawns.some((sp) => sp.id === testSpawn) ? testSpawn : 0;
   ctx.net.send({ type: "map.test", map: spec, spawnId });
+}
+
+/** Pick the last play test up from its autosave, on the sheet as it was then. */
+function resumePlaytest(ctx: Ctx): void {
+  const auto = readAutosave("playtest", localStorage);
+  if (!auto?.map) return say("No play test autosave.", "bad");
+  if (!ctx.net.connected) return say("Not linked to the hub. A play test runs on the server.", "bad");
+  const loaded = loadCustomMap(auto.map, { playtest: true });
+  if (!loaded.ok) return say(loaded.message, "bad");
+  forgetTerrain(auto.map.id);
+  rememberPlaytestMap(auto.map);
+  say("Resuming play test…");
+  ctx.playMode = "skirmish";
+  ctx.net.send({ type: "hello", name: ctx.name });
+  ctx.net.send({ type: "map.test", map: auto.map, save: auto.save });
 }
 
 /** The hub stored our map. */
@@ -3683,6 +3701,12 @@ function header(ctx: Ctx): HTMLElement {
   btn("Save copy", "", () => save(ctx, { copy: true }), !editing);
   if (editing) head.append(testSpawnPick());
   btn("Play test", "", () => playtest(ctx), !editing);
+  const lastTest = readAutosave("playtest", localStorage);
+  if (lastTest?.map) {
+    btn("Resume test", "", () => resumePlaytest(ctx));
+    const b = head.lastElementChild as HTMLElement;
+    b.title = `Continue the last play test (${lastTest.map.name}, autosaved ${new Date(lastTest.savedAt).toLocaleString([], { dateStyle: "short", timeStyle: "short" })})`;
+  }
   // From the sheet, Back steps out to the start page: New map and the map list. The sheet waits there to be resumed.
   btn("Back", "btn-ghost", () => {
     if (editing) {
