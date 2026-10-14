@@ -1774,6 +1774,8 @@ function infantryRoundCanHarm(state: MatchState, e: Entity, target: Entity): boo
   if (gun.id === "gatling" && isLightHull(def)) return true;
   // The Commander's laser cuts any plate.
   if (gun.id === "laser") return true;
+  // A Xenite pulse burns into any plate, if only a little. The Shade's spine is a solid round.
+  if (gun.id !== "scoped" && energyRound(state, e.ownerId)) return true;
   // The Sim Unit's daggers open a light hull; a heavy plate is not worth the run.
   if (gun.id === "daggers") return isLightHull(def);
   // The Thrall's fists never touch a plate: it goes off against it.
@@ -3805,6 +3807,8 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     const targetDef = e.wreck ? wreckHitDef(e, p.caliber) : liveDef;
     const frac = p.hpFraction;
     const scopedInfantry = frac != null && isInfantryType(e.type) && !e.wreck;
+    // A Xenite pulse, plasma, or disruptor bolt burns into any plate. The Shade's spine is a solid round.
+    const energy = frac == null && !p.flight && energyRound(state, p.ownerId);
     const atArmor =
       !p.bounced &&
       p.caliber === PTRD_CALIBER &&
@@ -3828,7 +3832,14 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     // StuG sides, a Tiger's rear, and every heavier face stay on resolveHit.
     const gatlingLight = !!p.gatling && !p.bounced && !e.wreck && !roofHit && !atArmor && isLightHull(liveDef);
     const res = roofHit
-      ? resolveRoofHit({ penetration: p.penetration, target: liveDef, targetHp: e.hp, targetHpMax: e.hpMax, rand })
+      ? resolveRoofHit({
+          penetration: p.penetration,
+          target: liveDef,
+          targetHp: e.hp,
+          targetHpMax: e.hpMax,
+          rand,
+          energyDamage: energy ? p.damage : undefined,
+        })
       : atArmor
       ? resolveAtRifleHit({
           penetration: p.penetration,
@@ -3866,6 +3877,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
           vy: p.vy,
           rand,
           exact: scopedInfantry,
+          energy,
         });
     const occupied = wallsShieldGarrison(state, e);
     // A walker round stops on the wall. It does not chew the structure, even
@@ -3874,8 +3886,15 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     const chipWalls = (!occupied || p.caliber >= GARRISON_STRUCTURAL_CALIBER) && !walkerWall;
     let dealt = res.damage;
     if (chipWalls) {
-      dealt = coverStrike(e, dealt, state.tick, !!(p.fromAbove || p.plunging));
-      if (e.hp > 0 && roofHit) {
+      const overhead = !!(p.fromAbove || p.plunging);
+      // A wall takes its share of a fractional burn, not the whole-point floor coverStrike keeps.
+      dealt =
+        res.burn && !overhead && (e.wallCover ?? 0) > 0 && e.kind === "unit"
+          ? takeDamage(e, dealt * WALL_COVER_DR, state.tick)
+          : coverStrike(e, dealt, state.tick, overhead);
+      if (res.burn) {
+        // An energy burn on plate it did not pierce: no track or engine breaks.
+      } else if (e.hp > 0 && roofHit) {
         if (res.kind === "pen" && isMotorVehicle(e.type) && rand() < FW190_ROOF_ENGINE_CHANCE) addCrit(e, "engine");
       } else if (e.hp > 0 && !gatlingLight) {
         const tracks =

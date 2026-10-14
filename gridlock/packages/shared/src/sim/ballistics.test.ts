@@ -5,10 +5,13 @@ import {
   aimAngle,
   armorHarmPossible,
   armorOn,
+  ENERGY_BURN_MIN,
+  energyBurn,
   hitFace,
   KILL_OVERMATCH,
   LONG_SHOT_SPREAD,
   resolveHit,
+  resolveRoofHit,
   scatterHullImpact,
 } from "./ballistics.js";
 
@@ -404,5 +407,64 @@ describe("Titan shell resistance", () => {
     const res = shot(titan, -1, 0, catalog("rifleman"));
     const base = shot(plain, -1, 0, catalog("rifleman"));
     assert.deepEqual(res, base);
+  });
+});
+
+describe("energy rounds", () => {
+  const pulse = { damage: 10, penetration: 12, caliber: 13 };
+  const shot = (vx: number, vy: number, energy: boolean, gun = pulse) =>
+    resolveHit({
+      gun,
+      target: warden,
+      targetFacing: 0,
+      targetHp: warden.hp,
+      targetHpMax: warden.hp,
+      vx,
+      vy,
+      rand: seq([0.5, 0.5, 0.5, 0.5, 0.5]),
+      energy,
+    });
+
+  it("burns into plate a solid round of the same make bounces off", () => {
+    assert.equal(shot(-1, 0, false).damage, 0);
+    const bolt = shot(-1, 0, true);
+    assert.ok(bolt.damage > 0, `dmg=${bolt.damage}`);
+    assert.equal(bolt.kind, "hit");
+    assert.equal(bolt.bounceVx, 0);
+    assert.equal(bolt.burn, true, "a burn breaks no track or engine");
+  });
+
+  it("does more to thin plate than thick, and never more than its own damage there", () => {
+    const front = shot(-1, 0, true).damage;
+    const rear = shot(1, 0, true).damage;
+    assert.ok(rear >= front, `rear ${rear} front ${front}`);
+    assert.ok(rear <= pulse.damage);
+  });
+
+  it("burns a little even at a grazing angle", () => {
+    const graze = shot(-0.2, 1, true);
+    assert.ok(graze.damage > 0);
+    assert.notEqual(graze.kind, "ricochet");
+  });
+
+  it("keeps a piercing shot's harm and its crit roll", () => {
+    const disruptor = { damage: 55, penetration: 200, caliber: 75 };
+    const bolt = shot(1, 0, true, disruptor);
+    assert.ok(bolt.damage >= shot(1, 0, false, disruptor).damage);
+    assert.equal(bolt.burn, undefined);
+  });
+
+  it("burns damage × (penetration over plate)², never under ENERGY_BURN_MIN of it", () => {
+    assert.equal(energyBurn(10, 50, 100, () => 0.5), 2.5);
+    assert.equal(energyBurn(10, 200, 100, () => 0.5), 10);
+    assert.equal(energyBurn(10, 1, 400, () => 0.5), 10 * ENERGY_BURN_MIN);
+  });
+
+  it("burns through a roof the bolt does not pierce", () => {
+    const opts = { penetration: 1, target: warden, targetHp: warden.hp, targetHpMax: warden.hp, rand: () => 0.5 };
+    assert.equal(resolveRoofHit(opts).damage, 0);
+    const bolt = resolveRoofHit({ ...opts, energyDamage: 20 });
+    assert.ok(bolt.damage > 0);
+    assert.equal(bolt.burn, true);
   });
 });

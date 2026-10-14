@@ -96,6 +96,7 @@ import {
   trackCritAllowed,
   infantryGunFor,
   isAircraftType,
+  factionOf,
   isArmoredType,
   isDroneType,
   isHiveArk,
@@ -527,14 +528,15 @@ function hasRounds(e: Entity): boolean {
 /**
  * Whether this plane's guns do anything to the target. Plate stops the Stuka's
  * wing MGs; infantry, soft trucks, and parked planes do not. The Fw 190's cannon
- * come down through any hull's roof, and reach planes in the air.
+ * come down through any hull's roof, and reach planes in the air. A Xenite flier's pulse
+ * guns burn into any plate (ballistics energyBurn), if only a little.
  */
 function gunsHurt(e: Entity, target: Entity): boolean {
   if (isCrashing(target)) return false;
   if (target.kind !== "unit" || target.wreck) return false;
   if (isFighterType(e.type)) return isAirborne(target) ? !!target.air && !target.drone : true;
   if (isAirborne(target)) return false;
-  return !isArmoredType(target.type);
+  return !isArmoredType(target.type) || factionOf(e.type) === "xeno";
 }
 
 

@@ -6809,7 +6809,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     mgAmmo: HULL_FLAMER_FUEL,
     leavesWreck: true,
     wreckHp: 28,
-    blurb: `Fast heavy assimilator built to hunt soldiers. A pulse repeater on a quick turret; tank plate turns the bolts, and they do not bring a building down. Each bolt draws on an energy cell that holds 60 and regrows five a second: three seconds of full fire, then a quarter of that while the cell refills. A plasma jet in the jaw fires on its own at soldiers and soft vehicles inside a short reach, but only where the nose points, and burns every soldier in its path, friends too. The jet never runs dry. Lighter plate than a Stalker.`,
+    blurb: `Fast heavy assimilator built to hunt soldiers. A pulse repeater on a quick turret; the bolts burn into tank plate, but only a little, and they do not bring a building down. Each bolt draws on an energy cell that holds 60 and regrows five a second: three seconds of full fire, then a quarter of that while the cell refills. A plasma jet in the jaw fires on its own at soldiers and soft vehicles inside a short reach, but only where the nose points, and burns every soldier in its path, friends too. The jet never runs dry. Lighter plate than a Stalker.`,
   },
   /** Xenite heavy assimilator: six legs, twin disruptors, a carapace that sheds shells. */
   behemoth: {
@@ -7117,7 +7117,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     plasmaCell: SPINE_TURRET_CELL,
     poweredGun: true,
     capturable: false,
-    blurb: "A chitin bulb rooted in the ground with a twin pulse repeater for a head. Nobody works it: it lays itself all the way round and cuts down soldiers at an MG42's pace from a little short of an MG Nest's reach, and draws its charge from the hive: a cell that holds 3 seconds of fire and regrows at half the pace it fires, so a long burst slows to a stutter. Tank plate turns them, and they do not bring a building down. Takes hive energy while it stands; offline, it falls silent. Cannot move.",
+    blurb: "A chitin bulb rooted in the ground with a twin pulse repeater for a head. Nobody works it: it lays itself all the way round and cuts down soldiers at an MG42's pace from a little short of an MG Nest's reach, and draws its charge from the hive: a cell that holds 3 seconds of fire and regrows at half the pace it fires, so a long burst slows to a stutter. The bolts burn into tank plate, but only a little, and they do not bring a building down. Takes hive energy while it stands; offline, it falls silent. Cannot move.",
   },
   /** Xenite fence post: links to the posts beside it with two laser beams (sim/laser-fence.ts). */
   laserfence: {
