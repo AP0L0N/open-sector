@@ -43,6 +43,7 @@ import {
   rocketAmmoOf,
   secondsToTicks,
   techNeeds,
+  techLevelResearch,
   type EntityType,
 } from "../catalog.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
@@ -122,7 +123,9 @@ describe("new Xenite roster", () => {
       assert.ok(catalog(t).armorFront > 0 && catalog(t).leavesWreck, t);
     }
     assert.ok(techNeeds("shade").includes("nexus"));
-    assert.ok(techNeeds("assembler").includes("nexus"));
+    assert.ok(techNeeds("behemoth").includes("nexus"));
+    assert.equal(techLevelResearch("assembler")?.id, "advancedforge");
+    assert.equal(techLevelResearch("juggernaut")?.id, "neuralforge");
   });
 
   it("prices hit points inside the band the existing Xenite roster already spans", () => {

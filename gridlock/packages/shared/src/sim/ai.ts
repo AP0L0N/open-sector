@@ -533,7 +533,8 @@ const XENO_SHIELDED: ReadonlySet<string> = new Set(["spineturret", "pulsespire",
 /**
  * One upgrade at a time. The Shield Wall comes first, on the oldest Assembly, as soon as the
  * hive keeps HIVE_ENERGY_LOW free after its draw: Drones and Lancers fight without walls until then.
- * Then the most levelled Assembly takes its next level (Neural Assembly once a Neural Nexus stands).
+ * Then the most levelled Assembly takes its next level (Neural Assembly once a Neural Nexus stands),
+ * then the most levelled Nanite Forge (Neural Forge too waits for the Nexus).
  * The rest waits for the build order to stand. First the least upgraded Fusion Node, when the
  * dip while it upgrades keeps the hive at zero or above (Ultra Fusion waits for a Neural Nexus); else,
  * once enemy fliers have been seen, the oldest Ion Turret still blind to them grows Sky Tracking; else
@@ -548,6 +549,7 @@ function researchXeno(state: MatchState, p: SimPlayer): void {
   let chamber: Entity | undefined;
   let hive: Entity | undefined;
   let assembly: Entity | undefined;
+  let forge: Entity | undefined;
   let drilled = false;
   let nodes = 0;
   for (const e of state.entities.values()) {
@@ -561,6 +563,8 @@ function researchXeno(state: MatchState, p: SimPlayer): void {
       if (!assembly || (e.level ?? 0) > (assembly.level ?? 0)) assembly = e;
       if (e.shieldWall) drilled = true;
       else if (!chamber || e.id < chamber.id) chamber = e;
+    } else if (e.type === "forge") {
+      if (!forge || (e.level ?? 0) > (forge.level ?? 0)) forge = e;
     } else if (e.type === "fusionnode") {
       nodes++;
       if (nextResearch(e.type, e.level ?? 0) && (!node || (e.level ?? 0) < (node.level ?? 0))) node = e;
@@ -573,12 +577,14 @@ function researchXeno(state: MatchState, p: SimPlayer): void {
     applyCommand(state, p.playerId, { type: "cmd.research", ids: [chamber.id], research: "shieldwall" });
     return;
   }
-  // The Assembly's levels unlock the Lancer, Bombard, and Bulwark, then the Sim Unit and Phantom.
-  // They take no energy, so the most levelled Assembly goes on as soon as its next level may start.
-  if (assembly) {
-    const next = nextResearch(assembly.type, assembly.level ?? 0);
-    if (next && !researchBlocker(state, p.playerId, assembly, next.id)) {
-      applyCommand(state, p.playerId, { type: "cmd.research", ids: [assembly.id], research: next.id });
+  // The Assembly's levels unlock the Lancer, Bombard, and Bulwark, then the Sim Unit and Phantom;
+  // the Forge's the Siphon, Nova Mortar, and Assembler, then the Behemoth and Juggernaut. They take
+  // no energy, so the most levelled of each goes on as soon as its next level may start.
+  for (const b of [assembly, forge]) {
+    if (!b) continue;
+    const next = nextResearch(b.type, b.level ?? 0);
+    if (next && !researchBlocker(state, p.playerId, b, next.id)) {
+      applyCommand(state, p.playerId, { type: "cmd.research", ids: [b.id], research: next.id });
       return;
     }
   }

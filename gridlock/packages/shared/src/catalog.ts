@@ -1080,13 +1080,11 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly Bu
   shade: ["conversion", "nexus"],
   behemoth: "nexus",
   juggernaut: "nexus",
-  assembler: "nexus",
   lurker: "nexus",
   hiveark: "nexus",
   scourge: "nexus",
   overseer: "nexus",
   mothership: "nexus",
-  mawcaster: "nexus",
   matriarch: "braincoral",
   abyssray: "braincoral",
   leviathan: "braincoral",
@@ -1286,7 +1284,9 @@ export type ResearchId =
   | "advancedassembly"
   | "neuralassembly"
   | "scanrelay"
-  | "scanarray";
+  | "scanarray"
+  | "advancedforge"
+  | "neuralforge";
 export interface ResearchDef {
   id: ResearchId;
   name: string;
@@ -1469,10 +1469,31 @@ export const RESEARCH: Record<ResearchId, ResearchDef> = {
     effect: "Sim Unit, Phantom",
     blurb: "Wires the pods into the Neural Nexus. Your Assemblies train the Sim Unit II and the Phantom while an Assembly of yours stands at this level. Needs a Neural Nexus.",
   },
+  advancedforge: {
+    id: "advancedforge",
+    name: "Advanced Forge",
+    buildings: ["forge"],
+    level: 1,
+    seconds: 45,
+    cost: 0,
+    effect: "Siphon, Nova Mortar, Assembler",
+    blurb: "Deepens the nanite vats for larger hulls. Your Nanite Forges grow the Siphon, the Nova Mortar, and the Assembler while a Forge of yours stands at this level.",
+  },
+  neuralforge: {
+    id: "neuralforge",
+    name: "Neural Forge",
+    buildings: ["forge"],
+    level: 2,
+    seconds: 75,
+    requires: ["nexus"],
+    cost: 0,
+    effect: "Behemoth, Juggernaut",
+    blurb: "Wires the vats into the Neural Nexus. Your Nanite Forges grow the Behemoth and the Juggernaut while a Forge of yours stands at this level. Needs a Neural Nexus.",
+  },
 };
 /**
- * Units an Assembly's level unlocks: trained only while one of the side's standing Assemblies
- * has reached that level (sim/train.ts levelMissing).
+ * Units a producer's level unlocks: trained only while one of the side's standing Assemblies
+ * (foot soldiers) or Nanite Forges (hulls) has reached that level (sim/train.ts levelMissing).
  */
 export const TECH_LEVEL_REQUIRES: Partial<Record<TrainType, { type: BuildingType; level: number }>> = {
   lancer: { type: "conversion", level: 1 },
@@ -1480,6 +1501,11 @@ export const TECH_LEVEL_REQUIRES: Partial<Record<TrainType, { type: BuildingType
   weaver: { type: "conversion", level: 1 },
   simunit2: { type: "conversion", level: 2 },
   shade: { type: "conversion", level: 2 },
+  siphon: { type: "forge", level: 1 },
+  mawcaster: { type: "forge", level: 1 },
+  assembler: { type: "forge", level: 1 },
+  behemoth: { type: "forge", level: 2 },
+  juggernaut: { type: "forge", level: 2 },
 };
 /** The level research `unit` waits on (Advanced Assembly for a Lancer), or undefined when it needs none. */
 export function techLevelResearch(unit: TrainType): ResearchDef | undefined {
@@ -7025,7 +7051,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     shellResist: BEHEMOTH_SHELL_RESIST,
     leavesWreck: true,
     wreckHp: 60,
-    blurb: `The largest of the heavy assimilators: a carapace on six legs with twin plasma disruptors on one turret. They fire one after the other, a short gap and then a long reload, through a Warden's front plate, from farther than any tank but the Breaker. A bolt hits hardest up close: ${BEHEMOTH_PULSE_NEAR_MUL}× at the muzzle, falling to ${BEHEMOTH_PULSE_FAR_MUL}× at full range. High Pulse fires full bolts; Light Pulse is rapid fire: a bolt more than once a second at an eighth of the damage, cheap enough on the cell never to run it dry. The layered carapace sheds part of every shell that hits it (it takes ${Math.round(BEHEMOTH_SHELL_RESIST * 100)}% of the damage). Slow on its legs and slow on the turret, it walks straight through woods, felling every tree it brushes. Lunge throws it up and forward up to ${BEHEMOTH_LUNGE_RANGE_TILES / TILE_SUBDIV} cells; where it lands, ${BEHEMOTH_RING_SWEEPS} green laser sweeps lash out round it, burning enemy soldiers and setting the ground alight. The legs need ${BEHEMOTH_LUNGE_RECHARGE_SECONDS} seconds before the next. With the legs charged it lunges by itself at an enemy unit it is fighting ${BEHEMOTH_AUTO_LUNGE_MIN_TILES / TILE_SUBDIV} cells off or more, unless told to hold position. In a fight it throws a curved energy wall across its front, ${BEHEMOTH_SHIELD.hp} points strong: the wall stays where it went up, stops every enemy round and beam that meets it, and no enemy walks through it, while the Behemoth walks and fires through as if it were not there. It stands ${BEHEMOTH_SHIELD.seconds} seconds unless shot down; ${BEHEMOTH_SHIELD.rechargeSeconds} seconds after it falls, the next. Each barrel's bolt draws on an energy cell that holds 6 and regrows one every 9 seconds. Needs a Neural Nexus.`,
+    blurb: `The largest of the heavy assimilators: a carapace on six legs with twin plasma disruptors on one turret. They fire one after the other, a short gap and then a long reload, through a Warden's front plate, from farther than any tank but the Breaker. A bolt hits hardest up close: ${BEHEMOTH_PULSE_NEAR_MUL}× at the muzzle, falling to ${BEHEMOTH_PULSE_FAR_MUL}× at full range. High Pulse fires full bolts; Light Pulse is rapid fire: a bolt more than once a second at an eighth of the damage, cheap enough on the cell never to run it dry. The layered carapace sheds part of every shell that hits it (it takes ${Math.round(BEHEMOTH_SHELL_RESIST * 100)}% of the damage). Slow on its legs and slow on the turret, it walks straight through woods, felling every tree it brushes. Lunge throws it up and forward up to ${BEHEMOTH_LUNGE_RANGE_TILES / TILE_SUBDIV} cells; where it lands, ${BEHEMOTH_RING_SWEEPS} green laser sweeps lash out round it, burning enemy soldiers and setting the ground alight. The legs need ${BEHEMOTH_LUNGE_RECHARGE_SECONDS} seconds before the next. With the legs charged it lunges by itself at an enemy unit it is fighting ${BEHEMOTH_AUTO_LUNGE_MIN_TILES / TILE_SUBDIV} cells off or more, unless told to hold position. In a fight it throws a curved energy wall across its front, ${BEHEMOTH_SHIELD.hp} points strong: the wall stays where it went up, stops every enemy round and beam that meets it, and no enemy walks through it, while the Behemoth walks and fires through as if it were not there. It stands ${BEHEMOTH_SHIELD.seconds} seconds unless shot down; ${BEHEMOTH_SHIELD.rechargeSeconds} seconds after it falls, the next. Each barrel's bolt draws on an energy cell that holds 6 and regrows one every 9 seconds. Needs Neural Forge and a Neural Nexus.`,
   },
   /** Xenite heavy assimilator: a giant on two legs with a two-handed hammer. Melee only. */
   juggernaut: {
@@ -7061,7 +7087,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     wades: true,
     wadeSpeed: JUGGERNAUT_WADE_SPEED,
     fightsWading: true,
-    blurb: `A giant of the hive on two legs, swinging a two-handed hammer. It fights only at arm's reach, and runs at what it goes for at ${JUGGERNAUT_SPRINT_MUL} times its walk. It strides straight through woods, felling every tree it brushes, and wades through water thigh-deep, slower, still swinging: from there it hammers a boat on the surface, but not a submarine running below. Every blow lands in an area: it kills a soldier outright, staves in a tank's plate whatever its armor, and knocks whole walls out of a building. Only its own side is spared. Plated like a light tank and slow to fall. Brought down to ${Math.round(JUGGERNAUT_RAGE_HP * 100)}% it hurls the hammer at the strongest enemy within ${JUGGERNAUT_THROW_RANGE_TILES / TILE_SUBDIV} cells, a heavy blast where it lands, then fights on with its fists: lighter blows, three for every swing of the hammer, and it runs flat out at ${JUGGERNAUT_FIST_PACE_MUL} times the pace, still ramming. Struck down with the hammer still in its hands, it is not done: the hammer by the wreck glows blue, and ${JUGGERNAUT_REASSEMBLE_SECONDS} seconds later the giant knits itself back together with ${Math.round(JUGGERNAUT_REASSEMBLE_HP * 100)}% of its pool, unless the wreck is blasted apart first. Every ${JUGGERNAUT_RAM_RECHARGE_SECONDS} seconds it rams by itself: it lowers its shoulder and charges an enemy armored hull ${JUGGERNAUT_RAM_MIN_TILES / TILE_SUBDIV} to ${JUGGERNAUT_RAM_RANGE_TILES / TILE_SUBDIV} cells off, or an enemy building you order it to attack, and slams into it: a heavy blow that throws a hull back, and massive damage to a building. Everything of the enemy's in its path is run down on the way. It never charges a soldier. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered. Needs a Neural Nexus.`,
+    blurb: `A giant of the hive on two legs, swinging a two-handed hammer. It fights only at arm's reach, and runs at what it goes for at ${JUGGERNAUT_SPRINT_MUL} times its walk. It strides straight through woods, felling every tree it brushes, and wades through water thigh-deep, slower, still swinging: from there it hammers a boat on the surface, but not a submarine running below. Every blow lands in an area: it kills a soldier outright, staves in a tank's plate whatever its armor, and knocks whole walls out of a building. Only its own side is spared. Plated like a light tank and slow to fall. Brought down to ${Math.round(JUGGERNAUT_RAGE_HP * 100)}% it hurls the hammer at the strongest enemy within ${JUGGERNAUT_THROW_RANGE_TILES / TILE_SUBDIV} cells, a heavy blast where it lands, then fights on with its fists: lighter blows, three for every swing of the hammer, and it runs flat out at ${JUGGERNAUT_FIST_PACE_MUL} times the pace, still ramming. Struck down with the hammer still in its hands, it is not done: the hammer by the wreck glows blue, and ${JUGGERNAUT_REASSEMBLE_SECONDS} seconds later the giant knits itself back together with ${Math.round(JUGGERNAUT_REASSEMBLE_HP * 100)}% of its pool, unless the wreck is blasted apart first. Every ${JUGGERNAUT_RAM_RECHARGE_SECONDS} seconds it rams by itself: it lowers its shoulder and charges an enemy armored hull ${JUGGERNAUT_RAM_MIN_TILES / TILE_SUBDIV} to ${JUGGERNAUT_RAM_RANGE_TILES / TILE_SUBDIV} cells off, or an enemy building you order it to attack, and slams into it: a heavy blow that throws a hull back, and massive damage to a building. Everything of the enemy's in its path is run down on the way. It never charges a soldier. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered. Needs Neural Forge and a Neural Nexus.`,
   },
   /** Xenite heavy assimilator: four legs and a dome of energy over everything round it. Unarmed. */
   siphon: {
@@ -7126,7 +7152,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: 0,
     leavesWreck: true,
     wreckHp: 35,
-    blurb: `A small nanite forge on four short legs. It carries no weapon. From the moment it leaves the Forge it builds Enforcers by itself, ${ASSEMBLER_SPEEDUP} times as fast as a Forge, and sets each one down behind it. Every Enforcer spends ${Math.round(100 / ASSEMBLER_THRALLS)}% of its energy, ${ASSEMBLER_THRALLS} at most. When one of its Enforcers dies, that ${Math.round(100 / ASSEMBLER_THRALLS)}% slowly flows back over ${ASSEMBLER_REGEN_SECONDS} seconds, and it builds a new one. Its Enforcers are Enforcers like any other: they count against your units and run on the uplink. At the unit cap it holds the next one until there is room. Thick plate on every face. Keep it behind the line. Needs a Neural Nexus.`,
+    blurb: `A small nanite forge on four short legs. It carries no weapon. From the moment it leaves the Forge it builds Enforcers by itself, ${ASSEMBLER_SPEEDUP} times as fast as a Forge, and sets each one down behind it. Every Enforcer spends ${Math.round(100 / ASSEMBLER_THRALLS)}% of its energy, ${ASSEMBLER_THRALLS} at most. When one of its Enforcers dies, that ${Math.round(100 / ASSEMBLER_THRALLS)}% slowly flows back over ${ASSEMBLER_REGEN_SECONDS} seconds, and it builds a new one. Its Enforcers are Enforcers like any other: they count against your units and run on the uplink. At the unit cap it holds the next one until there is room. Thick plate on every face. Keep it behind the line. Needs Advanced Forge.`,
   },
   /** Xenite heavy assimilator: spore-pod rocket artillery. */
   mawcaster: {

@@ -507,7 +507,7 @@ describe("research gate", () => {
     makeEntity(state, "armory", "A", tileCenter(20, ts), tileCenter(4, ts), { tileX: 20, tileY: 4 });
     seedMuster(state, 20, 10);
     const gated = (Object.keys(TECH_REQUIRES) as TrainType[]).filter((u) => factionOf(u) !== "bloom");
-    assert.deepEqual([...gated].sort(), ["apocalypse", "assembler", "battleship", "behemoth", "bombard", "bv222", "cyborg", "cyborgcommander", "destroyer", "droneop", "he111", "hiveark", "horten", "jagdtiger", "juggernaut", "jumpjet", "lancer", "lurker", "mammoth", "mawcaster", "mothership", "nebelwerfer", "overseer", "scourge", "shade", "simunit2", "stuka", "submarine", "thrall", "titan", "warden", "weaver", "xenodrone"]);
+    assert.deepEqual([...gated].sort(), ["apocalypse", "battleship", "behemoth", "bombard", "bv222", "cyborg", "cyborgcommander", "destroyer", "droneop", "he111", "hiveark", "horten", "jagdtiger", "juggernaut", "jumpjet", "lancer", "lurker", "mammoth", "mothership", "nebelwerfer", "overseer", "scourge", "shade", "simunit2", "stuka", "submarine", "thrall", "titan", "warden", "weaver", "xenodrone"]);
     const cyborgs = new Set<TrainType>(["cyborg", "cyborgcommander", "simunit2", "xenodrone", "thrall", "lancer", "bombard", "weaver"]);
     // Ships ask for the Marine Base first, bombers for the Airfield; their gates are checked on their own.
     for (const unit of gated.filter((u) => producerType(u) !== "dock" && producerType(u) !== "airfield")) {
