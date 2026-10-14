@@ -95,6 +95,8 @@ const ANNOUNCE_GAP_MS: Record<string, number> = {
   cyborglinklost: 8000,
   cyborgsoffline: 8000,
   cyborgacquired: 4000,
+  researchstarted: 1500,
+  researchcomplete: 2500,
 };
 const lastAnnounce = new Map<string, number>();
 const queue: string[] = [];
@@ -300,6 +302,22 @@ export function playSoundEvents(events: readonly SoundEvent[], mixAt: (x: number
       case "announce":
         announce(ev.event);
         break;
+      case "research": {
+        // Your upgrade starting or called off is a sidebar sound; a level landing is heard where it stands.
+        if (ev.cue === "start") {
+          if (ev.own) uiSound("research_start");
+          break;
+        }
+        if (ev.cue === "cancel") {
+          if (ev.own) uiSound("power_down");
+          break;
+        }
+        const url = pick("sfx/battle", "sfx-upgrade_surge");
+        const mix = url ? mixAt(ev.x, ev.y) : null;
+        if (url && mix) playSample(url, mix, { volume: 0.85, maxVoices: 2 });
+        if (ev.own) uiSound("research_complete");
+        break;
+      }
     }
   }
 }

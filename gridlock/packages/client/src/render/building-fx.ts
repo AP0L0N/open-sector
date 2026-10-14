@@ -10,7 +10,7 @@ const IDLE_SMOKE_GAIN = 0.75;
 
 export type BuildingAnimView = Pick<
   EntityView,
-  "id" | "type" | "hp" | "wreck" | "trainProgress" | "trainQueue"
+  "id" | "type" | "hp" | "wreck" | "trainProgress" | "trainQueue" | "level" | "research"
 >;
 
 export function buildingProducesUnits(type: EntityType): boolean {
@@ -24,10 +24,15 @@ export function buildingWorking(e: BuildingAnimView): boolean {
   return !e.trainQueue?.[0]?.paused;
 }
 
+/** True while a structure researches its next level: its overlay runs at full strength. */
+export function buildingResearching(e: BuildingAnimView): boolean {
+  return !!e.research && !e.wreck && e.hp > 0;
+}
+
 /** True when this building should play its overlay this frame. */
 export function buildingAnimActive(e: BuildingAnimView): boolean {
   if (e.wreck || e.hp <= 0) return false;
-  return buildingWorking(e) || IDLE_ALWAYS.has(e.type);
+  return buildingWorking(e) || buildingResearching(e) || IDLE_ALWAYS.has(e.type);
 }
 
 type LightMode = "pulse" | "blink";
@@ -303,6 +308,55 @@ const DEFS: Partial<Record<EntityType, BuildingAnimDef>> = {
   },
 };
 
+/**
+ * Researched levels (sim/research.ts) drawn from their own sheets (fusionnode-advanced.json,
+ * fusionnode-ultra.json from tools/sprites/render_xeno_base.py), by level - 1.
+ */
+const LEVEL_DEFS: Partial<Record<EntityType, BuildingAnimDef[]>> = {
+  // Advanced Fusion: a hotter core that throbs faster, the tips blink quicker.
+  fusionnode: [
+    {
+      lights: [
+        { x: 210, y: 71, r: 17, color: "#a8fbff", period: 700, phase: 0.0, mode: "pulse" },
+        { x: 210, y: 167, r: 12, color: "#6dffc8", period: 1100, phase: 0.3, mode: "pulse" },
+        { x: 285, y: 19, r: 6, color: "#b6fff0", period: 800, phase: 0.0, mode: "blink" },
+        { x: 135, y: 19, r: 6, color: "#b6fff0", period: 800, phase: 0.5, mode: "blink" },
+      ],
+      arcs: [
+        { x: 236, y: 69 },
+        { x: 184, y: 69 },
+      ],
+    },
+    // Ultra Fusion: a white-hot star in the crown, four tips chasing round, an arc from every spire.
+    {
+      lights: [
+        { x: 210, y: 99, r: 22, color: "#e6fff8", period: 520, phase: 0.0, mode: "pulse" },
+        { x: 210, y: 213, r: 14, color: "#6dffc8", period: 900, phase: 0.3, mode: "pulse" },
+        { x: 267, y: 76, r: 6, color: "#b6fff0", period: 1000, phase: 0.0, mode: "blink" },
+        { x: 153, y: 19, r: 6, color: "#b6fff0", period: 1000, phase: 0.25, mode: "blink" },
+        { x: 153, y: 76, r: 6, color: "#b6fff0", period: 1000, phase: 0.5, mode: "blink" },
+        { x: 267, y: 19, r: 6, color: "#b6fff0", period: 1000, phase: 0.75, mode: "blink" },
+      ],
+      arcs: [
+        { x: 230, y: 108 },
+        { x: 190, y: 108 },
+        { x: 190, y: 88 },
+        { x: 230, y: 88 },
+      ],
+    },
+  ],
+};
+
+function animDefFor(e: BuildingAnimView): BuildingAnimDef | undefined {
+  const level = e.level ?? 0;
+  if (level > 0) {
+    const levels = LEVEL_DEFS[e.type];
+    const def = levels?.[Math.min(level, levels.length) - 1];
+    if (def) return def;
+  }
+  return DEFS[e.type];
+}
+
 function srcToScreen(
   def: BuildingSpriteDef,
   southX: number,
@@ -474,9 +528,9 @@ export function drawBuildingAnim(
   nowMs: number,
 ): void {
   if (!buildingAnimActive(e) || footprintW <= 0 || def.padWidth <= 0) return;
-  const spots = DEFS[e.type];
+  const spots = animDefFor(e);
   if (!spots) return;
-  const gain = buildingWorking(e) ? 0.88 : 0.32;
+  const gain = buildingWorking(e) || buildingResearching(e) ? 0.88 : 0.32;
   const drift = ((e.id * 0.6180339887) % 1 + 1) % 1;
 
   for (const light of spots.lights) {

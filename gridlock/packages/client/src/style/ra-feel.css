@@ -858,7 +858,7 @@ input[type="range"] { padding: 0; }
   padding-bottom: 3px;
 }
 
-/* Tallest group (Infantry) sets the floor so Config and Inspect don't jump on tab change. */
+/* Tallest group (Infantry) sets the floor so Selection and Inspect don't jump on tab change. */
 .group-panels {
   min-height: calc(5 * 3.1rem + 4 * 6px);
   flex-shrink: 0;
@@ -2025,6 +2025,25 @@ input[type="range"] { padding: 0; }
   background: #c44a32;
   width: 100%;
 }
+
+/* Research: the upgrade bar fills in the hive's glow; Cancel sits under it. */
+.research-bar {
+  height: 7px;
+  margin-top: 4px;
+  background: #0b1412;
+  border: 2px solid #1f3a33;
+}
+.research-bar > span {
+  display: block;
+  height: 100%;
+  background: #3fe8b8;
+  transition: width 0.2s linear;
+}
+.research-cancel {
+  margin-top: 4px;
+  width: 100%;
+}
+.research-rack .shell[aria-disabled="true"]:not(.is-on) { cursor: not-allowed; }
 
 /* Command bar: centred under the map, orders grouped, icons with a shared tooltip. */
 .battle-commands {

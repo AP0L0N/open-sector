@@ -2335,6 +2335,23 @@ for (const type of FORT_TYPES) {
   if (info && url) BUILDING_SPRITES[type] = building(url, info.padWidth, info.padSouthX, info.padSouthY, info.stackX, info.stackY);
 }
 
+/**
+ * Structures that look different once researched (sim/research.ts): each level past the base is its
+ * own sheet, <type>-<name>.png with its pad metrics in <type>-<name>.json (tools/sprites/render_xeno_base.py).
+ */
+export const LEVEL_SHEETS: Partial<Record<EntityType, readonly string[]>> = { fusionnode: ["advanced", "ultra"] };
+const LEVEL_SPRITES: Partial<Record<EntityType, BuildingSpriteDef[]>> = {};
+for (const [type, names] of Object.entries(LEVEL_SHEETS) as [EntityType, readonly string[]][]) {
+  const defs: BuildingSpriteDef[] = [];
+  for (const name of names) {
+    const info = padManifests[`../assets/buildings/${type}-${name}.json`];
+    const url = buildingUrls[`../assets/buildings/${type}-${name}.png`];
+    if (!info || !url) break;
+    defs.push(building(url, info.padWidth, info.padSouthX, info.padSouthY, info.stackX, info.stackY));
+  }
+  LEVEL_SPRITES[type] = defs;
+}
+
 /** A gun drawn over its pad: rows of traverse on the unturned pad's canvas, one column per crew count. */
 export interface GunLayer {
   sheet: HTMLImageElement;
@@ -2857,7 +2874,12 @@ export function drawPropSprite(
   return true;
 }
 
-export function buildingSpriteFor(type: EntityType, facing = 0): BuildingSpriteDef | undefined {
+export function buildingSpriteFor(type: EntityType, facing = 0, level = 0): BuildingSpriteDef | undefined {
+  if (level > 0) {
+    const levels = LEVEL_SPRITES[type];
+    const def = levels?.[Math.min(level, levels.length) - 1];
+    if (def) return def;
+  }
   if (isCivilianType(type)) {
     const faces = CIV_FACES[type];
     return faces[buildingFaceIndex(facing) % faces.length];
