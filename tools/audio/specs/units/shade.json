@@ -13,7 +13,7 @@
   },
   "lines": {
     "select": [
-      "[whispers] Shade.",
+      "[whispers] Phantom.",
       "Unseen.",
       "[whispers] We watch.",
       "Spine loaded."
@@ -30,7 +30,7 @@
       "Target pinned."
     ],
     "ready": [
-      "Shade grown. Fading in."
+      "Phantom grown. Fading in."
     ],
     "special": [
       "[whispers] Fading.",
@@ -38,7 +38,7 @@
     ],
     "die": [
       "[gasps] Seen...",
-      "Shade... dims..."
+      "Phantom... dims..."
     ]
   },
   "sfx": {
