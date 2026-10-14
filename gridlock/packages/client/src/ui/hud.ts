@@ -2005,7 +2005,7 @@ function appendResearch(body: HTMLElement, type: EntityType): void {
   bar.append(el("span"));
   const cancel = el("button", {
     class: "shell research-cancel hidden",
-    attrs: { type: "button", "data-research-cancel": "1", title: "Cancel the upgrade. A Fusion Node goes back to its full output; a Force Shield gives its energy back." },
+    attrs: { type: "button", "data-research-cancel": "1", title: "Cancel the upgrade. A Fusion Node or Fusion Core goes back to its full output; a Force Shield or Flak Maw gives its energy back." },
   });
   cancel.append(el("span", { class: "shell-row", text: "Cancel upgrade" }));
   body.append(bar, cancel);
@@ -2048,8 +2048,9 @@ function updateResearch(body: HTMLElement, type: EntityType, mine: EntityView[],
     const level = focus.level ?? 0;
     const name = levelNameOf(type, level) || catalog(type).name;
     const energy = energySupplyOfEntity(focus);
+    const flak = focus.roofFlak?.energy != null ? `  ·  Flak ${Math.round(focus.roofFlak.energy * 100)}%${focus.roofFlak.drained ? " dry" : ""}` : "";
     const line = energySupplyOf(type) > 0
-      ? `${name}  ·  ${energy} energy${focus.research ? "  (upgrading)" : ""}`
+      ? `${name}  ·  ${energy} energy${focus.research ? "  (upgrading)" : ""}${flak}`
       : focus.shield
         ? `Force Shield  ${focus.shield.hp}/${focus.shield.max}${focus.shield.hp <= 0 ? "  recharging" : ""}`
         : focus.research
