@@ -1286,7 +1286,8 @@ export type ResearchId =
   | "scanrelay"
   | "scanarray"
   | "advancedforge"
-  | "neuralforge";
+  | "neuralforge"
+  | "neuralpulsar";
 export interface ResearchDef {
   id: ResearchId;
   name: string;
@@ -1329,6 +1330,18 @@ export const FORCE_SHIELD_ENERGY = 30;
 /** The Force Shield dome: a small store, mended while it holds; its radius comes from the footprint (FORCE_SHIELD_MARGIN_TILES past it). */
 export const FORCE_SHIELD_DOME: EnergyDomeDef = { energy: 150, radiusTiles: 0, rechargeSeconds: 15, regenPerSecond: 6 };
 export const FORCE_SHIELD_MARGIN_TILES = 1.5;
+/**
+ * The Neural Pulsar (the Neural Nexus at level 1): a dome over the whole base round the Nexus. It is
+ * a Force Shield's dome writ large: it stops what comes in from outside, mends while it holds,
+ * and comes back a while after it breaks. It keeps its charge in the Nexus's Force Shield store.
+ */
+export const NEURAL_PULSAR_DOME: EnergyDomeDef = { energy: 2000, radiusTiles: t(12), rechargeSeconds: 40, regenPerSecond: 20 };
+/** Hive energy the Neural Pulsar takes, from the moment its research starts. */
+export const NEURAL_PULSAR_ENERGY = 60;
+/** Is `e` a Neural Nexus raised to the Neural Pulsar? */
+export function isNeuralPulsar(e: { type: string; level?: number }): boolean {
+  return e.type === "nexus" && (e.level ?? 0) >= 1;
+}
 /** Hive energy Sky Tracking takes on an Ion Turret, from the moment the research starts. */
 export const SKY_SPINES_ENERGY = 20;
 /** Hive energy the Shield Wall drill takes, from the moment its research starts. */
@@ -1490,6 +1503,17 @@ export const RESEARCH: Record<ResearchId, ResearchDef> = {
     effect: "Behemoth, Juggernaut",
     blurb: "Wires the vats into the Neural Nexus. Your Nanite Forges grow the Behemoth and the Juggernaut while a Forge of yours stands at this level. Needs a Neural Nexus.",
   },
+  neuralpulsar: {
+    id: "neuralpulsar",
+    name: "Neural Pulsar",
+    buildings: ["nexus"],
+    level: 1,
+    seconds: 90,
+    cost: 0,
+    energy: NEURAL_PULSAR_ENERGY,
+    effect: `Base dome · ${NEURAL_PULSAR_ENERGY} energy`,
+    blurb: `Grows the Nexus into a Neural Pulsar that throws a faint energy dome over the base, ${NEURAL_PULSAR_DOME.radiusTiles / TILE_SUBDIV} cells round it. The dome stops what comes in from outside until its ${NEURAL_PULSAR_DOME.energy} points are gone, mends while it holds, and comes back a while after it breaks. Takes ${NEURAL_PULSAR_ENERGY} hive energy from the moment the research starts.`,
+  },
 };
 /**
  * Units a producer's level unlocks: trained only while one of the side's standing Assemblies
@@ -1591,6 +1615,7 @@ export function energySupplyOfEntity(e: { type: string; level?: number; research
 /** Hive energy a structure's upgrades take on top of its own: a Force Shield's, a roof Ion Turret's, Sky Tracking's and a Shield Wall's, from the moment their research starts. */
 export function upgradeEnergyOf(e: ResearchSubject): number {
   let n = (e.forceShield ? FORCE_SHIELD_ENERGY : 0) + (e.roofFlak ? ROOF_FLAK_ENERGY : 0) + (e.skySpines ? SKY_SPINES_ENERGY : 0) + (e.shieldWall ? SHIELD_WALL_ENERGY : 0);
+  if (isNeuralPulsar(e)) n += NEURAL_PULSAR_ENERGY;
   const running = e.research ? RESEARCH[e.research.id] : undefined;
   if (running?.energy && !researchDone(e, running)) n += running.energy;
   return n;

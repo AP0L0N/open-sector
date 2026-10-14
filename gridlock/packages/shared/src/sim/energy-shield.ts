@@ -2,12 +2,14 @@ import {
   FORCE_SHIELD_DOME,
   FORCE_SHIELD_MARGIN_TILES,
   MOTHERSHIP_DOME_DEPTH,
+  NEURAL_PULSAR_DOME,
   NEUTRAL_OWNER,
   SHIELD_WALL_UNITS,
   energyDomeOf,
   energyShieldOf,
   energyWallOf,
   isAircraftType,
+  isNeuralPulsar,
   secondsToTicks,
   type EnergyDomeDef,
   type EntityType,
@@ -43,6 +45,9 @@ import type { Entity, EnergyShield, MatchState, Projectile } from "./types.js";
  * A Xenite defence with its Force Shield researched (sim/research.ts) holds a small dome the same
  * way, sized to its footprint, for as long as it stands online. It keeps its own charge
  * (forceShieldHp, forceShieldReady), apart from an Energy Wall's curtain.
+ *
+ * A Neural Nexus raised to the Neural Pulsar holds one too, over the whole base round it
+ * (NEURAL_PULSAR_DOME), on the same store.
  *
  * Pulses and lasers (another hive's bolts, a Cyborg's beam) glance off: a bolt fired flat
  * turns back off the face, live, and a beam stops there. Either still costs the shield, but
@@ -363,22 +368,28 @@ export function shieldWallSides(state: MatchState): Set<string> {
  * Ark or Mothership carries its own on the move. A shielded defence holds one while it stands online.
  */
 function canHoldDome(e: Entity): boolean {
-  if (e.kind === "building") return !!e.forceShield && e.ownerId !== NEUTRAL_OWNER && e.hp > 0 && !e.ruined && !e.wreck && !e.unpowered;
+  if (e.kind === "building") return heldForceDome(e) && e.ownerId !== NEUTRAL_OWNER && e.hp > 0 && !e.ruined && !e.wreck && !e.unpowered;
   if (e.kind !== "unit" || e.hp <= 0 || e.wreck || e.shutdown || e.dormant || e.garrisonedIn != null) return false;
   return !(energyDomeOf(e.type)?.still && e.waypoints.length > 0);
 }
 
 /** The dome `e` holds: its type's own (a Siphon's, a Hive Ark's), or its Force Shield's, a little past its footprint. */
-export function domeOf(e: Pick<Entity, "type" | "forceShield" | "tileW" | "tileH">): EnergyDomeDef | undefined {
+export function domeOf(e: Pick<Entity, "type" | "level" | "forceShield" | "tileW" | "tileH">): EnergyDomeDef | undefined {
   const own = energyDomeOf(e.type);
   if (own) return own;
+  if (isNeuralPulsar(e)) return NEURAL_PULSAR_DOME;
   if (!e.forceShield) return undefined;
   return { ...FORCE_SHIELD_DOME, radiusTiles: Math.max(e.tileW, e.tileH) / 2 + FORCE_SHIELD_MARGIN_TILES };
 }
 
+/** A structure holding a dome of its own research: a Force Shield, or the Neural Pulsar's. */
+function heldForceDome(e: Pick<Entity, "type" | "level" | "forceShield">): boolean {
+  return !!e.forceShield || isNeuralPulsar(e);
+}
+
 /** A Force Shield keeps its charge apart from anything else the structure holds (an Energy Wall's curtain). */
 function forceDome(e: Entity): boolean {
-  return !energyDomeOf(e.type) && !!e.forceShield;
+  return !energyDomeOf(e.type) && heldForceDome(e);
 }
 
 /**
@@ -516,7 +527,7 @@ export function tickEnergyShields(state: MatchState, dt: number): void {
   let drilled: Set<string> | undefined;
   for (const s of state.energyShields!) (s.dome ? domed : standing).add(s.fromId);
   for (const e of state.entities.values()) {
-    if (e.forceShield && !domed.has(e.id) && canHoldDome(e) && (e.forceShieldReady == null || state.tick >= e.forceShieldReady)) {
+    if (heldForceDome(e) && !domed.has(e.id) && canHoldDome(e) && (e.forceShieldReady == null || state.tick >= e.forceShieldReady)) {
       castDome(state, e, domeOf(e)!);
     }
     if (standing.has(e.id)) continue;
@@ -551,9 +562,9 @@ export function tickEnergyShields(state: MatchState, dt: number): void {
   }
 }
 
-/** A Force Shield's points and its full charge: the dome's while it stands, what it kept while lowered, 0 while it recharges. */
+/** A Force Shield's (or the Neural Pulsar's) points and its full charge: the dome's while it stands, what it kept while lowered, 0 while it recharges. */
 export function forceShieldView(state: MatchState, e: Entity): { hp: number; max: number } | undefined {
-  if (!e.forceShield || e.hp <= 0 || e.wreck) return undefined;
+  if (!heldForceDome(e) || e.hp <= 0 || e.wreck) return undefined;
   const def = domeOf(e);
   if (!def) return undefined;
   const up = state.energyShields?.find((s) => s.dome && s.fromId === e.id);

@@ -11,6 +11,7 @@ import {
   energySupplyOf,
   energySupplyOfEntity,
   levelNameOf,
+  isNeuralPulsar,
   canStartResearch,
   researchTechMissing,
   RESEARCH,
@@ -2098,9 +2099,11 @@ function updateResearch(body: HTMLElement, type: EntityType, mine: EntityView[],
     const line = energySupplyOf(type) > 0
       ? `${name}  ·  ${energy} energy${focus.research ? "  (upgrading)" : ""}${flak}`
       : focus.shield
-        ? `Force Shield  ${focus.shield.hp}/${focus.shield.max}${focus.shield.hp <= 0 ? "  recharging" : ""}`
+        ? `${isNeuralPulsar(focus) ? "Pulsar Dome" : "Force Shield"}  ${focus.shield.hp}/${focus.shield.max}${focus.shield.hp <= 0 ? "  recharging" : ""}`
         : focus.research
-          ? "Raising its Force Shield"
+          ? focus.research.id === "neuralpulsar"
+            ? "Growing the Neural Pulsar"
+            : "Raising its Force Shield"
           : "No shield";
     setField(body, "level", mine.length > 1 ? `${line}  ·  ×${mine.length}` : line);
   }

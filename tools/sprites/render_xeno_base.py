@@ -57,6 +57,12 @@ pad, like core.png, smelter.png, and dynamo.png.
 
   python tools/sprites/render_xeno_base.py --out ... --only conversion conversion-advanced conversion-neural
   python tools/sprites/render_xeno_base.py --out ... --only forge forge-advanced forge-neural
+
+  nexus-pulsar: the Neural Nexus after Neural Pulsar research. Same plinth and caged brain; lit
+  belts round the cage, a taller mast to a white-hot pulsar star with a beam spike and an emitter
+  halo, an eight-prong crown, and four dome projectors on the plinth.
+
+  python tools/sprites/render_xeno_base.py --out ... --only nexus nexus-pulsar
 """
 
 from __future__ import annotations
@@ -1210,17 +1216,42 @@ def nx_rib(i: int) -> list[np.ndarray]:
     return pts
 
 
-def nx_prong(i: int) -> tuple[np.ndarray, np.ndarray]:
+# Research level (sim/research.ts): the Neural Pulsar. Same plinth, drum, brain and cage, so the pad
+# never moves; lit belts ring the cage, the mast climbs to a white-hot pulsar star with a
+# beam spike and an emitter halo, the crown grows to eight prongs, and four dome projectors stand
+# on the plinth (they throw the base's dome, sim/energy-shield.ts).
+NX_LEVELS = {
+    0: {"mast_top": NX_MAST_TOP, "crown_z": NX_CROWN_Z, "prongs": NX_PRONGS, "reach": 13.0},
+    1: {"mast_top": 80.0, "crown_z": 58.0, "prongs": 8, "reach": 16.0},
+}
+NX_STAR_R = 4.6
+NX_SPIKE = 14.0
+NX_PROJ_R = 20.0
+
+
+def nx_prong(i: int, level: int = 0) -> tuple[np.ndarray, np.ndarray]:
     cx, cy = NX_C
-    a = 2 * math.pi * i / NX_PRONGS + math.pi / 4
-    b = np.array([cx + 3.0 * math.cos(a), cy + 3.0 * math.sin(a), NX_CROWN_Z])
-    t = np.array([cx + 13.0 * math.cos(a), cy + 13.0 * math.sin(a), NX_CROWN_Z + 6.0])
+    L = NX_LEVELS[level]
+    a = 2 * math.pi * i / L["prongs"] + math.pi / 4
+    b = np.array([cx + 3.0 * math.cos(a), cy + 3.0 * math.sin(a), L["crown_z"]])
+    t = np.array([cx + L["reach"] * math.cos(a), cy + L["reach"] * math.sin(a), L["crown_z"] + 6.0])
     return b, t
 
 
+def nx_projectors() -> list[tuple[float, float]]:
+    cx, cy = NX_C
+    return [(cx + NX_PROJ_R * math.cos(a), cy + NX_PROJ_R * math.sin(a)) for a in (0.0, math.pi / 2, math.pi, 3 * math.pi / 2)]
+
+
 def build_nexus(with_pad: bool) -> ra.Mesh:
+    return build_nexus_level(with_pad, 0)
+
+
+def build_nexus_level(with_pad: bool, level: int) -> ra.Mesh:
     global RIB_C
     RIB_C = NX_C
+    L = NX_LEVELS[level]
+    mast_top, crown_z = L["mast_top"], L["crown_z"]
     m = ra.Mesh()
     if with_pad:
         pad(m, NX, NX)
@@ -1241,19 +1272,44 @@ def build_nexus(with_pad: bool) -> ra.Mesh:
             r0 = 1.5 - 0.12 * k
             m.cyl(pts[k], pts[k + 1], r0, r0 - 0.12, "spine", n=6)
         collar(m, pts[2], pts[3], 0.5, 1.6, 0.45, "glow")
+    if level >= 1:
+        # Lit belts round the cage.
+        flat_ring(m, (cx, cy, NX_BRAIN_Z), 14.6, 0.8, "glow", segs=32)
+        flat_ring(m, (cx, cy, NX_BRAIN_Z + 7.0), 12.6, 0.6, "glow", segs=32)
     # Where the ribs meet: a collar, and the mast rising out of it.
     m.cyl((cx, cy, 40.0), (cx, cy, 44.0), 6.0, 4.5, "steel_dark", n=14)
-    m.cyl((cx, cy, 44.0), (cx, cy, NX_MAST_TOP), 3.0, 1.0, "ribbed", n=10)
-    for z in (46.0, 50.0):
+    m.cyl((cx, cy, 44.0), (cx, cy, mast_top), 3.0, 1.0, "ribbed", n=10)
+    for z in ((46.0, 50.0) if level == 0 else (46.0, 50.0, 64.0, 68.0)):
         m.cyl((cx, cy, z), (cx, cy, z + 0.7), 3.0 - (z - 44.0) * 0.1 + 0.4, 3.0 - (z - 44.0) * 0.1 + 0.4, "glow", n=10, caps=False)
     # The sensor crown: a ring, prongs fanning out, a node lit at each tip.
-    m.cyl((cx, cy, NX_CROWN_Z - 0.6), (cx, cy, NX_CROWN_Z + 0.6), 4.2, 4.2, "steel_dark", n=14)
-    m.cyl((cx, cy, NX_CROWN_Z + 2.0), (cx, cy, NX_CROWN_Z + 2.5), 9.5, 9.5, "glow", n=24, caps=False)
-    for i in range(NX_PRONGS):
-        b, t = nx_prong(i)
+    m.cyl((cx, cy, crown_z - 0.6), (cx, cy, crown_z + 0.6), 4.2, 4.2, "steel_dark", n=14)
+    ring_r = 9.5 if level == 0 else 12.5
+    m.cyl((cx, cy, crown_z + 2.0), (cx, cy, crown_z + 2.5), ring_r, ring_r, "glow", n=24, caps=False)
+    for i in range(L["prongs"]):
+        b, t = nx_prong(i, level)
         m.cyl(b, t, 1.0, 0.35, "spine", n=6)
         ball(m, tuple(t), 1.2, "core", rings=4, n=8)
-    ball(m, (cx, cy, NX_MAST_TOP + 0.8), 1.6, "core", rings=4, n=10)
+    if level == 0:
+        ball(m, (cx, cy, NX_MAST_TOP + 0.8), 1.6, "core", rings=4, n=10)
+    else:
+        # The pulsar: a cradle, a white-hot star, a beam spike out of its top, an emitter halo round it.
+        m.cyl((cx, cy, mast_top - 2.0), (cx, cy, mast_top), 3.6, 2.4, "steel_dark", n=12)
+        ball(m, (cx, cy, mast_top + NX_STAR_R), NX_STAR_R, "core", rings=8, n=16)
+        m.cyl((cx, cy, mast_top + NX_STAR_R * 1.8), (cx, cy, mast_top + NX_STAR_R + NX_SPIKE), 1.2, 0.1, "core", n=8)
+        flat_ring(m, (cx, cy, mast_top + NX_STAR_R), 9.0, 0.8, "glow", segs=32)
+        for k in range(4):
+            a = 2 * math.pi * k / 4 + math.pi / 4
+            m.cyl((cx + 2.0 * math.cos(a), cy + 2.0 * math.sin(a), mast_top - 1.0),
+                  (cx + 9.0 * math.cos(a), cy + 9.0 * math.sin(a), mast_top + NX_STAR_R), 0.6, 0.4, "spine", n=6)
+        # The dome projectors on the plinth: ribbed stalks leaning out, a lit emitter on each.
+        for px, py in nx_projectors():
+            ox, oy = px - cx, py - cy
+            n_ = math.hypot(ox, oy)
+            top = (px + ox / n_ * 2.5, py + oy / n_ * 2.5, 17.0)
+            m.cyl((px, py, 6.5), (px, py, 8.0), 2.6, 2.2, "steel_dark", n=10)
+            m.cyl((px, py, 8.0), top, 1.4, 0.9, "ribbed", n=8)
+            collar(m, (px, py, 8.0), top, 0.5, 1.6, 0.4, "glow")
+            ball(m, top, 1.6, "core", rings=4, n=10)
     # Two pickup pods on the plinth, toward the camera, looking out.
     for k in (-1, 1):
         px, py = cx + 15.0 + k * 6.0, cy + 15.0 - k * 6.0
@@ -1263,15 +1319,26 @@ def build_nexus(with_pad: bool) -> ra.Mesh:
 
 
 def nexus_spots() -> dict:
+    return nexus_level_spots(0)
+
+
+def nexus_level_spots(level: int) -> dict:
     cx, cy = NX_C
-    return {
+    L = NX_LEVELS[level]
+    spots = {
         "brain": (cx, cy, NX_BRAIN_Z),
         "ribs": [tuple(axis_point(nx_rib(i)[2], nx_rib(i)[3], 0.5)) for i in range(NX_RIBS)],
-        "crown": [tuple(nx_prong(i)[1]) for i in range(NX_PRONGS)],
+        "crown": [tuple(nx_prong(i, level)[1]) for i in range(L["prongs"])],
         "beacon": (cx, cy, NX_MAST_TOP + 0.8),
         "pods": [(cx + 15.0 + k * 6.0, cy + 15.0 - k * 6.0, 11.0) for k in (-1, 1)],
         "stack": (cx, cy, NX_MAST_TOP + 4.0),
     }
+    if level >= 1:
+        spots["beacon"] = (cx, cy, L["mast_top"] + NX_STAR_R)
+        spots["spike"] = (cx, cy, L["mast_top"] + NX_STAR_R + NX_SPIKE * 0.6)
+        spots["projectors"] = [(px + (px - cx) / NX_PROJ_R * 2.5, py + (py - cy) / NX_PROJ_R * 2.5, 17.0) for px, py in nx_projectors()]
+        spots["stack"] = (cx, cy, L["mast_top"] + NX_STAR_R + NX_SPIKE + 2.0)
+    return spots
 
 
 # ---------------------------------------------------------------- Aerie, t(3) x t(3)
@@ -1679,6 +1746,7 @@ BUILDINGS = {
     "conversion-advanced": (CC, CC, 3.0, lambda pad_: build_conversion_level(pad_, 1), lambda: conversion_level_spots(1)),
     "conversion-neural": (CC, CC, 3.0, lambda pad_: build_conversion_level(pad_, 2), lambda: conversion_level_spots(2)),
     "nexus": (NX, NX, 3.0, build_nexus, nexus_spots),
+    "nexus-pulsar": (NX, NX, 3.0, lambda pad_: build_nexus_level(pad_, 1), lambda: nexus_level_spots(1)),
     "aerie": (AE, AE, 2.0, build_aerie, aerie_spots),
 }
 

@@ -48,6 +48,8 @@ import {
   energyOf,
   energySupplyOfEntity,
   FORCE_SHIELD_ENERGY,
+  NEURAL_PULSAR_ENERGY,
+  isNeuralPulsar,
   SKY_SPINES_ENERGY,
   SHIELD_WALL_ENERGY,
   nextResearch,
@@ -550,6 +552,8 @@ function researchXeno(state: MatchState, p: SimPlayer): void {
   let hive: Entity | undefined;
   let assembly: Entity | undefined;
   let forge: Entity | undefined;
+  let nexus: Entity | undefined;
+  let pulsar = false;
   let drilled = false;
   let nodes = 0;
   for (const e of state.entities.values()) {
@@ -565,6 +569,9 @@ function researchXeno(state: MatchState, p: SimPlayer): void {
       else if (!chamber || e.id < chamber.id) chamber = e;
     } else if (e.type === "forge") {
       if (!forge || (e.level ?? 0) > (forge.level ?? 0)) forge = e;
+    } else if (e.type === "nexus") {
+      if (isNeuralPulsar(e)) pulsar = true;
+      else if (!nexus || e.id < nexus.id) nexus = e;
     } else if (e.type === "fusionnode") {
       nodes++;
       if (nextResearch(e.type, e.level ?? 0) && (!node || (e.level ?? 0) < (node.level ?? 0))) node = e;
@@ -609,6 +616,11 @@ function researchXeno(state: MatchState, p: SimPlayer): void {
   }
   if (grounded && aiPlanOf(p).airSeenTick != null && free - SKY_SPINES_ENERGY >= HIVE_ENERGY_LOW) {
     applyCommand(state, p.playerId, { type: "cmd.research", ids: [grounded.id], research: "skyspines" });
+    return;
+  }
+  // One Neural Pulsar domes the whole base: it goes before the single Force Shields.
+  if (!pulsar && nexus && free - NEURAL_PULSAR_ENERGY >= HIVE_ENERGY_LOW) {
+    applyCommand(state, p.playerId, { type: "cmd.research", ids: [nexus.id], research: "neuralpulsar" });
     return;
   }
   if (bare && free - FORCE_SHIELD_ENERGY >= HIVE_ENERGY_LOW) {

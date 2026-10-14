@@ -8,12 +8,15 @@ import {
   FORCE_SHIELD_ENERGY,
   FUSION_NODE_LEVEL_ENERGY,
   HIVE_CORE_ENERGY,
+  NEURAL_PULSAR_DOME,
+  NEURAL_PULSAR_ENERGY,
   RESEARCH,
   RESEARCH_OUTPUT_SHARE,
   TICK_DT,
   TILE_SUBDIV,
   catalog,
   isCivilianType,
+  levelNameOf,
   nextResearch,
   researchOf,
   SKY_SPINES_ENERGY,
@@ -25,7 +28,7 @@ import { reachesAircraft } from "./air.js";
 import { applyCommand } from "./commands.js";
 import { reachesHighFlyer } from "./drone.js";
 import { destroyEntity, hasCore, hqOf, makeEntity, tileCenter } from "./geo.js";
-import { domeOver } from "./energy-shield.js";
+import { domeOver, shieldSweep, soakShield } from "./energy-shield.js";
 import { hiveEnergyOf } from "./hive-energy.js";
 import { researchBlocker } from "./research.js";
 import { createMatch, step } from "./match.js";
@@ -318,6 +321,88 @@ describe("research", () => {
         ticks(state, 40);
         assert.ok(plane.wreck || plane.air?.phase === "crash" || plane.hp < catalog("stuka").hp, `hit at ${alt}`);
       }
+    });
+  });
+
+  describe("Neural Pulsar", () => {
+    const domeOf = (state: MatchState, e: Entity) => state.energyShields?.find((d) => d.dome && d.fromId === e.id);
+    /** Enough Fusion Nodes to run a Nexus and its Pulsar with room to spare. */
+    const power = (state: MatchState) => {
+      for (let i = 0; i < 8; i++) at(state, "fusionnode", 20 + i * 4, 26);
+    };
+    const raise = (state: MatchState) => {
+      power(state);
+      const nexus = at(state, "nexus", 40, 40);
+      ticks(state, 1);
+      applyCommand(state, "B", { type: "cmd.research", ids: [nexus.id], research: "neuralpulsar" });
+      return nexus;
+    };
+
+    it("is the Neural Nexus's level, and nothing else offers it", () => {
+      assert.equal(nextResearch("nexus", 0)?.id, "neuralpulsar");
+      assert.equal(levelNameOf("nexus", 1), "Neural Pulsar");
+      assert.ok(!researchOf("spineturret").some((r) => r.id === "neuralpulsar"));
+    });
+
+    it("takes its energy from the start and domes the base once done", () => {
+      const state = field();
+      const before = (() => {
+        power(state);
+        ticks(state, 1);
+        return hiveEnergyOf(state, "B").used;
+      })();
+      const nexus = at(state, "nexus", 40, 40);
+      ticks(state, 1);
+      const withNexus = hiveEnergyOf(state, "B").used;
+      assert.ok(withNexus > before);
+      applyCommand(state, "B", { type: "cmd.research", ids: [nexus.id], research: "neuralpulsar" });
+      ticks(state, 1);
+      assert.equal(hiveEnergyOf(state, "B").used, withNexus + NEURAL_PULSAR_ENERGY);
+      assert.equal(domeOf(state, nexus), undefined, "no dome while it researches");
+      ticks(state, secondsToTicks(RESEARCH.neuralpulsar.seconds) + 2);
+      assert.equal(nexus.level, 1);
+      assert.equal(hiveEnergyOf(state, "B").used, withNexus + NEURAL_PULSAR_ENERGY, "the draw stays");
+      const dome = domeOf(state, nexus);
+      assert.ok(dome, "the dome stands");
+      assert.equal(dome.hpMax, NEURAL_PULSAR_DOME.energy);
+      assert.equal(dome.r, NEURAL_PULSAR_DOME.radiusTiles * state.tileSize);
+      const far = (NEURAL_PULSAR_DOME.radiusTiles / TILE_SUBDIV - 2) * TILE_SUBDIV * state.tileSize;
+      assert.equal(domeOver(state, "A", nexus.x + far, nexus.y), dome, "it shelters the base round the Nexus");
+      assert.equal(domeOver(state, "A", nexus.x + dome.r + state.tileSize, nexus.y), null, "but not past its rim");
+      const view = snapshotFor(state, "B").entities.find((e) => e.id === nexus.id);
+      assert.deepEqual(view?.shield, { hp: NEURAL_PULSAR_DOME.energy, max: NEURAL_PULSAR_DOME.energy });
+      assert.equal(view?.forceShield, undefined, "it is not a Force Shield");
+    });
+
+    it("loses points to hits, mends, drops when drained, and comes back after the recharge", () => {
+      const state = field();
+      const nexus = raise(state);
+      ticks(state, secondsToTicks(RESEARCH.neuralpulsar.seconds) + 2);
+      const dome = domeOf(state, nexus)!;
+      dome.hp = 500;
+      ticks(state, secondsToTicks(1));
+      assert.ok(dome.hp > 500, "it mends while it holds");
+      assert.equal(snapshotFor(state, "B").entities.find((e) => e.id === nexus.id)?.shield?.hp, Math.ceil(dome.hp));
+      dome.hp = 0;
+      ticks(state, 1);
+      assert.equal(domeOf(state, nexus), undefined);
+      assert.equal(snapshotFor(state, "B").entities.find((e) => e.id === nexus.id)?.shield?.hp, 0);
+      ticks(state, secondsToTicks(NEURAL_PULSAR_DOME.rechargeSeconds) + 2);
+      assert.ok(domeOf(state, nexus), "back up");
+    });
+
+    it("stops an enemy round from outside and pays for it", () => {
+      const state = field();
+      const nexus = raise(state);
+      ticks(state, secondsToTicks(RESEARCH.neuralpulsar.seconds) + 2);
+      const dome = domeOf(state, nexus)!;
+      const out = dome.r + 4 * state.tileSize;
+      const hit = shieldSweep(state, "A", nexus.x + out, nexus.y, nexus.x + dome.r / 2, nexus.y);
+      assert.equal(hit?.s, dome, "the line from outside meets the dome");
+      assert.equal(shieldSweep(state, "B", nexus.x + out, nexus.y, nexus.x + dome.r / 2, nexus.y), null, "its own side's does not");
+      soakShield(state, dome, 300);
+      assert.equal(dome.hp, NEURAL_PULSAR_DOME.energy - 300);
+      assert.equal(snapshotFor(state, "B").entities.find((e) => e.id === nexus.id)?.shield?.hp, NEURAL_PULSAR_DOME.energy - 300);
     });
   });
 });

@@ -1741,11 +1741,25 @@ describe("Xenite CPU", () => {
     assert.equal(researching(state, aiId).length, 1, "one at a time");
   });
 
-  it("wraps a defence in a Force Shield once its Fusion Nodes are fully upgraded", () => {
+  it("grows its Nexus into the Neural Pulsar once its Fusion Nodes are fully upgraded, before any Force Shield", () => {
     const { state, aiId } = humanVsXeno();
     waitCore(state, aiId);
     standBy(state, aiId, [...BASE, "nexus", "fusionnode", "aerie", "fusionnode", "fusionnode", "fusionnode", "fusionnode", "fusionnode", "spineturret"]);
     for (const e of state.entities.values()) if (e.ownerId === aiId && e.type === "fusionnode") e.level = 2;
+    drilled(state, aiId);
+    micro(state, aiId);
+    const nexus = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "nexus")!;
+    assert.equal(nexus.research?.id, "neuralpulsar");
+    const spine = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "spineturret")!;
+    assert.equal(spine.research, undefined);
+  });
+
+  it("wraps a defence in a Force Shield once its Nexus is a Neural Pulsar", () => {
+    const { state, aiId } = humanVsXeno();
+    waitCore(state, aiId);
+    standBy(state, aiId, [...BASE, "nexus", "fusionnode", "aerie", "fusionnode", "fusionnode", "fusionnode", "fusionnode", "fusionnode", "spineturret"]);
+    for (const e of state.entities.values()) if (e.ownerId === aiId && e.type === "fusionnode") e.level = 2;
+    for (const e of state.entities.values()) if (e.ownerId === aiId && e.type === "nexus") e.level = 1;
     drilled(state, aiId);
     micro(state, aiId);
     const spine = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "spineturret")!;
