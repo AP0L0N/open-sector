@@ -357,6 +357,29 @@ describe("Siphon energy dome", () => {
     assert.equal(state.energyShields![0]!.hp, def.energy);
   });
 
+  it("is down while the Siphon walks, and rises again with the energy it had once it stops", () => {
+    const { state, s, dome } = siphonUp();
+    dome.hp = 500;
+    s.waypoints = [{ x: s.x + 200, y: s.y }];
+    tickEnergyShields(state, TICK_DT);
+    assert.equal(state.energyShields!.length, 0, "lowered on the move");
+    assert.equal(s.energy, 500, "kept its energy");
+    tickEnergyShields(state, TICK_DT);
+    assert.equal(state.energyShields!.length, 0, "not cast while walking");
+    s.waypoints = [];
+    tickEnergyShields(state, TICK_DT);
+    assert.equal(state.energyShields![0]!.hp, 500, "cast again where it stopped, with what it had");
+  });
+
+  it("a Hive Ark's dome still sails with it", () => {
+    const state = field();
+    const ark = makeEntity(state, "hiveark", "B", tileCenter(100, state.tileSize), tileCenter(120, state.tileSize));
+    tickEnergyShields(state, TICK_DT);
+    ark.waypoints = [{ x: ark.x + 200, y: ark.y }];
+    tickEnergyShields(state, TICK_DT);
+    assert.equal(state.energyShields!.filter((w) => w.fromId === ark.id).length, 1);
+  });
+
   it("regains energy while it stands, and keeps what it had when lowered undrained", () => {
     const { state, s, dome } = siphonUp();
     dome.hp = 300;
