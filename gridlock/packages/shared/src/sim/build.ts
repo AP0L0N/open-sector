@@ -2,6 +2,7 @@ import {
   BUILD_REQUIRES,
   buildRadiusOf,
   catalog,
+  structureBuildSeconds,
   costFor,
   isCivilianType,
   isConcreteLine,
@@ -144,7 +145,7 @@ function newJob(type: BuildingType | YardFieldType): StructureJob {
   return {
     type,
     progressTicks: 0,
-    totalTicks: secondsToTicks(isYardField(type) ? def.buildSeconds : yardBuildSeconds(type)),
+    totalTicks: secondsToTicks(isYardField(type) ? structureBuildSeconds(type) : yardBuildSeconds(type)),
     ready: false,
     paused: false,
     paid: 0,
@@ -483,7 +484,7 @@ export function placeBaseField(
     p.line = {
       type: structure,
       progressTicks: 0,
-      totalTicks: secondsToTicks(def.buildSeconds),
+      totalTicks: secondsToTicks(structureBuildSeconds(structure)),
       ready: false,
       paused: false,
       paid: 0,
@@ -510,7 +511,7 @@ export function placeBaseField(
   p.line = {
     type: structure,
     progressTicks: 0,
-    totalTicks: secondsToTicks(def.buildSeconds * accepted.length),
+    totalTicks: secondsToTicks(structureBuildSeconds(structure) * accepted.length),
     ready: false,
     paused: false,
     paid: 0,

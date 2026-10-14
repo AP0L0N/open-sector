@@ -2,6 +2,7 @@ import { buildingRect, buildingSite, buildingTilesOf, isTurnedBuilding, rectCont
 import {
   NEUTRAL_OWNER,
   catalog,
+  structureBuildSeconds,
   CYBORG_REPAIR_PER_SEC,
   ENGINEER_SEEK_TILES,
   fieldSpan,
@@ -775,7 +776,7 @@ function tickWall(state: MatchState, e: Entity, dt: number, structure: ConcreteL
   e.turretFacing = e.facing;
   e.work += dt;
   // 0.1 added ten times a second undershoots the duration by a rounding error.
-  if (e.work + 1e-6 < catalog(structure).buildSeconds * count) return;
+  if (e.work + 1e-6 < structureBuildSeconds(structure) * count) return;
   const player = state.players.get(e.ownerId);
   let placed = 0;
   const raised: Entity[] = [];
@@ -838,7 +839,7 @@ function tickBuild(state: MatchState, e: Entity, dt: number): void {
   e.facing = Math.atan2(order.y - e.y, order.x - e.x);
   e.turretFacing = e.facing;
   e.work += dt;
-  if (e.work < catalog(structure).buildSeconds) return;
+  if (e.work < structureBuildSeconds(structure)) return;
   if (!fieldSiteClear(state, structure, order.x, order.y, facing, e.ownerId)) {
     const player = state.players.get(e.ownerId);
     if (player) player.scrap += catalog(structure).cost;
@@ -887,7 +888,7 @@ function tickRepair(state: MatchState, e: Entity, dt: number): void {
   }
   if (target.ruined) {
     e.work += dt;
-    if (e.work < catalog(target.type).buildSeconds || fieldFootprintBusy(state, target)) return;
+    if (e.work < structureBuildSeconds(target.type) || fieldFootprintBusy(state, target)) return;
     target.ruined = false;
     target.hp = target.hpMax;
     restampForts(state);

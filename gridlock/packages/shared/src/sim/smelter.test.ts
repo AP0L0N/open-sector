@@ -15,6 +15,7 @@ import {
   TILE_SUBDIV,
   TRAIN_TYPES,
   catalog,
+  structureBuildSeconds,
   engineerBuildSeconds,
   isDefenceStructure,
   secondsToTicks,
@@ -444,7 +445,7 @@ describe("engineer raises a Smelter", () => {
     assert.ok(paidAt >= 0, "the cost was taken");
     assert.ok(builtAt > paidAt, `Smelter never rose (paid=${paidAt} built=${builtAt})`);
     const work = engineerBuildSeconds("smelter");
-    assert.ok(work > sm.buildSeconds, "an engineer is slower than the catalog pace");
+    assert.ok(work > structureBuildSeconds("smelter"), "an engineer is slower than the catalog pace");
     assert.ok(builtAt - paidAt >= work / TICK_DT - 2, `worked ${(builtAt - paidAt) * TICK_DT}s, wants ${work}s`);
     const smelter = [...state.entities.values()].find((e) => e.type === "smelter" && e.ownerId === "A")!;
     assert.equal(smelter.tileX, tx);
@@ -518,11 +519,11 @@ describe("engineer raises a Smelter", () => {
 describe("Smelter and Marine Base build time", () => {
   it("the yard builds them 50% faster and an engineer 20% slower than the catalog pace", () => {
     for (const type of ["smelter", "dock"] as const) {
-      const s = catalog(type).buildSeconds;
+      const s = structureBuildSeconds(type);
       assert.equal(yardBuildSeconds(type), s / 1.5);
       assert.equal(engineerBuildSeconds(type), s / 0.8);
     }
-    assert.equal(yardBuildSeconds("dynamo"), catalog("dynamo").buildSeconds, "other buildings keep their time");
+    assert.equal(yardBuildSeconds("dynamo"), structureBuildSeconds("dynamo"), "other buildings keep their time");
   });
 
   it("queues the yard job at the faster time; a Dynamo keeps its catalog time", () => {
@@ -532,10 +533,10 @@ describe("Smelter and Marine Base build time", () => {
     const job = () => p.structure;
     const res = applyCommand(state, "A", { type: "cmd.build", building: "smelter" });
     assert.equal(res.ok, true, res.ok ? "" : res.message);
-    assert.equal(job()?.totalTicks, secondsToTicks(catalog("smelter").buildSeconds / 1.5));
+    assert.equal(job()?.totalTicks, secondsToTicks(structureBuildSeconds("smelter") / 1.5));
     p.structure = null;
     assert.equal(applyCommand(state, "A", { type: "cmd.build", building: "dynamo" }).ok, true);
-    assert.equal(job()?.totalTicks, secondsToTicks(catalog("dynamo").buildSeconds));
+    assert.equal(job()?.totalTicks, secondsToTicks(structureBuildSeconds("dynamo")));
   });
 });
 

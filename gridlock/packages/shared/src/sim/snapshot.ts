@@ -19,6 +19,7 @@ import {
   AIRFIELD_PADS,
   beltOf,
   catalog,
+  structureBuildSeconds,
   engineerBuildSeconds,
   isConcreteLine,
   clampGameSpeed,
@@ -206,7 +207,7 @@ function fieldSitesView(e: Entity, friendly: boolean): EntityView["fieldSites"] 
   const queued = e.fieldQueue ?? [];
   const line = isConcreteLine(structure);
   const count = line ? 1 + queued.length : 1;
-  const progress = digging ? Math.min(1, e.work / (catalog(structure).buildSeconds * count)) : undefined;
+  const progress = digging ? Math.min(1, e.work / (structureBuildSeconds(structure) * count)) : undefined;
   const sites: NonNullable<EntityView["fieldSites"]> = [
     {
       structure,

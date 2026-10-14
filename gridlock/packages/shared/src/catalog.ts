@@ -985,18 +985,27 @@ export const ENGINEER_BUILDINGS: readonly BuildingType[] = ["smelter", "dock"];
 export function isEngineerBuilding(type: string): type is BuildingType {
   return (ENGINEER_BUILDINGS as readonly string[]).includes(type);
 }
+/**
+ * Every structure (base buildings, defences, walls, field works) goes up this much faster than
+ * its catalog `buildSeconds`. 1 = catalog pace; 1.5 = 50% faster. Units and bridges are not affected.
+ */
+export const STRUCTURE_BUILD_SPEED = 1.5;
+/** Catalog `buildSeconds` of a structure at STRUCTURE_BUILD_SPEED. */
+export function structureBuildSeconds(type: EntityType): number {
+  return catalog(type).buildSeconds / STRUCTURE_BUILD_SPEED;
+}
 /** The yard raises an engineer building this much faster than its catalog `buildSeconds`. */
 export const YARD_ENGINEER_BUILDING_SPEED = 1.5;
 /** An engineer in the field works at this fraction of the catalog pace. */
 export const ENGINEER_BUILD_SPEED = 0.8;
 /** Seconds the yard spends on a base building. */
 export function yardBuildSeconds(type: BuildingType): number {
-  const s = catalog(type).buildSeconds;
+  const s = structureBuildSeconds(type);
   return isEngineerBuilding(type) || type === "assimilator" ? s / YARD_ENGINEER_BUILDING_SPEED : s;
 }
 /** Seconds an engineer works to raise `type` in the field. */
 export function engineerBuildSeconds(type: BuildingType): number {
-  return catalog(type).buildSeconds / ENGINEER_BUILD_SPEED;
+  return structureBuildSeconds(type) / ENGINEER_BUILD_SPEED;
 }
 /**
  * Base buildings the player turns before placing them, like a wall or sandbags: one
