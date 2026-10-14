@@ -82,7 +82,8 @@ function consumers(state: MatchState, playerId: string): { e: Entity; energy: nu
   const links = linkEnergyByPost(state, fencePosts(state, playerId));
   const out: { e: Entity; energy: number }[] = [];
   for (const e of state.entities.values()) {
-    if (e.ownerId !== playerId || !live(e) || e.ruined || e.assembledBy != null || e.arkOf != null || e.dormant) continue;
+    // A Mothership's beamed-down crew runs on the ship (sim/mothership.ts), not the hive.
+    if (e.ownerId !== playerId || !live(e) || e.ruined || e.assembledBy != null || e.arkOf != null || e.beamedBy != null || e.dormant) continue;
     const energy = energyOf(e.type) + (links.get(e.id) ?? 0) + upgradeEnergyOf(e);
     if (energy > 0) out.push({ e, energy });
   }
