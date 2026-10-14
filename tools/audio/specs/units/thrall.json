@@ -13,7 +13,7 @@
   },
   "lines": {
     "select": [
-      "Thrall.",
+      "Enforcer.",
       "[growls] We hunger.",
       "We are many.",
       "Flesh... and iron."
@@ -30,7 +30,7 @@
       "Tear them down."
     ],
     "ready": [
-      "Thrall awakened."
+      "Enforcer awakened."
     ],
     "die": [
       "[groans] We... endure...",
