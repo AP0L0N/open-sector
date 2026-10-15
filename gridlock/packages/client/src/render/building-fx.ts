@@ -313,6 +313,64 @@ const DEFS: Partial<Record<EntityType, BuildingAnimDef>> = {
  * tools/sprites/render_xeno_base.py, see LEVEL_SHEETS), by level - 1.
  */
 const LEVEL_DEFS: Partial<Record<EntityType, BuildingAnimDef[]>> = {
+  // The Alliance levels share their base sheet's canvas (render_armory.py --level,
+  // render_alliance_levels.py): the base lights stand, the add-ons bring their own.
+  // Barracks, Special Forces: the jump tower's lamp and the roof uplink blink red.
+  muster: [
+    DEFS.muster!,
+    {
+      lights: [
+        ...DEFS.muster!.lights,
+        { x: 209.5, y: 200.5, r: 5, color: "#ff5a4a", period: 1600, phase: 0.0, mode: "blink" },
+        { x: 185.8, y: 61.4, r: 4, color: "#ff5a4a", period: 1600, phase: 0.5, mode: "blink" },
+      ],
+    },
+  ],
+  // Machine Shop, Heavy Works: the gun bay's door glows and its windows light (the hall window
+  // behind the bay drops out); Prototype Works adds the second stack's lamp and the floodlights.
+  armory: [
+    {
+      lights: [
+        ...DEFS.armory!.lights.filter((l) => !(l.x === 442 && l.y === 203)),
+        { x: 450, y: 267, r: 14, color: "#ffb04a", period: 900, phase: 0.3, mode: "pulse" },
+        { x: 553, y: 252, r: 8, color: "#ffc44a", period: 2400, phase: 0.1, mode: "pulse" },
+        { x: 517, y: 270, r: 8, color: "#ffc44a", period: 2400, phase: 0.35, mode: "pulse" },
+      ],
+      sparks: [...(DEFS.armory!.sparks ?? []), { x: 446, y: 268 }],
+    },
+    {
+      lights: [
+        ...DEFS.armory!.lights.filter((l) => !(l.x === 442 && l.y === 203)),
+        { x: 450, y: 267, r: 14, color: "#ffb04a", period: 900, phase: 0.3, mode: "pulse" },
+        { x: 553, y: 252, r: 8, color: "#ffc44a", period: 2400, phase: 0.1, mode: "pulse" },
+        { x: 517, y: 270, r: 8, color: "#ffc44a", period: 2400, phase: 0.35, mode: "pulse" },
+        { x: 421, y: 77, r: 5, color: "#ff5a4a", period: 1400, phase: 0.5, mode: "blink" },
+        { x: 546, y: 186, r: 9, color: "#fff4d0", period: 4000, phase: 0.0, mode: "pulse" },
+        { x: 556, y: 191, r: 9, color: "#fff4d0", period: 4000, phase: 0.1, mode: "pulse" },
+      ],
+      sparks: [...(DEFS.armory!.sparks ?? []), { x: 446, y: 268 }],
+    },
+  ],
+  // Power Plant, Gas Turbines: the exhaust stack smokes and blinks; Fission Reactor adds the
+  // cooling tower's lit throat and steam, and the containment dome's lamp.
+  dynamo: [
+    {
+      lights: [...DEFS.dynamo!.lights, { x: 233, y: 175, r: 4, color: "#ff5a4a", period: 1500, phase: 0.0, mode: "blink" }],
+      smoke: [{ x: 229, y: 177, rise: 30, thin: true }],
+    },
+    {
+      lights: [
+        ...DEFS.dynamo!.lights,
+        { x: 233, y: 175, r: 4, color: "#ff5a4a", period: 1500, phase: 0.0, mode: "blink" },
+        { x: 190, y: 206, r: 16, color: "#9fe8ff", period: 3000, phase: 0.2, mode: "pulse" },
+        { x: 89.5, y: 187, r: 4, color: "#ffe08a", period: 2200, phase: 0.6, mode: "blink" },
+      ],
+      smoke: [
+        { x: 229, y: 177, rise: 30, thin: true },
+        { x: 190, y: 202, rise: 44 },
+      ],
+    },
+  ],
   // Advanced Fusion: a hotter core that throbs faster, the tips blink quicker.
   fusionnode: [
     {

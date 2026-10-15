@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { FACTIONS, FUSION_CORE_ENERGY, catalog, factionDamage, type Faction } from "@gridlock/shared";
+import { FACTIONS, FUSION_CORE_ENERGY, RESEARCH, catalog, factionDamage, type Faction } from "@gridlock/shared";
 import { cameoCard, fmtNum } from "./cameo-card.js";
 import { groupEntries } from "./sidebar-groups.js";
 
@@ -48,7 +48,10 @@ describe("cameoCard", () => {
   it("names where a unit is trained and what it waits on", () => {
     const titan = cameoCard("titan", "alliance");
     assert.equal(titan.from, catalog("armory").name);
-    assert.deepEqual(titan.needs, [catalog("research").name]);
+    assert.deepEqual(titan.needs, [RESEARCH.prototypeworks.name, catalog("research").name]);
+    // A level-one unit names only its producer's level: the Warden no longer waits on the lab.
+    assert.deepEqual(cameoCard("warden", "alliance").needs, [RESEARCH.heavyworks.name]);
+    assert.deepEqual(cameoCard("rifleman", "alliance").needs, []);
     assert.ok(titan.traits.includes("Braces in place"));
     assert.ok(cameoCard("submarine", "alliance").traits.includes("Dives"));
   });

@@ -217,6 +217,23 @@ def copy(name: str) -> Image.Image:
     return base(name)
 
 
+GOLD = (236, 196, 74)
+OLIVE = (58, 68, 48)
+
+
+def rank(sheet: str, n: int) -> Image.Image:
+    """An Alliance level: the levelled sheet's own cameo under a rank badge, gold chevrons on an olive shield."""
+    im, d = layer()
+    cx, cy = 82, 14
+    shield = [p(cx - 10, cy - 10), p(cx + 10, cy - 10), p(cx + 10, cy + 3), p(cx, cy + 11), p(cx - 10, cy + 3)]
+    d.polygon(shield, fill=OLIVE + (240,), outline=EDGE + (255,), width=int(1.4 * SS))
+    for i in range(n):
+        yy = cy - 3 - (n - 1) * 2.5 + i * 5.5
+        pts = [p(cx - 7, yy + 2), p(cx, yy - 3), p(cx + 7, yy + 2), p(cx + 7, yy + 5), p(cx, yy), p(cx - 7, yy + 5)]
+        d.polygon(pts, fill=GOLD + (255,), outline=EDGE + (255,))
+    return stack(base(sheet), down(im))
+
+
 JOBS = {
     "scanrelay": lambda: scan(1),
     "scanarray": lambda: scan(3),
@@ -231,6 +248,12 @@ JOBS = {
     "neuralassembly": lambda: level("conversion", 2),
     "advancedforge": lambda: level("forge", 1),
     "neuralforge": lambda: level("forge", 2),
+    "advancedtraining": lambda: rank("muster-advanced", 1),
+    "specialforces": lambda: rank("muster-special", 2),
+    "heavyworks": lambda: rank("armory-heavy", 1),
+    "prototypeworks": lambda: rank("armory-prototype", 2),
+    "gasturbines": lambda: rank("dynamo-turbine", 1),
+    "fissionreactor": lambda: rank("dynamo-fission", 2),
 }
 
 

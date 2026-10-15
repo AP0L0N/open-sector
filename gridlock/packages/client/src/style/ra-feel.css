@@ -2066,6 +2066,12 @@ input[type="range"] { padding: 0; }
 .research-cameo[data-art="neuralassembly"] { --research-art: url("../assets/research/neuralassembly-cameo.png"); }
 .research-cameo[data-art="advancedforge"] { --research-art: url("../assets/research/advancedforge-cameo.png"); }
 .research-cameo[data-art="neuralforge"] { --research-art: url("../assets/research/neuralforge-cameo.png"); }
+.research-cameo[data-art="advancedtraining"] { --research-art: url("../assets/research/advancedtraining-cameo.png"); }
+.research-cameo[data-art="specialforces"] { --research-art: url("../assets/research/specialforces-cameo.png"); }
+.research-cameo[data-art="heavyworks"] { --research-art: url("../assets/research/heavyworks-cameo.png"); }
+.research-cameo[data-art="prototypeworks"] { --research-art: url("../assets/research/prototypeworks-cameo.png"); }
+.research-cameo[data-art="gasturbines"] { --research-art: url("../assets/research/gasturbines-cameo.png"); }
+.research-cameo[data-art="fissionreactor"] { --research-art: url("../assets/research/fissionreactor-cameo.png"); }
 
 /* Command bar: centred under the map, orders grouped, icons with a shared tooltip. */
 .battle-commands {

@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
   catalog,
+  RESEARCH,
   structureBuildSeconds,
   GAME_SPEED_MIN,
   LOW_POWER_MIN_SPEED,
@@ -417,23 +418,16 @@ describe("construction", () => {
     assert.ok([...state.entities.values()].some((e) => e.type === "armory"));
     const locked = applyCommand(state, "A", { type: "cmd.train", unit: "warden" });
     assert.equal(locked.ok, false);
-    if (!locked.ok) assert.equal(locked.message, "Need a Research Facility.");
-    state.players.get("A")!.scrap += catalog("research").cost;
-    const r = applyCommand(state, "A", { type: "cmd.build", building: "research" });
+    if (!locked.ok) assert.equal(locked.message, "Research Heavy Works at your Machine Shop.");
+    // The shop spends most of the opening scrap.
+    state.players.get("A")!.scrap += RESEARCH.heavyworks.cost + 1000;
+    const shop = [...state.entities.values()].find((e) => e.type === "armory" && e.ownerId === "A")!;
+    const r = applyCommand(state, "A", { type: "cmd.research", ids: [shop.id], research: "heavyworks" });
     assert.equal(r.ok, true, !r.ok ? r.message : "");
-    ticks(state, structureBuildSeconds("research") * 10 + 2);
-    const placeR = applyCommand(state, "A", {
-      type: "cmd.place",
-      building: "research",
-      tx: core.tileX + core.tileW,
-      ty: core.tileY + catalog("armory").tileH,
-    });
-    assert.equal(placeR.ok, true, !placeR.ok ? placeR.message : "");
-    // Armory + lab spend most of the opening scrap.
-    state.players.get("A")!.scrap += 1000;
+    ticks(state, RESEARCH.heavyworks.seconds * 30 + 2);
+    assert.equal(shop.level, 1);
     const train = applyCommand(state, "A", { type: "cmd.train", unit: "warden" });
     assert.equal(train.ok, true, !train.ok ? train.message : "");
-    // The lab puts this base in a power deficit, so production runs slow.
     ticks(state, catalog("warden").buildSeconds * 30 + 2);
     assert.ok([...state.entities.values()].some((e) => e.type === "warden" && e.ownerId === "A"));
     const trainG = applyCommand(state, "A", { type: "cmd.train", unit: "ss3" });

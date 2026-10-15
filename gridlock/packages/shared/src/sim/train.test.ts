@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
-import { BUILD_REQUIRES, ONE_AT_A_TIME, TECH_REQUIRES, TRAIN_QUEUE_CAP, canContinuousTrain, catalog, factionOf, secondsToTicks, TICK_DT, type TrainType } from "../catalog.js";
+import { BUILD_REQUIRES, ONE_AT_A_TIME, TECH_REQUIRES, TRAIN_QUEUE_CAP, canContinuousTrain, catalog, factionOf, maxLevelOf, secondsToTicks, TICK_DT, type TrainType } from "../catalog.js";
 import { applyCommand } from "./commands.js";
 import { assemblyTicks } from "./assembler.js";
 import { buildTechMissing } from "./build.js";
@@ -521,10 +521,10 @@ describe("research gate", () => {
     const { state } = twoPlayerMatch();
     seedCore(state);
     const ts = state.tileSize;
-    makeEntity(state, "armory", "A", tileCenter(20, ts), tileCenter(4, ts), { tileX: 20, tileY: 4 });
+    const shop = makeEntity(state, "armory", "A", tileCenter(20, ts), tileCenter(4, ts), { tileX: 20, tileY: 4 });
     seedMuster(state, 20, 10);
     const gated = (Object.keys(TECH_REQUIRES) as TrainType[]).filter((u) => factionOf(u) !== "bloom");
-    assert.deepEqual([...gated].sort(), ["apocalypse", "battleship", "behemoth", "bombard", "bv222", "cyborg", "cyborgcommander", "destroyer", "droneop", "he111", "hiveark", "horten", "jagdtiger", "juggernaut", "jumpjet", "lancer", "lurker", "mammoth", "mothership", "nebelwerfer", "overseer", "scourge", "shade", "simunit2", "stuka", "submarine", "thrall", "titan", "warden", "weaver", "xenodrone"]);
+    assert.deepEqual([...gated].sort(), ["apocalypse", "battleship", "behemoth", "bombard", "bv222", "cyborg", "cyborgcommander", "destroyer", "droneop", "he111", "hiveark", "horten", "jagdtiger", "juggernaut", "jumpjet", "lancer", "lurker", "mammoth", "mothership", "overseer", "scourge", "shade", "simunit2", "stuka", "submarine", "thrall", "titan", "weaver", "xenodrone"]);
     const cyborgs = new Set<TrainType>(["cyborg", "cyborgcommander", "simunit2", "xenodrone", "thrall", "lancer", "bombard", "weaver"]);
     // Ships ask for the Marine Base first, bombers for the Airfield; their gates are checked on their own.
     for (const unit of gated.filter((u) => producerType(u) !== "dock" && producerType(u) !== "airfield")) {
@@ -540,7 +540,10 @@ describe("research gate", () => {
     assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "rifleman" }).ok, true);
 
     const lab = makeEntity(state, "research", "A", tileCenter(10, ts), tileCenter(14, ts), { tileX: 10, tileY: 14 });
-    assert.equal(techMissing(state, "A", "warden"), null);
+    assert.equal(techMissing(state, "A", "droneop"), null);
+    // With the lab up, the Machine Shop and Barracks levels are what still lock them.
+    for (const e of state.entities.values()) if (e.ownerId === "A" && (e.type === "muster" || e.type === "armory")) e.level = maxLevelOf(e.type);
+    assert.equal(shop.level, 2);
     assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "warden" }).ok, true);
     assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "droneop" }).ok, true);
     // Every cyborg wants only its own side's barracks (a Cyborg Central, an Assembly); the lab does not unlock them.
@@ -581,6 +584,41 @@ describe("research gate", () => {
     // A ruined Assembly holds no level.
     chamber.hp = 0;
     assert.equal(levelMissing(state, "A", "lancer")?.id, "advancedassembly");
+  });
+
+  it("locks the Alliance's stronger soldiers and machines behind the Barracks and Machine Shop levels", () => {
+    const { state } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const barracks = makeEntity(state, "muster", "A", tileCenter(20, ts), tileCenter(10, ts), { tileX: 20, tileY: 10 });
+    const shop = makeEntity(state, "armory", "A", tileCenter(30, ts), tileCenter(10, ts), { tileX: 30, tileY: 10 });
+    const levels: Record<string, readonly TrainType[]> = {
+      advancedtraining: ["sniper", "rocketer", "atinfantry", "mortarman"],
+      specialforces: ["jumpjet", "droneop"],
+      heavyworks: ["warden", "artillery", "nebelwerfer"],
+      prototypeworks: ["jagdtiger", "mammoth", "apocalypse", "titan"],
+    };
+    for (const u of ["rifleman", "gunner", "pyro", "engineer", "medic", "ss3", "walker", "feuerwirbel", "supply"] as const) {
+      assert.equal(levelMissing(state, "A", u), null, u);
+    }
+    for (const [id, units] of Object.entries(levels)) for (const u of units) assert.equal(levelMissing(state, "A", u)?.id, id, u);
+    barracks.level = 1;
+    shop.level = 1;
+    for (const u of [...levels.advancedtraining!, ...levels.heavyworks!]) assert.equal(levelMissing(state, "A", u), null, u);
+    assert.equal(levelMissing(state, "A", "jumpjet")?.id, "specialforces");
+    assert.equal(levelMissing(state, "A", "titan")?.id, "prototypeworks");
+    const r = applyCommand(state, "A", { type: "cmd.train", unit: "titan" });
+    assert.equal(r.ok, false);
+    // The Titan still wants the lab first; with the lab up, the level is what is missing.
+    if (!r.ok) assert.equal(r.message, "Need a Research Facility.");
+    makeEntity(state, "research", "A", tileCenter(10, ts), tileCenter(14, ts), { tileX: 10, tileY: 14 });
+    const r2 = applyCommand(state, "A", { type: "cmd.train", unit: "titan" });
+    assert.equal(r2.ok, false);
+    if (!r2.ok) assert.equal(r2.message, "Research Prototype Works at your Machine Shop.");
+    barracks.level = 2;
+    shop.level = 2;
+    for (const units of Object.values(levels)) for (const u of units) assert.equal(levelMissing(state, "A", u), null, u);
+    // Another player's levels do not count.
+    assert.equal(levelMissing(state, "B", "warden")?.id, "heavyworks");
   });
 
   it("does not count another player's Research Facility", () => {
@@ -676,6 +714,7 @@ describe("one at a time", () => {
       makeEntity(state, shop, "A", tileCenter(20, ts), tileCenter(4, ts), { tileX: 20, tileY: 4 }),
       makeEntity(state, shop, "A", tileCenter(30, ts), tileCenter(4, ts), { tileX: 30, tileY: 4 }),
     ];
+    for (const s of shops) s.level = maxLevelOf(s.type);
     makeEntity(state, "research", "A", tileCenter(10, ts), tileCenter(14, ts), { tileX: 10, tileY: 14 });
     makeEntity(state, "cyborgcentral", "A", tileCenter(40, ts), tileCenter(14, ts), { tileX: 40, tileY: 14 });
     return { state, shops };

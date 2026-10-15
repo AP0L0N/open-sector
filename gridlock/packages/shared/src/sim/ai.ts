@@ -47,6 +47,8 @@ import {
   catalog,
   energyOf,
   energySupplyOfEntity,
+  powerOfEntity,
+  RESEARCH,
   FORCE_SHIELD_ENERGY,
   NEURAL_PULSAR_ENERGY,
   isNeuralPulsar,
@@ -369,6 +371,7 @@ function thinkCpu(state: MatchState, p: SimPlayer): void {
   trainCpu(state, p);
   if (state.tick >= (p.aiNextMicroTick ?? 0)) {
     p.aiNextMicroTick = state.tick + CPU_MICRO_EVERY_TICKS;
+    researchAlliance(state, p);
     watchSky(state, p, plan);
     if (plan.posture === "fortify" && fortified(state, p, hq, plan)) {
       plan.posture = "campaign";
@@ -385,6 +388,43 @@ function thinkCpu(state: MatchState, p: SimPlayer): void {
     seaWork(state, p, hq, plan);
     microUnits(state, p, hq, plan);
   }
+}
+
+/**
+ * The Alliance CPU's upgrades, one at a time, once its first riflemen stand. The most levelled
+ * Barracks takes Advanced Training, then the most levelled Machine Shop Heavy Works; their second
+ * levels follow once a Research Facility stands. Then, with the build order standing, the least
+ * upgraded Power Plant, when the dip while it upgrades still leaves the base powered. Each starts
+ * once the scrap on hand covers it on top of what the base still saves for (trainReserve): the
+ * defence ring and the factories go up first. It pays as it goes, beside the army.
+ */
+function researchAlliance(state: MatchState, p: SimPlayer): void {
+  if (countType(state, p.playerId, "rifleman") < FIRST_WAVE_TROOPERS) return;
+  let barracks: Entity | undefined;
+  let shop: Entity | undefined;
+  let plant: Entity | undefined;
+  for (const e of state.entities.values()) {
+    if (e.ownerId !== p.playerId || e.kind !== "building" || e.hp <= 0 || e.ruined) continue;
+    if (e.research) return;
+    if (e.type === "muster" && (!barracks || (e.level ?? 0) > (barracks.level ?? 0))) barracks = e;
+    else if (e.type === "armory" && (!shop || (e.level ?? 0) > (shop.level ?? 0))) shop = e;
+    else if (e.type === "dynamo" && nextResearch(e.type, e.level ?? 0) && (!plant || (e.level ?? 0) < (plant.level ?? 0))) plant = e;
+  }
+  // The towers, crews, and factories the base still saves for come first.
+  const reserve = trainReserve(state, p);
+  const tryNext = (b: Entity | undefined): boolean => {
+    const next = b && nextResearch(b.type, b.level ?? 0);
+    if (!b || !next || researchBlocker(state, p.playerId, b, next.id)) return false;
+    if (p.scrap < RESEARCH[next.id].cost + reserve) return true;
+    applyCommand(state, p.playerId, { type: "cmd.research", ids: [b.id], research: next.id });
+    return true;
+  };
+  // A level that may start is saved for before the next one: the army waits on these units.
+  if (tryNext(barracks) || tryNext(shop)) return;
+  if (!plant || nextBuilding(state, p) != null) return;
+  const pow = powerOf(state, p.playerId);
+  const dip = powerOfEntity(plant) - powerOfEntity({ ...plant, research: true });
+  if (pow.provided - dip >= pow.used) tryNext(plant);
 }
 
 /**

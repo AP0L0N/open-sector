@@ -1066,7 +1066,6 @@ export function canContinuousTrain(type: string): type is TrainType {
 
 /** Advanced units: their producer also needs this building (or every one listed) standing before a job can be queued. */
 export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly BuildingType[]>> = {
-  warden: "research",
   apocalypse: "research",
   jagdtiger: "research",
   cyborg: "cyborgcentral",
@@ -1092,7 +1091,6 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly Bu
   longspine: "braincoral",
   titan: "research",
   mammoth: "research",
-  nebelwerfer: "research",
   droneop: "research",
   jumpjet: "research",
   submarine: "research",
@@ -1287,7 +1285,13 @@ export type ResearchId =
   | "scanarray"
   | "advancedforge"
   | "neuralforge"
-  | "neuralpulsar";
+  | "neuralpulsar"
+  | "advancedtraining"
+  | "specialforces"
+  | "heavyworks"
+  | "prototypeworks"
+  | "gasturbines"
+  | "fissionreactor";
 export interface ResearchDef {
   id: ResearchId;
   name: string;
@@ -1311,6 +1315,17 @@ export interface ResearchDef {
 export const FUSION_NODE_LEVEL_ENERGY: readonly number[] = [FUSION_NODE_ENERGY, 400, 600];
 /** While a structure researches its next level, it gives this share of what it gives now. */
 export const RESEARCH_OUTPUT_SHARE = 0.5;
+/** Power an Alliance Power Plant gives at each level: plain, Gas Turbines, Fission Reactor. */
+export const DYNAMO_LEVEL_POWER: readonly number[] = [100, 150, 200];
+/**
+ * Power one standing building gives (positive) or draws (negative): its catalog `power`, but a Power
+ * Plant by its level, and half of that while it researches the next one.
+ */
+export function powerOfEntity(e: { type: string; level?: number; research?: { id: ResearchId } | unknown }): number {
+  if (e.type !== "dynamo") return catalog(e.type as EntityType).power;
+  const base = DYNAMO_LEVEL_POWER[Math.min(e.level ?? 0, DYNAMO_LEVEL_POWER.length - 1)]!;
+  return e.research != null ? Math.floor(base * RESEARCH_OUTPUT_SHARE) : base;
+}
 /** Hive energy a Fusion Core holds at each level: plain, Fusion Reactor (twice as much). */
 export const FUSION_CORE_LEVEL_ENERGY: readonly number[] = [FUSION_CORE_ENERGY, FUSION_CORE_ENERGY * 2];
 /** Every Xenite defence can research a Force Shield, and so can the Fusion Core. */
@@ -1514,6 +1529,70 @@ export const RESEARCH: Record<ResearchId, ResearchDef> = {
     effect: `Base dome · ${NEURAL_PULSAR_ENERGY} energy`,
     blurb: `Grows the Nexus into a Neural Pulsar that throws a faint energy dome over the base, ${NEURAL_PULSAR_DOME.radiusTiles / TILE_SUBDIV} cells round it. The dome stops what comes in from outside until its ${NEURAL_PULSAR_DOME.energy} points are gone, mends while it holds, and comes back a while after it breaks. Takes ${NEURAL_PULSAR_ENERGY} hive energy from the moment the research starts.`,
   },
+  // The Alliance. Each level costs scrap, paid as it goes like a yard job.
+  advancedtraining: {
+    id: "advancedtraining",
+    name: "Advanced Training",
+    buildings: ["muster"],
+    level: 1,
+    seconds: 45,
+    cost: 600,
+    effect: "Sniper, Rocketer, AT Infantry, Mortarman",
+    blurb: "Adds a firing range and a weapons school. Your Barracks train the Sniper, the Rocketer, the AT Infantry, and the Mortarman while a Barracks of yours stands at this level.",
+  },
+  specialforces: {
+    id: "specialforces",
+    name: "Special Forces",
+    buildings: ["muster"],
+    level: 2,
+    seconds: 75,
+    cost: 1200,
+    requires: ["research"],
+    effect: "Jump Jet, Drone Op",
+    blurb: "A jump tower and a drone uplink for picked men. Your Barracks train the Jump Jet and the Drone Op while a Barracks of yours stands at this level. Needs a Research Facility.",
+  },
+  heavyworks: {
+    id: "heavyworks",
+    name: "Heavy Works",
+    buildings: ["armory"],
+    level: 1,
+    seconds: 45,
+    cost: 1000,
+    effect: "Warden, Artillery, Hailstorm",
+    blurb: "A heavier gantry and a second bay for big guns. Your Machine Shops build the Warden, the Artillery, and the Hailstorm while a Machine Shop of yours stands at this level.",
+  },
+  prototypeworks: {
+    id: "prototypeworks",
+    name: "Prototype Works",
+    buildings: ["armory"],
+    level: 2,
+    seconds: 75,
+    cost: 2000,
+    requires: ["research"],
+    effect: "Breaker, Mammoth, Apocalypse, Titan",
+    blurb: "A sealed prototype hall and a test track. Your Machine Shops build the Breaker, the Mammoth, the Apocalypse, and the Titan while a Machine Shop of yours stands at this level. Needs a Research Facility.",
+  },
+  gasturbines: {
+    id: "gasturbines",
+    name: "Gas Turbines",
+    buildings: ["dynamo"],
+    level: 1,
+    seconds: 45,
+    cost: 400,
+    effect: `${DYNAMO_LEVEL_POWER[1]} power`,
+    blurb: `Fits the plant with gas turbines: ${DYNAMO_LEVEL_POWER[1]} power instead of ${DYNAMO_LEVEL_POWER[0]}. While it upgrades the plant gives only half its power.`,
+  },
+  fissionreactor: {
+    id: "fissionreactor",
+    name: "Fission Reactor",
+    buildings: ["dynamo"],
+    level: 2,
+    seconds: 75,
+    cost: 800,
+    requires: ["research"],
+    effect: `${DYNAMO_LEVEL_POWER[2]} power`,
+    blurb: `A compact fission pile under a cooling tower: ${DYNAMO_LEVEL_POWER[2]} power instead of ${DYNAMO_LEVEL_POWER[1]}. While it upgrades the plant gives only half its power. Needs a Research Facility.`,
+  },
 };
 /**
  * Units a producer's level unlocks: trained only while one of the side's standing Assemblies
@@ -1530,6 +1609,19 @@ export const TECH_LEVEL_REQUIRES: Partial<Record<TrainType, { type: BuildingType
   assembler: { type: "forge", level: 1 },
   behemoth: { type: "forge", level: 2 },
   juggernaut: { type: "forge", level: 2 },
+  sniper: { type: "muster", level: 1 },
+  rocketer: { type: "muster", level: 1 },
+  atinfantry: { type: "muster", level: 1 },
+  mortarman: { type: "muster", level: 1 },
+  jumpjet: { type: "muster", level: 2 },
+  droneop: { type: "muster", level: 2 },
+  warden: { type: "armory", level: 1 },
+  artillery: { type: "armory", level: 1 },
+  nebelwerfer: { type: "armory", level: 1 },
+  jagdtiger: { type: "armory", level: 2 },
+  mammoth: { type: "armory", level: 2 },
+  apocalypse: { type: "armory", level: 2 },
+  titan: { type: "armory", level: 2 },
 };
 /** The level research `unit` waits on (Advanced Assembly for a Lancer), or undefined when it needs none. */
 export function techLevelResearch(unit: TrainType): ResearchDef | undefined {
@@ -5411,6 +5503,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
+    blurb: "Generator hall with twin turbines and a transformer yard. Gives 100 power. Select it to research Gas Turbines (150 power), then the Fission Reactor (200) once a Research Facility stands.",
   },
   smelter: {
     type: "smelter",
@@ -5498,6 +5591,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
+    blurb: "Quonset hut, flag mast, and a sandbagged gun pit. Trains the Rifleman, Gunner, Pyro, Engineer, and Medic. Select it to research Advanced Training (Sniper, Rocketer, AT Infantry, Mortarman), then Special Forces (Jump Jet, Drone Op) once a Research Facility stands.",
   },
   armory: {
     type: "armory",
@@ -5519,6 +5613,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
+    blurb: "Tank assembly hall with a gantry crane and a stack. Builds the Vanguard, Walker, Firestorm, and Supply Truck. Select it to research Heavy Works (Warden, Artillery, Hailstorm), then Prototype Works (Breaker, Mammoth, Apocalypse, Titan) once a Research Facility stands.",
   },
   airfield: {
     type: "airfield",
@@ -5585,7 +5680,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Warden, Apocalypse, Breaker, Titan, Hailstorm, Drone Op, Submarine, and Destroyer, and with a Radar Station the Battle Ship.",
+    blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Submarine, the Destroyer, the Striker, and the Albatross, and with a Radar Station the Battle Ship, the Pelican, and the Wraith. The Breaker, Mammoth, Apocalypse, Titan, Jump Jet, and Drone Op need it standing too. Opens the second level of research at the Barracks (Special Forces), the Machine Shop (Prototype Works), and the Power Plant (Fission Reactor).",
   },
   cyborgcentral: {
     type: "cyborgcentral",

@@ -1,4 +1,4 @@
-import { catalog, CHEAT_POWER, LOW_POWER_MIN_SPEED, usesHiveEnergy } from "../catalog.js";
+import { CHEAT_POWER, LOW_POWER_MIN_SPEED, powerOfEntity, usesHiveEnergy } from "../catalog.js";
 import type { MatchState } from "./types.js";
 
 /** A side's power. The Xenite draw none: they run on hive energy (sim/hive-energy.ts). */
@@ -9,7 +9,7 @@ export function powerOf(state: MatchState, playerId: string): { provided: number
   let used = 0;
   for (const e of state.entities.values()) {
     if (e.ownerId !== playerId || e.hp <= 0 || e.kind !== "building") continue;
-    const p = catalog(e.type).power;
+    const p = powerOfEntity(e);
     if (p >= 0) provided += p;
     else used += -p;
   }

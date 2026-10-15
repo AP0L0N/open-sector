@@ -797,6 +797,7 @@ describe("CPU types", () => {
     // Every Barracks rank is full, the rocketmen too, until planes are seen.
     for (const row of CPU_ARMY.muster) fighters(state, aiId, row.unit, row.want, 16 * CPU_ARMY.muster.indexOf(row));
     const muster = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "muster")!;
+    muster.level = maxLevelOf("muster");
     const cpu = state.players.get(aiId)!;
     cpu.structure = null;
     cpu.scrap = 10000;
@@ -807,6 +808,37 @@ describe("CPU types", () => {
     planOf(state, aiId).airSeenTick = state.tick;
     micro(state, aiId);
     assert.ok(muster.queue.some((j) => j.type === "rocketer"), `muster queue ${muster.queue.map((j) => j.type).join(",")}`);
+  });
+
+  it("levels its Barracks, then its Machine Shop, and their second levels once a Research Facility stands", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    withBase(state, aiId, ["dynamo", "smelter", "muster", "armory", "dynamo"]);
+    const cpu = state.players.get(aiId)!;
+    const job = (type: string) => [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === type)!;
+    micro(state, aiId);
+    assert.equal(job("muster").research, undefined, "the first riflemen come first");
+    troopers(state, aiId, 4);
+    cpu.scrap = 0;
+    micro(state, aiId);
+    assert.equal(job("muster").research, undefined, "waits for the scrap");
+    cpu.scrap = 10000;
+    micro(state, aiId);
+    assert.equal(job("muster").research?.id, "advancedtraining");
+    assert.equal(job("armory").research, undefined, "one at a time");
+    job("muster").research = undefined;
+    job("muster").level = 1;
+    micro(state, aiId);
+    assert.equal(job("armory").research?.id, "heavyworks");
+    job("armory").research = undefined;
+    job("armory").level = 1;
+    micro(state, aiId);
+    assert.equal(job("muster").research, undefined, "Special Forces waits on a Research Facility");
+    assert.equal(job("armory").research, undefined, "Prototype Works waits on a Research Facility");
+    const hq = coreOf(state, aiId);
+    makeEntity(state, "research", aiId, hq.x - 12 * 8, hq.y - 14 * 8, { tileX: hq.tileX - 12, tileY: hq.tileY - 14 });
+    micro(state, aiId);
+    assert.equal(job("muster").research?.id, "specialforces");
   });
 
   it("scrambles parked fighters at an enemy plane in the air", () => {

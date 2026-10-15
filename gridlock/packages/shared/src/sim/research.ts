@@ -10,7 +10,10 @@ import type { Entity, MatchState } from "./types.js";
  * a Xenite defence or the Fusion Core to its Force Shield (a small dome of its own,
  * sim/energy-shield.ts); the Fusion Core to a Flak Maw on its roof (sim/roof-flak.ts); an Ion
  * Turret to Sky Tracking (it reaches aircraft, catalog antiAirGun); an Assembly to the
- * Shield Wall drill (its side's Drones and Lancers raise energy walls while it stands), or to Advanced and Neural Assembly (levels that unlock its stronger soldiers, catalog TECH_LEVEL_REQUIRES). The job runs on the structure itself,
+ * Shield Wall drill (its side's Drones and Lancers raise energy walls while it stands), or to Advanced and Neural Assembly (levels that unlock its stronger soldiers, catalog TECH_LEVEL_REQUIRES).
+ * The Alliance levels its Barracks and Machine Shop the same way (Advanced Training / Special Forces,
+ * Heavy Works / Prototype Works) and its Power Plant to Gas Turbines and a Fission Reactor (more power,
+ * half of it while upgrading: catalog powerOfEntity). The job runs on the structure itself,
  * at the owner's job pace (power, or the hive's energy), and takes its scrap as it goes, like a
  * yard job. While it runs a Fusion Node holds only RESEARCH_OUTPUT_SHARE of its energy
  * (energySupplyOfEntity). Cancelled, it gives the scrap back; captured, the job is dropped and

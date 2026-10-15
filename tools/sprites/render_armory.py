@@ -10,12 +10,19 @@ cabinets dress the yard. The client pulses the window bands and the door
 glow, blinks the stack lamp, and throws welding sparks from the door, from
 the spots written to armory.json (source px, same frame as the image).
 
+Researched levels (catalog RESEARCH, client LEVEL_SHEETS) get their own sheets on the same
+canvas, so the base sheet's light spots still sit right: Heavy Works (armory-heavy) puts a
+heavy-gun bay in the east yard with a long barrel on trestles before it; Prototype Works
+(armory-prototype) adds a second stack, a floodlight mast on the bay, and a prototype
+under a tarp in the south-west corner.
+
 Look: the inked structure style of render_airfield.py (same mesh, raster,
 ink, silhouette, key light, and cast shadow), at the 3× source zoom of the
 Research Facility and the Radar, on the Research Facility's olive plate and
 poured slab.
 
   python tools/sprites/render_armory.py --out gridlock/packages/client/src/assets/buildings
+  python tools/sprites/render_armory.py --out gridlock/packages/client/src/assets/buildings --level 1
 """
 
 from __future__ import annotations
@@ -58,6 +65,22 @@ GANTRY_TOP = 19.0
 TROLLEY_X = 72.0
 YARD_HULL = (63.0, 65.0, 81.0, 75.0)
 YARD_HULL_Z = 3.2
+# Levels: sheet suffix by level (0 is the plain armory.png).
+LEVEL_NAMES = ["", "heavy", "prototype"]
+# Heavy Works: the heavy-gun bay over the east yard's spares, its door on the south-west face.
+BAY = (64.0, 4.0, 93.0, 30.0)
+BAY_TOP = 15.0
+BAY_DOOR_X = (69.0, 85.0)
+BAY_DOOR_TOP = 11.5
+BARREL_Y = 35.0
+BARREL_X = (64.0, 91.0)
+BARREL_Z = 6.0
+# Prototype Works: a second stack, the bay's floodlight mast, the tarped prototype.
+STACK2 = (50.0, 14.0)
+STACK2_TOP = 46.0
+FLOOD = (90.0, 7.0)
+FLOOD_TOP = 27.0
+PROTO = (3.0, 69.0, 19.0, 93.0)
 
 
 def rgb(h: str) -> np.ndarray:
@@ -166,6 +189,11 @@ def tex(mat: str, P: np.ndarray, n: np.ndarray) -> np.ndarray:
         return base("#6d6e66") * (0.9 + 0.16 * nf[:, None])
     if mat == "wheel":
         return base("#3b3a35") * (0.9 + 0.2 * nf[:, None])
+    if mat == "tarp":
+        # Olive canvas pulled over the prototype, sagging in folds between the tie-downs.
+        c = base("#5d6440") * (0.88 + 0.16 * nm[:, None]) * (0.95 + 0.08 * nf[:, None])
+        c[np.mod(Y + X * 0.4, 3.4) < 0.5] *= 0.78
+        return c
     return _base_tex(mat, P, n)
 
 
@@ -232,7 +260,64 @@ def gantry(m: ra.Mesh) -> None:
     m.cyl((tx + 3.2, gy, hook_z + 2.2), (tx + 15.0, gy, hook_z + 2.2), 0.6, 0.5, "pipe", n=8)
 
 
-def build_mesh(slab: bool = True) -> ra.Mesh:
+def heavy_bay(m: ra.Mesh) -> None:
+    """Heavy Works: a tall plate bay with a lit door and windows, and a gun barrel on trestles."""
+    x0, y0, x1, y1 = BAY
+    dx0, dx1 = BAY_DOOR_X
+    m.box((x0 - 0.4, y0 - 0.4, 1.0), (x1 + 0.4, y1 + 0.4, 2.2), "olive_dark", top="floor")
+    m.box((x0, y0, 2.2), (x1, y0 + WALL, BAY_TOP), "olive")
+    m.box((x0, y0, 2.2), (x0 + WALL, y1, BAY_TOP), "olive")
+    m.box((x1 - WALL, y0, 2.2), (x1, y1, BAY_TOP), "olive")
+    m.box((x0, y1 - WALL, 2.2), (dx0, y1, BAY_TOP), "olive")
+    m.box((dx1, y1 - WALL, 2.2), (x1, y1, BAY_TOP), "olive")
+    m.box((dx0, y1 - WALL, BAY_DOOR_TOP), (dx1, y1, BAY_TOP), "olive")
+    m.box((x0 + WALL, y1 - 9.0, 2.2), (x1 - WALL, y1 - WALL, 2.3), "glow", part=False)
+    m.box((dx0 - 1.0, y1, 2.2), (dx0, y1 + 0.8, BAY_DOOR_TOP + 1.2), "hazard")
+    m.box((dx1, y1, 2.2), (dx1 + 1.0, y1 + 0.8, BAY_DOOR_TOP + 1.2), "hazard")
+    m.box((dx0 - 1.0, y1, BAY_DOOR_TOP), (dx1 + 1.0, y1 + 0.9, BAY_DOOR_TOP + 1.2), "hazard")
+    m.box((x0 - 0.5, y0 - 0.5, BAY_TOP), (x1 + 0.5, y1 + 0.5, BAY_TOP + 1.0), "olive_dark", top="roof")
+    # A raised monitor along the roof ridge, and the window band on the south-east face.
+    m.box((x0 + 4.0, y0 + 9.0, BAY_TOP + 1.0), (x1 - 4.0, y1 - 9.0, BAY_TOP + 3.4), "olive", top="roof")
+    m.box((x1, y0 + 4.0, 8.5), (x1 + 0.35, y1 - 4.0, 12.0), "glass")
+    # A heavy barrel on two trestles in front of the bay, breech block at the hall end.
+    bx0, bx1 = BARREL_X
+    for tx in (bx0 + 7.0, bx1 - 6.0):
+        m.box((tx - 1.0, BARREL_Y - 2.4, 1.0), (tx + 1.0, BARREL_Y + 2.4, BARREL_Z - 1.0), "wood")
+        m.box((tx - 1.4, BARREL_Y - 1.6, BARREL_Z - 1.4), (tx + 1.4, BARREL_Y + 1.6, BARREL_Z - 0.9), "steel")
+    m.box((bx0, BARREL_Y - 2.0, BARREL_Z - 2.0), (bx0 + 4.0, BARREL_Y + 2.0, BARREL_Z + 2.0), "steel")
+    m.cyl((bx0 + 4.0, BARREL_Y, BARREL_Z), (bx1, BARREL_Y, BARREL_Z), 1.5, 1.05, "pipe", n=12)
+    m.cyl((bx1 - 2.4, BARREL_Y, BARREL_Z), (bx1 + 0.4, BARREL_Y, BARREL_Z), 1.45, 1.45, "steel", n=12)
+
+
+def prototype_works(m: ra.Mesh) -> None:
+    """Prototype Works: a second stack, a floodlight mast on the bay, a big tank under a tarp."""
+    sx, sy = STACK2
+    m.box((sx - 3.4, sy - 3.4, EAVE + 1.0), (sx + 3.4, sy + 3.4, EAVE + RISE + 2.0), "olive_dark", top="roof")
+    m.cyl((sx, sy, EAVE + RISE + 2.0), (sx, sy, STACK2_TOP), 2.7, 2.1, "stack", n=16)
+    m.cyl((sx, sy, STACK2_TOP), (sx, sy, STACK2_TOP + 1.8), 2.5, 2.5, "soot", n=16)
+    m.cyl((sx + 2.2, sy, STACK2_TOP + 1.8), (sx + 2.2, sy, STACK2_TOP + 2.9), 0.55, 0.55, "lamp", n=8)
+    fx, fy = FLOOD
+    m.cyl((fx, fy, BAY_TOP + 1.0), (fx, fy, FLOOD_TOP), 0.55, 0.45, "steel", n=8)
+    m.box((fx - 2.6, fy - 0.8, FLOOD_TOP), (fx + 2.6, fy + 0.8, FLOOD_TOP + 0.6), "steel")
+    for d in (-1.6, 1.6):
+        m.box((fx + d - 0.9, fy - 0.2, FLOOD_TOP + 0.6), (fx + d + 0.9, fy + 1.2, FLOOD_TOP + 2.2), "olive_dark")
+        m.box((fx + d - 0.7, fy + 1.2, FLOOD_TOP + 0.8), (fx + d + 0.7, fy + 1.4, FLOOD_TOP + 2.0), "lamp", part=False)
+    # The prototype: tracks showing under a tarp hull, a tarped turret, the long gun bare.
+    x0, y0, x1, y1 = PROTO
+    m.box((x0, y0, 1.0), (x0 + 3.2, y1, 4.6), "track")
+    m.box((x1 - 3.2, y0, 1.0), (x1, y1, 4.6), "track")
+    m.box((x0 + 0.6, y0 + 0.8, 3.0), (x1 - 0.6, y1 - 0.8, 8.0), "tarp")
+    m.box((x0 + 1.4, y0 + 2.0, 8.0), (x1 - 1.4, y1 - 2.0, 8.8), "tarp", part=False)
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2 - 2.0
+    m.cyl((cx, cy, 8.8), (cx, cy, 13.0), 5.2, 4.2, "tarp", n=16)
+    m.cyl((cx, cy + 4.6, 11.2), (cx, y1 + 7.0, 11.2), 0.75, 0.6, "pipe", n=8)
+    m.cyl((cx, y1 + 5.0, 11.2), (cx, y1 + 7.2, 11.2), 1.0, 1.0, "steel", n=8)
+    for ty in (y0 + 3.0, y1 - 3.0):
+        m.box((x0 - 0.6, ty - 0.3, 1.0), (x0 + 0.2, ty + 0.3, 6.0), "metal")
+        m.box((x1 - 0.2, ty - 0.3, 1.0), (x1 + 0.6, ty + 0.3, 6.0), "metal")
+
+
+def build_mesh(slab: bool = True, level: int = 0) -> ra.Mesh:
     m = ra.Mesh()
     if slab:
         m.box((0.6, 0.6, 0), (W - 0.6, H - 0.6, 1.0), "slab")
@@ -305,18 +390,25 @@ def build_mesh(slab: bool = True) -> ra.Mesh:
     for bx in (yx0 + 3.0, yx1 - 5.0):
         m.box((bx, yy0 + 2.0, 1.0), (bx + 2.0, yy1 - 2.0, YARD_HULL_Z), "steel")
     hull(m, yx0, yy0, yx1, yy1, YARD_HULL_Z, turret=False, along_y=False)
-    track_links(m, 70.0, 12.0, 6)
-    track_links(m, 79.0, 12.5, 5)
-    for i in range(3):
-        wx = 90.0
-        wy = 14.0 + i * 3.4
-        m.cyl((wx, wy, 1.0), (wx, wy, 2.4), 2.2, 2.2, "wheel", n=12)
-        m.cyl((wx, wy, 2.4), (wx, wy, 3.0), 1.2, 1.2, "steel", n=10, part=False)
-    drums(m, 84.0, 36.0, 3, 2)
+    if level >= 1:
+        heavy_bay(m)
+        drums(m, 85.0, 41.0, 3, 2)
+    else:
+        track_links(m, 70.0, 12.0, 6)
+        track_links(m, 79.0, 12.5, 5)
+        for i in range(3):
+            wx = 90.0
+            wy = 14.0 + i * 3.4
+            m.cyl((wx, wy, 1.0), (wx, wy, 2.4), 2.2, 2.2, "wheel", n=12)
+            m.cyl((wx, wy, 2.4), (wx, wy, 3.0), 1.2, 1.2, "steel", n=10, part=False)
+        drums(m, 84.0, 36.0, 3, 2)
     m.box((W - 12.0, H - 38.0, 1.0), (W - 6.5, H - 32.5, 5.4), "crate")
     m.box((W - 18.0, H - 37.0, 1.0), (W - 13.0, H - 32.0, 4.2), "crate")
-    m.box((4.0, H - 12.0, 1.0), (10.0, H - 6.0, 4.6), "crate")
-    m.box((4.5, H - 11.5, 4.6), (9.5, H - 6.5, 7.6), "crate")
+    if level >= 2:
+        prototype_works(m)
+    else:
+        m.box((4.0, H - 12.0, 1.0), (10.0, H - 6.0, 4.6), "crate")
+        m.box((4.5, H - 11.5, 4.6), (9.5, H - 6.5, 7.6), "crate")
     return m
 
 
@@ -339,14 +431,15 @@ def screen(cv: ra.Canvas, x: float, y: float, z: float) -> tuple[float, float]:
     return round(float(sx[0]) / SS, 1), round(float(sy[0]) / SS, 1)
 
 
-def render(out_dir: Path) -> None:
+def render(out_dir: Path, level: int = 0) -> None:
     cv = make_canvas()
     print("canvas", cv.w // SS, "x", cv.h // SS)
+    name = "armory" + (f"-{LEVEL_NAMES[level]}" if level else "")
 
-    props = build_mesh(slab=False)
+    props = build_mesh(slab=False, level=level)
     sh = ra.shadow_mask(props, cv)
     ao = ra.contact_ao(props, cv)
-    fr = ra.rasterize(build_mesh(), cv)
+    fr = ra.rasterize(build_mesh(level=level), cv)
     ra.ink(fr, SS)
     ra.silhouette(fr, SS)
     ys, xs = np.mgrid[0 : cv.h, 0 : cv.w].astype(np.float64) + 0.5
@@ -364,7 +457,7 @@ def render(out_dir: Path) -> None:
     img = ra.downsample(color, alpha, SS)
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    img.save(out_dir / "armory.png", optimize=True)
+    img.save(out_dir / f"{name}.png", optimize=True)
 
     south = screen(cv, W, H, 0.0)
     wz = (WIN_Z[0] + WIN_Z[1]) / 2
@@ -383,8 +476,17 @@ def render(out_dir: Path) -> None:
         "sparks": screen(cv, (dx0 + dx1) / 2 - 3.0, y1 - 2.0, 7.0),
         "stackLamp": screen(cv, STACK[0] + 2.6, STACK[1], STACK_TOP + 3.6),
     }
-    (out_dir / "armory.json").write_text(json.dumps(info, indent=2) + "\n")
-    print("wrote", out_dir / "armory.png", info)
+    # The client's stack anchor for the plain sheet (sprites.ts), so every level stacks the same.
+    info["stackX"], info["stackY"] = 360.0, 105.0
+    if level >= 1:
+        bx0, by0, bx1, by1 = BAY
+        info["bayDoor"] = screen(cv, sum(BAY_DOOR_X) / 2, by1 - 1.0, 6.0)
+        info["bayWindows"] = [screen(cv, bx1 + 0.4, y, 10.2) for y in np.linspace(by0 + 7.0, by1 - 7.0, 2)]
+    if level >= 2:
+        info["stack2Lamp"] = screen(cv, STACK2[0] + 2.2, STACK2[1], STACK2_TOP + 3.3)
+        info["flood"] = [screen(cv, FLOOD[0] + d, FLOOD[1] + 1.4, FLOOD_TOP + 1.4) for d in (-1.6, 1.6)]
+    (out_dir / f"{name}.json").write_text(json.dumps(info, indent=2) + "\n")
+    print("wrote", out_dir / f"{name}.png", info)
 
     cam = Image.new("RGBA", (96, 96), (0, 0, 0, 0))
     bb = img.getbbox()
@@ -393,14 +495,15 @@ def render(out_dir: Path) -> None:
         f = min(92 / crop.width, 92 / crop.height)
         crop = crop.resize((max(1, round(crop.width * f)), max(1, round(crop.height * f))), Image.Resampling.LANCZOS)
         cam.alpha_composite(crop, ((96 - crop.width) // 2, (96 - crop.height) // 2))
-    cam.save(out_dir / "armory-cameo.png")
+    cam.save(out_dir / f"{name}-cameo.png")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True, help="buildings asset folder")
+    ap.add_argument("--level", type=int, default=0, choices=range(len(LEVEL_NAMES)), help="researched level to draw")
     args = ap.parse_args()
-    render(Path(args.out))
+    render(Path(args.out), args.level)
 
 
 if __name__ == "__main__":
